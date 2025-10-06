@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X } from 'lucide-react';
+import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X, Activity } from 'lucide-react';
 import { supabase } from './utils/supabase';
 import { dbOperation } from './utils/db';
 import { getDaysUntil, predictNextDate, DEFAULT_CATEGORIES, generateId } from './utils/helpers';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
+import ActivityFeed from './components/ActivityFeed';
 import CreditCards from './components/CreditCards';
 import Loans from './components/Loans';
 import ReservedFunds from './components/ReservedFunds';
@@ -453,6 +454,12 @@ export default function FinanceTracker() {
             onUpdateCash={saveAvailableCash}
           />
         )}
+        {currentView === 'activity' && (
+          <ActivityFeed
+            darkMode={darkMode}
+            onUpdate={loadAllData}
+          />
+        )}
       </div>
 
       <div className={`fixed bottom-0 left-0 right-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-t px-2 py-2 flex justify-around`}>
@@ -491,6 +498,13 @@ export default function FinanceTracker() {
           <DollarSign size={24} />
           <span className="text-xs font-medium">Income</span>
         </button>
+        <button
+          onClick={() => setCurrentView('activity')}
+          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg ${currentView === 'activity' ? 'text-blue-600 bg-blue-50' : darkMode ? 'text-gray-400' : 'text-gray-600'}`}
+        >
+          <Activity size={24} />
+          <span className="text-xs font-medium">Activity</span>
+</button>
       </div>
     </div>
   );
