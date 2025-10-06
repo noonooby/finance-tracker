@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertCircle } from 'lucide-react';
-import { formatCurrency, formatDate, getDaysUntil } from '../utils/helpers';
+import { formatCurrency, formatDate } from '../utils/helpers';
 
 export default function Dashboard({ 
   darkMode, 
