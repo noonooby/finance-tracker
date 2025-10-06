@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Undo2, Activity, Trash2, CreditCard, TrendingUp, Calendar, DollarSign } from 'lucide-react';
+import { Undo2, Activity, CreditCard, TrendingUp, Calendar, DollarSign } from 'lucide-react';
 import { supabase } from '../utils/supabase';
 import { undoActivity } from '../utils/activityLogger';
 
