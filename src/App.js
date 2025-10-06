@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun } from 'lucide-react';
+import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X } from 'lucide-react';
 import { dbOperation } from './utils/db';
-import { getDaysUntil, predictNextDate, DEFAULT_CATEGORIES } from './utils/helpers';
+import { getDaysUntil, predictNextDate, DEFAULT_CATEGORIES, generateId } from './utils/helpers';
 import Dashboard from './components/Dashboard';
 import CreditCards from './components/CreditCards';
 import Loans from './components/Loans';
@@ -19,11 +19,70 @@ export default function FinanceTracker() {
   const [availableCash, setAvailableCash] = useState(0);
   const [darkMode, setDarkMode] = useState(false);
   const [alertSettings, setAlertSettings] = useState({ defaultDays: 7 });
+  const [editingCash, setEditingCash] = useState(false);
+  const [cashInput, setCashInput] = useState('');
 
   useEffect(() => {
     loadAllData();
     loadCategories();
   }, []);
+
+  // Check for auto-income on mount and periodically
+  useEffect(() => {
+    checkAutoIncome();
+    const interval = setInterval(checkAutoIncome, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [income, availableCash]);
+
+  const checkAutoIncome = async () => {
+    if (income.length === 0) return;
+
+    const today = new Date().toISOString().split('T')[0];
+    const sortedIncome = [...income].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const lastIncome = sortedIncome[0];
+
+    if (!lastIncome.frequency || lastIncome.frequency === 'onetime') return;
+
+    const nextDate = predictNextDate(lastIncome.date, lastIncome.frequency);
+
+    // If today matches the predicted next income date
+    if (nextDate === today) {
+      // Check if income already logged for today
+      const alreadyLogged = income.some(inc => inc.date === today && inc.source === lastIncome.source);
+      
+      if (!alreadyLogged) {
+        // Auto-add income
+        const newIncome = {
+          id: generateId(),
+          source: lastIncome.source,
+          amount: lastIncome.amount,
+          date: today,
+          frequency: lastIncome.frequency,
+          createdAt: new Date().toISOString(),
+          autoAdded: true
+        };
+
+        await dbOperation('income', 'put', newIncome);
+
+        const transaction = {
+          id: generateId(),
+          type: 'income',
+          source: newIncome.source,
+          amount: newIncome.amount,
+          date: today,
+          createdAt: new Date().toISOString()
+        };
+        await dbOperation('transactions', 'put', transaction);
+
+        // Update available cash
+        const currentCash = await dbOperation('settings', 'get', 'availableCash');
+        const newCash = (currentCash?.value || 0) + newIncome.amount;
+        await dbOperation('settings', 'put', { key: 'availableCash', value: newCash });
+
+        await loadAllData();
+      }
+    }
+  };
 
   const loadAllData = async () => {
     try {
@@ -73,6 +132,24 @@ export default function FinanceTracker() {
   const saveAvailableCash = async (amount) => {
     await dbOperation('settings', 'put', { key: 'availableCash', value: amount });
     setAvailableCash(amount);
+  };
+
+  const handleEditCash = () => {
+    setCashInput(availableCash.toString());
+    setEditingCash(true);
+  };
+
+  const handleSaveCash = async () => {
+    const newAmount = parseFloat(cashInput);
+    if (!isNaN(newAmount)) {
+      await saveAvailableCash(newAmount);
+    }
+    setEditingCash(false);
+  };
+
+  const handleCancelEditCash = () => {
+    setEditingCash(false);
+    setCashInput('');
   };
 
   const toggleDarkMode = async () => {
@@ -229,7 +306,39 @@ export default function FinanceTracker() {
       {/* Header */}
       <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b p-4 sticky top-0 z-10`}>
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Finance Tracker</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Finance Tracker</h1>
+            {currentView === 'dashboard' && (
+              <div className="flex items-center gap-2">
+                {editingCash ? (
+                  <>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={cashInput}
+                      onChange={(e) => setCashInput(e.target.value)}
+                      className={`w-32 px-2 py-1 text-sm border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded`}
+                      autoFocus
+                    />
+                    <button onClick={handleSaveCash} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                      <Check size={18} />
+                    </button>
+                    <button onClick={handleCancelEditCash} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                      <X size={18} />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={handleEditCash}
+                    className={`p-1 ${darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'} rounded`}
+                    title="Edit Available Cash"
+                  >
+                    <Edit2 size={18} />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex gap-2">
             <button
               onClick={toggleDarkMode}

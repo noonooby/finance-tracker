@@ -91,13 +91,11 @@ export default function CreditCards({
     const card = creditCards.find(c => c.id === cardId);
     const paymentAmount = parseFloat(paymentForm.amount);
     
-    // Update card balance
     await dbOperation('creditCards', 'put', {
       ...card,
       balance: card.balance - paymentAmount
     });
     
-    // Log transaction
     const transaction = {
       id: generateId(),
       type: 'credit_card_payment',
@@ -110,7 +108,7 @@ export default function CreditCards({
     };
     await dbOperation('transactions', 'put', transaction);
     
-    // Check for linked reserved funds
+    // Check for single linked reserved fund
     const linkedFund = reservedFunds.find(f => f.linkedTo?.type === 'credit_card' && f.linkedTo?.id === cardId);
     if (linkedFund) {
       const fundTransaction = {
@@ -136,7 +134,19 @@ export default function CreditCards({
       }
     }
     
-    // Update available cash
+    // Check for lumpsum funds that include this card
+    const lumpsumFund = reservedFunds.find(f => 
+      f.isLumpsum && 
+      f.linkedItems?.some(item => item.type === 'credit_card' && item.id === cardId)
+    );
+    
+    if (lumpsumFund && lumpsumFund.amount >= paymentAmount) {
+      await dbOperation('reservedFunds', 'put', {
+        ...lumpsumFund,
+        amount: lumpsumFund.amount - paymentAmount
+      });
+    }
+    
     await onUpdateCash(availableCash - paymentAmount);
     await onUpdate();
     

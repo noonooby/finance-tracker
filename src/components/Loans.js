@@ -116,7 +116,7 @@ export default function Loans({
     };
     await dbOperation('transactions', 'put', transaction);
     
-    // Check for linked reserved funds
+    // Check for single linked reserved fund
     const linkedFund = reservedFunds.find(f => f.linkedTo?.type === 'loan' && f.linkedTo?.id === loanId);
     if (linkedFund) {
       const fundTransaction = {
@@ -139,6 +139,19 @@ export default function Loans({
       } else {
         await dbOperation('reservedFunds', 'delete', linkedFund.id);
       }
+    }
+    
+    // Check for lumpsum funds that include this loan
+    const lumpsumFund = reservedFunds.find(f => 
+      f.isLumpsum && 
+      f.linkedItems?.some(item => item.type === 'loan' && item.id === loanId)
+    );
+    
+    if (lumpsumFund && lumpsumFund.amount >= paymentAmount) {
+      await dbOperation('reservedFunds', 'put', {
+        ...lumpsumFund,
+        amount: lumpsumFund.amount - paymentAmount
+      });
     }
     
     // Update available cash
