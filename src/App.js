@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X, Activity } from 'lucide-react';
+import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X, Activity, List } from 'lucide-react';
 import { supabase } from './utils/supabase';
 import { dbOperation } from './utils/db';
 import { getDaysUntil, predictNextDate, DEFAULT_CATEGORIES, generateId } from './utils/helpers';
@@ -10,6 +10,8 @@ import CreditCards from './components/CreditCards';
 import Loans from './components/Loans';
 import ReservedFunds from './components/ReservedFunds';
 import Income from './components/Income';
+import ActivityFeed from './components/ActivityFeed';
+import TransactionHistory from './components/TransactionHistory';
 
 export default function FinanceTracker() {
   const [session, setSession] = useState(null);
@@ -454,6 +456,18 @@ export default function FinanceTracker() {
             onUpdateCash={saveAvailableCash}
           />
         )}
+       {currentView === 'transactions' && (
+          <TransactionHistory
+            darkMode={darkMode}
+            categories={categories}
+            creditCards={creditCards}
+            loans={loans}
+            reservedFunds={reservedFunds}
+            availableCash={availableCash}
+            onUpdate={loadAllData}
+            onUpdateCash={saveAvailableCash}
+          />
+        )}
         {currentView === 'activity' && (
           <ActivityFeed
             darkMode={darkMode}
@@ -505,6 +519,13 @@ export default function FinanceTracker() {
           <Activity size={24} />
           <span className="text-xs font-medium">Activity</span>
 </button>
+<button
+          onClick={() => setCurrentView('transactions')}
+          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg ${currentView === 'transactions' ? 'text-blue-600 bg-blue-50' : darkMode ? 'text-gray-400' : 'text-gray-600'}`}
+        >
+          <List size={24} />
+          <span className="text-xs font-medium">Transactions</span>
+        </button>
       </div>
     </div>
   );
