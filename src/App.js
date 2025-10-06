@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X } from 'lucide-react';
 import { dbOperation } from './utils/db';
 import { getDaysUntil, predictNextDate, DEFAULT_CATEGORIES, generateId } from './utils/helpers';
@@ -27,14 +27,7 @@ export default function FinanceTracker() {
     loadCategories();
   }, []);
 
-  // Check for auto-income on mount and periodically
-  useEffect(() => {
-    checkAutoIncome();
-    const interval = setInterval(checkAutoIncome, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, [income, availableCash]);
-
-  const checkAutoIncome = async () => {
+  const checkAutoIncome = useCallback(async () => {
     if (income.length === 0) return;
 
     const today = new Date().toISOString().split('T')[0];
@@ -45,13 +38,10 @@ export default function FinanceTracker() {
 
     const nextDate = predictNextDate(lastIncome.date, lastIncome.frequency);
 
-    // If today matches the predicted next income date
     if (nextDate === today) {
-      // Check if income already logged for today
       const alreadyLogged = income.some(inc => inc.date === today && inc.source === lastIncome.source);
       
       if (!alreadyLogged) {
-        // Auto-add income
         const newIncome = {
           id: generateId(),
           source: lastIncome.source,
@@ -74,7 +64,6 @@ export default function FinanceTracker() {
         };
         await dbOperation('transactions', 'put', transaction);
 
-        // Update available cash
         const currentCash = await dbOperation('settings', 'get', 'availableCash');
         const newCash = (currentCash?.value || 0) + newIncome.amount;
         await dbOperation('settings', 'put', { key: 'availableCash', value: newCash });
@@ -82,7 +71,13 @@ export default function FinanceTracker() {
         await loadAllData();
       }
     }
-  };
+  }, [income]);
+
+  useEffect(() => {
+    checkAutoIncome();
+    const interval = setInterval(checkAutoIncome, 60000);
+    return () => clearInterval(interval);
+  }, [checkAutoIncome]);
 
   const loadAllData = async () => {
     try {
@@ -218,13 +213,11 @@ export default function FinanceTracker() {
     reader.readAsText(file);
   };
 
-  // Calculate totals
   const totalReserved = reservedFunds.reduce((sum, fund) => sum + fund.amount, 0);
   const trueAvailable = availableCash - totalReserved;
   const totalCreditCardDebt = creditCards.reduce((sum, card) => sum + card.balance, 0);
   const totalLoanDebt = loans.reduce((sum, loan) => sum + loan.balance, 0);
 
-  // Get upcoming obligations
   const getUpcomingObligations = () => {
     const obligations = [];
     const warningDays = alertSettings.defaultDays || 7;
@@ -279,7 +272,6 @@ export default function FinanceTracker() {
 
   const upcomingObligations = getUpcomingObligations();
 
-  // Get next income prediction
   const getNextIncome = () => {
     if (income.length === 0) return null;
     
@@ -303,7 +295,6 @@ export default function FinanceTracker() {
 
   return (
     <div className={`min-h-screen pb-20 ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-      {/* Header */}
       <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b p-4 sticky top-0 z-10`}>
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -318,7 +309,6 @@ export default function FinanceTracker() {
                       value={cashInput}
                       onChange={(e) => setCashInput(e.target.value)}
                       className={`w-32 px-2 py-1 text-sm border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded`}
-                      autoFocus
                     />
                     <button onClick={handleSaveCash} className="p-1 text-green-600 hover:bg-green-50 rounded">
                       <Check size={18} />
@@ -367,7 +357,6 @@ export default function FinanceTracker() {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="p-4">
         {currentView === 'dashboard' && (
           <Dashboard
@@ -429,7 +418,6 @@ export default function FinanceTracker() {
         )}
       </div>
 
-      {/* Bottom Navigation */}
       <div className={`fixed bottom-0 left-0 right-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-t px-2 py-2 flex justify-around`}>
         <button
           onClick={() => setCurrentView('dashboard')}
