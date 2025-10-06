@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, CreditCard, TrendingUp, Calendar, Plus, Download, Upload, X, AlertCircle, Check } from 'lucide-react';
+import { DollarSign, CreditCard, TrendingUp, Calendar, Plus, Download, Upload, X, AlertCircle } from 'lucide-react';
 
 // IndexedDB Setup
 const DB_NAME = 'FinanceTrackerDB';
