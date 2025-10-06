@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X } from 'lucide-react';
+import { supabase } from './utils/supabase';
 import { dbOperation } from './utils/db';
 import { getDaysUntil, predictNextDate, DEFAULT_CATEGORIES, generateId } from './utils/helpers';
+import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import CreditCards from './components/CreditCards';
 import Loans from './components/Loans';
@@ -9,6 +11,8 @@ import ReservedFunds from './components/ReservedFunds';
 import Income from './components/Income';
 
 export default function FinanceTracker() {
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState('dashboard');
   const [creditCards, setCreditCards] = useState([]);
   const [loans, setLoans] = useState([]);
@@ -23,9 +27,26 @@ export default function FinanceTracker() {
   const [cashInput, setCashInput] = useState('');
 
   useEffect(() => {
-    loadAllData();
-    loadCategories();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (session) {
+      loadAllData();
+      loadCategories();
+    }
+  }, [session]);
 
   const checkAutoIncome = useCallback(async () => {
     if (income.length === 0) return;
@@ -74,10 +95,12 @@ export default function FinanceTracker() {
   }, [income]);
 
   useEffect(() => {
-    checkAutoIncome();
-    const interval = setInterval(checkAutoIncome, 60000);
-    return () => clearInterval(interval);
-  }, [checkAutoIncome]);
+    if (session) {
+      checkAutoIncome();
+      const interval = setInterval(checkAutoIncome, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [session, checkAutoIncome]);
 
   const loadAllData = async () => {
     try {
@@ -153,6 +176,10 @@ export default function FinanceTracker() {
     await dbOperation('settings', 'put', { key: 'darkMode', value: newMode });
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+
   const exportData = async () => {
     const data = {
       creditCards,
@@ -184,14 +211,6 @@ export default function FinanceTracker() {
       try {
         const data = JSON.parse(e.target.result);
         
-        const stores = ['creditCards', 'loans', 'reservedFunds', 'income', 'transactions', 'categories'];
-        for (const store of stores) {
-          const items = await dbOperation(store, 'getAll');
-          for (const item of items) {
-            await dbOperation(store, 'delete', item.id);
-          }
-        }
-        
         for (const card of data.creditCards || []) await dbOperation('creditCards', 'put', card);
         for (const loan of data.loans || []) await dbOperation('loans', 'put', loan);
         for (const fund of data.reservedFunds || []) await dbOperation('reservedFunds', 'put', fund);
@@ -213,6 +232,18 @@ export default function FinanceTracker() {
     reader.readAsText(file);
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-xl">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Auth darkMode={darkMode} />;
+  }
+
   const totalReserved = reservedFunds.reduce((sum, fund) => sum + fund.amount, 0);
   const trueAvailable = availableCash - totalReserved;
   const totalCreditCardDebt = creditCards.reduce((sum, card) => sum + card.balance, 0);
@@ -223,14 +254,14 @@ export default function FinanceTracker() {
     const warningDays = alertSettings.defaultDays || 7;
     
     creditCards.forEach(card => {
-      if (card.balance > 0 && card.dueDate) {
-        const days = getDaysUntil(card.dueDate);
-        const customWarning = card.alertDays || warningDays;
+      if (card.balance > 0 && card.due_date) {
+        const days = getDaysUntil(card.due_date);
+        const customWarning = card.alert_days || warningDays;
         obligations.push({
           type: 'credit_card',
           name: card.name,
           amount: card.balance,
-          dueDate: card.dueDate,
+          dueDate: card.due_date,
           days,
           urgent: days <= customWarning && days >= 0,
           id: card.id
@@ -239,14 +270,14 @@ export default function FinanceTracker() {
     });
     
     loans.forEach(loan => {
-      if (loan.nextPaymentDate) {
-        const days = getDaysUntil(loan.nextPaymentDate);
-        const customWarning = loan.alertDays || warningDays;
+      if (loan.next_payment_date) {
+        const days = getDaysUntil(loan.next_payment_date);
+        const customWarning = loan.alert_days || warningDays;
         obligations.push({
           type: 'loan',
           name: loan.name,
-          amount: loan.paymentAmount,
-          dueDate: loan.nextPaymentDate,
+          amount: loan.payment_amount,
+          dueDate: loan.next_payment_date,
           days,
           urgent: days <= customWarning && days >= 0,
           id: loan.id
@@ -255,12 +286,12 @@ export default function FinanceTracker() {
     });
     
     reservedFunds.forEach(fund => {
-      const days = getDaysUntil(fund.dueDate);
+      const days = getDaysUntil(fund.due_date);
       obligations.push({
         type: 'reserved_fund',
         name: fund.name,
         amount: fund.amount,
-        dueDate: fund.dueDate,
+        dueDate: fund.due_date,
         days,
         urgent: days <= 7 && days >= 0,
         id: fund.id
@@ -353,6 +384,12 @@ export default function FinanceTracker() {
                 className="hidden"
               />
             </label>
+            <button
+              onClick={handleSignOut}
+              className={`px-3 py-1 text-sm ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded-lg`}
+            >
+              Sign Out
+            </button>
           </div>
         </div>
       </div>
