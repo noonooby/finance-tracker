@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, CreditCard, Wallet, TrendingUp, Calendar } from 'lucide-react';
+import { X, CreditCard, Wallet, TrendingUp} from 'lucide-react';
 import { dbOperation } from '../utils/db';
 import { generateId } from '../utils/helpers';
 import { logActivity } from '../utils/activityLogger';

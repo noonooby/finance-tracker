@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Filter, Calendar, DollarSign, TrendingUp, TrendingDown, Edit2, Trash2, Plus } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Search, DollarSign, TrendingUp, TrendingDown, Trash2, Plus } from 'lucide-react';
 import { dbOperation } from '../utils/db';
 import AddTransaction from './AddTransaction';
 
@@ -31,22 +31,7 @@ export default function TransactionHistory({
     loadTransactions();
   }, []);
 
-  useEffect(() => {
-    applyFilters();
-  }, [transactions, filters]);
-
-  const loadTransactions = async () => {
-    try {
-      const data = await dbOperation('transactions', 'getAll');
-      setTransactions(data || []);
-    } catch (error) {
-      console.error('Error loading transactions:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const applyFilters = () => {
+  const applyFilters = useCallback(() => {
     let filtered = [...transactions];
 
     if (filters.search) {
@@ -79,6 +64,21 @@ export default function TransactionHistory({
     }
 
     setFilteredTransactions(filtered);
+  }, [transactions, filters]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
+
+  const loadTransactions = async () => {
+    try {
+      const data = await dbOperation('transactions', 'getAll');
+      setTransactions(data || []);
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (transaction) => {
