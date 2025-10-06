@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Plus, Edit2, X, CreditCard } from 'lucide-react';
+import { Plus, Edit2, X, CreditCard, ShoppingBag } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
+import AddTransaction from './AddTransaction';
 
 export default function CreditCards({ 
   darkMode, 
@@ -15,6 +16,8 @@ export default function CreditCards({
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [showAddExpense, setShowAddExpense] = useState(false);
+  const [selectedCard, setSelectedCard] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     balance: '',
@@ -30,6 +33,11 @@ export default function CreditCards({
     category: 'other' 
   });
   const [payingCard, setPayingCard] = useState(null);
+
+  const handleAddExpense = (card) => {
+    setSelectedCard(card);
+    setShowAddExpense(true);
+  };
 
   const handleAdd = async () => {
     if (!formData.name || !formData.balance || !formData.dueDate) {
@@ -161,6 +169,25 @@ export default function CreditCards({
 
   return (
     <div className="space-y-4">
+      {showAddExpense && (
+        <AddTransaction
+          darkMode={darkMode}
+          onClose={() => {
+            setShowAddExpense(false);
+            setSelectedCard(null);
+          }}
+          onUpdate={onUpdate}
+          categories={categories}
+          creditCards={creditCards}
+          loans={[]}
+          reservedFunds={reservedFunds}
+          availableCash={availableCash}
+          onUpdateCash={onUpdateCash}
+          preselectedCard={selectedCard}
+          preselectedType="expense"
+        />
+      )}
+
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">Credit Cards</h2>
         <button
@@ -340,12 +367,21 @@ export default function CreditCards({
                   </div>
                 </div>
               ) : (
-                <button
-                  onClick={() => setPayingCard(card.id)}
-                  className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium"
-                >
-                  Make Payment
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => handleAddExpense(card)}
+                    className="flex items-center justify-center gap-2 bg-orange-600 text-white py-2 rounded-lg font-medium"
+                  >
+                    <ShoppingBag size={18} />
+                    Add Expense
+                  </button>
+                  <button
+                    onClick={() => setPayingCard(card.id)}
+                    className="bg-blue-600 text-white py-2 rounded-lg font-medium"
+                  >
+                    Make Payment
+                  </button>
+                </div>
               )}
             </div>
           ))
