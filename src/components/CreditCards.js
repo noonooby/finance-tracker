@@ -41,12 +41,12 @@ export default function CreditCards({
       id: editingItem?.id || generateId(),
       name: formData.name,
       balance: parseFloat(formData.balance) || 0,
-      creditLimit: parseFloat(formData.creditLimit) || 0,
-      dueDate: formData.dueDate,
-      statementDay: parseInt(formData.statementDay) || 0,
-      interestRate: parseFloat(formData.interestRate) || 0,
-      alertDays: parseInt(formData.alertDays) || alertSettings.defaultDays,
-      createdAt: editingItem?.createdAt || new Date().toISOString()
+      credit_limit: parseFloat(formData.creditLimit) || 0,
+      due_date: formData.dueDate,
+      statement_day: parseInt(formData.statementDay) || 0,
+      interest_rate: parseFloat(formData.interestRate) || 0,
+      alert_days: parseInt(formData.alertDays) || alertSettings.defaultDays,
+      created_at: editingItem?.created_at || new Date().toISOString()
     };
     
     await dbOperation('creditCards', 'put', newCard);
@@ -72,11 +72,11 @@ export default function CreditCards({
     setFormData({
       name: card.name,
       balance: card.balance.toString(),
-      creditLimit: card.creditLimit.toString(),
-      dueDate: card.dueDate,
-      statementDay: card.statementDay?.toString() || '',
-      interestRate: card.interestRate?.toString() || '',
-      alertDays: card.alertDays || alertSettings.defaultDays
+      creditLimit: card.credit_limit?.toString() || '',
+      dueDate: card.due_date,
+      statementDay: card.statement_day?.toString() || '',
+      interestRate: card.interest_rate?.toString() || '',
+      alertDays: card.alert_days || alertSettings.defaultDays
     });
     setEditingItem(card);
     setShowAddForm(true);
@@ -98,27 +98,26 @@ export default function CreditCards({
     
     const transaction = {
       id: generateId(),
-      type: 'credit_card_payment',
-      cardId,
-      cardName: card.name,
+      card_id: cardId,
+      card_name: card.name,
       amount: paymentAmount,
       date: paymentForm.date,
       category: paymentForm.category,
-      createdAt: new Date().toISOString()
+      type: 'credit_card_payment',
+      created_at: new Date().toISOString()
     };
     await dbOperation('transactions', 'put', transaction);
     
-    // Check for single linked reserved fund
-    const linkedFund = reservedFunds.find(f => f.linkedTo?.type === 'credit_card' && f.linkedTo?.id === cardId);
+    const linkedFund = reservedFunds.find(f => f.linked_to?.type === 'credit_card' && f.linked_to?.id === cardId);
     if (linkedFund) {
       const fundTransaction = {
         id: generateId(),
-        type: 'reserved_fund_paid',
-        fundId: linkedFund.id,
-        fundName: linkedFund.name,
+        fund_id: linkedFund.id,
+        fund_name: linkedFund.name,
         amount: linkedFund.amount,
         date: paymentForm.date,
-        createdAt: new Date().toISOString()
+        type: 'reserved_fund_paid',
+        created_at: new Date().toISOString()
       };
       await dbOperation('transactions', 'put', fundTransaction);
       
@@ -126,18 +125,17 @@ export default function CreditCards({
         const { predictNextDate } = await import('../utils/helpers');
         await dbOperation('reservedFunds', 'put', {
           ...linkedFund,
-          dueDate: predictNextDate(linkedFund.dueDate, linkedFund.frequency || 'monthly'),
-          lastPaidDate: paymentForm.date
+          due_date: predictNextDate(linkedFund.due_date, linkedFund.frequency || 'monthly'),
+          last_paid_date: paymentForm.date
         });
       } else {
         await dbOperation('reservedFunds', 'delete', linkedFund.id);
       }
     }
     
-    // Check for lumpsum funds that include this card
     const lumpsumFund = reservedFunds.find(f => 
-      f.isLumpsum && 
-      f.linkedItems?.some(item => item.type === 'credit_card' && item.id === cardId)
+      f.is_lumpsum && 
+      f.linked_items?.some(item => item.type === 'credit_card' && item.id === cardId)
     );
     
     if (lumpsumFund && lumpsumFund.amount >= paymentAmount) {
@@ -268,9 +266,9 @@ export default function CreditCards({
                 <div>
                   <h3 className="font-bold text-lg">{card.name}</h3>
                   <div className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(card.balance)}</div>
-                  {card.creditLimit > 0 && (
+                  {card.credit_limit > 0 && (
                     <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
-                      Limit: {formatCurrency(card.creditLimit)} ({((card.balance / card.creditLimit) * 100).toFixed(1)}% used)
+                      Limit: {formatCurrency(card.credit_limit)} ({((card.balance / card.credit_limit) * 100).toFixed(1)}% used)
                     </div>
                   )}
                 </div>
@@ -290,14 +288,14 @@ export default function CreditCards({
                 </div>
               </div>
 
-              {card.dueDate && (
+              {card.due_date && (
                 <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Due Date:</span>
                   <div className="text-right">
-                    <div className="font-medium">{formatDate(card.dueDate)}</div>
-                    {getDaysUntil(card.dueDate) >= 0 && (
-                      <div className={`text-xs ${getDaysUntil(card.dueDate) <= (card.alertDays || 7) ? 'text-red-600 font-semibold' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {getDaysUntil(card.dueDate) === 0 ? 'Due Today!' : `${getDaysUntil(card.dueDate)} days`}
+                    <div className="font-medium">{formatDate(card.due_date)}</div>
+                    {getDaysUntil(card.due_date) >= 0 && (
+                      <div className={`text-xs ${getDaysUntil(card.due_date) <= (card.alert_days || 7) ? 'text-red-600 font-semibold' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {getDaysUntil(card.due_date) === 0 ? 'Due Today!' : `${getDaysUntil(card.due_date)} days`}
                       </div>
                     )}
                   </div>

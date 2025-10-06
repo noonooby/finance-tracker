@@ -43,12 +43,12 @@ export default function Loans({
       name: formData.name,
       principal: parseFloat(formData.principal) || 0,
       balance: parseFloat(formData.balance) || 0,
-      interestRate: parseFloat(formData.interestRate) || 0,
-      paymentAmount: parseFloat(formData.paymentAmount) || 0,
+      interest_rate: parseFloat(formData.interestRate) || 0,
+      payment_amount: parseFloat(formData.paymentAmount) || 0,
       frequency: formData.frequency,
-      nextPaymentDate: formData.nextPaymentDate,
-      alertDays: parseInt(formData.alertDays) || alertSettings.defaultDays,
-      createdAt: editingItem?.createdAt || new Date().toISOString()
+      next_payment_date: formData.nextPaymentDate,
+      alert_days: parseInt(formData.alertDays) || alertSettings.defaultDays,
+      created_at: editingItem?.created_at || new Date().toISOString()
     };
     
     await dbOperation('loans', 'put', newLoan);
@@ -76,11 +76,11 @@ export default function Loans({
       name: loan.name,
       principal: loan.principal.toString(),
       balance: loan.balance.toString(),
-      interestRate: loan.interestRate?.toString() || '',
-      paymentAmount: loan.paymentAmount.toString(),
+      interestRate: loan.interest_rate?.toString() || '',
+      paymentAmount: loan.payment_amount.toString(),
       frequency: loan.frequency,
-      nextPaymentDate: loan.nextPaymentDate,
-      alertDays: loan.alertDays || alertSettings.defaultDays
+      nextPaymentDate: loan.next_payment_date,
+      alertDays: loan.alert_days || alertSettings.defaultDays
     });
     setEditingItem(loan);
     setShowAddForm(true);
@@ -95,56 +95,52 @@ export default function Loans({
     const loan = loans.find(l => l.id === loanId);
     const paymentAmount = parseFloat(paymentForm.amount);
     
-    // Update loan balance and next payment date
     await dbOperation('loans', 'put', {
       ...loan,
       balance: loan.balance - paymentAmount,
-      lastPaymentDate: paymentForm.date,
-      nextPaymentDate: predictNextDate(paymentForm.date, loan.frequency)
+      last_payment_date: paymentForm.date,
+      next_payment_date: predictNextDate(paymentForm.date, loan.frequency)
     });
     
-    // Log transaction
     const transaction = {
       id: generateId(),
       type: 'loan_payment',
-      loanId,
-      loanName: loan.name,
+      loan_id: loanId,
+      loan_name: loan.name,
       amount: paymentAmount,
       date: paymentForm.date,
       category: paymentForm.category,
-      createdAt: new Date().toISOString()
+      created_at: new Date().toISOString()
     };
     await dbOperation('transactions', 'put', transaction);
     
-    // Check for single linked reserved fund
-    const linkedFund = reservedFunds.find(f => f.linkedTo?.type === 'loan' && f.linkedTo?.id === loanId);
+    const linkedFund = reservedFunds.find(f => f.linked_to?.type === 'loan' && f.linked_to?.id === loanId);
     if (linkedFund) {
       const fundTransaction = {
         id: generateId(),
         type: 'reserved_fund_paid',
-        fundId: linkedFund.id,
-        fundName: linkedFund.name,
+        fund_id: linkedFund.id,
+        fund_name: linkedFund.name,
         amount: linkedFund.amount,
         date: paymentForm.date,
-        createdAt: new Date().toISOString()
+        created_at: new Date().toISOString()
       };
       await dbOperation('transactions', 'put', fundTransaction);
       
       if (linkedFund.recurring) {
         await dbOperation('reservedFunds', 'put', {
           ...linkedFund,
-          dueDate: predictNextDate(linkedFund.dueDate, linkedFund.frequency || 'monthly'),
-          lastPaidDate: paymentForm.date
+          due_date: predictNextDate(linkedFund.due_date, linkedFund.frequency || 'monthly'),
+          last_paid_date: paymentForm.date
         });
       } else {
         await dbOperation('reservedFunds', 'delete', linkedFund.id);
       }
     }
     
-    // Check for lumpsum funds that include this loan
     const lumpsumFund = reservedFunds.find(f => 
-      f.isLumpsum && 
-      f.linkedItems?.some(item => item.type === 'loan' && item.id === loanId)
+      f.is_lumpsum && 
+      f.linked_items?.some(item => item.type === 'loan' && item.id === loanId)
     );
     
     if (lumpsumFund && lumpsumFund.amount >= paymentAmount) {
@@ -154,7 +150,6 @@ export default function Loans({
       });
     }
     
-    // Update available cash
     await onUpdateCash(availableCash - paymentAmount);
     await onUpdate();
     
@@ -310,7 +305,7 @@ export default function Loans({
               <div className={`grid grid-cols-2 gap-3 text-sm mb-3 pb-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                 <div>
                   <div className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Payment Amount</div>
-                  <div className="font-semibold">{formatCurrency(loan.paymentAmount)}</div>
+                  <div className="font-semibold">{formatCurrency(loan.payment_amount)}</div>
                 </div>
                 <div>
                   <div className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Frequency</div>
@@ -318,14 +313,14 @@ export default function Loans({
                 </div>
               </div>
 
-              {loan.nextPaymentDate && (
+              {loan.next_payment_date && (
                 <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Next Payment:</span>
                   <div className="text-right">
-                    <div className="font-medium">{formatDate(loan.nextPaymentDate)}</div>
-                    {getDaysUntil(loan.nextPaymentDate) >= 0 && (
-                      <div className={`text-xs ${getDaysUntil(loan.nextPaymentDate) <= (loan.alertDays || 7) ? 'text-red-600 font-semibold' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {getDaysUntil(loan.nextPaymentDate) === 0 ? 'Due Today!' : `${getDaysUntil(loan.nextPaymentDate)} days`}
+                    <div className="font-medium">{formatDate(loan.next_payment_date)}</div>
+                    {getDaysUntil(loan.next_payment_date) >= 0 && (
+                      <div className={`text-xs ${getDaysUntil(loan.next_payment_date) <= (loan.alert_days || 7) ? 'text-red-600 font-semibold' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {getDaysUntil(loan.next_payment_date) === 0 ? 'Due Today!' : `${getDaysUntil(loan.next_payment_date)} days`}
                       </div>
                     )}
                   </div>
