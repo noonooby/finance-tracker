@@ -10,7 +10,6 @@ import CreditCards from './components/CreditCards';
 import Loans from './components/Loans';
 import ReservedFunds from './components/ReservedFunds';
 import Income from './components/Income';
-import ActivityFeed from './components/ActivityFeed';
 import TransactionHistory from './components/TransactionHistory';
 
 export default function FinanceTracker() {
