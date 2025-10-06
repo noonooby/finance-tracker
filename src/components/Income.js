@@ -36,20 +36,19 @@ export default function Income({
       amount: newAmount,
       date: formData.date,
       frequency: formData.frequency,
-      createdAt: editingItem?.createdAt || new Date().toISOString()
+      created_at: editingItem?.created_at || new Date().toISOString()
     };
     
     await dbOperation('income', 'put', incomeEntry);
     
     if (!isEditing) {
-      // New income - add transaction and update cash
       const transaction = {
         id: generateId(),
         type: 'income',
         source: formData.source,
         amount: newAmount,
         date: formData.date,
-        createdAt: new Date().toISOString()
+        created_at: new Date().toISOString()
       };
       await dbOperation('transactions', 'put', transaction);
       
@@ -59,7 +58,6 @@ export default function Income({
       }
       await onUpdateCash(newCash);
     } else {
-      // Editing - adjust available cash by the difference
       const difference = newAmount - oldAmount;
       await onUpdateCash(availableCash + difference);
     }
@@ -83,7 +81,6 @@ export default function Income({
   const handleDelete = async (id) => {
     if (window.confirm('Delete this income entry?')) {
       const inc = income.find(i => i.id === id);
-      // Remove the income amount from available cash
       await onUpdateCash(availableCash - inc.amount);
       await dbOperation('income', 'delete', id);
       await onUpdate();
@@ -102,7 +99,6 @@ export default function Income({
     setEditingItem(null);
   };
 
-  // Get predicted income dates
   const getPredictedIncome = () => {
     if (income.length === 0) return [];
     

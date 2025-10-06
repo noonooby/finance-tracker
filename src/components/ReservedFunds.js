@@ -39,14 +39,13 @@ export default function ReservedFunds({
       id: editingItem?.id || generateId(),
       name: formData.name,
       amount: parseFloat(formData.amount) || 0,
-      originalAmount: parseFloat(formData.amount) || 0,
-      dueDate: formData.dueDate,
+      original_amount: parseFloat(formData.amount) || 0,
+      due_date: formData.dueDate,
       recurring: formData.recurring,
       frequency: formData.frequency,
-      linkedTo: formData.isLumpsum ? null : formData.linkedTo,
-      isLumpsum: formData.isLumpsum,
-      linkedItems: formData.isLumpsum ? formData.linkedItems : [],
-      createdAt: editingItem?.createdAt || new Date().toISOString()
+      linked_to: formData.isLumpsum ? null : formData.linkedTo,
+      is_lumpsum: formData.isLumpsum,
+      linked_items: formData.isLumpsum ? formData.linkedItems : []
     };
     
     await dbOperation('reservedFunds', 'put', newFund);
@@ -57,13 +56,13 @@ export default function ReservedFunds({
   const handleUseTemplate = (fund) => {
     setFormData({
       name: fund.name,
-      amount: fund.originalAmount?.toString() || fund.amount.toString(),
-      dueDate: predictNextDate(fund.dueDate, fund.frequency || 'monthly'),
+      amount: fund.original_amount?.toString() || fund.amount.toString(),
+      dueDate: predictNextDate(fund.due_date, fund.frequency || 'monthly'),
       recurring: fund.recurring || false,
       frequency: fund.frequency || 'monthly',
-      linkedTo: fund.linkedTo || null,
-      isLumpsum: fund.isLumpsum || false,
-      linkedItems: fund.linkedItems || []
+      linkedTo: fund.linked_to || null,
+      isLumpsum: fund.is_lumpsum || false,
+      linkedItems: fund.linked_items || []
     });
     setShowAddForm(true);
   };
@@ -87,12 +86,12 @@ export default function ReservedFunds({
     setFormData({
       name: fund.name,
       amount: fund.amount.toString(),
-      dueDate: fund.dueDate,
+      dueDate: fund.due_date,
       recurring: fund.recurring || false,
       frequency: fund.frequency || 'monthly',
-      linkedTo: fund.linkedTo || null,
-      isLumpsum: fund.isLumpsum || false,
-      linkedItems: fund.linkedItems || []
+      linkedTo: fund.linked_to || null,
+      isLumpsum: fund.is_lumpsum || false,
+      linkedItems: fund.linked_items || []
     });
     setEditingItem(fund);
     setShowAddForm(true);
@@ -104,20 +103,19 @@ export default function ReservedFunds({
     const transaction = {
       id: generateId(),
       type: 'reserved_fund_paid',
-      fundId,
-      fundName: fund.name,
+      fund_id: fundId,
+      fund_name: fund.name,
       amount: fund.amount,
-      date: new Date().toISOString().split('T')[0],
-      createdAt: new Date().toISOString()
+      date: new Date().toISOString().split('T')[0]
     };
     await dbOperation('transactions', 'put', transaction);
     
     if (fund.recurring) {
       await dbOperation('reservedFunds', 'put', {
         ...fund,
-        amount: fund.originalAmount || fund.amount,
-        dueDate: predictNextDate(fund.dueDate, fund.frequency || 'monthly'),
-        lastPaidDate: new Date().toISOString().split('T')[0]
+        amount: fund.original_amount || fund.amount,
+        due_date: predictNextDate(fund.due_date, fund.frequency || 'monthly'),
+        last_paid_date: new Date().toISOString().split('T')[0]
       });
     } else {
       await dbOperation('reservedFunds', 'delete', fundId);
@@ -341,16 +339,16 @@ export default function ReservedFunds({
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold">{fund.name}</h3>
-                    {fund.isLumpsum && (
+                    {fund.is_lumpsum && (
                       <span className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-purple-900 text-purple-200' : 'bg-purple-100 text-purple-800'}`}>
                         Lumpsum
                       </span>
                     )}
                   </div>
                   <div className="text-xl font-bold text-purple-600 mt-1">{formatCurrency(fund.amount)}</div>
-                  {fund.isLumpsum && fund.originalAmount && fund.amount < fund.originalAmount && (
+                  {fund.is_lumpsum && fund.original_amount && fund.amount < fund.original_amount && (
                     <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
-                      Original: {formatCurrency(fund.originalAmount)}
+                      Original: {formatCurrency(fund.original_amount)}
                     </div>
                   )}
                   {fund.recurring && (
@@ -358,14 +356,14 @@ export default function ReservedFunds({
                       Recurring: {fund.frequency}
                     </div>
                   )}
-                  {fund.isLumpsum && fund.linkedItems?.length > 0 && (
+                  {fund.is_lumpsum && fund.linked_items?.length > 0 && (
                     <div className={`text-xs ${darkMode ? 'text-blue-400' : 'text-blue-600'} mt-1`}>
-                      Linked to: {getLinkedItemsNames(fund.linkedItems)}
+                      Linked to: {getLinkedItemsNames(fund.linked_items)}
                     </div>
                   )}
-                  {!fund.isLumpsum && fund.linkedTo && (
+                  {!fund.is_lumpsum && fund.linked_to && (
                     <div className={`text-xs ${darkMode ? 'text-blue-400' : 'text-blue-600'} mt-1`}>
-                      {getLinkedName(fund.linkedTo)}
+                      {getLinkedName(fund.linked_to)}
                     </div>
                   )}
                 </div>
@@ -395,16 +393,16 @@ export default function ReservedFunds({
               <div className={`flex justify-between items-center text-sm mb-3 pb-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                 <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Due Date:</span>
                 <div className="text-right">
-                  <div className="font-medium">{formatDate(fund.dueDate)}</div>
-                  {getDaysUntil(fund.dueDate) >= 0 && (
-                    <div className={`text-xs ${getDaysUntil(fund.dueDate) <= 7 ? 'text-red-600 font-semibold' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {getDaysUntil(fund.dueDate) === 0 ? 'Due Today!' : `${getDaysUntil(fund.dueDate)} days`}
+                  <div className="font-medium">{formatDate(fund.due_date)}</div>
+                  {getDaysUntil(fund.due_date) >= 0 && (
+                    <div className={`text-xs ${getDaysUntil(fund.due_date) <= 7 ? 'text-red-600 font-semibold' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {getDaysUntil(fund.due_date) === 0 ? 'Due Today!' : `${getDaysUntil(fund.due_date)} days`}
                     </div>
                   )}
                 </div>
               </div>
 
-              {!fund.linkedTo && !fund.isLumpsum && (
+              {!fund.linked_to && !fund.is_lumpsum && (
                 <button
                   onClick={() => handleMarkPaid(fund.id)}
                   className="w-full bg-green-600 text-white py-2 rounded-lg font-medium"
