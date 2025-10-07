@@ -1,5 +1,5 @@
 // Utility functions for formatting and calculations
-import { dbOperation } from './db';
+
 export const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
 export const formatCurrency = (amount) => {
@@ -52,13 +52,11 @@ export const DEFAULT_CATEGORIES = [
   { id: 'other', name: 'Other', color: '#6b7280' }
 ];
 
-/**
- * Recalculates available cash based on all transactions
- * This ensures cash is accurate by processing all income and expenses chronologically
- */
+// Recalculate available cash based on all transactions
+import { dbOperation } from './db';
+
 export const recalculateAvailableCash = async () => {
   try {
-    // Get all transactions sorted by date (oldest first)
     const transactions = await dbOperation('transactions', 'getAll');
     const sortedTransactions = transactions.sort((a, b) => 
       new Date(a.date) - new Date(b.date)
@@ -66,32 +64,25 @@ export const recalculateAvailableCash = async () => {
 
     let calculatedCash = 0;
 
-    // Process each transaction chronologically
     for (const transaction of sortedTransactions) {
       switch (transaction.type) {
         case 'income':
-          // Add income to cash
           calculatedCash += transaction.amount;
           break;
-
         case 'expense':
-          // Subtract cash expenses only (credit card expenses don't affect cash)
           if (transaction.payment_method === 'cash') {
             calculatedCash -= transaction.amount;
           }
           break;
-
         case 'payment':
-          // Subtract payments to credit cards/loans from cash
           calculatedCash -= transaction.amount;
           break;
-
         default:
           console.warn(`Unknown transaction type: ${transaction.type}`);
+          break;
       }
     }
 
-    // Update the available cash in settings
     await dbOperation('settings', 'put', { 
       key: 'availableCash', 
       value: calculatedCash 
@@ -106,10 +97,6 @@ export const recalculateAvailableCash = async () => {
   }
 };
 
-/**
- * Validates if available cash matches transaction history
- * Returns object with { isValid, expected, actual, difference }
- */
 export const validateAvailableCash = async () => {
   try {
     const transactions = await dbOperation('transactions', 'getAll');
@@ -132,6 +119,9 @@ export const validateAvailableCash = async () => {
         case 'payment':
           expectedCash -= transaction.amount;
           break;
+        default:
+          // Unknown transaction type, skip it
+          break;
       }
     }
 
@@ -139,7 +129,7 @@ export const validateAvailableCash = async () => {
     const actualCash = cashSetting?.value || 0;
 
     const difference = actualCash - expectedCash;
-    const isValid = Math.abs(difference) < 0.01; // Allow for rounding errors
+    const isValid = Math.abs(difference) < 0.01;
 
     return {
       isValid,
