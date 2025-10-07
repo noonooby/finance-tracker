@@ -1,5 +1,5 @@
 // Utility functions for formatting and calculations
-
+import { dbOperation } from './db';
 export const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
 export const formatCurrency = (amount) => {
@@ -53,7 +53,6 @@ export const DEFAULT_CATEGORIES = [
 ];
 
 // Recalculate available cash based on all transactions
-import { dbOperation } from './db';
 
 export const recalculateAvailableCash = async () => {
   try {
