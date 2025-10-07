@@ -66,8 +66,6 @@ export default function AddTransaction({
       
       // Create transaction record
       const transaction = {
-        id: generateId(),
-        user_id: null, // Will be set by dbOperation
         type: formData.type,
         amount: amount,
         date: formData.date,
@@ -83,7 +81,6 @@ export default function AddTransaction({
         fund_id: null,
         income_source: formData.incomeSource || null,
         is_cleared: false,
-        created_at: new Date().toISOString()
       };
 
       // Handle different transaction types
@@ -123,7 +120,6 @@ export default function AddTransaction({
           await logActivity(
             'expense',
             'income',
-            transaction.id,
             'Cash',
             `Cash expense: $${amount.toFixed(2)} - ${formData.description}`,
             { amount, category: category?.name, description: formData.description }
@@ -131,21 +127,37 @@ export default function AddTransaction({
         }
 
       } else if (formData.type === 'income') {
-        // Add to available cash
-        const newCash = availableCash + amount;
-        await onUpdateCash(newCash);
+        // Save transaction first
         transaction.payment_method = 'cash';
         transaction.payment_method_name = 'Cash';
         transaction.income_source = formData.incomeSource;
-
+        
+        await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+      
+        // Add to available cash
+        const newCash = availableCash + amount;
+        await onUpdateCash(newCash);
+      
+        // Log activity AFTER transaction is saved
         await logActivity(
           'income',
           'income',
           transaction.id,
           formData.incomeSource || 'Income',
-          `Income: $${amount.toFixed(2)} - ${formData.incomeSource}`,
-          { amount, source: formData.incomeSource }
+          `Income: $${amount.toFixed(2)} from ${formData.incomeSource || 'source'}`,
+          { 
+            amount, 
+            source: formData.incomeSource,
+            previousCash: availableCash,
+            newCash: newCash
+          }
         );
+      
+        console.log('Income activity logged:', {
+          id: transaction.id,
+          source: formData.incomeSource,
+          amount
+        });
 
       } else if (formData.type === 'payment') {
         // Payment to credit card or loan

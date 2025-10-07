@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Plus, DollarSign, Edit2, X } from 'lucide-react';
 import { formatCurrency, formatDate, generateId, predictNextDate, getDaysUntil } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
-
+import { logActivity } from '../utils/activityLogger';
 export default function Income({ 
   darkMode, 
   income,
@@ -38,7 +38,13 @@ export default function Income({
     };
     
     await dbOperation('income', 'put', incomeEntry);
-    
+    if (!isEditing) {
+      await logActivity('add', 'income', incomeEntry.id, incomeEntry.source, 
+        `Added income: $${newAmount.toFixed(2)} from ${incomeEntry.source}`, null);
+    } else {
+      await logActivity('edit', 'income', incomeEntry.id, incomeEntry.source,
+        `Updated income: ${incomeEntry.source} to $${newAmount.toFixed(2)}`, null);
+    }
     if (!isEditing) {
       // ✅ FIXED TRANSACTION OBJECT
       const transaction = {
@@ -79,6 +85,7 @@ export default function Income({
   const handleDelete = async (id) => {
     if (window.confirm('Delete this income entry?')) {
       const inc = income.find(i => i.id === id);
+      await logActivity('delete', 'income', id, inc.source, `Deleted income: ${inc.source} ($${inc.amount})`, inc);
       await onUpdateCash(availableCash - inc.amount);
       await dbOperation('income', 'delete', id);
       await onUpdate();

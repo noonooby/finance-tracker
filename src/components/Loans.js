@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Edit2, X, TrendingUp } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId, predictNextDate } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
+import { logActivity } from '../utils/activityLogger';
 
 export default function Loans({ 
   darkMode, 
@@ -52,6 +53,11 @@ export default function Loans({
     };
     
     await dbOperation('loans', 'put', newLoan);
+    if (!editingItem) {
+      await logActivity('add', 'loan', newLoan.id, newLoan.name, `Added loan: ${newLoan.name}`, null);
+    } else {
+      await logActivity('edit', 'loan', newLoan.id, newLoan.name, `Updated loan: ${newLoan.name}`, null);
+    }
     await onUpdate();
     resetForm();
   };
@@ -159,6 +165,9 @@ export default function Loans({
 
   const handleDelete = async (id) => {
     if (window.confirm('Delete this loan?')) {
+      const loan = loans.find(l => l.id === id);
+    
+      await logActivity('delete', 'loan', id, loan.name, `Deleted loan: ${loan.name}`, loan);
       await dbOperation('loans', 'delete', id);
       await onUpdate();
     }

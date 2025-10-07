@@ -3,6 +3,7 @@ import { Plus, Edit2, X, CreditCard, ShoppingBag } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
 import AddTransaction from './AddTransaction';
+import { logActivity } from '../utils/activityLogger';
 
 export default function CreditCards({ 
   darkMode, 
@@ -58,6 +59,11 @@ export default function CreditCards({
     };
     
     await dbOperation('creditCards', 'put', newCard);
+    if (!editingItem) {
+      await logActivity('add', 'card', newCard.id, newCard.name, `Added card: ${newCard.name}`, null);
+    } else {
+      await logActivity('edit', 'card', newCard.id, newCard.name, `Updated card: ${newCard.name}`, null);
+    }
     await onUpdate();
     resetForm();
   };
@@ -162,6 +168,8 @@ export default function CreditCards({
 
   const handleDelete = async (id) => {
     if (window.confirm('Delete this credit card?')) {
+      const card = creditCards.find(c => c.id === id);
+      await logActivity('delete', 'card', id, card.name, `Deleted card: ${card.name}`, card);
       await dbOperation('creditCards', 'delete', id);
       await onUpdate();
     }

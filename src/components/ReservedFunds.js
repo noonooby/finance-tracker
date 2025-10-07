@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Edit2, X, Calendar, Copy } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId, predictNextDate } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
+import { logActivity } from '../utils/activityLogger';
 
 export default function ReservedFunds({ 
   darkMode, 
@@ -49,6 +50,11 @@ export default function ReservedFunds({
     };
     
     await dbOperation('reservedFunds', 'put', newFund);
+    if (!editingItem) {
+      await logActivity('add', 'fund', newFund.id, newFund.name, `Added fund: ${newFund.name} ($${newFund.amount})`, null);
+    } else {
+      await logActivity('edit', 'fund', newFund.id, newFund.name, `Updated fund: ${newFund.name}`, null);
+    }
     await onUpdate();
     resetForm();
   };
@@ -126,6 +132,9 @@ export default function ReservedFunds({
 
   const handleDelete = async (id) => {
     if (window.confirm('Delete this reserved fund?')) {
+      const fund = reservedFunds.find(f => f.id === id);
+    
+      await logActivity('delete', 'fund', id, fund.name, `Deleted fund: ${fund.name}`, fund);
       await dbOperation('reservedFunds', 'delete', id);
       await onUpdate();
     }
