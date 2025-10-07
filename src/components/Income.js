@@ -36,7 +36,6 @@ export default function Income({
       amount: newAmount,
       date: formData.date,
       frequency: formData.frequency,
-      created_at: editingItem?.created_at || new Date().toISOString()
     };
     
     await dbOperation('income', 'put', incomeEntry);
@@ -44,28 +43,26 @@ export default function Income({
     if (!isEditing) {
       // ✅ FIXED TRANSACTION OBJECT
       const transaction = {
-        id: generateId(),
         type: 'income',
         amount: newAmount,
         date: formData.date,
         income_source: formData.source,     // ✅ CORRECT FIELD NAME
         payment_method: 'cash',             // ✅ REQUIRED FIELD
-        created_at: new Date().toISOString()
       };
-      await dbOperation('transactions', 'put', transaction);
+      try {
+        await dbOperation('transactions', 'put', transaction);
+        console.log('✅ Transaction saved successfully');
+      } catch (error) {
+        console.error('❌ Failed to save transaction:', error);
+        throw error;
+      }
       
       let newCash = availableCash + newAmount;
       if (formData.reservedAmount && parseFloat(formData.reservedAmount) > 0) {
         newCash -= parseFloat(formData.reservedAmount);
       }
       await onUpdateCash(newCash);
-    } else {
-      const difference = newAmount - oldAmount;
-      await onUpdateCash(availableCash + difference);
     }
-    
-    await onUpdate();
-    resetForm();
   };
 
   const handleEdit = (inc) => {
