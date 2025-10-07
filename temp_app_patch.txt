@@ -1,0 +1,12 @@
+        {currentView === 'activity' && (
+          <ActivityFeed
+            darkMode={darkMode}
+            onUpdate={loadAllData}
+          />
+        )}
+        {currentView === 'settings' && (
+          <Settings
+            darkMode={darkMode}
+            onUpdate={loadAllData}
+          />
+        )}

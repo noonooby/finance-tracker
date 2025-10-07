@@ -1,3 +1,5 @@
+import Settings from './components/Settings';
+import { Settings as SettingsIcon } from 'lucide-react';
 import React, { useState, useEffect, useCallback } from 'react';
 import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X, Activity, List, Plus } from 'lucide-react';
 import { supabase } from './utils/supabase';
@@ -11,6 +13,7 @@ import Loans from './components/Loans';
 import ReservedFunds from './components/ReservedFunds';
 import Income from './components/Income';
 import TransactionHistory from './components/TransactionHistory';
+
 
 export default function FinanceTracker() {
   const [session, setSession] = useState(null);
@@ -473,6 +476,12 @@ export default function FinanceTracker() {
             onUpdate={loadAllData}
           />
         )}
+        {currentView === 'settings' && (
+           <Settings
+            darkMode={darkMode}
+            onUpdate={loadAllData}
+           />
+)}
       </div>
         {/* Floating Add Transaction Button */}
         <button
@@ -524,15 +533,25 @@ export default function FinanceTracker() {
         >
           <Activity size={24} />
           <span className="text-xs font-medium">Activity</span>
-</button>
-<button
+        </button>
+        <button
           onClick={() => setCurrentView('transactions')}
           className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg ${currentView === 'transactions' ? 'text-blue-600 bg-blue-50' : darkMode ? 'text-gray-400' : 'text-gray-600'}`}
         >
           <List size={24} />
           <span className="text-xs font-medium">Transactions</span>
         </button>
+        <button
+           onClick={() => setCurrentView('settings')}
+           className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg ${
+           currentView === 'settings' ? 'text-blue-600 bg-blue-50' : darkMode ? 'text-gray-400' : 'text-gray-600'
+  }`}
+>
+  <SettingsIcon size={24} />
+  <span className="text-xs font-medium">Settings</span>
+</button>
       </div>
     </div>
+    
   );
 }
