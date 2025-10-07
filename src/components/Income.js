@@ -42,13 +42,14 @@ export default function Income({
     await dbOperation('income', 'put', incomeEntry);
     
     if (!isEditing) {
+      // ✅ FIXED TRANSACTION OBJECT
       const transaction = {
         id: generateId(),
         type: 'income',
         amount: newAmount,
         date: formData.date,
-        income_source: formData.source,
-        payment_method: 'cash',
+        income_source: formData.source,     // ✅ CORRECT FIELD NAME
+        payment_method: 'cash',             // ✅ REQUIRED FIELD
         created_at: new Date().toISOString()
       };
       await dbOperation('transactions', 'put', transaction);
