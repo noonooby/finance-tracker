@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, CreditCard, Wallet, TrendingUp} from 'lucide-react';
 import { dbOperation } from '../utils/db';
-import { generateId } from '../utils/helpers';
 import { logActivity } from '../utils/activityLogger';
 
 export default function AddTransaction({ 
@@ -118,12 +117,13 @@ export default function AddTransaction({
           transaction.payment_method_name = 'Cash';
 
           await logActivity(
-            'expense',
-            'income',
-            'Cash',
-            `Cash expense: $${amount.toFixed(2)} - ${formData.description}`,
-            { amount, category: category?.name, description: formData.description }
-          );
+           'expense',
+           'cash',
+           'cash-expense',
+           'Cash',
+           `Cash expense: $${amount.toFixed(2)} - ${formData.description}`,
+  { amount, category: category?.name, description: formData.description }
+);
         }
 
       } else if (formData.type === 'income') {
