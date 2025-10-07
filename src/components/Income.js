@@ -27,7 +27,6 @@ export default function Income({
     }
     
     const isEditing = !!editingItem;
-    const oldAmount = editingItem?.amount || 0;
     const newAmount = parseFloat(formData.amount) || 0;
     
     const incomeEntry = {
