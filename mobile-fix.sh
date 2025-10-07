@@ -1,3 +1,12 @@
+#!/bin/bash
+echo "📱 Applying mobile-friendly fixes..."
+
+# Backup
+cp src/index.css src/index.css.backup 2>/dev/null
+echo "✓ Backed up files"
+
+# Update index.css
+cat > src/index.css << 'EOFCSS'
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -43,3 +52,4 @@ button, .btn {
   min-height: 44px;
   min-width: 44px;
 }
+EOFCSS
