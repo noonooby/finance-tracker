@@ -45,9 +45,10 @@ export default function Income({
       const transaction = {
         id: generateId(),
         type: 'income',
-        source: formData.source,
         amount: newAmount,
         date: formData.date,
+        income_source: formData.source,
+        payment_method: 'cash',
         created_at: new Date().toISOString()
       };
       await dbOperation('transactions', 'put', transaction);
