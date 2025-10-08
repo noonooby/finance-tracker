@@ -69,7 +69,6 @@ export default function FinanceTracker() {
       
       if (!alreadyLogged) {
         const newIncome = {
-          id: generateId(),
           source: lastIncome.source,
           amount: lastIncome.amount,
           date: today,
@@ -81,7 +80,6 @@ export default function FinanceTracker() {
         await dbOperation('income', 'put', newIncome);
 
         const transaction = {
-          id: generateId(),
           type: 'income',
           source: newIncome.source,
           amount: newIncome.amount,

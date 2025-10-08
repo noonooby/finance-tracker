@@ -37,7 +37,7 @@ export default function ReservedFunds({
     }
     
     const newFund = {
-      id: editingItem?.id || generateId(),
+      id: editingItem?.id ? { id: editingItem.id } : {},
       name: formData.name,
       amount: parseFloat(formData.amount) || 0,
       original_amount: parseFloat(formData.amount) || 0,
@@ -107,7 +107,6 @@ export default function ReservedFunds({
     const fund = reservedFunds.find(f => f.id === fundId);
     
     const transaction = {
-      id: generateId(),
       type: 'reserved_fund_paid',
       fund_id: fundId,
       fund_name: fund.name,

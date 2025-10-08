@@ -38,9 +38,9 @@ export default function Loans({
       alert('Please fill in all required fields');
       return;
     }
-    
+
     const newLoan = {
-      id: editingItem?.id || generateId(),
+      id: editingItem?.id ? { id: editingItem.id } : {},
       name: formData.name,
       principal: parseFloat(formData.principal) || 0,
       balance: parseFloat(formData.balance) || 0,
@@ -51,13 +51,8 @@ export default function Loans({
       alert_days: parseInt(formData.alertDays) || alertSettings.defaultDays,
       created_at: editingItem?.created_at || new Date().toISOString()
     };
-    
+
     await dbOperation('loans', 'put', newLoan);
-    if (!editingItem) {
-      await logActivity('add', 'loan', newLoan.id, newLoan.name, `Added loan: ${newLoan.name}`, null);
-    } else {
-      await logActivity('edit', 'loan', newLoan.id, newLoan.name, `Updated loan: ${newLoan.name}`, null);
-    }
     await onUpdate();
     resetForm();
   };
@@ -97,77 +92,96 @@ export default function Loans({
       alert('Please enter a valid payment amount');
       return;
     }
-    
+
     const loan = loans.find(l => l.id === loanId);
     const paymentAmount = parseFloat(paymentForm.amount);
-    
+    const paymentDate = paymentForm.date;
+
+    // 1️⃣ Update the loan balance
     await dbOperation('loans', 'put', {
       ...loan,
       balance: loan.balance - paymentAmount,
-      last_payment_date: paymentForm.date,
-      next_payment_date: predictNextDate(paymentForm.date, loan.frequency)
+      last_payment_date: paymentDate,
+      next_payment_date: predictNextDate(paymentDate, loan.frequency)
     });
-    
+
+    // 2️⃣ Record a transaction for payment
     const transaction = {
-      id: generateId(),
       type: 'loan_payment',
       loan_id: loanId,
-      loan_name: loan.name,
       amount: paymentAmount,
-      date: paymentForm.date,
-      category: paymentForm.category,
+      date: paymentDate,
+      category_id: paymentForm.category || 'loan_payment',
+      category_name: 'Loan Payment',
+      payment_method: 'loan',
+      payment_method_id: loanId,
+      payment_method_name: loan.name,
+      description: `Payment for loan ${loan.name}`,
       created_at: new Date().toISOString()
     };
-    await dbOperation('transactions', 'put', transaction);
-    
+    await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+
+    // 3️⃣ Deduct from linked reserved fund
     const linkedFund = reservedFunds.find(f => f.linked_to?.type === 'loan' && f.linked_to?.id === loanId);
     if (linkedFund) {
-      const fundTransaction = {
-        id: generateId(),
-        type: 'reserved_fund_paid',
-        fund_id: linkedFund.id,
-        fund_name: linkedFund.name,
-        amount: linkedFund.amount,
-        date: paymentForm.date,
-        created_at: new Date().toISOString()
-      };
-      await dbOperation('transactions', 'put', fundTransaction);
-      
-      if (linkedFund.recurring) {
-        await dbOperation('reservedFunds', 'put', {
-          ...linkedFund,
-          due_date: predictNextDate(linkedFund.due_date, linkedFund.frequency || 'monthly'),
-          last_paid_date: paymentForm.date
-        });
-      } else {
+      const deductedAmount = Math.min(paymentAmount, linkedFund.amount);
+      await dbOperation('reservedFunds', 'put', {
+        ...linkedFund,
+        amount: linkedFund.amount - deductedAmount,
+        last_paid_date: paymentDate,
+        due_date: linkedFund.recurring
+          ? predictNextDate(linkedFund.due_date, linkedFund.frequency || 'monthly')
+          : linkedFund.due_date
+      });
+      if (!linkedFund.recurring && linkedFund.amount - deductedAmount <= 0) {
         await dbOperation('reservedFunds', 'delete', linkedFund.id);
       }
     }
-    
-    const lumpsumFund = reservedFunds.find(f => 
-      f.is_lumpsum && 
-      f.linked_items?.some(item => item.type === 'loan' && item.id === loanId)
+
+    // 4️⃣ Deduct from lump-sum fund
+    const lumpsumFund = reservedFunds.find(f =>
+      f.is_lumpsum && f.linked_items?.some(item => item.type === 'loan' && item.id === loanId)
     );
-    
     if (lumpsumFund && lumpsumFund.amount >= paymentAmount) {
       await dbOperation('reservedFunds', 'put', {
         ...lumpsumFund,
         amount: lumpsumFund.amount - paymentAmount
       });
     }
-    
+
+    // 5️⃣ Update available cash
     await onUpdateCash(availableCash - paymentAmount);
+
+    // 6️⃣ Log activity
+    await logActivity(
+      'payment',
+      'loan',
+      loanId,
+      loan.name,
+      `Made payment of ${formatCurrency(paymentAmount)} for ${loan.name}`,
+      {
+        entity: loan,
+        paymentAmount,
+        date: paymentDate,
+        previousCash: availableCash,
+        affectedFund: linkedFund || lumpsumFund || null
+      }
+    );
+
+    // 7️⃣ Refresh UI
     await onUpdate();
-    
+
+    // 8️⃣ Reset
     setPayingLoan(null);
-    setPaymentForm({ amount: '', date: new Date().toISOString().split('T')[0], category: 'other' });
+    setPaymentForm({
+      amount: '',
+      date: new Date().toISOString().split('T')[0],
+      category: 'other'
+    });
   };
 
   const handleDelete = async (id) => {
     if (window.confirm('Delete this loan?')) {
-      const loan = loans.find(l => l.id === id);
-    
-      await logActivity('delete', 'loan', id, loan.name, `Deleted loan: ${loan.name}`, loan);
       await dbOperation('loans', 'delete', id);
       await onUpdate();
     }
@@ -178,13 +192,7 @@ export default function Loans({
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">Loans</h2>
         <button
-          onClick={() => {
-            if (showAddForm) {
-              resetForm();
-            } else {
-              setShowAddForm(true);
-            }
-          }}
+          onClick={() => (showAddForm ? resetForm() : setShowAddForm(true))}
           className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg"
         >
           <Plus size={20} />
@@ -196,22 +204,20 @@ export default function Loans({
         <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
           <input
             type="text"
-            placeholder="Loan Name (e.g., Car Loan) *"
+            placeholder="Loan Name *"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
           />
           <input
             type="number"
-            step="0.01"
-            placeholder="Original Principal *"
+            placeholder="Principal *"
             value={formData.principal}
             onChange={(e) => setFormData({ ...formData, principal: e.target.value })}
             className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
           />
           <input
             type="number"
-            step="0.01"
             placeholder="Current Balance *"
             value={formData.balance}
             onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
@@ -219,51 +225,24 @@ export default function Loans({
           />
           <input
             type="number"
-            step="0.01"
-            placeholder="Interest Rate % (optional)"
+            placeholder="Interest Rate %"
             value={formData.interestRate}
             onChange={(e) => setFormData({ ...formData, interestRate: e.target.value })}
             className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
           />
           <input
             type="number"
-            step="0.01"
             placeholder="Payment Amount *"
             value={formData.paymentAmount}
             onChange={(e) => setFormData({ ...formData, paymentAmount: e.target.value })}
             className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
           />
-          <div>
-            <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Payment Frequency *</label>
-            <select
-              value={formData.frequency}
-              onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
-              className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-            >
-              <option value="weekly">Weekly</option>
-              <option value="biweekly">Bi-weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="bimonthly">Bi-monthly</option>
-            </select>
-          </div>
-          <div>
-            <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Next Payment Date *</label>
-            <input
-              type="date"
-              value={formData.nextPaymentDate}
-              onChange={(e) => setFormData({ ...formData, nextPaymentDate: e.target.value })}
-              className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-            />
-          </div>
-          <div>
-            <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Alert Me (days before due)</label>
-            <input
-              type="number"
-              value={formData.alertDays}
-              onChange={(e) => setFormData({ ...formData, alertDays: e.target.value })}
-              className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-            />
-          </div>
+          <input
+            type="date"
+            value={formData.nextPaymentDate}
+            onChange={(e) => setFormData({ ...formData, nextPaymentDate: e.target.value })}
+            className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+          />
           <div className="flex gap-2">
             <button onClick={handleAdd} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium">
               {editingItem ? 'Update Loan' : 'Add Loan'}
@@ -296,29 +275,12 @@ export default function Loans({
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => handleEdit(loan)}
-                    className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}
-                  >
+                  <button onClick={() => handleEdit(loan)} className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}>
                     <Edit2 size={18} />
                   </button>
-                  <button
-                    onClick={() => handleDelete(loan.id)}
-                    className={`p-2 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded`}
-                  >
+                  <button onClick={() => handleDelete(loan.id)} className={`p-2 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded`}>
                     <X size={18} />
                   </button>
-                </div>
-              </div>
-
-              <div className={`grid grid-cols-2 gap-3 text-sm mb-3 pb-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                <div>
-                  <div className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Payment Amount</div>
-                  <div className="font-semibold">{formatCurrency(loan.payment_amount)}</div>
-                </div>
-                <div>
-                  <div className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Frequency</div>
-                  <div className="font-semibold capitalize">{loan.frequency}</div>
                 </div>
               </div>
 
@@ -365,19 +327,13 @@ export default function Loans({
                     <button onClick={() => handlePayment(loan.id)} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium">
                       Confirm Payment
                     </button>
-                    <button
-                      onClick={() => setPayingLoan(null)}
-                      className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
-                    >
+                    <button onClick={() => setPayingLoan(null)} className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}>
                       Cancel
                     </button>
                   </div>
                 </div>
               ) : (
-                <button
-                  onClick={() => setPayingLoan(loan.id)}
-                  className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium"
-                >
+                <button onClick={() => setPayingLoan(loan.id)} className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium">
                   Make Payment
                 </button>
               )}

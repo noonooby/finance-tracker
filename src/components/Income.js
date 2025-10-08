@@ -30,7 +30,7 @@ export default function Income({
     const newAmount = parseFloat(formData.amount) || 0;
     
     const incomeEntry = {
-      id: editingItem?.id || generateId(),
+      id: editingItem?.id ? { id: editingItem.id } : {},
       source: formData.source,
       amount: newAmount,
       date: formData.date,

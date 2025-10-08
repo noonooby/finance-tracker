@@ -47,7 +47,7 @@ export default function CreditCards({
     }
     
     const newCard = {
-      id: editingItem?.id || generateId(),
+      id: editingItem?.id ? { id: editingItem.id } : {},
       name: formData.name,
       balance: parseFloat(formData.balance) || 0,
       credit_limit: parseFloat(formData.creditLimit) || 0,
@@ -111,13 +111,14 @@ export default function CreditCards({
     });
     
     const transaction = {
-      id: generateId(),
       card_id: cardId,
-      card_name: card.name,
       amount: paymentAmount,
       date: paymentForm.date,
-      category: paymentForm.category,
+      payment_method: 'credit_card',
+      category_id: paymentForm.category || 'credit_card_payment',
+      category_name: 'Credit Card Payment',
       type: 'credit_card_payment',
+      description: `Payment for ${card.name}`,
       created_at: new Date().toISOString()
     };
     await dbOperation('transactions', 'put', transaction);
@@ -125,7 +126,6 @@ export default function CreditCards({
     const linkedFund = reservedFunds.find(f => f.linked_to?.type === 'credit_card' && f.linked_to?.id === cardId);
     if (linkedFund) {
       const fundTransaction = {
-        id: generateId(),
         fund_id: linkedFund.id,
         fund_name: linkedFund.name,
         amount: linkedFund.amount,
