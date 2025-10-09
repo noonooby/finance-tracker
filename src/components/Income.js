@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Plus, DollarSign, Edit2, X } from 'lucide-react';
-import { formatCurrency, formatDate, generateId, predictNextDate, getDaysUntil } from '../utils/helpers';
+import { formatCurrency, formatDate, predictNextDate, getDaysUntil, generateId } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 export default function Income({ 
@@ -8,7 +8,9 @@ export default function Income({
   income,
   availableCash,
   onUpdate,
-  onUpdateCash
+  onUpdateCash,
+  focusTarget,
+  onClearFocus
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -19,6 +21,30 @@ export default function Income({
     frequency: 'biweekly',
     reservedAmount: ''
   });
+  const incomeRefs = useRef({});
+
+  const normalizeId = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'object') {
+      if (value.id !== undefined) return String(value.id);
+      if (value.value !== undefined) return String(value.value);
+      return null;
+    }
+    return String(value);
+  };
+
+  useEffect(() => {
+    if (focusTarget?.type === 'income' && focusTarget.id) {
+      const key = String(normalizeId(focusTarget.id));
+      const node = incomeRefs.current[key];
+      if (node?.scrollIntoView) {
+        node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      const timer = setTimeout(() => onClearFocus?.(), 4000);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [focusTarget, onClearFocus]);
 
   const handleAdd = async () => {
     if (!formData.source || !formData.amount || !formData.date) {
@@ -30,44 +56,60 @@ export default function Income({
     const newAmount = parseFloat(formData.amount) || 0;
     
     const incomeEntry = {
-      id: editingItem?.id ? { id: editingItem.id } : {},
+      ...(editingItem?.id ? { id: editingItem.id } : { id: generateId() }),
       source: formData.source,
       amount: newAmount,
       date: formData.date,
       frequency: formData.frequency,
     };
     
-    await dbOperation('income', 'put', incomeEntry);
-    if (!isEditing) {
-      await logActivity('add', 'income', incomeEntry.id, incomeEntry.source, 
-        `Added income: $${newAmount.toFixed(2)} from ${incomeEntry.source}`, null);
-    } else {
-      await logActivity('edit', 'income', incomeEntry.id, incomeEntry.source,
-        `Updated income: ${incomeEntry.source} to $${newAmount.toFixed(2)}`, null);
+    const savedIncome = await dbOperation('income', 'put', incomeEntry, { skipActivityLog: true });
+    const incomeId = savedIncome?.id || editingItem?.id;
+    if (isEditing) {
+      await logActivity('edit', 'income', incomeId, savedIncome?.source || incomeEntry.source,
+        `Updated income: ${savedIncome?.source || incomeEntry.source} to $${newAmount.toFixed(2)}`, null);
     }
+
     if (!isEditing) {
-      // ✅ FIXED TRANSACTION OBJECT
+      const previousCash = availableCash;
+
       const transaction = {
         type: 'income',
         amount: newAmount,
         date: formData.date,
         income_source: formData.source,     // ✅ CORRECT FIELD NAME
         payment_method: 'cash',             // ✅ REQUIRED FIELD
+        payment_method_id: incomeId,
+        status: 'active',
+        undone_at: null
       };
-      try {
-        await dbOperation('transactions', 'put', transaction);
-        console.log('✅ Transaction saved successfully');
-      } catch (error) {
-        console.error('❌ Failed to save transaction:', error);
-        throw error;
-      }
+      const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
       
       let newCash = availableCash + newAmount;
       if (formData.reservedAmount && parseFloat(formData.reservedAmount) > 0) {
         newCash -= parseFloat(formData.reservedAmount);
       }
       await onUpdateCash(newCash);
+
+      await logActivity(
+        'income',
+        'income',
+        incomeId,
+        formData.source,
+        `Income: ${formatCurrency(newAmount)} from ${formData.source}`,
+        {
+          amount: newAmount,
+          source: formData.source,
+          previousCash,
+          newCash,
+          transactionId: savedTransaction?.id,
+          incomeId
+        }
+      );
     }
+
+    await onUpdate();
+    resetForm();
   };
 
   const handleEdit = (inc) => {
@@ -84,10 +126,51 @@ export default function Income({
 
   const handleDelete = async (id) => {
     if (window.confirm('Delete this income entry?')) {
-      const inc = income.find(i => i.id === id);
-      await logActivity('delete', 'income', id, inc.source, `Deleted income: ${inc.source} ($${inc.amount})`, inc);
-      await onUpdateCash(availableCash - inc.amount);
-      await dbOperation('income', 'delete', id);
+      const inc = income.find(i => String(i.id) === String(id));
+      if (!inc) return;
+
+      const previousCash = availableCash;
+      let relatedTransactions = [];
+      try {
+        const transactions = await dbOperation('transactions', 'getAll');
+        relatedTransactions = (transactions || []).filter(
+          (t) => t.type === 'income' && (String(t.payment_method_id) === String(id))
+        );
+      } catch (error) {
+        console.warn('Unable to fetch linked transactions for income deletion:', error);
+      }
+
+      const linkedSnapshots = relatedTransactions.map(trx => ({
+        ...trx,
+        status: 'active',
+        undone_at: null
+      }));
+
+      await logActivity(
+        'delete',
+        'income',
+        id,
+        inc.source,
+        `Deleted income: ${inc.source} ($${inc.amount})`,
+        {
+          ...inc,
+          previousCash,
+          linkedTransactions: linkedSnapshots
+        }
+      );
+
+      const newCash = previousCash - inc.amount;
+      await onUpdateCash(newCash);
+      await dbOperation('income', 'delete', id, { skipActivityLog: true });
+
+      for (const trx of relatedTransactions) {
+        try {
+          await dbOperation('transactions', 'delete', trx.id, { skipActivityLog: true });
+        } catch (error) {
+          console.warn('Unable to remove linked transaction during income deletion:', error);
+        }
+      }
+
       await onUpdate();
     }
   };
@@ -239,8 +322,17 @@ export default function Income({
             <p>No income logged yet</p>
           </div>
         ) : (
-          [...income].sort((a, b) => new Date(b.date) - new Date(a.date)).map(inc => (
-            <div key={inc.id} className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4`}>
+          [...income].sort((a, b) => new Date(b.date) - new Date(a.date)).map(inc => {
+            const incomeKey = String(normalizeId(inc.id));
+            const isHighlighted = focusTarget?.type === 'income' && normalizeId(focusTarget.id) === normalizeId(inc.id);
+            return (
+            <div
+              key={incomeKey}
+              ref={(el) => {
+                if (el) incomeRefs.current[incomeKey] = el;
+              }}
+              className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${isHighlighted ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
+            >
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="font-bold">{inc.source}</h3>
@@ -268,7 +360,8 @@ export default function Income({
                 </div>
               </div>
             </div>
-          ))
+          );
+          })
         )}
       </div>
     </div>

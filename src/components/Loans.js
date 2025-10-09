@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Edit2, X, TrendingUp } from 'lucide-react';
-import { formatCurrency, formatDate, getDaysUntil, generateId, predictNextDate } from '../utils/helpers';
+import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 
@@ -12,7 +12,9 @@ export default function Loans({
   reservedFunds,
   alertSettings,
   onUpdate,
-  onUpdateCash
+  onUpdateCash,
+  focusTarget,
+  onClearFocus
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -32,15 +34,45 @@ export default function Loans({
     category: 'other'
   });
   const [payingLoan, setPayingLoan] = useState(null);
+  const loanRefs = useRef({});
+  const [savingLoan, setSavingLoan] = useState(false);
+
+  const normalizeId = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'object') {
+      if (value.id !== undefined) return String(value.id);
+      if (value.value !== undefined) return String(value.value);
+      return null;
+    }
+    return String(value);
+  };
+
+  useEffect(() => {
+    if (focusTarget?.type === 'loan' && focusTarget.id) {
+      const key = String(normalizeId(focusTarget.id));
+      const node = loanRefs.current[key];
+      if (node?.scrollIntoView) {
+        node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      const timer = setTimeout(() => onClearFocus?.(), 4000);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [focusTarget, onClearFocus]);
 
   const handleAdd = async () => {
+    if (savingLoan) return;
     if (!formData.name || !formData.principal || !formData.balance || !formData.paymentAmount || !formData.nextPaymentDate) {
       alert('Please fill in all required fields');
       return;
     }
 
-    const newLoan = {
-      id: editingItem?.id ? { id: editingItem.id } : {},
+    setSavingLoan(true);
+
+    const loanId = editingItem?.id || generateId();
+
+    const loanPayload = {
+      id: loanId,
       name: formData.name,
       principal: parseFloat(formData.principal) || 0,
       balance: parseFloat(formData.balance) || 0,
@@ -52,9 +84,24 @@ export default function Loans({
       created_at: editingItem?.created_at || new Date().toISOString()
     };
 
-    await dbOperation('loans', 'put', newLoan);
-    await onUpdate();
-    resetForm();
+    try {
+      const savedLoan = await dbOperation('loans', 'put', loanPayload, { skipActivityLog: true });
+      const effectiveId = savedLoan?.id || loanId;
+
+      if (editingItem) {
+        await logActivity('edit', 'loan', effectiveId, savedLoan?.name || loanPayload.name, `Updated loan: ${savedLoan?.name || loanPayload.name}`, null);
+      } else {
+        await logActivity('add', 'loan', effectiveId, savedLoan?.name || loanPayload.name, `Added loan: ${savedLoan?.name || loanPayload.name}`, null);
+      }
+
+      await onUpdate();
+      resetForm();
+    } catch (error) {
+      console.error('Error saving loan:', error);
+      alert('Failed to save loan. Please try again.');
+    } finally {
+      setSavingLoan(false);
+    }
   };
 
   const resetForm = () => {
@@ -107,7 +154,7 @@ export default function Loans({
 
     // 2️⃣ Record a transaction for payment
     const transaction = {
-      type: 'loan_payment',
+      type: 'payment',
       loan_id: loanId,
       amount: paymentAmount,
       date: paymentDate,
@@ -117,9 +164,11 @@ export default function Loans({
       payment_method_id: loanId,
       payment_method_name: loan.name,
       description: `Payment for loan ${loan.name}`,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      status: 'active',
+      undone_at: null
     };
-    await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+    const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
 
     // 3️⃣ Deduct from linked reserved fund
     const linkedFund = reservedFunds.find(f => f.linked_to?.type === 'loan' && f.linked_to?.id === loanId);
@@ -160,11 +209,12 @@ export default function Loans({
       loan.name,
       `Made payment of ${formatCurrency(paymentAmount)} for ${loan.name}`,
       {
-        entity: loan,
+        entity: { ...loan },
         paymentAmount,
         date: paymentDate,
         previousCash: availableCash,
-        affectedFund: linkedFund || lumpsumFund || null
+        affectedFund: linkedFund ? { ...linkedFund } : lumpsumFund ? { ...lumpsumFund } : null,
+        transactionId: savedTransaction?.id
       }
     );
 
@@ -265,7 +315,16 @@ export default function Loans({
           </div>
         ) : (
           loans.map(loan => (
-            <div key={loan.id} className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4`}>
+            <div
+              key={String(normalizeId(loan.id))}
+              ref={(el) => {
+                const key = String(normalizeId(loan.id));
+                if (el) {
+                  loanRefs.current[key] = el;
+                }
+              }}
+              className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${focusTarget?.type === 'loan' && normalizeId(focusTarget.id) === normalizeId(loan.id) ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
+            >
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <h3 className="font-bold text-lg">{loan.name}</h3>

@@ -74,6 +74,8 @@ export const recalculateAvailableCash = async () => {
           }
           break;
         case 'payment':
+        case 'loan_payment':
+        case 'credit_card_payment':
           calculatedCash -= transaction.amount;
           break;
         default:
@@ -116,6 +118,8 @@ export const validateAvailableCash = async () => {
           }
           break;
         case 'payment':
+        case 'loan_payment':
+        case 'credit_card_payment':
           expectedCash -= transaction.amount;
           break;
         default:

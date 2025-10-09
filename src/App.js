@@ -4,7 +4,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X, Activity, List, Plus } from 'lucide-react';
 import { supabase } from './utils/supabase';
 import { dbOperation } from './utils/db';
-import { getDaysUntil, predictNextDate, DEFAULT_CATEGORIES, generateId } from './utils/helpers';
+import { getDaysUntil, predictNextDate, DEFAULT_CATEGORIES, formatCurrency, generateId } from './utils/helpers';
+import { logActivity } from './utils/activityLogger';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import ActivityFeed from './components/ActivityFeed';
@@ -27,9 +28,11 @@ export default function FinanceTracker() {
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [availableCash, setAvailableCash] = useState(0);
   const [darkMode, setDarkMode] = useState(false);
-  const [alertSettings, setAlertSettings] = useState({ defaultDays: 7 });
+  const [alertSettings, setAlertSettings] = useState({ defaultDays: 7, upcomingDays: 30 });
   const [editingCash, setEditingCash] = useState(false);
   const [cashInput, setCashInput] = useState('');
+  const [focusTarget, setFocusTarget] = useState(null);
+  const [showAddTransactionModal, setShowAddTransactionModal] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -46,66 +49,7 @@ export default function FinanceTracker() {
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (session) {
-      loadAllData();
-      loadCategories();
-    }
-  }, [session]);
-
-  const checkAutoIncome = useCallback(async () => {
-    if (income.length === 0) return;
-
-    const today = new Date().toISOString().split('T')[0];
-    const sortedIncome = [...income].sort((a, b) => new Date(b.date) - new Date(a.date));
-    const lastIncome = sortedIncome[0];
-
-    if (!lastIncome.frequency || lastIncome.frequency === 'onetime') return;
-
-    const nextDate = predictNextDate(lastIncome.date, lastIncome.frequency);
-
-    if (nextDate === today) {
-      const alreadyLogged = income.some(inc => inc.date === today && inc.source === lastIncome.source);
-      
-      if (!alreadyLogged) {
-        const newIncome = {
-          source: lastIncome.source,
-          amount: lastIncome.amount,
-          date: today,
-          frequency: lastIncome.frequency,
-          createdAt: new Date().toISOString(),
-          autoAdded: true
-        };
-
-        await dbOperation('income', 'put', newIncome);
-
-        const transaction = {
-          type: 'income',
-          source: newIncome.source,
-          amount: newIncome.amount,
-          date: today,
-          createdAt: new Date().toISOString()
-        };
-        await dbOperation('transactions', 'put', transaction);
-
-        const currentCash = await dbOperation('settings', 'get', 'availableCash');
-        const newCash = (currentCash?.value || 0) + newIncome.amount;
-        await dbOperation('settings', 'put', { key: 'availableCash', value: newCash });
-
-        await loadAllData();
-      }
-    }
-  }, [income]);
-
-  useEffect(() => {
-    if (session) {
-      checkAutoIncome();
-      const interval = setInterval(checkAutoIncome, 60000);
-      return () => clearInterval(interval);
-    }
-  }, [session, checkAutoIncome]);
-
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     try {
       const [cards, loansData, reserved, incomeData, trans, settings] = await Promise.all([
         dbOperation('creditCards', 'getAll'),
@@ -129,13 +73,17 @@ export default function FinanceTracker() {
       setDarkMode(darkModeSetting?.value || false);
       
       const alertSetting = settings?.find(s => s.key === 'alertSettings');
-      setAlertSettings(alertSetting?.value || { defaultDays: 7 });
+      const alertValue = alertSetting?.value || {};
+      setAlertSettings({
+        defaultDays: alertValue.defaultDays ?? alertValue.alertDays ?? 7,
+        upcomingDays: alertValue.upcomingDays ?? 30
+      });
     } catch (error) {
       console.error('Error loading data:', error);
     }
-  };
+  }, []);
 
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     try {
       const cats = await dbOperation('categories', 'getAll');
       if (cats && cats.length > 0) {
@@ -148,13 +96,391 @@ export default function FinanceTracker() {
     } catch (error) {
       console.error('Error loading categories:', error);
     }
-  };
+  }, []);
 
-  const saveAvailableCash = async (amount) => {
+  useEffect(() => {
+    if (session) {
+      loadAllData();
+      loadCategories();
+    }
+  }, [session, loadAllData, loadCategories]);
+
+  const saveAvailableCash = useCallback(async (amount) => {
     await dbOperation('settings', 'put', { key: 'availableCash', value: amount });
     setAvailableCash(amount);
+  }, []);
+
+  const updateAlertSettings = async (updates) => {
+    const nextSettings = {
+      defaultDays: updates.defaultDays ?? alertSettings.defaultDays ?? 7,
+      upcomingDays: updates.upcomingDays ?? alertSettings.upcomingDays ?? 30
+    };
+    await dbOperation('settings', 'put', { key: 'alertSettings', value: nextSettings });
+    setAlertSettings(nextSettings);
   };
 
+  const clearFocusTarget = useCallback(() => setFocusTarget(null), []);
+
+  const handleNavigate = useCallback(({ view, focus } = {}) => {
+    if (view) {
+      setCurrentView(view);
+    }
+    if (focus) {
+      setFocusTarget({
+        ...focus,
+        view: focus.view ?? view ?? null,
+        timestamp: Date.now()
+      });
+    }
+  }, []);
+
+  const autoPayObligations = useCallback(async () => {
+    if (!session) return;
+
+    try {
+      if (!creditCards.length && !loans.length) return;
+
+      const today = new Date().toISOString().split('T')[0];
+      let updatedCash = availableCash;
+      let hasChanges = false;
+
+      const normalizeId = (value) => {
+        if (value === null || value === undefined) return null;
+        if (typeof value === 'object') {
+          if (value.id !== undefined) return String(value.id);
+          if (value.value !== undefined) return String(value.value);
+          return null;
+        }
+        return String(value);
+      };
+
+      const reservedFundMap = new Map();
+      reservedFunds.forEach((fund) => {
+        const key = normalizeId(fund.id);
+        if (key) {
+          reservedFundMap.set(key, { ...fund, id: key });
+        }
+      });
+
+      const updateReservedFund = async (fund, amountUsed, { isLinked }) => {
+        if (!fund) return null;
+        const key = normalizeId(fund.id);
+        if (!key) return null;
+
+        const startingAmount = Number(fund.amount) || 0;
+        const remaining = Math.max(0, startingAmount - amountUsed);
+        const updatedFund = {
+          ...fund,
+          amount: remaining,
+          last_paid_date: today
+        };
+
+        if (fund.recurring) {
+          updatedFund.due_date = predictNextDate(fund.due_date, fund.frequency || 'monthly');
+        }
+
+        const shouldDelete = !fund.recurring && !fund.is_lumpsum && remaining <= 0;
+
+        if (shouldDelete) {
+          await dbOperation('reservedFunds', 'delete', key, { skipActivityLog: true });
+          reservedFundMap.delete(key);
+        } else {
+          await dbOperation('reservedFunds', 'put', updatedFund, { skipActivityLog: true });
+          reservedFundMap.set(key, updatedFund);
+        }
+
+        return {
+          before: fund,
+          after: shouldDelete ? null : updatedFund,
+          amountApplied: amountUsed,
+          isLinked
+        };
+      };
+
+      const processCardPayment = async (card) => {
+        const cardId = normalizeId(card.id);
+        if (!cardId) return;
+        if (!card?.due_date || (card.balance ?? 0) <= 0) return;
+        if (getDaysUntil(card.due_date) !== 0) return;
+        if (card.last_auto_payment_date === today) return;
+
+        const linkedFund = [...reservedFundMap.values()].find(
+          (fund) => fund?.linked_to?.type === 'credit_card' && normalizeId(fund?.linked_to?.id) === cardId && (fund.amount ?? 0) > 0
+        );
+
+        let fundUsed = linkedFund;
+        let fundContext = { isLinked: !!linkedFund };
+
+        if (!fundUsed) {
+          fundUsed = [...reservedFundMap.values()].find(
+            (fund) =>
+              fund?.is_lumpsum &&
+              (fund.amount ?? 0) > 0 &&
+              Array.isArray(fund.linked_items) &&
+              fund.linked_items.some((item) => item.type === 'credit_card' && normalizeId(item.id) === cardId)
+          );
+          fundContext = { isLinked: false };
+        }
+
+        if (!fundUsed) return;
+
+        const paymentAmount = Math.min(Number(card.balance) || 0, Number(fundUsed.amount) || 0);
+        if (paymentAmount <= 0) return;
+
+        const fundResult = await updateReservedFund(fundUsed, paymentAmount, fundContext);
+        if (!fundResult) return;
+
+        const previousCash = updatedCash;
+        updatedCash -= paymentAmount;
+        hasChanges = true;
+
+        await dbOperation('creditCards', 'put', {
+          ...card,
+          balance: Math.max(0, (Number(card.balance) || 0) - paymentAmount),
+          last_auto_payment_date: today
+        }, { skipActivityLog: true });
+
+        const paymentTransaction = {
+          type: 'payment',
+          card_id: cardId,
+          amount: paymentAmount,
+          date: today,
+          payment_method: 'credit_card',
+          payment_method_id: cardId,
+          payment_method_name: card.name,
+          category_id: 'auto_payment',
+          category_name: 'Auto Payment',
+          description: `Auto payment for ${card.name}`,
+          created_at: new Date().toISOString(),
+          status: 'active',
+          undone_at: null,
+          auto_generated: true
+        };
+
+        const savedTransaction = await dbOperation('transactions', 'put', paymentTransaction, { skipActivityLog: true });
+
+        if (fundResult.isLinked) {
+          const fundTransaction = {
+            type: 'reserved_fund_paid',
+            amount: paymentAmount,
+            date: today,
+            description: `Reserved fund applied: ${fundResult.before.name}`,
+            notes: `Auto payment for ${card.name}`,
+            created_at: new Date().toISOString(),
+            status: 'active',
+            undone_at: null,
+            payment_method: 'reserved_fund',
+            payment_method_id: normalizeId(fundResult.before?.id),
+            auto_generated: true
+          };
+          await dbOperation('transactions', 'put', fundTransaction, { skipActivityLog: true });
+        }
+
+        await logActivity(
+          'payment',
+          'card',
+          cardId,
+          card.name,
+          `Auto payment of ${formatCurrency(paymentAmount)} applied to ${card.name}`,
+          {
+            entity: { ...card },
+            paymentAmount,
+            date: today,
+            previousCash,
+            affectedFund: fundResult.before,
+            transactionId: savedTransaction?.id
+          }
+        );
+      };
+
+      const processLoanPayment = async (loan) => {
+        const loanId = normalizeId(loan.id);
+        if (!loanId) return;
+        if (!loan?.next_payment_date || (loan.payment_amount ?? 0) <= 0) return;
+        if (getDaysUntil(loan.next_payment_date) !== 0) return;
+        if (loan.last_auto_payment_date === today) return;
+
+        const linkedFund = [...reservedFundMap.values()].find(
+          (fund) => fund?.linked_to?.type === 'loan' && normalizeId(fund?.linked_to?.id) === loanId && (fund.amount ?? 0) > 0
+        );
+
+        let fundUsed = linkedFund;
+        let fundContext = { isLinked: !!linkedFund };
+
+        if (!fundUsed) {
+          fundUsed = [...reservedFundMap.values()].find(
+            (fund) =>
+              fund?.is_lumpsum &&
+              (fund.amount ?? 0) > 0 &&
+              Array.isArray(fund.linked_items) &&
+              fund.linked_items.some((item) => item.type === 'loan' && normalizeId(item.id) === loanId)
+          );
+          fundContext = { isLinked: false };
+        }
+
+        if (!fundUsed) return;
+
+        const amountDue = Number(loan.payment_amount) || 0;
+        const paymentAmount = Math.min(amountDue, Number(fundUsed.amount) || 0);
+        if (paymentAmount <= 0) return;
+
+        const fundResult = await updateReservedFund(fundUsed, paymentAmount, fundContext);
+        if (!fundResult) return;
+
+        const previousCash = updatedCash;
+        updatedCash -= paymentAmount;
+        hasChanges = true;
+
+        await dbOperation('loans', 'put', {
+          ...loan,
+          balance: Math.max(0, (Number(loan.balance) || 0) - paymentAmount),
+          last_payment_date: today,
+          next_payment_date: predictNextDate(today, loan.frequency || 'monthly'),
+          last_auto_payment_date: today
+        }, { skipActivityLog: true });
+
+        const paymentTransaction = {
+          type: 'payment',
+          loan_id: loanId,
+          amount: paymentAmount,
+          date: today,
+          category_id: 'auto_payment',
+          category_name: 'Auto Payment',
+          payment_method: 'loan',
+          payment_method_id: loanId,
+          payment_method_name: loan.name,
+          description: `Auto payment for ${loan.name}`,
+          created_at: new Date().toISOString(),
+          status: 'active',
+          undone_at: null,
+          auto_generated: true
+        };
+
+        const savedTransaction = await dbOperation('transactions', 'put', paymentTransaction, { skipActivityLog: true });
+
+        await logActivity(
+          'payment',
+          'loan',
+          loanId,
+          loan.name,
+          `Auto payment of ${formatCurrency(paymentAmount)} applied to ${loan.name}`,
+          {
+            entity: { ...loan },
+            paymentAmount,
+            date: today,
+            previousCash,
+            affectedFund: fundResult.before,
+            transactionId: savedTransaction?.id
+          }
+        );
+      };
+
+      for (const card of creditCards) {
+        await processCardPayment(card);
+      }
+
+      for (const loan of loans) {
+        await processLoanPayment(loan);
+      }
+
+      if (hasChanges) {
+        if (updatedCash !== availableCash) {
+          await saveAvailableCash(updatedCash);
+        }
+        await loadAllData();
+      }
+    } catch (error) {
+      console.error('Auto payment failed:', error);
+    }
+  }, [session, creditCards, loans, reservedFunds, availableCash, saveAvailableCash, loadAllData]);
+
+  const checkAutoIncome = useCallback(async () => {
+    try {
+      if (income.length === 0) return;
+
+      const today = new Date().toISOString().split('T')[0];
+      const sortedIncome = [...income].sort((a, b) => new Date(b.date) - new Date(a.date));
+      const lastIncome = sortedIncome[0];
+
+      if (!lastIncome?.frequency || lastIncome.frequency === 'onetime') return;
+
+      const nextDate = predictNextDate(lastIncome.date, lastIncome.frequency);
+
+      if (nextDate === today) {
+        const alreadyLogged = income.some(inc => inc.date === today && inc.source === lastIncome.source);
+        
+        if (!alreadyLogged) {
+          const newIncome = {
+            id: generateId(),
+            source: lastIncome.source,
+            amount: lastIncome.amount,
+            date: today,
+            frequency: lastIncome.frequency,
+            createdAt: new Date().toISOString(),
+            autoAdded: true
+          };
+
+          await dbOperation('income', 'put', newIncome, { skipActivityLog: true });
+
+          const transaction = {
+            type: 'income',
+            source: newIncome.source,
+            amount: newIncome.amount,
+            date: today,
+            createdAt: new Date().toISOString(),
+            payment_method: 'cash',
+            payment_method_id: newIncome.id,
+            payment_method_name: 'Cash',
+            status: 'active',
+            undone_at: null
+          };
+          const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+
+          const currentCash = await dbOperation('settings', 'get', 'availableCash');
+          const previousCash = currentCash?.value || 0;
+          const newCash = previousCash + newIncome.amount;
+          await dbOperation('settings', 'put', { key: 'availableCash', value: newCash });
+
+          await logActivity(
+            'income',
+            'income',
+            newIncome.id,
+            newIncome.source,
+            `Income: ${formatCurrency(newIncome.amount)} from ${newIncome.source}`,
+            {
+              amount: newIncome.amount,
+              source: newIncome.source,
+              previousCash,
+              newCash,
+              transactionId: savedTransaction?.id,
+              incomeId: newIncome.id,
+              autoGenerated: true
+            }
+          );
+
+          await loadAllData();
+        }
+      }
+    } catch (error) {
+      console.error('Auto-income generation failed:', error);
+    }
+  }, [income, loadAllData]);
+
+  useEffect(() => {
+    if (session) {
+      checkAutoIncome();
+      const interval = setInterval(checkAutoIncome, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [session, checkAutoIncome]);
+
+  useEffect(() => {
+    if (session) {
+      autoPayObligations();
+      const interval = setInterval(autoPayObligations, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [session, autoPayObligations]);
   const handleEditCash = () => {
     setCashInput(availableCash.toString());
     setEditingCash(true);
@@ -181,6 +507,17 @@ export default function FinanceTracker() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+  };
+
+  const openAddTransaction = () => {
+    if (currentView !== 'transactions') {
+      setCurrentView('transactions');
+    }
+    setShowAddTransactionModal(true);
+  };
+
+  const closeAddTransaction = () => {
+    setShowAddTransactionModal(false);
   };
 
   const exportData = async () => {
@@ -253,8 +590,19 @@ export default function FinanceTracker() {
   const totalLoanDebt = loans.reduce((sum, loan) => sum + loan.balance, 0);
 
   const getUpcomingObligations = () => {
+    const normalizeId = (value) => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === 'object') {
+        if (value.id !== undefined) return String(value.id);
+        if (value.value !== undefined) return String(value.value);
+        return null;
+      }
+      return String(value);
+    };
+
     const obligations = [];
     const warningDays = alertSettings.defaultDays || 7;
+    const upcomingWindow = alertSettings.upcomingDays || 30;
     
     creditCards.forEach(card => {
       if (card.balance > 0 && card.due_date) {
@@ -267,7 +615,7 @@ export default function FinanceTracker() {
           dueDate: card.due_date,
           days,
           urgent: days <= customWarning && days >= 0,
-          id: card.id
+          id: normalizeId(card.id)
         });
       }
     });
@@ -283,12 +631,13 @@ export default function FinanceTracker() {
           dueDate: loan.next_payment_date,
           days,
           urgent: days <= customWarning && days >= 0,
-          id: loan.id
+          id: normalizeId(loan.id)
         });
       }
     });
     
     reservedFunds.forEach(fund => {
+      if (!fund?.due_date) return;
       const days = getDaysUntil(fund.due_date);
       obligations.push({
         type: 'reserved_fund',
@@ -296,12 +645,14 @@ export default function FinanceTracker() {
         amount: fund.amount,
         dueDate: fund.due_date,
         days,
-        urgent: days <= 7 && days >= 0,
-        id: fund.id
+        urgent: days <= warningDays && days >= 0,
+        id: normalizeId(fund.id)
       });
     });
     
-    return obligations.sort((a, b) => a.days - b.days);
+    return obligations
+      .filter(obligation => obligation.days >= 0 && (obligation.urgent || obligation.days <= upcomingWindow))
+      .sort((a, b) => a.days - b.days);
   };
 
   const upcomingObligations = getUpcomingObligations();
@@ -411,6 +762,8 @@ export default function FinanceTracker() {
             creditCards={creditCards}
             loans={loans}
             alertSettings={alertSettings}
+            onNavigate={handleNavigate}
+            onUpdateAlertSettings={updateAlertSettings}
           />
         )}
         {currentView === 'cards' && (
@@ -423,6 +776,8 @@ export default function FinanceTracker() {
             alertSettings={alertSettings}
             onUpdate={loadAllData}
             onUpdateCash={saveAvailableCash}
+            focusTarget={focusTarget}
+            onClearFocus={clearFocusTarget}
           />
         )}
         {currentView === 'loans' && (
@@ -435,6 +790,8 @@ export default function FinanceTracker() {
             alertSettings={alertSettings}
             onUpdate={loadAllData}
             onUpdateCash={saveAvailableCash}
+            focusTarget={focusTarget}
+            onClearFocus={clearFocusTarget}
           />
         )}
         {currentView === 'reserved' && (
@@ -445,6 +802,8 @@ export default function FinanceTracker() {
             loans={loans}
             totalReserved={totalReserved}
             onUpdate={loadAllData}
+            focusTarget={focusTarget}
+            onClearFocus={clearFocusTarget}
           />
         )}
         {currentView === 'income' && (
@@ -454,20 +813,24 @@ export default function FinanceTracker() {
             availableCash={availableCash}
             onUpdate={loadAllData}
             onUpdateCash={saveAvailableCash}
+            focusTarget={focusTarget}
+            onClearFocus={clearFocusTarget}
           />
         )}
        {currentView === 'transactions' && (
-          <TransactionHistory
-            darkMode={darkMode}
-            categories={categories}
-            creditCards={creditCards}
-            loans={loans}
-            reservedFunds={reservedFunds}
-            availableCash={availableCash}
-            onUpdate={loadAllData}
-            onUpdateCash={saveAvailableCash}
-          />
-        )}
+        <TransactionHistory
+          darkMode={darkMode}
+          categories={categories}
+          creditCards={creditCards}
+          loans={loans}
+          reservedFunds={reservedFunds}
+          availableCash={availableCash}
+          onUpdate={loadAllData}
+          onUpdateCash={saveAvailableCash}
+          showAddModal={showAddTransactionModal}
+          onCloseAddModal={closeAddTransaction}
+        />
+      )}
         {currentView === 'activity' && (
           <ActivityFeed
             darkMode={darkMode}
@@ -475,15 +838,16 @@ export default function FinanceTracker() {
           />
         )}
         {currentView === 'settings' && (
-           <Settings
+          <Settings
             darkMode={darkMode}
             onUpdate={loadAllData}
-           />
-)}
+            onReloadCategories={loadCategories}
+          />
+        )}
       </div>
         {/* Floating Add Transaction Button */}
         <button
-        onClick={() => setCurrentView('transactions')}
+        onClick={openAddTransaction}
         className="fixed bottom-24 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center z-20"
         title="Add Transaction"
         >

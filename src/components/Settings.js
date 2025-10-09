@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Settings as SettingsIcon, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { recalculateAvailableCash, validateAvailableCash } from '../utils/helpers';
+import { deleteAllUserData } from '../utils/db';
 
-export default function Settings({ darkMode, onUpdate }) {
+export default function Settings({ darkMode, onUpdate, onReloadCategories }) {
   const [recalculating, setRecalculating] = useState(false);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [message, setMessage] = useState(null);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const handleRecalculate = async () => {
     if (!window.confirm('This will recalculate your available cash based on all transactions. Continue?')) {
@@ -51,6 +53,33 @@ export default function Settings({ darkMode, onUpdate }) {
       });
     } finally {
       setValidating(false);
+    }
+  };
+
+  const handleDeleteAllData = async () => {
+    if (!window.confirm('This will permanently delete all of your data for this account. This action cannot be undone. Continue?')) {
+      return;
+    }
+
+    setDeletingAll(true);
+    setMessage(null);
+
+    try {
+      await deleteAllUserData();
+      setMessage({
+        type: 'success',
+        text: 'All data deleted successfully.'
+      });
+      if (onUpdate) await onUpdate();
+      if (onReloadCategories) await onReloadCategories();
+    } catch (error) {
+      console.error('Error deleting data:', error);
+      setMessage({
+        type: 'error',
+        text: 'Failed to delete data. Please try again.'
+      });
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -106,6 +135,21 @@ export default function Settings({ darkMode, onUpdate }) {
         >
           <RefreshCw size={20} className={recalculating ? 'animate-spin' : ''} />
           <span>{recalculating ? 'Recalculating...' : 'Recalculate Available Cash'}</span>
+        </button>
+      </div>
+
+      <div className={`${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'} rounded-lg p-6 space-y-3`}>
+        <h3 className="text-lg font-semibold text-red-600">Danger Zone</h3>
+        <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          Delete all data associated with this account, including cards, loans, reserved funds, income, transactions, categories, and activity history.
+        </p>
+        <button
+          onClick={handleDeleteAllData}
+          disabled={deletingAll}
+          className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg ${deletingAll ? 'bg-red-300 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'} text-white`}
+        >
+          <AlertCircle size={20} />
+          <span>{deletingAll ? 'Deleting...' : 'Delete All Data'}</span>
         </button>
       </div>
     </div>

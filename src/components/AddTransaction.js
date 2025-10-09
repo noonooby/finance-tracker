@@ -62,11 +62,11 @@ export default function AddTransaction({
       }
 
       const category = categories.find(c => c.id === formData.categoryId);
+      let activityDetails = null;
       
-      // Create transaction record
       const transaction = {
         type: formData.type,
-        amount: amount,
+        amount,
         date: formData.date,
         description: formData.description,
         notes: formData.notes,
@@ -80,9 +80,10 @@ export default function AddTransaction({
         fund_id: null,
         income_source: formData.incomeSource || null,
         is_cleared: false,
+        status: 'active',
+        undone_at: null
       };
 
-      // Handle different transaction types
       if (formData.type === 'expense') {
         if (formData.paymentMethod === 'credit_card') {
           const card = creditCards.find(c => c.id === formData.paymentMethodId);
@@ -92,7 +93,8 @@ export default function AddTransaction({
             return;
           }
 
-          // Increase card balance
+          const previousCardBalance = card.balance;
+
           await dbOperation('creditCards', 'put', {
             ...card,
             balance: card.balance + amount
@@ -101,66 +103,65 @@ export default function AddTransaction({
           transaction.card_id = card.id;
           transaction.payment_method_name = card.name;
 
-          await logActivity(
-            'expense',
-            'card',
-            card.id,
-            card.name,
-            `Expense: $${amount.toFixed(2)} on ${card.name} - ${formData.description}`,
-            { amount, category: category?.name, description: formData.description }
-          );
+          activityDetails = {
+            actionType: 'expense',
+            entityType: 'card',
+            entityId: card.id,
+            entityName: card.name,
+            description: `Expense: $${amount.toFixed(2)} on ${card.name} - ${formData.description}`,
+            snapshot: {
+              amount,
+              category: category?.name,
+              description: formData.description,
+              cardId: card.id,
+              previousBalance: previousCardBalance
+            }
+          };
 
         } else if (formData.paymentMethod === 'cash') {
-          // Deduct from available cash
           const newCash = availableCash - amount;
           await onUpdateCash(newCash);
           transaction.payment_method_name = 'Cash';
 
-          await logActivity(
-           'expense',
-           'cash',
-           'cash-expense',
-           'Cash',
-           `Cash expense: $${amount.toFixed(2)} - ${formData.description}`,
-  { amount, category: category?.name, description: formData.description }
-);
+          activityDetails = {
+            actionType: 'expense',
+            entityType: 'cash',
+            entityId: 'cash-expense',
+            entityName: 'Cash',
+            description: `Cash expense: $${amount.toFixed(2)} - ${formData.description}`,
+            snapshot: {
+              amount,
+              category: category?.name,
+              description: formData.description,
+              previousCash: availableCash,
+              newCash
+            }
+          };
         }
 
       } else if (formData.type === 'income') {
-        // Save transaction first
         transaction.payment_method = 'cash';
         transaction.payment_method_name = 'Cash';
         transaction.income_source = formData.incomeSource;
-        
-        await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
-      
-        // Add to available cash
+
         const newCash = availableCash + amount;
         await onUpdateCash(newCash);
-      
-        // Log activity AFTER transaction is saved
-        await logActivity(
-          'income',
-          'income',
-          transaction.id,
-          formData.incomeSource || 'Income',
-          `Income: $${amount.toFixed(2)} from ${formData.incomeSource || 'source'}`,
-          { 
-            amount, 
+
+        activityDetails = {
+          actionType: 'income',
+          entityType: 'income',
+          entityId: formData.incomeSource || 'income',
+          entityName: formData.incomeSource || 'Income',
+          description: `Income: $${amount.toFixed(2)} from ${formData.incomeSource || 'source'}`,
+          snapshot: {
+            amount,
             source: formData.incomeSource,
             previousCash: availableCash,
-            newCash: newCash
+            newCash
           }
-        );
-      
-        console.log('Income activity logged:', {
-          id: transaction.id,
-          source: formData.incomeSource,
-          amount
-        });
+        };
 
       } else if (formData.type === 'payment') {
-        // Payment to credit card or loan
         if (formData.paymentMethod === 'credit_card') {
           const card = creditCards.find(c => c.id === formData.paymentMethodId);
           if (!card) {
@@ -169,31 +170,33 @@ export default function AddTransaction({
             return;
           }
 
-          // Decrease card balance
+          const previousCardBalance = card.balance;
+
           await dbOperation('creditCards', 'put', {
             ...card,
             balance: Math.max(0, card.balance - amount)
           }, { skipActivityLog: true });
 
-          // Deduct from cash
           const newCash = availableCash - amount;
           await onUpdateCash(newCash);
 
           transaction.card_id = card.id;
           transaction.payment_method_name = card.name;
 
-          await logActivity(
-            'payment',
-            'card',
-            card.id,
-            card.name,
-            `Payment: $${amount.toFixed(2)} to ${card.name}`,
-            { 
-              entity: card,
+          activityDetails = {
+            actionType: 'payment',
+            entityType: 'card',
+            entityId: card.id,
+            entityName: card.name,
+            description: `Payment: $${amount.toFixed(2)} to ${card.name}`,
+            snapshot: {
+              entity: { ...card },
               previousCash: availableCash,
-              amount 
+              paymentAmount: amount,
+              date: formData.date,
+              previousBalance: previousCardBalance
             }
-          );
+          };
 
         } else if (formData.paymentMethod === 'loan') {
           const loan = loans.find(l => l.id === formData.paymentMethodId);
@@ -203,36 +206,52 @@ export default function AddTransaction({
             return;
           }
 
-          // Decrease loan balance
+          const previousLoanBalance = loan.balance;
+
           await dbOperation('loans', 'put', {
             ...loan,
             balance: Math.max(0, loan.balance - amount)
           }, { skipActivityLog: true });
 
-          // Deduct from cash
           const newCash = availableCash - amount;
           await onUpdateCash(newCash);
 
           transaction.loan_id = loan.id;
           transaction.payment_method_name = loan.name;
 
-          await logActivity(
-            'payment',
-            'loan',
-            loan.id,
-            loan.name,
-            `Payment: $${amount.toFixed(2)} to ${loan.name}`,
-            { 
-              entity: loan,
+          activityDetails = {
+            actionType: 'payment',
+            entityType: 'loan',
+            entityId: loan.id,
+            entityName: loan.name,
+            description: `Payment: $${amount.toFixed(2)} to ${loan.name}`,
+            snapshot: {
+              entity: { ...loan },
               previousCash: availableCash,
-              amount 
+              paymentAmount: amount,
+              date: formData.date,
+              previousBalance: previousLoanBalance
             }
-          );
+          };
         }
       }
 
-      // Save transaction
-      await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+      const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+
+      if (activityDetails) {
+        const snapshotWithTransaction = {
+          ...(activityDetails.snapshot || {}),
+          transactionId: savedTransaction?.id
+        };
+        await logActivity(
+          activityDetails.actionType,
+          activityDetails.entityType,
+          activityDetails.entityId,
+          activityDetails.entityName,
+          activityDetails.description,
+          snapshotWithTransaction
+        );
+      }
 
       await onUpdate();
       onClose();

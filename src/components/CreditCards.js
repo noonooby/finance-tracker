@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Edit2, X, CreditCard, ShoppingBag } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
@@ -13,7 +13,9 @@ export default function CreditCards({
   reservedFunds,
   alertSettings,
   onUpdate,
-  onUpdateCash
+  onUpdateCash,
+  focusTarget,
+  onClearFocus
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -34,6 +36,30 @@ export default function CreditCards({
     category: 'other' 
   });
   const [payingCard, setPayingCard] = useState(null);
+  const cardRefs = useRef({});
+
+  const normalizeId = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'object') {
+      if (value.id !== undefined) return String(value.id);
+      if (value.value !== undefined) return String(value.value);
+      return null;
+    }
+    return String(value);
+  };
+
+  useEffect(() => {
+    if (focusTarget?.type === 'card' && focusTarget.id) {
+      const key = String(normalizeId(focusTarget.id));
+      const node = cardRefs.current[key];
+      if (node?.scrollIntoView) {
+        node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      const timer = setTimeout(() => onClearFocus?.(), 4000);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [focusTarget, onClearFocus]);
 
   const handleAddExpense = (card) => {
     setSelectedCard(card);
@@ -47,7 +73,7 @@ export default function CreditCards({
     }
     
     const newCard = {
-      id: editingItem?.id ? { id: editingItem.id } : {},
+      id: editingItem?.id || generateId(),
       name: formData.name,
       balance: parseFloat(formData.balance) || 0,
       credit_limit: parseFloat(formData.creditLimit) || 0,
@@ -58,11 +84,12 @@ export default function CreditCards({
       created_at: editingItem?.created_at || new Date().toISOString()
     };
     
-    await dbOperation('creditCards', 'put', newCard);
+    const savedCard = await dbOperation('creditCards', 'put', newCard, { skipActivityLog: true });
+    const cardId = savedCard?.id || newCard.id;
     if (!editingItem) {
-      await logActivity('add', 'card', newCard.id, newCard.name, `Added card: ${newCard.name}`, null);
+      await logActivity('add', 'card', cardId, savedCard?.name || newCard.name, `Added card: ${savedCard?.name || newCard.name}`, null);
     } else {
-      await logActivity('edit', 'card', newCard.id, newCard.name, `Updated card: ${newCard.name}`, null);
+      await logActivity('edit', 'card', cardId, savedCard?.name || newCard.name, `Updated card: ${savedCard?.name || newCard.name}`, null);
     }
     await onUpdate();
     resetForm();
@@ -117,23 +144,34 @@ export default function CreditCards({
       payment_method: 'credit_card',
       category_id: paymentForm.category || 'credit_card_payment',
       category_name: 'Credit Card Payment',
-      type: 'credit_card_payment',
+      type: 'payment',
       description: `Payment for ${card.name}`,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      status: 'active',
+      undone_at: null
     };
-    await dbOperation('transactions', 'put', transaction);
+    const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
     
+    let affectedFundSnapshot = null;
+
     const linkedFund = reservedFunds.find(f => f.linked_to?.type === 'credit_card' && f.linked_to?.id === cardId);
     if (linkedFund) {
+      const linkedFundSnapshot = { ...linkedFund };
+      const linkedFundId = linkedFund.id || linkedFund.fund_id || linkedFund.uuid || null;
       const fundTransaction = {
-        fund_id: linkedFund.id,
-        fund_name: linkedFund.name,
+        type: 'reserved_fund_paid',
         amount: linkedFund.amount,
         date: paymentForm.date,
-        type: 'reserved_fund_paid',
-        created_at: new Date().toISOString()
+        description: `Reserved fund applied: ${linkedFund.name}`,
+        notes: `Reserved fund linked to ${card.name}`,
+        created_at: new Date().toISOString(),
+        status: 'active',
+        undone_at: null,
+        payment_method: 'reserved_fund',
+        payment_method_id: linkedFundId
       };
-      await dbOperation('transactions', 'put', fundTransaction);
+      await dbOperation('transactions', 'put', fundTransaction, { skipActivityLog: true });
+      affectedFundSnapshot = linkedFundSnapshot;
       
       if (linkedFund.recurring) {
         const { predictNextDate } = await import('../utils/helpers');
@@ -146,20 +184,41 @@ export default function CreditCards({
         await dbOperation('reservedFunds', 'delete', linkedFund.id);
       }
     }
-    
+
     const lumpsumFund = reservedFunds.find(f => 
       f.is_lumpsum && 
       f.linked_items?.some(item => item.type === 'credit_card' && item.id === cardId)
     );
     
     if (lumpsumFund && lumpsumFund.amount >= paymentAmount) {
+      const lumpsumSnapshot = { ...lumpsumFund };
       await dbOperation('reservedFunds', 'put', {
         ...lumpsumFund,
         amount: lumpsumFund.amount - paymentAmount
       });
+      if (!affectedFundSnapshot) {
+        affectedFundSnapshot = lumpsumSnapshot;
+      }
     }
     
     await onUpdateCash(availableCash - paymentAmount);
+
+    await logActivity(
+      'payment',
+      'card',
+      cardId,
+      card.name,
+      `Payment of ${formatCurrency(paymentAmount)} applied to ${card.name}`,
+      {
+        entity: { ...card },
+        paymentAmount,
+        date: paymentForm.date,
+        previousCash: availableCash,
+        affectedFund: affectedFundSnapshot,
+        transactionId: savedTransaction?.id
+      }
+    );
+
     await onUpdate();
     
     setPayingCard(null);
@@ -170,7 +229,7 @@ export default function CreditCards({
     if (window.confirm('Delete this credit card?')) {
       const card = creditCards.find(c => c.id === id);
       await logActivity('delete', 'card', id, card.name, `Deleted card: ${card.name}`, card);
-      await dbOperation('creditCards', 'delete', id);
+      await dbOperation('creditCards', 'delete', id, { skipActivityLog: true });
       await onUpdate();
     }
   };
@@ -296,7 +355,16 @@ export default function CreditCards({
           </div>
         ) : (
           creditCards.map(card => (
-            <div key={card.id} className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4`}>
+            <div
+              key={String(normalizeId(card.id))}
+              ref={(el) => {
+                const key = String(normalizeId(card.id));
+                if (el) {
+                  cardRefs.current[key] = el;
+                }
+              }}
+              className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${focusTarget?.type === 'card' && normalizeId(focusTarget.id) === normalizeId(card.id) ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
+            >
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <h3 className="font-bold text-lg">{card.name}</h3>

@@ -15,7 +15,8 @@ const ENTITY_TYPE_MAP = {
   creditCards: 'card',
   loans: 'loan',
   reservedFunds: 'fund',
-  income: 'income'
+  income: 'income',
+  transactions: 'transaction'
 };
 
 export const dbOperation = async (storeName, operation, data = null, logOptions = {}) => {
@@ -202,15 +203,32 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
         
         // Log activity
         if (deletedItem && !logOptions.skipActivityLog) {
-          const entityName = deletedItem.name || deletedItem.source || 'Item';
           const entityType = ENTITY_TYPE_MAP[storeName];
-          
+          let entityName = deletedItem.name || deletedItem.source || 'Item';
+          if (entityType === 'transaction') {
+            entityName = deletedItem.description ||
+              deletedItem.income_source ||
+              deletedItem.category_name ||
+              deletedItem.type ||
+              `Transaction ${deletedItem.id || ''}`.trim();
+          }
+          let amountText = '';
+          if (deletedItem.amount !== undefined && deletedItem.amount !== null && deletedItem.amount !== '') {
+            const numericAmount = Number(deletedItem.amount);
+            if (!Number.isNaN(numericAmount) && numericAmount !== 0) {
+              amountText = ` (${numericAmount.toFixed(2)})`;
+            }
+          }
+          const description = entityType === 'transaction'
+            ? `Deleted transaction: ${entityName}${amountText}`
+            : `Deleted ${entityType}: ${entityName}`;
+
           await logActivity(
             'delete',
             entityType,
             deletedItem.id,
             entityName,
-            `Deleted ${entityType}: ${entityName}`,
+            description,
             deletedItem
           );
         }
@@ -229,4 +247,27 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
 
 export const initDB = async () => {
   return Promise.resolve();
+};
+
+export const deleteAllUserData = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error('Not authenticated');
+  }
+
+  const tables = ['credit_cards', 'loans', 'reserved_funds', 'income', 'transactions', 'categories', 'activities'];
+
+  for (const table of tables) {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq('user_id', user.id);
+
+    if (error && error.code !== 'PGRST116') throw error;
+  }
+
+  await supabase
+    .from('settings')
+    .delete()
+    .eq('user_id', user.id);
 };

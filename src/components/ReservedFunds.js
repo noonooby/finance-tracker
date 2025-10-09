@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Edit2, X, Calendar, Copy } from 'lucide-react';
-import { formatCurrency, formatDate, getDaysUntil, generateId, predictNextDate } from '../utils/helpers';
+import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 
@@ -10,7 +10,9 @@ export default function ReservedFunds({
   creditCards,
   loans,
   totalReserved,
-  onUpdate
+  onUpdate,
+  focusTarget,
+  onClearFocus
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -25,6 +27,43 @@ export default function ReservedFunds({
     linkedItems: []
   });
 
+  const resolveFundId = (fund) => {
+    if (!fund) return null;
+    const rawId = typeof fund === 'object' ? fund.id ?? fund.fund_id ?? fund.uuid ?? null : fund;
+    if (!rawId) return null;
+    if (typeof rawId === 'string' || typeof rawId === 'number') return String(rawId);
+    if (typeof rawId === 'object') {
+      if (typeof rawId.id === 'string' || typeof rawId.id === 'number') return String(rawId.id);
+      if (typeof rawId.value === 'string' || typeof rawId.value === 'number') return String(rawId.value);
+    }
+    return null;
+  };
+
+  const normalizeId = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'object') {
+      if (value.id !== undefined) return String(value.id);
+      if (value.value !== undefined) return String(value.value);
+      return null;
+    }
+    return String(value);
+  };
+
+  const fundRefs = useRef({});
+
+  useEffect(() => {
+    if (focusTarget?.type === 'fund' && focusTarget.id) {
+      const key = String(normalizeId(focusTarget.id));
+      const node = fundRefs.current[key];
+      if (node?.scrollIntoView) {
+        node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      const timer = setTimeout(() => onClearFocus?.(), 4000);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [focusTarget, onClearFocus]);
+
   const handleAdd = async () => {
     if (!formData.name || !formData.amount || !formData.dueDate) {
       alert('Please fill in required fields: Name, Amount, and Due Date');
@@ -36,8 +75,7 @@ export default function ReservedFunds({
       return;
     }
     
-    const newFund = {
-      id: editingItem?.id ? { id: editingItem.id } : {},
+    const fundPayload = {
       name: formData.name,
       amount: parseFloat(formData.amount) || 0,
       original_amount: parseFloat(formData.amount) || 0,
@@ -48,12 +86,14 @@ export default function ReservedFunds({
       is_lumpsum: formData.isLumpsum,
       linked_items: formData.isLumpsum ? formData.linkedItems : []
     };
+    const existingId = resolveFundId(editingItem);
+    fundPayload.id = existingId || generateId();
     
-    await dbOperation('reservedFunds', 'put', newFund);
+    const savedFund = await dbOperation('reservedFunds', 'put', fundPayload, { skipActivityLog: true });
     if (!editingItem) {
-      await logActivity('add', 'fund', newFund.id, newFund.name, `Added fund: ${newFund.name} ($${newFund.amount})`, null);
+      await logActivity('add', 'fund', savedFund.id, savedFund.name, `Added fund: ${savedFund.name} ($${savedFund.amount})`, null);
     } else {
-      await logActivity('edit', 'fund', newFund.id, newFund.name, `Updated fund: ${newFund.name}`, null);
+      await logActivity('edit', 'fund', savedFund.id, savedFund.name, `Updated fund: ${savedFund.name}`, null);
     }
     await onUpdate();
     resetForm();
@@ -99,27 +139,33 @@ export default function ReservedFunds({
       isLumpsum: fund.is_lumpsum || false,
       linkedItems: fund.linked_items || []
     });
-    setEditingItem(fund);
+    setEditingItem({ ...fund, id: resolveFundId(fund) || fund.id });
     setShowAddForm(true);
   };
 
   const handleMarkPaid = async (fundId) => {
-    const fund = reservedFunds.find(f => f.id === fundId);
+    const fund = reservedFunds.find(f => resolveFundId(f) === fundId);
+    if (!fund) return;
+    const normalizedFund = { ...fund, id: fundId };
     
     const transaction = {
       type: 'reserved_fund_paid',
-      fund_id: fundId,
-      fund_name: fund.name,
       amount: fund.amount,
-      date: new Date().toISOString().split('T')[0]
+      date: new Date().toISOString().split('T')[0],
+      description: `Reserved fund paid: ${fund.name}`,
+      notes: `Auto-generated from reserved fund ${fund.name}`,
+      payment_method: 'reserved_fund',
+      payment_method_id: resolveFundId(fund),
+      status: 'active',
+      undone_at: null
     };
-    await dbOperation('transactions', 'put', transaction);
+    await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
     
     if (fund.recurring) {
       await dbOperation('reservedFunds', 'put', {
-        ...fund,
-        amount: fund.original_amount || fund.amount,
-        due_date: predictNextDate(fund.due_date, fund.frequency || 'monthly'),
+        ...normalizedFund,
+        amount: normalizedFund.original_amount || normalizedFund.amount,
+        due_date: predictNextDate(normalizedFund.due_date, normalizedFund.frequency || 'monthly'),
         last_paid_date: new Date().toISOString().split('T')[0]
       });
     } else {
@@ -131,10 +177,11 @@ export default function ReservedFunds({
 
   const handleDelete = async (id) => {
     if (window.confirm('Delete this reserved fund?')) {
-      const fund = reservedFunds.find(f => f.id === id);
+      const fund = reservedFunds.find(f => resolveFundId(f) === id);
+      if (!fund) return;
     
       await logActivity('delete', 'fund', id, fund.name, `Deleted fund: ${fund.name}`, fund);
-      await dbOperation('reservedFunds', 'delete', id);
+      await dbOperation('reservedFunds', 'delete', id, { skipActivityLog: true });
       await onUpdate();
     }
   };
@@ -341,9 +388,19 @@ export default function ReservedFunds({
             <p>No reserved funds yet</p>
           </div>
         ) : (
-          reservedFunds.map(fund => (
-            <div key={fund.id} className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4`}>
-              <div className="flex justify-between items-start mb-3">
+          reservedFunds.map((fund, index) => {
+                const resolvedId = resolveFundId(fund) || `${fund.name || 'fund'}-${fund.due_date || index}-${index}`;
+                const fundKey = String(normalizeId(resolvedId));
+                const isHighlighted = focusTarget?.type === 'fund' && normalizeId(focusTarget.id) === normalizeId(resolvedId);
+                return (
+                <div
+                  key={fundKey}
+                  ref={(el) => {
+                    if (el) fundRefs.current[fundKey] = el;
+                  }}
+                  className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${isHighlighted ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
+                >
+                <div className="flex justify-between items-start mb-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold">{fund.name}</h3>
@@ -390,7 +447,7 @@ export default function ReservedFunds({
                     <Edit2 size={18} />
                   </button>
                   <button
-                    onClick={() => handleDelete(fund.id)}
+                    onClick={() => handleDelete(resolvedId)}
                     className={`p-2 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded`}
                   >
                     <X size={18} />
@@ -412,14 +469,15 @@ export default function ReservedFunds({
 
               {!fund.linked_to && !fund.is_lumpsum && (
                 <button
-                  onClick={() => handleMarkPaid(fund.id)}
+                  onClick={() => handleMarkPaid(resolvedId)}
                   className="w-full bg-green-600 text-white py-2 rounded-lg font-medium"
                 >
                   Mark as Paid
                 </button>
               )}
             </div>
-          ))
+          );
+          })
         )}
       </div>
     </div>

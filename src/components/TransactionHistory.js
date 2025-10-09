@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, DollarSign, TrendingUp, TrendingDown, Trash2, Plus } from 'lucide-react';
+import { Search, DollarSign, TrendingUp, TrendingDown, Trash2 } from 'lucide-react';
 import { dbOperation } from '../utils/db';
+import { logActivity } from '../utils/activityLogger';
 import AddTransaction from './AddTransaction';
 
 export default function TransactionHistory({
@@ -11,12 +12,13 @@ export default function TransactionHistory({
   reservedFunds,
   availableCash,
   onUpdate,
-  onUpdateCash
+  onUpdateCash,
+  showAddModal,
+  onCloseAddModal
 }) {
   const [transactions, setTransactions] = useState([]);
   const [filteredTransactions, setFilteredTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
   
   const [filters, setFilters] = useState({
     search: '',
@@ -27,9 +29,17 @@ export default function TransactionHistory({
     paymentMethod: 'all'
   });
 
-  useEffect(() => {
-    loadTransactions();
-  }, []);
+  const isPaymentType = (type) =>
+    type === 'payment' || type === 'loan_payment' || type === 'credit_card_payment';
+
+  const resolvePaymentSubtype = (transaction) => {
+    if (transaction.subtype) return transaction.subtype;
+    if (transaction.type === 'credit_card_payment') return 'credit_card';
+    if (transaction.type === 'loan_payment') return 'loan';
+    if (transaction.payment_method === 'credit_card') return 'credit_card';
+    if (transaction.payment_method === 'loan') return 'loan';
+    return null;
+  };
 
   const applyFilters = useCallback(() => {
     let filtered = [...transactions];
@@ -45,7 +55,12 @@ export default function TransactionHistory({
     }
 
     if (filters.type !== 'all') {
-      filtered = filtered.filter(t => t.type === filters.type);
+      filtered = filtered.filter(t => {
+        if (filters.type === 'payment') {
+          return isPaymentType(t.type);
+        }
+        return t.type === filters.type;
+      });
     }
 
     if (filters.category !== 'all') {
@@ -70,7 +85,7 @@ export default function TransactionHistory({
     applyFilters();
   }, [applyFilters]);
 
-  const loadTransactions = async () => {
+  const loadTransactions = useCallback(async () => {
     try {
       const data = await dbOperation('transactions', 'getAll');
       setTransactions(data || []);
@@ -79,12 +94,150 @@ export default function TransactionHistory({
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
+
+  const handleModalClose = useCallback(async () => {
+    if (onCloseAddModal) onCloseAddModal();
+    await loadTransactions();
+  }, [onCloseAddModal, loadTransactions]);
+
+  const revertTransactionEffects = useCallback(async (transaction) => {
+    if (!transaction || transaction.status === 'undone') return;
+
+    const amount = Number(transaction.amount) || 0;
+    if (amount <= 0) return;
+
+    let cashDelta = 0;
+
+    const normalizeBalance = (value) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const updateCardBalance = async (cardId, delta) => {
+      if (!cardId) return;
+      let card = creditCards.find(c => c.id === cardId);
+      if (!card) {
+        try {
+          card = await dbOperation('creditCards', 'get', cardId);
+        } catch (cardError) {
+          console.warn('Unable to load card for transaction reversal', cardError);
+        }
+      }
+      if (!card) return;
+      const currentBalance = normalizeBalance(card.balance);
+      const newBalance = Math.max(0, currentBalance + delta);
+      await dbOperation('creditCards', 'put', { ...card, balance: newBalance }, { skipActivityLog: true });
+    };
+
+    const updateLoanBalance = async (loanId, delta) => {
+      if (!loanId) return;
+      let loan = loans.find(l => l.id === loanId);
+      if (!loan) {
+        try {
+          loan = await dbOperation('loans', 'get', loanId);
+        } catch (loanError) {
+          console.warn('Unable to load loan for transaction reversal', loanError);
+        }
+      }
+      if (!loan) return;
+      const currentBalance = normalizeBalance(loan.balance);
+      const newBalance = currentBalance + delta;
+      await dbOperation('loans', 'put', { ...loan, balance: newBalance }, { skipActivityLog: true });
+    };
+
+    if (transaction.type === 'income') {
+      cashDelta -= amount;
+    } else if (transaction.type === 'expense') {
+      if (transaction.payment_method === 'cash') {
+        cashDelta += amount;
+      } else if (transaction.payment_method === 'credit_card') {
+        const cardId = transaction.card_id || transaction.payment_method_id;
+        await updateCardBalance(cardId, -amount);
+      }
+    } else if (isPaymentType(transaction.type)) {
+      const paymentSubtype = resolvePaymentSubtype(transaction);
+      if (paymentSubtype === 'credit_card') {
+        const cardId = transaction.card_id || transaction.payment_method_id;
+        await updateCardBalance(cardId, amount);
+        cashDelta += amount;
+      } else if (paymentSubtype === 'loan') {
+        const loanId = transaction.loan_id || transaction.payment_method_id;
+        await updateLoanBalance(loanId, amount);
+        cashDelta += amount;
+      } else if (transaction.payment_method === 'cash') {
+        cashDelta += amount;
+      }
+    } else {
+      // For other transaction types, fall back to payment method metadata if available
+      if (transaction.payment_method === 'cash') {
+        cashDelta += amount;
+      } else if (transaction.payment_method === 'credit_card') {
+        const cardId = transaction.card_id || transaction.payment_method_id;
+        await updateCardBalance(cardId, -amount);
+      } else if (transaction.payment_method === 'loan') {
+        const loanId = transaction.loan_id || transaction.payment_method_id;
+        await updateLoanBalance(loanId, amount);
+        cashDelta += amount;
+      }
+    }
+
+    if (cashDelta !== 0) {
+      let currentCash = Number(availableCash) || 0;
+      try {
+        const currentCashSetting = await dbOperation('settings', 'get', 'availableCash');
+        if (currentCashSetting && currentCashSetting.value !== undefined) {
+          currentCash = Number(currentCashSetting.value) || currentCash;
+        }
+      } catch (cashError) {
+        console.warn('Unable to fetch current cash balance, falling back to local value.', cashError);
+      }
+      const newCash = currentCash + cashDelta;
+      await onUpdateCash(newCash);
+    }
+  }, [availableCash, creditCards, loans, onUpdateCash]);
 
   const handleDelete = async (transaction) => {
     if (!window.confirm('Are you sure you want to delete this transaction?')) return;
 
     try {
+      const previousCash = availableCash;
+      const transactionSnapshot = {
+        ...transaction,
+        status: 'active',
+        undone_at: null
+      };
+      await revertTransactionEffects(transaction);
+
+      if (transaction.type === 'income' && transaction.payment_method_id) {
+        const incomeId = transaction.payment_method_id;
+        try {
+          const incomeRecord = await dbOperation('income', 'get', incomeId);
+          if (incomeRecord) {
+            const snapshot = {
+              ...incomeRecord,
+              previousCash,
+              linkedTransactions: [transactionSnapshot]
+            };
+            await dbOperation('income', 'delete', incomeId, { skipActivityLog: true });
+            await logActivity(
+              'delete',
+              'income',
+              incomeId,
+              incomeRecord.source || 'Income',
+              `Deleted income via transaction removal: ${incomeRecord.source || 'Income'}`,
+              snapshot
+            );
+          }
+        } catch (incomeError) {
+          console.warn('Unable to remove linked income entry for transaction:', incomeError);
+        }
+      }
+
       await dbOperation('transactions', 'delete', transaction.id);
       await onUpdate();
       await loadTransactions();
@@ -108,19 +261,31 @@ export default function TransactionHistory({
 
   const getTypeIcon = (type) => {
     switch (type) {
-      case 'income': return <TrendingUp className="text-green-600" size={20} />;
-      case 'expense': return <TrendingDown className="text-red-600" size={20} />;
-      case 'payment': return <DollarSign className="text-blue-600" size={20} />;
-      default: return <DollarSign className="text-gray-600" size={20} />;
+      case 'income':
+        return <TrendingUp className="text-green-600" size={20} />;
+      case 'expense':
+        return <TrendingDown className="text-red-600" size={20} />;
+      case 'payment':
+      case 'loan_payment':
+      case 'credit_card_payment':
+        return <DollarSign className="text-blue-600" size={20} />;
+      default:
+        return <DollarSign className="text-gray-600" size={20} />;
     }
   };
 
   const getTypeColor = (type) => {
     switch (type) {
-      case 'income': return 'text-green-600 bg-green-50';
-      case 'expense': return 'text-red-600 bg-red-50';
-      case 'payment': return 'text-blue-600 bg-blue-50';
-      default: return 'text-gray-600 bg-gray-50';
+      case 'income':
+        return 'text-green-600 bg-green-50';
+      case 'expense':
+        return 'text-red-600 bg-red-50';
+      case 'payment':
+      case 'loan_payment':
+      case 'credit_card_payment':
+        return 'text-blue-600 bg-blue-50';
+      default:
+        return 'text-gray-600 bg-gray-50';
     }
   };
 
@@ -132,7 +297,15 @@ export default function TransactionHistory({
     };
 
     filteredTransactions.forEach(t => {
-      totals[t.type] += t.amount;
+      if (t.status === 'undone') return;
+      const amount = Number(t.amount) || 0;
+      if (t.type === 'income') {
+        totals.income += amount;
+      } else if (t.type === 'expense') {
+        totals.expense += amount;
+      } else if (isPaymentType(t.type)) {
+        totals.payment += amount;
+      }
     });
 
     return totals;
@@ -153,10 +326,7 @@ export default function TransactionHistory({
       {showAddModal && (
         <AddTransaction
           darkMode={darkMode}
-          onClose={() => {
-            setShowAddModal(false);
-            loadTransactions();
-          }}
+          onClose={handleModalClose}
           onUpdate={async () => {
             await onUpdate();
             await loadTransactions();
@@ -170,16 +340,7 @@ export default function TransactionHistory({
         />
       )}
 
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Transactions</h2>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Plus size={20} />
-          Add Transaction
-        </button>
-      </div>
+      <h2 className="text-2xl font-bold">Transactions</h2>
 
       <div className="grid grid-cols-3 gap-4">
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4`}>
@@ -275,10 +436,12 @@ export default function TransactionHistory({
             <p className="text-gray-500">No transactions found</p>
           </div>
         ) : (
-          filteredTransactions.map((transaction) => (
+          filteredTransactions.map((transaction) => {
+            const isUndone = transaction.status === 'undone';
+            return (
             <div
               key={transaction.id}
-              className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-4 hover:shadow-md transition-shadow`}
+              className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-4 hover:shadow-md transition-shadow ${isUndone ? 'opacity-75' : ''}`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3 flex-1">
@@ -288,7 +451,7 @@ export default function TransactionHistory({
                   
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold">
+                      <h3 className={`font-semibold ${isUndone ? 'line-through text-gray-400' : ''}`}>
                         {transaction.description || transaction.income_source || 'Transaction'}
                       </h3>
                       {transaction.category_name && (
@@ -296,9 +459,14 @@ export default function TransactionHistory({
                           {transaction.category_name}
                         </span>
                       )}
+                      {isUndone && (
+                        <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">
+                          Undone
+                        </span>
+                      )}
                     </div>
                     
-                    <div className="flex items-center gap-3 text-sm text-gray-500">
+                    <div className={`flex items-center gap-3 text-sm ${isUndone ? 'text-gray-400 line-through' : 'text-gray-500'}`}>
                       <span>{formatDate(transaction.date)}</span>
                       {transaction.payment_method_name && (
                         <>
@@ -309,7 +477,7 @@ export default function TransactionHistory({
                     </div>
                     
                     {transaction.notes && (
-                      <p className="text-sm text-gray-500 mt-1">{transaction.notes}</p>
+                      <p className={`text-sm mt-1 ${isUndone ? 'text-gray-400 line-through' : 'text-gray-500'}`}>{transaction.notes}</p>
                     )}
                   </div>
                 </div>
@@ -319,7 +487,7 @@ export default function TransactionHistory({
                     transaction.type === 'income' ? 'text-green-600' : 
                     transaction.type === 'expense' ? 'text-red-600' : 
                     'text-blue-600'
-                  }`}>
+                  } ${isUndone ? 'line-through text-gray-400' : ''}`}>
                     {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
                   </p>
                   
@@ -333,7 +501,8 @@ export default function TransactionHistory({
                 </div>
               </div>
             </div>
-          ))
+          );
+        })
         )}
       </div>
     </div>
