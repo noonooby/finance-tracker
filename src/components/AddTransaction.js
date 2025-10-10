@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, CreditCard, Wallet, TrendingUp} from 'lucide-react';
+import { X, CreditCard, Wallet, TrendingUp } from 'lucide-react';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
+import SmartInput from './SmartInput';
 
 export default function AddTransaction({ 
   darkMode, 
@@ -368,21 +369,19 @@ export default function AddTransaction({
             />
           </div>
 
-          {/* Description */}
+          {/* Description/Source with Smart Input */}
           <div>
-            <label className="block text-sm font-medium mb-2">
-              {formData.type === 'income' ? 'Source' : 'Description'} *
-            </label>
-            <input
-              type="text"
+            <SmartInput
+              type="description"
               value={formData.type === 'income' ? formData.incomeSource : formData.description}
-              onChange={(e) => setFormData({ 
-                ...formData, 
-                [formData.type === 'income' ? 'incomeSource' : 'description']: e.target.value 
+              onChange={(value) => setFormData({
+                ...formData,
+                [formData.type === 'income' ? 'incomeSource' : 'description']: value
               })}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              label={formData.type === 'income' ? 'Source *' : 'Description *'}
               placeholder={formData.type === 'income' ? 'Salary, Freelance, etc.' : 'Coffee, Gas, etc.'}
-              required
+              darkMode={darkMode}
+              required={true}
             />
           </div>
 

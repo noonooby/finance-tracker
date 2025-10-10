@@ -3,6 +3,7 @@ import { Plus, DollarSign, Edit2, X } from 'lucide-react';
 import { formatCurrency, formatDate, predictNextDate, getDaysUntil, generateId } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
+import SmartInput from './SmartInput';
 export default function Income({ 
   darkMode, 
   income,
@@ -234,12 +235,14 @@ export default function Income({
 
       {showAddForm && (
         <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
-          <input
-            type="text"
-            placeholder="Source (e.g., Salary, Bonus) *"
+          <SmartInput
+            type="income_source"
             value={formData.source}
-            onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-            className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+            onChange={(value) => setFormData({ ...formData, source: value })}
+            label="Source *"
+            placeholder="e.g., Salary, Bonus, Freelance"
+            darkMode={darkMode}
+            required={true}
           />
           <input
             type="number"

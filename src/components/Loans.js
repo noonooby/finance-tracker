@@ -3,6 +3,7 @@ import { Plus, Edit2, X, TrendingUp } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
+import SmartInput from './SmartInput';
 
 export default function Loans({ 
   darkMode, 
@@ -252,12 +253,14 @@ export default function Loans({
 
       {showAddForm && (
         <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
-          <input
-            type="text"
-            placeholder="Loan Name *"
+          <SmartInput
+            type="loan"
             value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+            onChange={(value) => setFormData({ ...formData, name: value })}
+            label="Loan Name *"
+            placeholder="e.g., Car Loan, Student Loan"
+            darkMode={darkMode}
+            required={true}
           />
           <input
             type="number"

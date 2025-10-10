@@ -4,6 +4,7 @@ import { formatCurrency, formatDate, getDaysUntil, generateId } from '../utils/h
 import { dbOperation } from '../utils/db';
 import AddTransaction from './AddTransaction';
 import { logActivity } from '../utils/activityLogger';
+import SmartInput from './SmartInput';
 
 export default function CreditCards({ 
   darkMode, 
@@ -274,12 +275,14 @@ export default function CreditCards({
 
       {showAddForm && (
         <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
-          <input
-            type="text"
-            placeholder="Card Name (e.g., Rogers Mastercard) *"
+          <SmartInput
+            type="card"
             value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+            onChange={(value) => setFormData({ ...formData, name: value })}
+            label="Card Name *"
+            placeholder="e.g., Rogers Mastercard"
+            darkMode={darkMode}
+            required={true}
           />
           <input
             type="number"
