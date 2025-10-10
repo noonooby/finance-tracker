@@ -69,8 +69,45 @@ export const undoActivity = async (activity, onUpdate) => {
 
     switch (action_type) {
       case 'add':
-        // Undo add = delete the newly created item
-        await dbOperation(getStoreNameFromEntityType(entity_type), 'delete', entity_id, { skipActivityLog: true });
+        if (entity_type === 'card' && snapshot?.isGiftCard) {
+          await dbOperation('creditCards', 'delete', entity_id, { skipActivityLog: true });
+
+          if (snapshot.amount) {
+            const amount = Number(snapshot.amount) || 0;
+
+            if (snapshot.paymentMethod === 'Cash') {
+              const cashSetting = await dbOperation('settings', 'get', 'availableCash');
+              const currentCash = Number(cashSetting?.value) || 0;
+              await dbOperation('settings', 'put', {
+                key: 'availableCash',
+                value: currentCash + amount
+              });
+            } else if (snapshot.paymentMethodId) {
+              try {
+                const paymentCard = await dbOperation('creditCards', 'get', snapshot.paymentMethodId);
+                if (paymentCard) {
+                  const currentBalance = Number(paymentCard.balance) || 0;
+                  const newBalance = paymentCard.is_gift_card
+                    ? currentBalance + amount
+                    : currentBalance - amount;
+
+                  await dbOperation('creditCards', 'put', {
+                    ...paymentCard,
+                    balance: Math.max(0, newBalance)
+                  }, { skipActivityLog: true });
+                }
+              } catch (error) {
+                console.error('Error refunding payment card:', error);
+              }
+            }
+          }
+
+          if (snapshot.transactionId) {
+            await markTransactionUndone(snapshot.transactionId);
+          }
+        } else {
+          await dbOperation(getStoreNameFromEntityType(entity_type), 'delete', entity_id, { skipActivityLog: true });
+        }
         break;
 
       case 'edit':

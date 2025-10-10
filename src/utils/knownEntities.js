@@ -233,10 +233,10 @@ export const fetchAllKnownEntities = async () => {
     // Group by type
     const grouped = {};
     (data || []).forEach(entity => {
-      if (!grouped[entity.entity_type]) {
-        grouped[entity.entity_type] = [];
+      if (!grouped[entity.type]) {
+        grouped[entity.type] = [];
       }
-      grouped[entity.entity_type].push(entity);
+      grouped[entity.type].push(entity);
     });
 
     return grouped;

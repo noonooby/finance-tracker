@@ -219,7 +219,7 @@ export default function Settings({ darkMode, onUpdate, onReloadCategories }) {
                       }`}
                     >
                       <div className="flex-1">
-                        <span className="font-medium">{entity.entity_value}</span>
+                        <span className="font-medium">{entity.name}</span>
                         <span className={`text-sm ml-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                           (used {entity.usage_count} {entity.usage_count === 1 ? 'time' : 'times'})
                         </span>

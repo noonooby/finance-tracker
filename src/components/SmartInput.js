@@ -37,6 +37,7 @@ export default function SmartInput({
   const dropdownRef = useRef(null);
   const debounceTimerRef = useRef(null);
   const lastSavedValueRef = useRef('');
+  const saveTimeoutRef = useRef(null);
 
   // Load suggestions when input changes
   useEffect(() => {
@@ -150,22 +151,32 @@ export default function SmartInput({
     }
   };
 
-  const handleBlur = async () => {
-    // Small delay to allow click events on suggestions to fire first
-    setTimeout(async () => {
-      const trimmedValue = value ? value.trim() : '';
-      if (trimmedValue && trimmedValue !== lastSavedValueRef.current) {
-        await upsertKnownEntity(type, trimmedValue);
-        lastSavedValueRef.current = trimmedValue;
-      }
+  const handleBlur = () => {
+    // Allow suggestion clicks to register before closing dropdown
+    setTimeout(() => {
+      setShowSuggestions(false);
     }, 200);
   };
 
   useEffect(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    if (value && value.trim().length >= 3) {
+      saveTimeoutRef.current = setTimeout(async () => {
+        const trimmedValue = value.trim();
+        if (trimmedValue !== lastSavedValueRef.current) {
+          console.log('💾 Auto-saving after pause:', trimmedValue);
+          await upsertKnownEntity(type, trimmedValue);
+          lastSavedValueRef.current = trimmedValue;
+        }
+      }, 3000);
+    }
+
     return () => {
-      const trimmedValue = value ? value.trim() : '';
-      if (trimmedValue && trimmedValue !== lastSavedValueRef.current) {
-        upsertKnownEntity(type, trimmedValue);
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
       }
     };
   }, [value, type]);
