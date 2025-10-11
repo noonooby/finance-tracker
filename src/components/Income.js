@@ -4,6 +4,7 @@ import { formatCurrency, formatDate, predictNextDate, getDaysUntil, generateId }
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import SmartInput from './SmartInput';
+import { autoDepositDueIncome } from '../utils/autoPay';
 export default function Income({ 
   darkMode, 
   income,
@@ -20,9 +21,13 @@ export default function Income({
     amount: '',
     date: new Date().toISOString().split('T')[0],
     frequency: 'biweekly',
-    reservedAmount: ''
+    reservedAmount: '',
+    recurringDurationType: 'indefinite',
+    recurringUntilDate: '',
+    recurringOccurrences: ''
   });
   const incomeRefs = useRef({});
+  const [predictionCount, setPredictionCount] = useState(8);
 
   const normalizeId = (value) => {
     if (value === null || value === undefined) return null;
@@ -52,6 +57,20 @@ export default function Income({
       alert('Please fill in required fields: Source, Amount, and Date');
       return;
     }
+
+    if (formData.frequency !== 'onetime') {
+      if (formData.recurringDurationType === 'until_date' && !formData.recurringUntilDate) {
+        alert('Please specify the end date for recurring income');
+        return;
+      }
+      if (
+        formData.recurringDurationType === 'occurrences' &&
+        (!formData.recurringOccurrences || parseInt(formData.recurringOccurrences, 10) < 1)
+      ) {
+        alert('Please specify the number of times this income will occur');
+        return;
+      }
+    }
     
     const isEditing = !!editingItem;
     const newAmount = parseFloat(formData.amount) || 0;
@@ -62,6 +81,13 @@ export default function Income({
       amount: newAmount,
       date: formData.date,
       frequency: formData.frequency,
+      recurring_duration_type: formData.frequency === 'onetime' ? null : formData.recurringDurationType,
+      recurring_until_date: formData.recurringDurationType === 'until_date' ? formData.recurringUntilDate : null,
+      recurring_occurrences_total:
+        formData.recurringDurationType === 'occurrences'
+          ? parseInt(formData.recurringOccurrences, 10) || null
+          : null,
+      recurring_occurrences_completed: editingItem?.recurring_occurrences_completed || 0
     };
     
     const savedIncome = await dbOperation('income', 'put', incomeEntry, { skipActivityLog: true });
@@ -119,7 +145,10 @@ export default function Income({
       amount: inc.amount.toString(),
       date: inc.date,
       frequency: inc.frequency,
-      reservedAmount: ''
+      reservedAmount: '',
+      recurringDurationType: inc.recurring_duration_type || 'indefinite',
+      recurringUntilDate: inc.recurring_until_date || '',
+      recurringOccurrences: inc.recurring_occurrences_total?.toString() || ''
     });
     setEditingItem(inc);
     setShowAddForm(true);
@@ -182,34 +211,88 @@ export default function Income({
       amount: '',
       date: new Date().toISOString().split('T')[0],
       frequency: 'biweekly',
-      reservedAmount: ''
+      reservedAmount: '',
+      recurringDurationType: 'indefinite',
+      recurringUntilDate: '',
+      recurringOccurrences: ''
     });
     setShowAddForm(false);
     setEditingItem(null);
   };
 
+  useEffect(() => {
+    const checkAndDepositIncome = async () => {
+      try {
+        const results = await autoDepositDueIncome(income, availableCash, onUpdateCash);
+        if (results.deposited.length > 0) {
+          console.log('🎉 Auto-deposited income:', results.deposited);
+          if (onUpdate) {
+            await onUpdate();
+          }
+        }
+      } catch (error) {
+        console.error('Error in auto-deposit check:', error);
+      }
+    };
+
+    if (income.length > 0) {
+      checkAndDepositIncome();
+    }
+  }, [income.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const getPredictedIncome = () => {
     if (income.length === 0) return [];
     
-    const sortedIncome = [...income].sort((a, b) => new Date(b.date) - new Date(a.date));
-    const lastIncome = sortedIncome[0];
+    const recurringIncomes = income.filter(inc =>
+      inc.frequency && inc.frequency !== 'onetime'
+    );
+
+    if (recurringIncomes.length === 0) return [];
+
+    const allPredictions = [];
+    recurringIncomes.forEach(inc => {
+      let currentDate = inc.date;
+      const generateCount = Math.max(predictionCount * 2, 20);
+      const totalOccurrences = inc.recurring_occurrences_total || null;
+      const completedOccurrences = inc.recurring_occurrences_completed || 0;
+      const remainingOccurrences = totalOccurrences ? Math.max(totalOccurrences - completedOccurrences, 0) : null;
+      let futureCount = 0;
+
+      for (let i = 0; i < generateCount; i++) {
+        currentDate = predictNextDate(currentDate, inc.frequency);
+        const daysUntil = getDaysUntil(currentDate);
+
+        if (daysUntil >= 0) {
+          futureCount += 1;
+
+          if (remainingOccurrences !== null && futureCount > remainingOccurrences) {
+            break;
+          }
+
+          if (inc.recurring_duration_type === 'until_date' && inc.recurring_until_date) {
+            const endDate = new Date(inc.recurring_until_date);
+            const predictionDate = new Date(currentDate);
+            if (predictionDate > endDate) {
+              break;
+            }
+          }
+
+          allPredictions.push({
+            date: currentDate,
+            amount: Number(inc.amount) || 0,
+            source: inc.source,
+            frequency: inc.frequency,
+            days: daysUntil,
+            sortDate: new Date(currentDate).getTime(),
+            incomeId: inc.id
+          });
+        }
+      }
+    });
     
-    if (!lastIncome.frequency || lastIncome.frequency === 'onetime') return [];
+    allPredictions.sort((a, b) => a.sortDate - b.sortDate);
     
-    const predictions = [];
-    let currentDate = lastIncome.date;
-    
-    for (let i = 0; i < 5; i++) {
-      currentDate = predictNextDate(currentDate, lastIncome.frequency);
-      predictions.push({
-        date: currentDate,
-        amount: lastIncome.amount,
-        source: lastIncome.source,
-        days: getDaysUntil(currentDate)
-      });
-    }
-    
-    return predictions;
+    return allPredictions.slice(0, predictionCount);
   };
 
   const predictedIncome = getPredictedIncome();
@@ -274,6 +357,68 @@ export default function Income({
               <option value="onetime">One-time</option>
             </select>
           </div>
+          {formData.frequency !== 'onetime' && (
+            <>
+              <div>
+                <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Recurring Duration
+                </label>
+                <select
+                  value={formData.recurringDurationType}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      recurringDurationType: e.target.value,
+                      recurringUntilDate: '',
+                      recurringOccurrences: ''
+                    })
+                  }
+                  className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                >
+                  <option value="indefinite">Indefinite (continues forever)</option>
+                  <option value="until_date">Until specific date</option>
+                  <option value="occurrences">For specific number of times</option>
+                </select>
+              </div>
+
+              {formData.recurringDurationType === 'until_date' && (
+                <div>
+                  <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    End Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.recurringUntilDate}
+                    onChange={(e) => setFormData({ ...formData, recurringUntilDate: e.target.value })}
+                    className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+              )}
+
+              {formData.recurringDurationType === 'occurrences' && (
+                <div>
+                  <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    Number of Times *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="e.g., 12 for 12 months"
+                    value={formData.recurringOccurrences}
+                    onChange={(e) => setFormData({ ...formData, recurringOccurrences: e.target.value })}
+                    className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                  />
+                  {editingItem && editingItem.recurring_occurrences_completed > 0 && (
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Completed: {editingItem.recurring_occurrences_completed} of{' '}
+                      {editingItem.recurring_occurrences_total || formData.recurringOccurrences || '?'}
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
           {!editingItem && (
             <input
               type="number"
@@ -300,17 +445,46 @@ export default function Income({
 
       {predictedIncome.length > 0 && (
         <div className={`${darkMode ? 'bg-blue-900 border-blue-700' : 'bg-blue-50 border-blue-200'} border rounded-lg p-4`}>
-          <h3 className={`font-semibold mb-3 ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>Predicted Income (Next 5)</h3>
+          <div className="flex justify-between items-center mb-3">
+            <h3 className={`font-semibold ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>
+              Predicted Income
+            </h3>
+            <div className="flex items-center gap-2">
+              <label className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                Show next:
+              </label>
+              <select
+                value={predictionCount}
+                onChange={(e) => setPredictionCount(parseInt(e.target.value, 10))}
+                className={`px-2 py-1 text-sm rounded border ${
+                  darkMode 
+                    ? 'bg-blue-800 border-blue-600 text-blue-200' 
+                    : 'bg-white border-blue-300 text-blue-900'
+                }`}
+              >
+                <option value="5">5</option>
+                <option value="8">8</option>
+                <option value="10">10</option>
+                <option value="15">15</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+              </select>
+            </div>
+          </div>
           <div className="space-y-2">
             {predictedIncome.map((pred, idx) => (
               <div key={idx} className={`flex justify-between items-center text-sm ${darkMode ? 'text-blue-100' : 'text-blue-900'}`}>
                 <div>
                   <div className="font-medium">{pred.source}</div>
-                  <div className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>{formatDate(pred.date)}</div>
+                  <div className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
+                    {formatDate(pred.date)} • {pred.frequency}
+                  </div>
                 </div>
                 <div className="text-right">
                   <div className="font-semibold">{formatCurrency(pred.amount)}</div>
-                  <div className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>{pred.days} days</div>
+                  <div className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
+                    {pred.days === 0 ? 'Due today' : pred.days === 1 ? 'Tomorrow' : `${pred.days} days`}
+                  </div>
                 </div>
               </div>
             ))}
@@ -339,8 +513,28 @@ export default function Income({
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="font-bold">{inc.source}</h3>
-                  <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} capitalize`}>{inc.frequency}</div>
-                  <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1`}>{formatDate(inc.date)}</div>
+                  <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    <span className="capitalize">{inc.frequency}</span>
+                    {inc.frequency !== 'onetime' && inc.recurring_duration_type && (
+                      <span className="ml-2">
+                        {inc.recurring_duration_type === 'until_date' && inc.recurring_until_date && (
+                          <>• Until {formatDate(inc.recurring_until_date)}</>
+                        )}
+                        {inc.recurring_duration_type === 'occurrences' && inc.recurring_occurrences_total && (
+                          <>
+                            • {inc.recurring_occurrences_completed || 0}/{inc.recurring_occurrences_total} times
+                          </>
+                        )}
+                        {inc.recurring_duration_type === 'indefinite' && <>• Indefinite</>}
+                      </span>
+                    )}
+                  </div>
+                  <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1`}>
+                    {formatDate(inc.date)}
+                    {getDaysUntil(inc.date) === 0 && (
+                      <span className="ml-2 text-green-600 font-medium">• Received today</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">

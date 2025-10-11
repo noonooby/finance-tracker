@@ -24,7 +24,10 @@ export default function ReservedFunds({
     frequency: 'monthly',
     linkedTo: null,
     isLumpsum: false,
-    linkedItems: []
+    linkedItems: [],
+    recurringDurationType: 'indefinite',
+    recurringUntilDate: '',
+    recurringOccurrences: ''
   });
 
   const resolveFundId = (fund) => {
@@ -70,6 +73,20 @@ export default function ReservedFunds({
       return;
     }
 
+    if (formData.recurring) {
+      if (formData.recurringDurationType === 'until_date' && !formData.recurringUntilDate) {
+        alert('Please specify the end date for this recurring fund');
+        return;
+      }
+      if (
+        formData.recurringDurationType === 'occurrences' &&
+        (!formData.recurringOccurrences || parseInt(formData.recurringOccurrences, 10) < 1)
+      ) {
+        alert('Please specify the number of times this fund will recur');
+        return;
+      }
+    }
+
     if (formData.isLumpsum && formData.linkedItems.length === 0) {
       alert('Lumpsum must be linked to at least one loan/card');
       return;
@@ -78,13 +95,21 @@ export default function ReservedFunds({
     const fundPayload = {
       name: formData.name,
       amount: parseFloat(formData.amount) || 0,
-      original_amount: parseFloat(formData.amount) || 0,
+      original_amount: editingItem?.original_amount || (parseFloat(formData.amount) || 0),
       due_date: formData.dueDate,
       recurring: formData.recurring,
       frequency: formData.frequency,
       linked_to: formData.isLumpsum ? null : formData.linkedTo,
       is_lumpsum: formData.isLumpsum,
-      linked_items: formData.isLumpsum ? formData.linkedItems : []
+      linked_items: formData.isLumpsum ? formData.linkedItems : [],
+      recurring_duration_type: formData.recurring ? formData.recurringDurationType : null,
+      recurring_until_date: formData.recurring && formData.recurringDurationType === 'until_date' ? formData.recurringUntilDate : null,
+      recurring_occurrences_total:
+        formData.recurring && formData.recurringDurationType === 'occurrences'
+          ? parseInt(formData.recurringOccurrences, 10) || null
+          : null,
+      recurring_occurrences_completed: editingItem?.recurring_occurrences_completed || 0,
+      created_at: editingItem?.created_at || new Date().toISOString()
     };
     const existingId = resolveFundId(editingItem);
     fundPayload.id = existingId || generateId();
@@ -108,7 +133,10 @@ export default function ReservedFunds({
       frequency: fund.frequency || 'monthly',
       linkedTo: fund.linked_to || null,
       isLumpsum: fund.is_lumpsum || false,
-      linkedItems: fund.linked_items || []
+      linkedItems: fund.linked_items || [],
+      recurringDurationType: fund.recurring_duration_type || 'indefinite',
+      recurringUntilDate: fund.recurring_until_date || '',
+      recurringOccurrences: fund.recurring_occurrences_total?.toString() || ''
     });
     setShowAddForm(true);
   };
@@ -122,7 +150,10 @@ export default function ReservedFunds({
       frequency: 'monthly',
       linkedTo: null,
       isLumpsum: false,
-      linkedItems: []
+      linkedItems: [],
+      recurringDurationType: 'indefinite',
+      recurringUntilDate: '',
+      recurringOccurrences: ''
     });
     setShowAddForm(false);
     setEditingItem(null);
@@ -137,7 +168,10 @@ export default function ReservedFunds({
       frequency: fund.frequency || 'monthly',
       linkedTo: fund.linked_to || null,
       isLumpsum: fund.is_lumpsum || false,
-      linkedItems: fund.linked_items || []
+      linkedItems: fund.linked_items || [],
+      recurringDurationType: fund.recurring_duration_type || 'indefinite',
+      recurringUntilDate: fund.recurring_until_date || '',
+      recurringOccurrences: fund.recurring_occurrences_total?.toString() || ''
     });
     setEditingItem({ ...fund, id: resolveFundId(fund) || fund.id });
     setShowAddForm(true);
@@ -162,12 +196,44 @@ export default function ReservedFunds({
     await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
     
     if (fund.recurring) {
-      await dbOperation('reservedFunds', 'put', {
+      const todayIso = new Date().toISOString().split('T')[0];
+      const updatedFund = {
         ...normalizedFund,
         amount: normalizedFund.original_amount || normalizedFund.amount,
-        due_date: predictNextDate(normalizedFund.due_date, normalizedFund.frequency || 'monthly'),
-        last_paid_date: new Date().toISOString().split('T')[0]
-      });
+        last_paid_date: todayIso
+      };
+
+      let shouldContinue = true;
+      const nextDueDate = predictNextDate(normalizedFund.due_date, normalizedFund.frequency || 'monthly');
+
+      if (normalizedFund.recurring_duration_type === 'occurrences') {
+        const completed = (normalizedFund.recurring_occurrences_completed || 0) + 1;
+        updatedFund.recurring_occurrences_completed = completed;
+        const total = normalizedFund.recurring_occurrences_total || 0;
+        if (total && completed >= total) {
+          shouldContinue = false;
+        }
+      }
+
+      if (normalizedFund.recurring_duration_type === 'until_date' && normalizedFund.recurring_until_date) {
+        const endDate = new Date(normalizedFund.recurring_until_date);
+        const nextDateObj = new Date(nextDueDate);
+        if (nextDateObj > endDate) {
+          shouldContinue = false;
+        }
+      }
+
+      if (shouldContinue) {
+        updatedFund.due_date = nextDueDate;
+      } else {
+        updatedFund.recurring = false;
+        updatedFund.due_date = normalizedFund.recurring_duration_type === 'until_date' && normalizedFund.recurring_until_date
+          ? normalizedFund.recurring_until_date
+          : normalizedFund.due_date;
+      }
+
+      await dbOperation('reservedFunds', 'put', updatedFund, { skipActivityLog: true });
+      Object.assign(fund, updatedFund);
     } else {
       await dbOperation('reservedFunds', 'delete', fundId);
     }
@@ -287,16 +353,77 @@ export default function ReservedFunds({
             <span className="text-sm">Recurring payment</span>
           </label>
           {formData.recurring && (
-            <select
-              value={formData.frequency}
-              onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
-              className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-            >
-              <option value="weekly">Weekly</option>
-              <option value="biweekly">Bi-weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="bimonthly">Bi-monthly</option>
-            </select>
+            <>
+              <select
+                value={formData.frequency}
+                onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
+                className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+              >
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Bi-weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="bimonthly">Bi-monthly</option>
+              </select>
+
+              <div>
+                <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Recurring Duration
+                </label>
+                <select
+                  value={formData.recurringDurationType}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      recurringDurationType: e.target.value,
+                      recurringUntilDate: '',
+                      recurringOccurrences: ''
+                    })
+                  }
+                  className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                >
+                  <option value="indefinite">Indefinite (continues forever)</option>
+                  <option value="until_date">Until specific date</option>
+                  <option value="occurrences">For specific number of times</option>
+                </select>
+              </div>
+
+              {formData.recurringDurationType === 'until_date' && (
+                <div>
+                  <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    End Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.recurringUntilDate}
+                    onChange={(e) => setFormData({ ...formData, recurringUntilDate: e.target.value })}
+                    className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+              )}
+
+              {formData.recurringDurationType === 'occurrences' && (
+                <div>
+                  <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    Number of Times *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="e.g., 12 for 12 months"
+                    value={formData.recurringOccurrences}
+                    onChange={(e) => setFormData({ ...formData, recurringOccurrences: e.target.value })}
+                    className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                  />
+                  {editingItem && editingItem.recurring_occurrences_completed > 0 && (
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Completed: {editingItem.recurring_occurrences_completed} of{' '}
+                      {editingItem.recurring_occurrences_total || formData.recurringOccurrences || '?'}
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
           )}
           
           <label className="flex items-center gap-2">
@@ -416,9 +543,20 @@ export default function ReservedFunds({
                       Original: {formatCurrency(fund.original_amount)}
                     </div>
                   )}
-                  {fund.recurring && (
-                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1 capitalize`}>
-                      Recurring: {fund.frequency}
+                  {(fund.recurring || fund.recurring_duration_type) && (
+                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
+                      <span className="capitalize">Recurring: {fund.frequency}</span>
+                      {fund.recurring_duration_type && (
+                        <span className="ml-2">
+                          {fund.recurring_duration_type === 'until_date' && fund.recurring_until_date && (
+                            <>• Until {formatDate(fund.recurring_until_date)}</>
+                          )}
+                          {fund.recurring_duration_type === 'occurrences' && fund.recurring_occurrences_total && (
+                            <>• {fund.recurring_occurrences_completed || 0}/{fund.recurring_occurrences_total} times</>
+                          )}
+                          {fund.recurring_duration_type === 'indefinite' && <>• Indefinite</>}
+                        </span>
+                      )}
                     </div>
                   )}
                   {fund.is_lumpsum && fund.linked_items?.length > 0 && (

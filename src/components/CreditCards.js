@@ -5,6 +5,7 @@ import { dbOperation } from '../utils/db';
 import AddTransaction from './AddTransaction';
 import { logActivity } from '../utils/activityLogger';
 import SmartInput from './SmartInput';
+import { processOverdueCreditCards } from '../utils/autoPay';
 
 export default function CreditCards({ 
   darkMode, 
@@ -44,6 +45,8 @@ export default function CreditCards({
   });
   const [payingCard, setPayingCard] = useState(null);
   const cardRefs = useRef({});
+  const [processingResults, setProcessingResults] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const normalizeId = (value) => {
     if (value === null || value === undefined) return null;
@@ -218,6 +221,39 @@ export default function CreditCards({
     resetForm();
   };
 
+  const handleProcessDueCardPayments = async () => {
+    if (isProcessing) return;
+
+    if (!window.confirm('Process all overdue credit card payments from reserved funds?')) {
+      return;
+    }
+
+    setIsProcessing(true);
+    setProcessingResults(null);
+
+    try {
+      const results = await processOverdueCreditCards(creditCards, reservedFunds, availableCash, onUpdateCash);
+      await onUpdate();
+      setProcessingResults(results);
+
+      const processedCount = results.processed.length;
+      const failedCount = results.failed.length;
+
+      if (processedCount > 0) {
+        alert(`Successfully processed ${processedCount} credit card payment(s).${failedCount > 0 ? ` ${failedCount} failed.` : ''}`);
+      } else if (failedCount > 0) {
+        alert(`Failed to process ${failedCount} credit card payment(s). Check console for details.`);
+      } else {
+        alert('No overdue credit cards with linked reserved funds found.');
+      }
+    } catch (error) {
+      console.error('Error processing credit card payments:', error);
+      alert('Error processing payments. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const resetForm = () => {
     setFormData({ 
       name: '', 
@@ -267,9 +303,13 @@ export default function CreditCards({
     const card = creditCards.find(c => c.id === cardId);
     const paymentAmount = parseFloat(paymentForm.amount);
     
+    const todayIso = new Date().toISOString().split('T')[0];
+
     await dbOperation('creditCards', 'put', {
       ...card,
-      balance: card.balance - paymentAmount
+      balance: card.balance - paymentAmount,
+      last_payment_date: paymentForm.date,
+      last_auto_payment_date: todayIso
     });
     
     const transaction = {
@@ -285,54 +325,159 @@ export default function CreditCards({
       status: 'active',
       undone_at: null
     };
-    const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+    const savedTransaction = await dbOperation('transactions', 'put', transaction);
     
     let affectedFundSnapshot = null;
+    let remainingPayment = paymentAmount;
 
     const linkedFund = reservedFunds.find(f => f.linked_to?.type === 'credit_card' && f.linked_to?.id === cardId);
-    if (linkedFund) {
+    if (linkedFund && remainingPayment > 0) {
       const linkedFundSnapshot = { ...linkedFund };
-      const linkedFundId = linkedFund.id || linkedFund.fund_id || linkedFund.uuid || null;
-      const fundTransaction = {
-        type: 'reserved_fund_paid',
-        amount: linkedFund.amount,
-        date: paymentForm.date,
-        description: `Reserved fund applied: ${linkedFund.name}`,
-        notes: `Reserved fund linked to ${card.name}`,
-        created_at: new Date().toISOString(),
-        status: 'active',
-        undone_at: null,
-        payment_method: 'reserved_fund',
-        payment_method_id: linkedFundId
-      };
-      await dbOperation('transactions', 'put', fundTransaction, { skipActivityLog: true });
-      affectedFundSnapshot = linkedFundSnapshot;
+      const fundAmount = parseFloat(linkedFund.amount) || 0;
+      const amountToDeduct = Math.min(fundAmount, remainingPayment);
       
-      if (linkedFund.recurring) {
-        const { predictNextDate } = await import('../utils/helpers');
-        await dbOperation('reservedFunds', 'put', {
-          ...linkedFund,
-          due_date: predictNextDate(linkedFund.due_date, linkedFund.frequency || 'monthly'),
-          last_paid_date: paymentForm.date
-        });
-      } else {
-        await dbOperation('reservedFunds', 'delete', linkedFund.id);
+      if (amountToDeduct > 0) {
+        remainingPayment -= amountToDeduct;
+
+        const fundTransaction = {
+          type: 'reserved_fund_paid',
+          amount: amountToDeduct,
+          date: paymentForm.date,
+          description: `Reserved fund applied: ${linkedFund.name}`,
+          notes: `Reserved fund linked to ${card.name}`,
+          created_at: new Date().toISOString(),
+          status: 'active',
+          undone_at: null,
+          payment_method: 'reserved_fund',
+          payment_method_id: linkedFund.id
+        };
+        const savedFundTransaction = await dbOperation('transactions', 'put', fundTransaction);
+
+        affectedFundSnapshot = linkedFundSnapshot;
+
+        if (linkedFund.recurring) {
+          const { predictNextDate } = await import('../utils/helpers');
+          const updatedLinkedFund = {
+            ...linkedFund,
+            amount: fundAmount - amountToDeduct,
+            due_date: predictNextDate(linkedFund.due_date, linkedFund.frequency || 'monthly'),
+            last_paid_date: paymentForm.date
+          };
+          await dbOperation('reservedFunds', 'put', updatedLinkedFund);
+
+          await logActivity(
+            'payment',
+            'fund',
+            linkedFund.id,
+            linkedFund.name,
+            `Deducted ${formatCurrency(amountToDeduct)} from ${linkedFund.name} for ${card.name} payment`,
+            {
+              previousAmount: fundAmount,
+              newAmount: updatedLinkedFund.amount,
+              linkedTo: { type: 'credit_card', id: cardId },
+              isLumpsum: false,
+              transactionId: savedFundTransaction?.id
+            }
+          );
+        } else {
+          const remaining = fundAmount - amountToDeduct;
+          if (remaining <= 0) {
+            await logActivity(
+              'payment',
+              'fund',
+              linkedFund.id,
+              linkedFund.name,
+              `Fully used ${linkedFund.name} (${formatCurrency(fundAmount)}) for ${card.name} payment`,
+              {
+                previousAmount: fundAmount,
+                newAmount: 0,
+                linkedTo: { type: 'credit_card', id: cardId },
+                deleted: true,
+                isLumpsum: false,
+                transactionId: savedFundTransaction?.id
+              }
+            );
+            await dbOperation('reservedFunds', 'delete', linkedFund.id);
+          } else {
+            const updatedLinkedFund = {
+              ...linkedFund,
+              amount: remaining,
+              last_paid_date: paymentForm.date
+            };
+            await dbOperation('reservedFunds', 'put', updatedLinkedFund);
+
+            await logActivity(
+              'payment',
+              'fund',
+              linkedFund.id,
+              linkedFund.name,
+              `Deducted ${formatCurrency(amountToDeduct)} from ${linkedFund.name} for ${card.name} payment`,
+              {
+                previousAmount: fundAmount,
+                newAmount: remaining,
+                linkedTo: { type: 'credit_card', id: cardId },
+                isLumpsum: false,
+                transactionId: savedFundTransaction?.id
+              }
+            );
+          }
+        }
       }
     }
 
-    const lumpsumFund = reservedFunds.find(f => 
-      f.is_lumpsum && 
-      f.linked_items?.some(item => item.type === 'credit_card' && item.id === cardId)
-    );
-    
-    if (lumpsumFund && lumpsumFund.amount >= paymentAmount) {
-      const lumpsumSnapshot = { ...lumpsumFund };
-      await dbOperation('reservedFunds', 'put', {
-        ...lumpsumFund,
-        amount: lumpsumFund.amount - paymentAmount
-      });
-      if (!affectedFundSnapshot) {
-        affectedFundSnapshot = lumpsumSnapshot;
+    if (remainingPayment > 0) {
+      const lumpsumFund = reservedFunds.find(f => 
+        f.is_lumpsum && 
+        f.linked_items?.some(item => item.type === 'credit_card' && item.id === cardId)
+      );
+      
+      if (lumpsumFund) {
+        const lumpsumSnapshot = { ...lumpsumFund };
+        const currentAmount = parseFloat(lumpsumFund.amount) || 0;
+        const amountToDeduct = Math.min(currentAmount, remainingPayment);
+        
+        if (amountToDeduct > 0) {
+          remainingPayment -= amountToDeduct;
+
+          const lumpsumTransaction = {
+            type: 'reserved_fund_paid',
+            amount: amountToDeduct,
+            date: paymentForm.date,
+            description: `Lumpsum fund applied: ${lumpsumFund.name}`,
+            notes: `Lumpsum fund payment for ${card.name}`,
+            created_at: new Date().toISOString(),
+            status: 'active',
+            undone_at: null,
+            payment_method: 'reserved_fund',
+            payment_method_id: lumpsumFund.id
+          };
+          const savedLumpsumTransaction = await dbOperation('transactions', 'put', lumpsumTransaction);
+
+          await dbOperation('reservedFunds', 'put', {
+            ...lumpsumFund,
+            amount: Math.max(0, currentAmount - amountToDeduct),
+            last_paid_date: paymentForm.date
+          });
+
+          await logActivity(
+            'payment',
+            'fund',
+            lumpsumFund.id,
+            lumpsumFund.name,
+            `Deducted ${formatCurrency(amountToDeduct)} from ${lumpsumFund.name} for ${card.name} payment`,
+            {
+              previousAmount: currentAmount,
+              newAmount: Math.max(0, currentAmount - amountToDeduct),
+              linkedTo: { type: 'credit_card', id: cardId },
+              isLumpsum: true,
+              transactionId: savedLumpsumTransaction?.id
+            }
+          );
+          
+          if (!affectedFundSnapshot) {
+            affectedFundSnapshot = lumpsumSnapshot;
+          }
+        }
       }
     }
     
@@ -392,20 +537,41 @@ export default function CreditCards({
 
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">Credit Cards</h2>
-        <button
-          onClick={() => {
-            if (showAddForm) {
-              resetForm();
-            } else {
-              setShowAddForm(true);
-            }
-          }}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg"
-        >
-          <Plus size={20} />
-          {showAddForm ? 'Cancel' : 'Add Card'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleProcessDueCardPayments}
+            disabled={isProcessing}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
+              isProcessing
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700'
+            } text-white`}
+            title="Process all overdue credit cards with linked reserved funds"
+          >
+            {isProcessing ? 'Processing...' : 'Process Due Payments'}
+          </button>
+          <button
+            onClick={() => {
+              if (showAddForm) {
+                resetForm();
+              } else {
+                setShowAddForm(true);
+              }
+            }}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg"
+          >
+            <Plus size={20} />
+            {showAddForm ? 'Cancel' : 'Add Card'}
+          </button>
+        </div>
       </div>
+      {processingResults && (
+        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-200'} border rounded-lg p-3 text-sm`}>
+          <div className={darkMode ? 'text-gray-200' : 'text-blue-800'}>
+            Processed: {processingResults.processed.length} • Failed: {processingResults.failed.length} • Skipped: {processingResults.skipped.length}
+          </div>
+        </div>
+      )}
 
       {showAddForm && (
         <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>

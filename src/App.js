@@ -14,6 +14,7 @@ import Loans from './components/Loans';
 import ReservedFunds from './components/ReservedFunds';
 import Income from './components/Income';
 import TransactionHistory from './components/TransactionHistory';
+import { autoDepositDueIncome } from './utils/autoPay';
 
 
 export default function FinanceTracker() {
@@ -51,7 +52,7 @@ export default function FinanceTracker() {
 
   const loadAllData = useCallback(async () => {
     try {
-      const [cards, loansData, reserved, incomeData, trans, settings] = await Promise.all([
+      const [cards, loansData, reserved, incomeDataRaw, transRaw, settings] = await Promise.all([
         dbOperation('creditCards', 'getAll'),
         dbOperation('loans', 'getAll'),
         dbOperation('reservedFunds', 'getAll'),
@@ -60,14 +61,36 @@ export default function FinanceTracker() {
         dbOperation('settings', 'getAll')
       ]);
       
+      let incomeData = incomeDataRaw || [];
+      let transactionsData = transRaw || [];
+      
       setCreditCards(cards || []);
       setLoans(loansData || []);
       setReservedFunds(reserved || []);
-      setIncome(incomeData || []);
-      setTransactions(trans || []);
       
       const cashSetting = settings?.find(s => s.key === 'availableCash');
-      setAvailableCash(cashSetting?.value || 0);
+      let cashValue = Number(cashSetting?.value) || 0;
+      
+      if (incomeData.length > 0) {
+        const autoResults = await autoDepositDueIncome(
+          incomeData,
+          cashValue,
+          async (newCash) => {
+            cashValue = newCash;
+            await dbOperation('settings', 'put', { key: 'availableCash', value: newCash });
+          }
+        );
+        
+        if (autoResults.deposited.length > 0) {
+          console.log('🎉 Auto-deposited income on app load:', autoResults.deposited);
+          incomeData = await dbOperation('income', 'getAll') || [];
+          transactionsData = await dbOperation('transactions', 'getAll') || [];
+        }
+      }
+      
+      setIncome(incomeData);
+      setTransactions(transactionsData);
+      setAvailableCash(cashValue);
       
       const darkModeSetting = settings?.find(s => s.key === 'darkMode');
       setDarkMode(darkModeSetting?.value || false);
@@ -154,6 +177,25 @@ export default function FinanceTracker() {
         return String(value);
       };
 
+      const normalizeDateOnly = (value) => {
+        if (!value) return null;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return null;
+        date.setHours(0, 0, 0, 0);
+        return date;
+      };
+
+      const fundAvailableOnOrBeforeDueDate = (fund, dueDateIso) => {
+        if (!fund || !dueDateIso) return false;
+        const dueDate = normalizeDateOnly(dueDateIso);
+        if (!dueDate) return false;
+
+        const created = normalizeDateOnly(fund.created_at || fund.last_paid_date || fund.updated_at || fund.due_date);
+        if (!created) return true;
+
+        return created <= dueDate;
+      };
+
       const reservedFundMap = new Map();
       reservedFunds.forEach((fund) => {
         const key = normalizeId(fund.id);
@@ -204,25 +246,32 @@ export default function FinanceTracker() {
         if (getDaysUntil(card.due_date) !== 0) return;
         if (card.last_auto_payment_date === today) return;
 
+        const dueDateIso = card.due_date;
+
         const linkedFund = [...reservedFundMap.values()].find(
-          (fund) => fund?.linked_to?.type === 'credit_card' && normalizeId(fund?.linked_to?.id) === cardId && (fund.amount ?? 0) > 0
+          (fund) =>
+            fund?.linked_to?.type === 'credit_card' &&
+            normalizeId(fund?.linked_to?.id) === cardId &&
+            (fund.amount ?? 0) > 0 &&
+            fundAvailableOnOrBeforeDueDate(fund, dueDateIso)
         );
 
         let fundUsed = linkedFund;
         let fundContext = { isLinked: !!linkedFund };
 
-        if (!fundUsed) {
+        if (!fundUsed || !fundAvailableOnOrBeforeDueDate(fundUsed, dueDateIso)) {
           fundUsed = [...reservedFundMap.values()].find(
             (fund) =>
               fund?.is_lumpsum &&
               (fund.amount ?? 0) > 0 &&
               Array.isArray(fund.linked_items) &&
-              fund.linked_items.some((item) => item.type === 'credit_card' && normalizeId(item.id) === cardId)
+              fund.linked_items.some((item) => item.type === 'credit_card' && normalizeId(item.id) === cardId) &&
+              fundAvailableOnOrBeforeDueDate(fund, dueDateIso)
           );
           fundContext = { isLinked: false };
         }
 
-        if (!fundUsed) return;
+        if (!fundUsed || !fundAvailableOnOrBeforeDueDate(fundUsed, dueDateIso)) return;
 
         const paymentAmount = Math.min(Number(card.balance) || 0, Number(fundUsed.amount) || 0);
         if (paymentAmount <= 0) return;
@@ -300,8 +349,14 @@ export default function FinanceTracker() {
         if (getDaysUntil(loan.next_payment_date) !== 0) return;
         if (loan.last_auto_payment_date === today) return;
 
+        const dueDateIso = loan.next_payment_date;
+
         const linkedFund = [...reservedFundMap.values()].find(
-          (fund) => fund?.linked_to?.type === 'loan' && normalizeId(fund?.linked_to?.id) === loanId && (fund.amount ?? 0) > 0
+          (fund) =>
+            fund?.linked_to?.type === 'loan' &&
+            normalizeId(fund?.linked_to?.id) === loanId &&
+            (fund.amount ?? 0) > 0 &&
+            fundAvailableOnOrBeforeDueDate(fund, dueDateIso)
         );
 
         let fundUsed = linkedFund;
@@ -313,12 +368,13 @@ export default function FinanceTracker() {
               fund?.is_lumpsum &&
               (fund.amount ?? 0) > 0 &&
               Array.isArray(fund.linked_items) &&
-              fund.linked_items.some((item) => item.type === 'loan' && normalizeId(item.id) === loanId)
+              fund.linked_items.some((item) => item.type === 'loan' && normalizeId(item.id) === loanId) &&
+              fundAvailableOnOrBeforeDueDate(fund, dueDateIso)
           );
           fundContext = { isLinked: false };
         }
 
-        if (!fundUsed) return;
+        if (!fundUsed || !fundAvailableOnOrBeforeDueDate(fundUsed, dueDateIso)) return;
 
         const amountDue = Number(loan.payment_amount) || 0;
         const paymentAmount = Math.min(amountDue, Number(fundUsed.amount) || 0);
