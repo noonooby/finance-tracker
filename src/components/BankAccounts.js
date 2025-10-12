@@ -20,7 +20,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle } from 'lucide-react';
 import { formatCurrency, generateId, validateBankAccountData, getAccountTypeIcon, sortBankAccounts } from '../utils/helpers';
 import {
-  getAllBankAccounts,
+  //getAllBankAccounts,
   upsertBankAccount,
   deleteBankAccount,
   transferBetweenAccounts
