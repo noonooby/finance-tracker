@@ -14,6 +14,7 @@ export default function AddTransaction({
   reservedFunds,
   availableCash,
   onUpdateCash,
+  bankAccounts,
   preselectedCard = null,
   preselectedLoan = null,
   preselectedType = 'expense'
@@ -115,7 +116,8 @@ export default function AddTransaction({
               category: category?.name,
               description: formData.description,
               cardId: card.id,
-              previousBalance: previousCardBalance
+              previousBalance: previousCardBalance,
+              paymentMethodName: card.name
             }
           };
 
@@ -135,7 +137,8 @@ export default function AddTransaction({
               category: category?.name,
               description: formData.description,
               previousCash: availableCash,
-              newCash
+              newCash,
+              paymentMethodName: 'Cash'
             }
           };
         }
@@ -158,7 +161,8 @@ export default function AddTransaction({
             amount,
             source: formData.incomeSource,
             previousCash: availableCash,
-            newCash
+            newCash,
+            paymentMethodName: 'Cash'
           }
         };
 
@@ -195,7 +199,8 @@ export default function AddTransaction({
               previousCash: availableCash,
               paymentAmount: amount,
               date: formData.date,
-              previousBalance: previousCardBalance
+              previousBalance: previousCardBalance,
+              paymentMethodName: card.name
             }
           };
 
@@ -231,7 +236,8 @@ export default function AddTransaction({
               previousCash: availableCash,
               paymentAmount: amount,
               date: formData.date,
-              previousBalance: previousLoanBalance
+              previousBalance: previousLoanBalance,
+              paymentMethodName: loan.name
             }
           };
         }

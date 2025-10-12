@@ -1,4 +1,4 @@
-import { dbOperation } from './db';
+import { dbOperation, getBankAccount, updateBankAccountBalance } from './db';
 import { logActivity } from './activityLogger';
 import { formatCurrency, predictNextDate, getDaysUntil } from './helpers';
 
@@ -47,6 +47,20 @@ const fundAvailableOnOrBeforeDueDate = (fund, dueDateIso) => {
   if (!created) return true;
 
   return created <= dueDate;
+};
+
+const adjustBankAccountForFund = async (fund, amount) => {
+  if (!fund?.source_account_id || !amount || amount <= 0) return;
+  try {
+    const account = await getBankAccount(fund.source_account_id);
+    if (!account) return;
+    const currentBalance = parseFloat(account.balance) || 0;
+    const newBalance = Math.max(0, currentBalance - amount);
+    await updateBankAccountBalance(account.id, newBalance);
+    console.log(`🏦 Bank account updated for ${fund.name}: ${currentBalance} → ${newBalance}`);
+  } catch (error) {
+    console.error('❌ Failed to update bank account balance:', error);
+  }
 };
 
 export const processOverdueLoans = async (loans, reservedFunds, availableCash, onUpdateCash) => {
@@ -241,6 +255,8 @@ export const processOverdueLoans = async (loans, reservedFunds, availableCash, o
         Object.assign(fundToUse, updatedFund);
       }
 
+      await adjustBankAccountForFund(fundToUse, paymentAmount);
+
       const previousCash = availableCash;
       const newCash = previousCash - paymentAmount;
       if (typeof onUpdateCash === 'function') {
@@ -259,7 +275,19 @@ export const processOverdueLoans = async (loans, reservedFunds, availableCash, o
           paymentAmount,
           date: todayIso,
           previousCash,
+          source: {
+            type: 'reserved_fund',
+            id: fundToUse?.id,
+            name: fundToUse?.name
+          },
           affectedFund: fundSnapshot,
+          affectedFunds: [
+            {
+              fund: fundSnapshot,
+              amountUsed: paymentAmount
+            }
+          ],
+          paymentMethodName: 'Reserved Fund',
           transactionId: savedTransaction?.id,
           isAutoPayment: true
         }
@@ -468,6 +496,8 @@ export const processOverdueCreditCards = async (creditCards, reservedFunds, avai
         Object.assign(fundToUse, updatedFund);
       }
 
+      await adjustBankAccountForFund(fundToUse, paymentAmount);
+
       const previousCash = availableCash;
       const newCash = previousCash - paymentAmount;
       if (typeof onUpdateCash === 'function') {
@@ -486,7 +516,19 @@ export const processOverdueCreditCards = async (creditCards, reservedFunds, avai
           paymentAmount,
           date: todayIso,
           previousCash,
+          source: {
+            type: 'reserved_fund',
+            id: fundToUse?.id,
+            name: fundToUse?.name
+          },
           affectedFund: fundSnapshot,
+          affectedFunds: [
+            {
+              fund: fundSnapshot,
+              amountUsed: paymentAmount
+            }
+          ],
+          paymentMethodName: 'Reserved Fund',
           transactionId: savedTransaction?.id,
           isAutoPayment: true
         }
@@ -592,7 +634,9 @@ export const autoDepositDueIncome = async (income, availableCash, onUpdateCash) 
       const previousCash = availableCash;
       const newCash = previousCash + amount;
       if (typeof onUpdateCash === 'function') {
-        await onUpdateCash(newCash);
+        await onUpdateCash(newCash, {
+          accountId: inc.deposit_account_id || undefined
+        });
       }
       availableCash = newCash;
 

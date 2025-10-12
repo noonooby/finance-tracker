@@ -1,10 +1,10 @@
 import Settings from './components/Settings';
 import { Settings as SettingsIcon } from 'lucide-react';
 import React, { useState, useEffect, useCallback } from 'react';
-import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X, Activity, List, Plus } from 'lucide-react';
+import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X, Activity, List, Plus, Building2 } from 'lucide-react';
 import { supabase } from './utils/supabase';
 import { dbOperation } from './utils/db';
-import { getDaysUntil, predictNextDate, DEFAULT_CATEGORIES, formatCurrency, generateId } from './utils/helpers';
+import { getDaysUntil, predictNextDate, DEFAULT_CATEGORIES, formatCurrency, generateId, calculateTotalBankBalance } from './utils/helpers';
 import { logActivity } from './utils/activityLogger';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
@@ -15,6 +15,15 @@ import ReservedFunds from './components/ReservedFunds';
 import Income from './components/Income';
 import TransactionHistory from './components/TransactionHistory';
 import { autoDepositDueIncome } from './utils/autoPay';
+import BankAccounts from './components/BankAccounts';
+import {
+  getAllBankAccounts,
+  updateBankAccountBalance
+} from './utils/db';
+import {
+  autoMigrateIfNeeded,
+  checkMigrationStatus
+} from './utils/bankAccountsMigration';
 
 
 export default function FinanceTracker() {
@@ -34,6 +43,10 @@ export default function FinanceTracker() {
   const [cashInput, setCashInput] = useState('');
   const [focusTarget, setFocusTarget] = useState(null);
   const [showAddTransactionModal, setShowAddTransactionModal] = useState(false);
+  // Bank accounts state
+  const [bankAccounts, setBankAccounts] = useState([]);
+  const [hasMigratedToBankAccounts, setHasMigratedToBankAccounts] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -50,7 +63,57 @@ export default function FinanceTracker() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const loadBankAccounts = useCallback(async () => {
+    try {
+      console.log('🏦 Loading bank accounts...');
+      const accounts = await getAllBankAccounts();
+      setBankAccounts(accounts);
+
+      if (accounts && accounts.length > 0) {
+        const totalBalance = calculateTotalBankBalance(accounts);
+        setAvailableCash(totalBalance);
+      } else {
+        setAvailableCash(0);
+      }
+
+      console.log('✅ Bank accounts loaded:', accounts?.length ?? 0);
+      return accounts || [];
+    } catch (error) {
+      console.error('❌ Error loading bank accounts:', error);
+      return [];
+    }
+  }, []);
+
+  const checkAndMigrate = useCallback(async () => {
+    try {
+      setIsMigrating(true);
+      console.log('🔄 Checking migration status...');
+
+      const migrationStatus = await checkMigrationStatus();
+      setHasMigratedToBankAccounts(migrationStatus);
+
+      if (!migrationStatus) {
+        console.log('⚠️ User needs migration - starting auto-migration...');
+        const result = await autoMigrateIfNeeded();
+
+        if (result?.alreadyMigrated === false && result.primaryAccount) {
+          console.log('✅ Migration completed successfully');
+          console.log('   Balance migrated:', result.migratedBalance);
+          setHasMigratedToBankAccounts(true);
+          await loadBankAccounts();
+        }
+      } else {
+        console.log('✅ User already migrated to bank accounts');
+      }
+    } catch (error) {
+      console.error('❌ Migration check failed:', error);
+    } finally {
+      setIsMigrating(false);
+    }
+  }, [loadBankAccounts]);
+
   const loadAllData = useCallback(async () => {
+    setLoading(true);
     try {
       const [cards, loansData, reserved, incomeDataRaw, transRaw, settings] = await Promise.all([
         dbOperation('creditCards', 'getAll'),
@@ -101,10 +164,15 @@ export default function FinanceTracker() {
         defaultDays: alertValue.defaultDays ?? alertValue.alertDays ?? 7,
         upcomingDays: alertValue.upcomingDays ?? 30
       });
+
+      await loadBankAccounts();
+      await checkAndMigrate();
     } catch (error) {
       console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [loadBankAccounts, checkAndMigrate]);
 
   const loadCategories = useCallback(async () => {
     try {
@@ -128,10 +196,98 @@ export default function FinanceTracker() {
     }
   }, [session, loadAllData, loadCategories]);
 
+  const handleUpdateCash = useCallback(async (newAmount, options = {}) => {
+    try {
+      if (!hasMigratedToBankAccounts) {
+        await dbOperation('settings', 'put', { key: 'availableCash', value: newAmount });
+        setAvailableCash(newAmount);
+        console.log('✅ Legacy available cash updated:', newAmount);
+        return;
+      }
+
+      const { accountId: preferredAccountId, delta, syncOnly = false } = options || {};
+
+      // 1️⃣ Load latest accounts and totals
+      const accounts = await getAllBankAccounts();
+      setBankAccounts(accounts);
+
+      const currentTotal = calculateTotalBankBalance(accounts);
+      setAvailableCash(currentTotal);
+
+      if (syncOnly) {
+        console.log('🔄 Cash sync requested without balance adjustments');
+        return;
+      }
+
+      if (!accounts || accounts.length === 0) {
+        console.warn('⚠️ No bank accounts available; skipping cash adjustment.');
+        return;
+      }
+
+      // 2️⃣ Determine desired total after adjustment
+      let desiredTotal = currentTotal;
+      if (typeof delta === 'number' && Number.isFinite(delta)) {
+        desiredTotal = currentTotal + delta;
+      } else if (typeof newAmount === 'number' && Number.isFinite(newAmount)) {
+        desiredTotal = newAmount;
+      }
+
+      const effectiveDelta = desiredTotal - currentTotal;
+      const deltaRounded = Math.round(effectiveDelta * 100) / 100;
+
+      if (Math.abs(deltaRounded) < 0.005) {
+        // Nothing to adjust – totals already aligned
+        console.log('ℹ️ No cash adjustment needed (already in sync).');
+        return;
+      }
+
+      // 3️⃣ Identify target account
+      const matchesPreferred = preferredAccountId
+        ? accounts.find(acc => String(acc.id) === String(preferredAccountId))
+        : null;
+
+      const primaryAccount = accounts.find(acc => acc.is_primary);
+      const fallbackAccount = accounts[0];
+
+      const targetAccount = matchesPreferred || primaryAccount || fallbackAccount;
+
+      if (!targetAccount) {
+        console.warn('⚠️ Unable to locate a target bank account for cash adjustment.');
+        return;
+      }
+
+      const currentBalance = Number(targetAccount.balance) || 0;
+      const nextBalance = Math.round((currentBalance + deltaRounded) * 100) / 100;
+
+      if (deltaRounded < 0 && nextBalance < -0.005) {
+        throw new Error(`Insufficient funds in ${targetAccount.name}. Needed: ${Math.abs(deltaRounded).toFixed(2)}`);
+      }
+
+      const safeNextBalance = Math.max(0, nextBalance);
+
+      const updatedAccount = await updateBankAccountBalance(targetAccount.id, safeNextBalance);
+
+      const updatedAccounts = accounts.map(acc =>
+        String(acc.id) === String(updatedAccount.id) ? updatedAccount : acc
+      );
+      setBankAccounts(updatedAccounts);
+
+      const updatedTotal = calculateTotalBankBalance(updatedAccounts);
+      setAvailableCash(updatedTotal);
+
+      console.log(
+        `✅ Bank account "${updatedAccount.name}" adjusted by ${deltaRounded.toFixed(2)}. `
+        + `New balance: ${safeNextBalance.toFixed(2)}`
+      );
+
+    } catch (error) {
+      console.error('❌ Error updating cash:', error);
+    }
+  }, [hasMigratedToBankAccounts]);
+
   const saveAvailableCash = useCallback(async (amount) => {
-    await dbOperation('settings', 'put', { key: 'availableCash', value: amount });
-    setAvailableCash(amount);
-  }, []);
+    await handleUpdateCash(amount);
+  }, [handleUpdateCash]);
 
   const updateAlertSettings = async (updates) => {
     const nextSettings = {
@@ -537,15 +693,20 @@ export default function FinanceTracker() {
       return () => clearInterval(interval);
     }
   }, [session, autoPayObligations]);
+
+  const displayAvailableCash = hasMigratedToBankAccounts
+    ? calculateTotalBankBalance(bankAccounts)
+    : availableCash;
+
   const handleEditCash = () => {
-    setCashInput(availableCash.toString());
+    setCashInput(displayAvailableCash.toString());
     setEditingCash(true);
   };
 
   const handleSaveCash = async () => {
     const newAmount = parseFloat(cashInput);
     if (!isNaN(newAmount)) {
-      await saveAvailableCash(newAmount);
+      await handleUpdateCash(newAmount);
     }
     setEditingCash(false);
   };
@@ -641,7 +802,7 @@ export default function FinanceTracker() {
   }
 
   const totalReserved = reservedFunds.reduce((sum, fund) => sum + fund.amount, 0);
-  const trueAvailable = availableCash - totalReserved;
+  const trueAvailable = displayAvailableCash - totalReserved;
   const totalCreditCardDebt = creditCards.reduce((sum, card) => sum + card.balance, 0);
   const totalLoanDebt = loans.reduce((sum, loan) => sum + loan.balance, 0);
 
@@ -740,6 +901,9 @@ export default function FinanceTracker() {
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">Finance Tracker</h1>
+            {isMigrating && (
+              <span className="text-xs text-blue-500">Syncing accounts…</span>
+            )}
             {currentView === 'dashboard' && (
               <div className="flex items-center gap-2">
                 {editingCash ? (
@@ -808,7 +972,7 @@ export default function FinanceTracker() {
         {currentView === 'dashboard' && (
           <Dashboard
             darkMode={darkMode}
-            availableCash={availableCash}
+            availableCash={displayAvailableCash}
             totalReserved={totalReserved}
             trueAvailable={trueAvailable}
             upcomingObligations={upcomingObligations}
@@ -820,6 +984,7 @@ export default function FinanceTracker() {
             alertSettings={alertSettings}
             onNavigate={handleNavigate}
             onUpdateAlertSettings={updateAlertSettings}
+            bankAccounts={bankAccounts}
           />
         )}
         {currentView === 'cards' && (
@@ -827,13 +992,14 @@ export default function FinanceTracker() {
             darkMode={darkMode}
             creditCards={creditCards}
             categories={categories}
-            availableCash={availableCash}
+            availableCash={displayAvailableCash}
             reservedFunds={reservedFunds}
             alertSettings={alertSettings}
             onUpdate={loadAllData}
-            onUpdateCash={saveAvailableCash}
+            onUpdateCash={handleUpdateCash}
             focusTarget={focusTarget}
             onClearFocus={clearFocusTarget}
+            bankAccounts={bankAccounts}
           />
         )}
         {currentView === 'loans' && (
@@ -841,13 +1007,15 @@ export default function FinanceTracker() {
             darkMode={darkMode}
             loans={loans}
             categories={categories}
-            availableCash={availableCash}
+            availableCash={displayAvailableCash}
             reservedFunds={reservedFunds}
             alertSettings={alertSettings}
             onUpdate={loadAllData}
-            onUpdateCash={saveAvailableCash}
+            onUpdateCash={handleUpdateCash}
             focusTarget={focusTarget}
             onClearFocus={clearFocusTarget}
+            bankAccounts={bankAccounts}
+            hasMigratedToBankAccounts={hasMigratedToBankAccounts}
           />
         )}
         {currentView === 'reserved' && (
@@ -860,33 +1028,48 @@ export default function FinanceTracker() {
             onUpdate={loadAllData}
             focusTarget={focusTarget}
             onClearFocus={clearFocusTarget}
+            bankAccounts={bankAccounts}
           />
         )}
         {currentView === 'income' && (
           <Income
             darkMode={darkMode}
             income={income}
-            availableCash={availableCash}
+            availableCash={displayAvailableCash}
             onUpdate={loadAllData}
-            onUpdateCash={saveAvailableCash}
+            onUpdateCash={handleUpdateCash}
+            focusTarget={focusTarget}
+            onClearFocus={clearFocusTarget}
+            bankAccounts={bankAccounts}
+          />
+        )}
+        {currentView === 'bank-accounts' && (
+          <BankAccounts
+            darkMode={darkMode}
+            bankAccounts={bankAccounts}
+            onUpdate={async () => {
+              await loadBankAccounts();
+              await loadAllData();
+            }}
             focusTarget={focusTarget}
             onClearFocus={clearFocusTarget}
           />
         )}
-       {currentView === 'transactions' && (
-        <TransactionHistory
-          darkMode={darkMode}
-          categories={categories}
-          creditCards={creditCards}
-          loans={loans}
-          reservedFunds={reservedFunds}
-          availableCash={availableCash}
-          onUpdate={loadAllData}
-          onUpdateCash={saveAvailableCash}
-          showAddModal={showAddTransactionModal}
-          onCloseAddModal={closeAddTransaction}
-        />
-      )}
+        {currentView === 'transactions' && (
+          <TransactionHistory
+            darkMode={darkMode}
+            categories={categories}
+            creditCards={creditCards}
+            loans={loans}
+            reservedFunds={reservedFunds}
+            availableCash={displayAvailableCash}
+            onUpdate={loadAllData}
+            onUpdateCash={handleUpdateCash}
+            showAddModal={showAddTransactionModal}
+            onCloseAddModal={closeAddTransaction}
+            bankAccounts={bankAccounts}
+          />
+        )}
         {currentView === 'activity' && (
           <ActivityFeed
             darkMode={darkMode}
@@ -937,6 +1120,13 @@ export default function FinanceTracker() {
         >
           <Calendar size={24} />
           <span className="text-xs font-medium">Reserved</span>
+        </button>
+        <button
+          onClick={() => setCurrentView('bank-accounts')}
+          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg ${currentView === 'bank-accounts' ? 'text-blue-600 bg-blue-50' : darkMode ? 'text-gray-400' : 'text-gray-600'}`}
+        >
+          <Building2 size={24} />
+          <span className="text-xs font-medium">Bank Accounts</span>
         </button>
         <button
           onClick={() => setCurrentView('income')}

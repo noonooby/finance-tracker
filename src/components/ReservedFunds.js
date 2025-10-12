@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Edit2, X, Calendar, Copy } from 'lucide-react';
-import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId } from '../utils/helpers';
-import { dbOperation } from '../utils/db';
+import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId, getPrimaryAccountFromArray } from '../utils/helpers';
+import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 
 export default function ReservedFunds({ 
@@ -12,7 +12,8 @@ export default function ReservedFunds({
   totalReserved,
   onUpdate,
   focusTarget,
-  onClearFocus
+  onClearFocus,
+  bankAccounts
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -27,7 +28,8 @@ export default function ReservedFunds({
     linkedItems: [],
     recurringDurationType: 'indefinite',
     recurringUntilDate: '',
-    recurringOccurrences: ''
+    recurringOccurrences: '',
+    sourceAccountId: ''
   });
 
   const resolveFundId = (fund) => {
@@ -53,6 +55,20 @@ export default function ReservedFunds({
   };
 
   const fundRefs = useRef({});
+
+  const adjustBankAccountForFund = async (fund, amount) => {
+    if (!fund?.source_account_id || !amount || amount <= 0) return;
+    try {
+      const account = await getBankAccount(fund.source_account_id);
+      if (!account) return;
+      const currentBalance = parseFloat(account.balance) || 0;
+      const newBalance = Math.max(0, currentBalance - amount);
+      await updateBankAccountBalance(account.id, newBalance);
+      console.log(`🏦 Bank account updated for ${fund.name}: ${currentBalance} → ${newBalance}`);
+    } catch (error) {
+      console.error('❌ Failed to update linked bank account:', error);
+    }
+  };
 
   useEffect(() => {
     if (focusTarget?.type === 'fund' && focusTarget.id) {
@@ -109,6 +125,7 @@ export default function ReservedFunds({
           ? parseInt(formData.recurringOccurrences, 10) || null
           : null,
       recurring_occurrences_completed: editingItem?.recurring_occurrences_completed || 0,
+      source_account_id: formData.sourceAccountId || null,
       created_at: editingItem?.created_at || new Date().toISOString()
     };
     const existingId = resolveFundId(editingItem);
@@ -125,6 +142,7 @@ export default function ReservedFunds({
   };
 
   const handleUseTemplate = (fund) => {
+    const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
     setFormData({
       name: fund.name,
       amount: fund.original_amount?.toString() || fund.amount.toString(),
@@ -136,12 +154,14 @@ export default function ReservedFunds({
       linkedItems: fund.linked_items || [],
       recurringDurationType: fund.recurring_duration_type || 'indefinite',
       recurringUntilDate: fund.recurring_until_date || '',
-      recurringOccurrences: fund.recurring_occurrences_total?.toString() || ''
+      recurringOccurrences: fund.recurring_occurrences_total?.toString() || '',
+      sourceAccountId: fund.source_account_id || primaryAccount?.id || ''
     });
     setShowAddForm(true);
   };
 
   const resetForm = () => {
+    const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
     setFormData({
       name: '',
       amount: '',
@@ -153,13 +173,15 @@ export default function ReservedFunds({
       linkedItems: [],
       recurringDurationType: 'indefinite',
       recurringUntilDate: '',
-      recurringOccurrences: ''
+      recurringOccurrences: '',
+      sourceAccountId: primaryAccount?.id || ''
     });
     setShowAddForm(false);
     setEditingItem(null);
   };
 
   const handleEdit = (fund) => {
+    const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
     setFormData({
       name: fund.name,
       amount: fund.amount.toString(),
@@ -171,7 +193,8 @@ export default function ReservedFunds({
       linkedItems: fund.linked_items || [],
       recurringDurationType: fund.recurring_duration_type || 'indefinite',
       recurringUntilDate: fund.recurring_until_date || '',
-      recurringOccurrences: fund.recurring_occurrences_total?.toString() || ''
+      recurringOccurrences: fund.recurring_occurrences_total?.toString() || '',
+      sourceAccountId: fund.source_account_id || primaryAccount?.id || ''
     });
     setEditingItem({ ...fund, id: resolveFundId(fund) || fund.id });
     setShowAddForm(true);
@@ -194,6 +217,8 @@ export default function ReservedFunds({
       undone_at: null
     };
     await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+
+    await adjustBankAccountForFund(fund, parseFloat(fund.amount) || 0);
     
     if (fund.recurring) {
       const todayIso = new Date().toISOString().split('T')[0];
@@ -334,6 +359,28 @@ export default function ReservedFunds({
             onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
             className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
           />
+          {bankAccounts && bankAccounts.length > 0 && (
+            <div>
+              <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                Source Account (Optional)
+              </label>
+              <select
+                value={formData.sourceAccountId}
+                onChange={(e) => setFormData({ ...formData, sourceAccountId: e.target.value })}
+                className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+              >
+                <option value="">Select account</option>
+                {bankAccounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.name} {account.is_primary ? '(Primary)' : ''} - {formatCurrency(account.balance)}
+                  </option>
+                ))}
+              </select>
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Select which account to draw funds from when this is paid
+              </p>
+            </div>
+          )}
           <div>
             <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Due Date *</label>
             <input

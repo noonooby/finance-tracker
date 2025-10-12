@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Edit2, X, TrendingUp } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId } from '../utils/helpers';
-import { dbOperation } from '../utils/db';
+import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import SmartInput from './SmartInput';
 import { processOverdueLoans } from '../utils/autoPay';
@@ -16,7 +16,9 @@ export default function Loans({
   onUpdate,
   onUpdateCash,
   focusTarget,
-  onClearFocus
+  onClearFocus,
+  bankAccounts,
+  hasMigratedToBankAccounts
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -35,14 +37,176 @@ export default function Loans({
   });
   const [paymentForm, setPaymentForm] = useState({ 
     amount: '', 
+    amountMode: 'recommended',
     date: new Date().toISOString().split('T')[0],
-    category: 'other'
+    category: 'loan_payment',
+    source: ''
   });
   const [payingLoan, setPayingLoan] = useState(null);
   const loanRefs = useRef({});
   const [savingLoan, setSavingLoan] = useState(false);
   const [processingResults, setProcessingResults] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const defaultLoanCategory = useMemo(() => {
+    if (!categories || categories.length === 0) return 'loan_payment';
+    const match = categories.find((cat) => cat.id === 'loan_payment');
+    return match?.id || categories[0].id;
+  }, [categories]);
+
+  const adjustBankAccountForFund = async (fund, amount) => {
+    if (!fund?.source_account_id || !amount || amount <= 0) return null;
+    try {
+      const account = await getBankAccount(fund.source_account_id);
+      if (!account) return null;
+      const currentBalance = parseFloat(account.balance) || 0;
+      const newBalance = Math.max(0, currentBalance - amount);
+      await updateBankAccountBalance(account.id, newBalance);
+      console.log(`🏦 Bank account updated for ${fund.name}: ${currentBalance} → ${newBalance}`);
+      return {
+        accountId: account.id,
+        accountName: account.name,
+        previousBalance: currentBalance,
+        newBalance,
+        amountUsed: amount
+      };
+    } catch (error) {
+      console.error('❌ Failed to update linked bank account:', error);
+      return null;
+    }
+  };
+
+  const resolveFundId = (fund) => {
+    if (!fund) return null;
+    if (fund.id !== undefined && fund.id !== null) return String(fund.id);
+    if (fund.fund_id !== undefined && fund.fund_id !== null) return String(fund.fund_id);
+    if (fund.uuid !== undefined && fund.uuid !== null) return String(fund.uuid);
+    return null;
+  };
+
+  const findReservedFundById = (fundId) => {
+    if (!fundId) return null;
+    return reservedFunds.find((fund) => resolveFundId(fund) === String(fundId)) || null;
+  };
+
+  const getLoanReservedFundOptions = (loan) => {
+    if (!loan) return [];
+    const options = [];
+    for (const fund of reservedFunds) {
+      const fundId = resolveFundId(fund);
+      if (!fundId) continue;
+
+      const isDirectLink =
+        fund.linked_to?.type === 'loan' &&
+        String(fund.linked_to?.id) === String(loan.id);
+
+      const isLumpsumLink =
+        fund.is_lumpsum &&
+        Array.isArray(fund.linked_items) &&
+        fund.linked_items.some((item) => item.type === 'loan' && String(item.id) === String(loan.id));
+
+      if (!isDirectLink && !isLumpsumLink) continue;
+
+      const remaining = parseFloat(fund.amount) || 0;
+      if (remaining <= 0) continue;
+
+      options.push({
+        value: `reserved_fund:${fundId}`,
+        fund,
+        label: `${fund.name} (${formatCurrency(remaining)})`
+      });
+    }
+    return options;
+  };
+
+  const getPaymentSourceOptions = (loan) => {
+    const options = [];
+    const fundOptions = getLoanReservedFundOptions(loan);
+    if (fundOptions.length > 0) {
+      for (const option of fundOptions) {
+        options.push({
+          value: option.value,
+          label: `Reserved Fund: ${option.label}`,
+          type: 'reserved_fund',
+          fund: option.fund
+        });
+      }
+    }
+
+    if (bankAccounts && bankAccounts.length > 0) {
+      for (const account of bankAccounts) {
+        const balance = parseFloat(account.balance) || 0;
+        options.push({
+          value: `bank_account:${account.id}`,
+          label: `${account.name} (${formatCurrency(balance)})`,
+          type: 'bank_account',
+          account
+        });
+      }
+    }
+
+    options.push({
+      value: 'cash',
+      label: 'Cash',
+      type: 'cash'
+    });
+
+    return options;
+  };
+
+  const getRecommendedAmountForSource = (loan) => {
+    if (!loan) return null;
+    const paymentAmount = Number(loan.payment_amount);
+    const balanceAmount = Number(loan.balance);
+
+    // Always prefer the loan's payment_amount as the primary recommendation
+    if (Number.isFinite(paymentAmount) && paymentAmount > 0) {
+      return paymentAmount;
+    }
+
+    // Fallback to balance if no payment amount is set
+    if (Number.isFinite(balanceAmount) && balanceAmount > 0) {
+      return balanceAmount;
+    }
+
+    return null;
+  };
+
+  const resetPaymentFormState = () => {
+    setPaymentForm({
+      amount: '',
+      amountMode: 'recommended',
+      date: new Date().toISOString().split('T')[0],
+      category: defaultLoanCategory,
+      source: ''
+    });
+  };
+
+  const openPaymentForm = (loan) => {
+    if (!loan) return;
+    const options = getPaymentSourceOptions(loan);
+    const defaultSource = options.length > 0 ? options[0].value : 'cash';
+    const recommended = getRecommendedAmountForSource(loan);
+    const hasRecommended = Number.isFinite(recommended) && recommended > 0;
+    setPaymentForm({
+      amount: hasRecommended ? recommended.toFixed(2) : '',
+      amountMode: hasRecommended ? 'recommended' : 'custom',
+      date: new Date().toISOString().split('T')[0],
+      category: defaultLoanCategory,
+      source: defaultSource
+    });
+    setPayingLoan(loan.id);
+  };
+
+  const handleSourceChange = (loan, newSource) => {
+    const recommended = getRecommendedAmountForSource(loan);
+    const hasRecommended = Number.isFinite(recommended) && recommended > 0;
+    setPaymentForm((prev) => ({
+      ...prev,
+      source: newSource,
+      amountMode: hasRecommended ? 'recommended' : 'custom',
+      amount: hasRecommended ? recommended.toFixed(2) : prev.amount
+    }));
+  };
 
   const normalizeId = (value) => {
     if (value === null || value === undefined) return null;
@@ -200,190 +364,309 @@ export default function Loans({
   };
 
   const handlePayment = async (loanId) => {
-    if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) {
+    const loan = loans.find((l) => l.id === loanId);
+    if (!loan) {
+      alert('Loan not found');
+      return;
+    }
+
+    const sourceValue = paymentForm.source || 'cash';
+    const [rawType, rawId] = sourceValue.includes(':') ? sourceValue.split(':') : [sourceValue, null];
+    const sourceType = rawType || 'cash';
+    const sourceId = rawId || null;
+
+    const recommendedAmount = getRecommendedAmountForSource(loan, sourceValue);
+    let paymentAmount = paymentForm.amountMode === 'recommended' ? recommendedAmount : parseFloat(paymentForm.amount);
+    if (!Number.isFinite(paymentAmount)) {
+      paymentAmount = parseFloat(paymentForm.amount);
+    }
+
+    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
       alert('Please enter a valid payment amount');
       return;
     }
 
-    const loan = loans.find(l => l.id === loanId);
-    const paymentAmount = parseFloat(paymentForm.amount);
     const paymentDate = paymentForm.date;
-
-    // 1️⃣ Update the loan balance
-    const newBalance = Math.max(0, (parseFloat(loan.balance) || 0) - paymentAmount);
-    const updatedLoan = {
-      ...loan,
-      balance: newBalance,
-      last_payment_date: paymentDate,
-      last_auto_payment_date: new Date().toISOString().split('T')[0]
-    };
-
-    let shouldContinue = true;
-    const nextDate = predictNextDate(paymentDate, loan.frequency);
-
-    if (loan.recurring_duration_type === 'occurrences') {
-      const completed = (loan.recurring_occurrences_completed || 0) + 1;
-      updatedLoan.recurring_occurrences_completed = completed;
-      const total = loan.recurring_occurrences_total || 0;
-      if (total && completed >= total) {
-        shouldContinue = false;
-      }
+    if (!paymentDate) {
+      alert('Please select a payment date');
+      return;
     }
 
-    if (loan.recurring_duration_type === 'until_date' && loan.recurring_until_date) {
-      const endDate = new Date(loan.recurring_until_date);
-      const nextDateObj = new Date(nextDate);
-      if (nextDateObj > endDate) {
-        shouldContinue = false;
-      }
-    }
-
-    updatedLoan.next_payment_date = shouldContinue ? nextDate : null;
-
-    await dbOperation('loans', 'put', updatedLoan);
-    loan.balance = updatedLoan.balance;
-    loan.recurring_occurrences_completed = updatedLoan.recurring_occurrences_completed;
-    loan.next_payment_date = updatedLoan.next_payment_date;
-
-    // 2️⃣ Record a transaction for payment
-    const transaction = {
-      type: 'payment',
-      loan_id: loanId,
-      amount: paymentAmount,
-      date: paymentDate,
-      category_id: paymentForm.category || 'loan_payment',
-      category_name: 'Loan Payment',
-      payment_method: 'loan',
-      payment_method_id: loanId,
-      payment_method_name: loan.name,
-      description: `Payment for loan ${loan.name}`,
-      created_at: new Date().toISOString(),
-      status: 'active',
-      undone_at: null
-    };
-    const savedTransaction = await dbOperation('transactions', 'put', transaction);
-
-    let affectedFund = null;
-    let remainingAmount = paymentAmount;
-
-    const linkedFund = reservedFunds.find(f => f.linked_to?.type === 'loan' && f.linked_to?.id === loanId);
-    if (linkedFund && remainingAmount > 0) {
-      const linkedSnapshot = { ...linkedFund };
-      const currentAmount = parseFloat(linkedFund.amount) || 0;
-      const deductedAmount = Math.min(remainingAmount, currentAmount);
-
-      if (deductedAmount > 0) {
-        remainingAmount -= deductedAmount;
-
-        const fundTransaction = {
-          type: 'reserved_fund_paid',
-          amount: deductedAmount,
-          date: paymentDate,
-          description: `Reserved fund applied: ${linkedFund.name}`,
-          notes: `Reserved fund linked to ${loan.name}`,
-          created_at: new Date().toISOString(),
-          status: 'active',
-          undone_at: null,
-          payment_method: 'reserved_fund',
-          payment_method_id: linkedFund.id
-        };
-        await dbOperation('transactions', 'put', fundTransaction);
-
-        const updatedLinked = {
-          ...linkedFund,
-          amount: currentAmount - deductedAmount,
-          last_paid_date: paymentDate,
-          due_date: linkedFund.recurring
-            ? predictNextDate(linkedFund.due_date, linkedFund.frequency || 'monthly')
-            : linkedFund.due_date
-        };
-
-        if (!linkedFund.recurring && updatedLinked.amount <= 0) {
-          await dbOperation('reservedFunds', 'delete', linkedFund.id);
-        } else {
-          await dbOperation('reservedFunds', 'put', updatedLinked);
-        }
-
-        affectedFund = linkedSnapshot;
-      }
-    }
-
-    if (remainingAmount > 0) {
-      const lumpsumFund = reservedFunds.find(f =>
-        f.is_lumpsum && f.linked_items?.some(item => item.type === 'loan' && item.id === loanId)
+    const loanBalance = parseFloat(loan.balance) || 0;
+    if (paymentAmount > loanBalance + 0.01) {
+      const proceed = window.confirm(
+        `You are attempting to pay ${formatCurrency(paymentAmount)}, which exceeds the outstanding balance of ${formatCurrency(loanBalance)}. Continue?`
       );
+      if (!proceed) {
+        return;
+      }
+    }
 
-      if (lumpsumFund) {
-        const lumpsumSnapshot = { ...lumpsumFund };
-        const currentAmount = parseFloat(lumpsumFund.amount) || 0;
-        const deductedAmount = Math.min(currentAmount, remainingAmount);
+    try {
+      // Capture original loan state BEFORE any modifications for undo
+      const originalLoan = { ...loan };
 
-        if (deductedAmount > 0) {
-          remainingAmount -= deductedAmount;
+      const updatedLoan = {
+        ...loan,
+        balance: Math.max(0, loanBalance - paymentAmount),
+        last_payment_date: paymentDate,
+        last_auto_payment_date: new Date().toISOString().split('T')[0]
+      };
 
-          const lumpsumTransaction = {
-            type: 'reserved_fund_paid',
-            amount: deductedAmount,
-            date: paymentDate,
-            description: `Lumpsum fund applied: ${lumpsumFund.name}`,
-            notes: `Lumpsum fund payment for ${loan.name}`,
-            created_at: new Date().toISOString(),
-            status: 'active',
-            undone_at: null,
-            payment_method: 'reserved_fund',
-            payment_method_id: lumpsumFund.id
-          };
-          await dbOperation('transactions', 'put', lumpsumTransaction);
+      let shouldContinue = true;
+      const nextDate = predictNextDate(paymentDate, loan.frequency);
 
-          await dbOperation('reservedFunds', 'put', {
-            ...lumpsumFund,
-            amount: Math.max(0, currentAmount - deductedAmount),
-            last_paid_date: paymentDate
-          });
+      if (loan.recurring_duration_type === 'occurrences') {
+        const completed = (loan.recurring_occurrences_completed || 0) + 1;
+        updatedLoan.recurring_occurrences_completed = completed;
+        const total = loan.recurring_occurrences_total || 0;
+        if (total && completed >= total) {
+          shouldContinue = false;
+        }
+      }
 
-          if (!affectedFund) {
-            affectedFund = lumpsumSnapshot;
+      if (loan.recurring_duration_type === 'until_date' && loan.recurring_until_date) {
+        const endDate = new Date(loan.recurring_until_date);
+        const nextDateObj = new Date(nextDate);
+        if (nextDateObj > endDate) {
+          shouldContinue = false;
+        }
+      }
+
+      updatedLoan.next_payment_date = shouldContinue ? nextDate : null;
+
+      await dbOperation('loans', 'put', updatedLoan, { skipActivityLog: true });
+      loan.balance = updatedLoan.balance;
+      loan.recurring_occurrences_completed = updatedLoan.recurring_occurrences_completed;
+      loan.next_payment_date = updatedLoan.next_payment_date;
+
+      const affectedFunds = [];
+      const fundTransactionIds = [];
+      const bankAdjustments = [];
+
+      const recordAffectedFund = (fundSnapshot, amountUsed, metadata = {}) => {
+        if (!fundSnapshot) return;
+        const numericAmount = Number(amountUsed) || 0;
+        if (numericAmount <= 0) return;
+        affectedFunds.push({
+          fund: { ...fundSnapshot },
+          amountUsed: numericAmount,
+          ...metadata
+        });
+      };
+
+      let paymentMethod = 'cash';
+      let paymentMethodId = null;
+      let paymentMethodName = 'Cash';
+      let sourceName = 'Cash';
+      const previousCash = availableCash;
+      let newCash = availableCash - paymentAmount;
+
+      if (sourceType === 'reserved_fund') {
+      const fund = findReservedFundById(sourceId);
+      if (!fund) {
+        alert('Selected reserved fund was not found.');
+        return;
+      }
+
+      const currentAmount = parseFloat(fund.amount) || 0;
+      if (paymentAmount - currentAmount > 0.005) {
+        alert(`The reserved fund ${fund.name} only has ${formatCurrency(currentAmount)} available.`);
+        return;
+      }
+
+      // Deep copy fund snapshot to preserve nested objects like linked_to and linked_items
+      const fundSnapshot = JSON.parse(JSON.stringify(fund));
+      
+
+      if (fund.recurring) {
+        const updatedFund = {
+          ...fund,
+          amount: Math.max(0, currentAmount - paymentAmount),
+          last_paid_date: paymentDate
+        };
+
+        let continueFund = true;
+        const nextFundDue = predictNextDate(fund.due_date, fund.frequency || 'monthly');
+
+        if (fund.recurring_duration_type === 'occurrences') {
+          const completed = (fund.recurring_occurrences_completed || 0) + 1;
+          updatedFund.recurring_occurrences_completed = completed;
+          const total = fund.recurring_occurrences_total || 0;
+          if (total && completed >= total) {
+            continueFund = false;
           }
         }
+
+        if (fund.recurring_duration_type === 'until_date' && fund.recurring_until_date) {
+          const fundEndDate = new Date(fund.recurring_until_date);
+          const nextFundDate = new Date(nextFundDue);
+          if (nextFundDate > fundEndDate) {
+            continueFund = false;
+          }
+        }
+
+        if (continueFund) {
+          updatedFund.due_date = nextFundDue;
+        } else {
+          updatedFund.recurring = false;
+          updatedFund.due_date = fund.recurring_until_date || fund.due_date;
+        }
+
+        await dbOperation('reservedFunds', 'put', updatedFund, { skipActivityLog: true });
+      } else if (fund.is_lumpsum) {
+        const updatedAmount = Math.max(0, currentAmount - paymentAmount);
+        const updatedFund = {
+          ...fund,
+          amount: updatedAmount,
+          last_paid_date: paymentDate
+        };
+
+        if (fund.recurring_duration_type === 'occurrences') {
+          const completed = (fund.recurring_occurrences_completed || 0) + 1;
+          updatedFund.recurring_occurrences_completed = completed;
+          const total = fund.recurring_occurrences_total || 0;
+          if (total && completed >= total) {
+            updatedFund.recurring = false;
+          }
+        }
+
+        await dbOperation('reservedFunds', 'put', updatedFund, { skipActivityLog: true });
+      } else {
+        const remaining = currentAmount - paymentAmount;
+        if (remaining <= 0.0001) {
+          await dbOperation('reservedFunds', 'delete', resolveFundId(fund), { skipActivityLog: true });
+        } else {
+          const updatedFund = {
+            ...fund,
+            amount: remaining,
+            last_paid_date: paymentDate
+          };
+          await dbOperation('reservedFunds', 'put', updatedFund, { skipActivityLog: true });
+        }
       }
+
+      const adjustmentInfo = await adjustBankAccountForFund(fund, paymentAmount);
+      const snapshotFund = adjustmentInfo
+        ? { ...fundSnapshot, source_account_name: adjustmentInfo.accountName }
+        : fundSnapshot;
+
+      // Track if fund was deleted so undo knows to restore it
+      const wasFundDeleted = !fund.recurring && !fund.is_lumpsum && (currentAmount - paymentAmount) <= 0.0001;
+
+      recordAffectedFund(snapshotFund, paymentAmount, {
+        wasDeleted: wasFundDeleted
+      });
+
+      paymentMethod = 'reserved_fund';
+      paymentMethodId = resolveFundId(fund);
+      paymentMethodName = fund.name;
+      sourceName = fund.name;
+
+      if (hasMigratedToBankAccounts) {
+        await onUpdateCash(null, { syncOnly: true });
+      } else {
+        newCash = previousCash - paymentAmount;
+        await onUpdateCash(newCash);
+      }
+    } else if (sourceType === 'bank_account') {
+      const account = bankAccounts.find((acc) => String(acc.id) === String(sourceId));
+      if (!account) {
+        alert('Selected bank account was not found.');
+        return;
+      }
+
+      const currentBalance = parseFloat(account.balance) || 0;
+      if (paymentAmount - currentBalance > 0.005) {
+        alert(`Insufficient funds in ${account.name}. Available: ${formatCurrency(currentBalance)}`);
+        return;
+      }
+
+      const updatedBalance = Math.max(0, currentBalance - paymentAmount);
+      await updateBankAccountBalance(account.id, updatedBalance);
+      bankAdjustments.push({
+        accountId: account.id,
+        accountName: account.name,
+        previousBalance: currentBalance,
+        newBalance: updatedBalance,
+        amount: paymentAmount
+      });
+
+      paymentMethod = 'bank_account';
+      paymentMethodId = account.id;
+      paymentMethodName = account.name;
+      sourceName = account.name;
+
+      if (hasMigratedToBankAccounts) {
+        await onUpdateCash(null, { syncOnly: true });
+      } else {
+        newCash = previousCash - paymentAmount;
+        await onUpdateCash(newCash);
+      }
+    } else {
+      paymentMethod = 'cash';
+      paymentMethodId = null;
+      paymentMethodName = 'Cash';
+      sourceName = 'Cash';
+      newCash = previousCash - paymentAmount;
+      await onUpdateCash(newCash);
     }
 
-    if (remainingAmount > 0 && remainingAmount < paymentAmount) {
-      const covered = paymentAmount - remainingAmount;
-      console.warn(`Reserved funds covered ${formatCurrency(covered)} of ${formatCurrency(paymentAmount)}. Remaining ${formatCurrency(remainingAmount)} paid from cash.`);
-    }
+      const transaction = {
+        type: 'payment',
+        loan_id: loanId,
+        amount: paymentAmount,
+        date: paymentDate,
+        category_id: paymentForm.category || defaultLoanCategory,
+        category_name: 'Loan Payment',
+        payment_method: paymentMethod,
+        payment_method_id: paymentMethodId,
+        payment_method_name: paymentMethodName,
+        description: `Payment for loan ${loan.name}${sourceName ? ` from ${sourceName}` : ''}`,
+        created_at: new Date().toISOString(),
+        status: 'active',
+        undone_at: null
+      };
+      const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
 
-    // 5️⃣ Update available cash
-    await onUpdateCash(availableCash - paymentAmount);
-
-    // 6️⃣ Log activity
-    await logActivity(
-      'payment',
-      'loan',
-      loanId,
-      loan.name,
-      `Made payment of ${formatCurrency(paymentAmount)} for ${loan.name}`,
-      {
-        entity: { ...loan },
+      const snapshot = {
+        entity: originalLoan,  // Use original loan state for undo
         paymentAmount,
         date: paymentDate,
-        previousCash: availableCash,
-        affectedFund: affectedFund,
-        transactionId: savedTransaction?.id
-      }
-    );
+        previousCash,
+        newCash,
+        source: {
+          type: sourceType,
+          id: sourceId,
+          name: sourceName
+        },
+        paymentMethodName,
+        affectedFund: affectedFunds[0]?.fund || null,
+        affectedFunds,
+        fundTransactionIds,
+        bankAdjustments,
+        transactionId: savedTransaction?.id,
+        isManualPayment: true
+      };
 
-    // 7️⃣ Refresh UI
-    await onUpdate();
+      await logActivity(
+        'payment',
+        'loan',
+        loanId,
+        loan.name,
+        `Made payment of ${formatCurrency(paymentAmount)} for ${loan.name}`,
+        snapshot
+      );
 
-    // 8️⃣ Reset
-    setPayingLoan(null);
-    setPaymentForm({
-      amount: '',
-      date: new Date().toISOString().split('T')[0],
-      category: 'other'
-    });
+      await onUpdate();
+      setPayingLoan(null);
+      resetPaymentFormState();
+    } catch (error) {
+      console.error('Error processing loan payment:', error);
+      alert('Failed to process payment. Please try again.');
+    }
   };
+
 
   const handleDelete = async (id) => {
     if (window.confirm('Delete this loan?')) {
@@ -614,41 +897,112 @@ export default function Loans({
               )}
 
               {payingLoan === loan.id ? (
-                <div className="space-y-2">
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="Payment Amount"
-                    value={paymentForm.amount}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                    className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-                  />
-                  <input
-                    type="date"
-                    value={paymentForm.date}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })}
-                    className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-                  />
-                  <select
-                    value={paymentForm.category}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, category: e.target.value })}
-                    className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-                  >
-                    {categories.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
-                  <div className="flex gap-2">
-                    <button onClick={() => handlePayment(loan.id)} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium">
-                      Confirm Payment
-                    </button>
-                    <button onClick={() => setPayingLoan(null)} className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
+                (() => {
+                  const sourceOptions = getPaymentSourceOptions(loan);
+                  const recommended = getRecommendedAmountForSource(loan, paymentForm.source);
+                  const showRecommended = paymentForm.amountMode === 'recommended' && Number.isFinite(recommended);
+
+                  return (
+                    <div className="space-y-3">
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Payment Source</label>
+                        <select
+                          value={paymentForm.source}
+                          onChange={(e) => handleSourceChange(loan, e.target.value)}
+                          className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                        >
+                          {sourceOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className={`block text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Payment Amount</label>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              disabled={!Number.isFinite(recommended)}
+                              onClick={() => {
+                                if (!Number.isFinite(recommended)) return;
+                                setPaymentForm((prev) => ({
+                                  ...prev,
+                                  amountMode: 'recommended',
+                                  amount: recommended.toFixed(2)
+                                }));
+                              }}
+                              className={`px-2 py-1 text-xs rounded border ${paymentForm.amountMode === 'recommended' ? 'bg-blue-600 text-white border-blue-600' : darkMode ? 'border-gray-600 text-gray-300' : 'border-gray-300 text-gray-600'} ${!Number.isFinite(recommended) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                              Suggested
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentForm((prev) => ({ ...prev, amountMode: 'custom' }))}
+                              className={`px-2 py-1 text-xs rounded border ${paymentForm.amountMode === 'custom' ? 'bg-blue-600 text-white border-blue-600' : darkMode ? 'border-gray-600 text-gray-300' : 'border-gray-300 text-gray-600'}`}
+                            >
+                              Custom
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Payment Amount"
+                          value={paymentForm.amount}
+                          disabled={paymentForm.amountMode === 'recommended'}
+                          onChange={(e) => setPaymentForm({ ...paymentForm, amountMode: 'custom', amount: e.target.value })}
+                          className={`w-full px-3 py-2 border ${paymentForm.amountMode === 'recommended' ? 'opacity-60 cursor-not-allowed' : ''} ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                        />
+                        {showRecommended && (
+                          <p className={`mt-1 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                            Suggested amount: {formatCurrency(recommended)}
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Payment Date</label>
+                        <input
+                          type="date"
+                          value={paymentForm.date}
+                          onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })}
+                          className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                        />
+                      </div>
+
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Category</label>
+                        <select
+                          value={paymentForm.category}
+                          onChange={(e) => setPaymentForm({ ...paymentForm, category: e.target.value })}
+                          className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                        >
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button onClick={() => handlePayment(loan.id)} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium">
+                          Confirm Payment
+                        </button>
+                        <button
+                          onClick={() => {
+                            setPayingLoan(null);
+                            resetPaymentFormState();
+                          }}
+                          className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
-                <button onClick={() => setPayingLoan(loan.id)} className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium">
+                <button onClick={() => openPaymentForm(loan)} className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium">
                   Make Payment
                 </button>
               )}

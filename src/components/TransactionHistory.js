@@ -14,7 +14,8 @@ export default function TransactionHistory({
   onUpdate,
   onUpdateCash,
   showAddModal,
-  onCloseAddModal
+  onCloseAddModal,
+  bankAccounts
 }) {
   const [transactions, setTransactions] = useState([]);
   const [filteredTransactions, setFilteredTransactions] = useState([]);
@@ -30,7 +31,7 @@ export default function TransactionHistory({
   });
 
   const isPaymentType = (type) =>
-    type === 'payment' || type === 'loan_payment' || type === 'credit_card_payment';
+    type === 'payment' || type === 'loan_payment' || type === 'credit_card_payment' || type === 'reserved_fund_paid';
 
   const resolvePaymentSubtype = (transaction) => {
     if (transaction.subtype) return transaction.subtype;
@@ -84,6 +85,16 @@ export default function TransactionHistory({
   useEffect(() => {
     applyFilters();
   }, [applyFilters]);
+
+  useEffect(() => {
+    console.log('All transactions:', transactions.map(t => ({
+      id: t.id,
+      type: t.type,
+      payment_method: t.payment_method,
+      description: t.description,
+      amount: t.amount
+    })));
+  }, [transactions]);
 
   const loadTransactions = useCallback(async () => {
     try {
@@ -337,6 +348,7 @@ export default function TransactionHistory({
           reservedFunds={reservedFunds}
           availableCash={availableCash}
           onUpdateCash={onUpdateCash}
+          bankAccounts={bankAccounts}
         />
       )}
 
@@ -438,6 +450,31 @@ export default function TransactionHistory({
         ) : (
           filteredTransactions.map((transaction) => {
             const isUndone = transaction.status === 'undone';
+            const formatLabel = (value) => {
+              if (!value) return '';
+              const cleaned = value.replace(/_/g, ' ');
+              return cleaned
+                .toLowerCase()
+                .replace(/\b\w/g, (char) => char.toUpperCase());
+            };
+            const formattedType = formatLabel(transaction.type || 'transaction');
+            const methodLabel = transaction.payment_method_name || transaction.payment_method || null;
+            const formattedMethod = transaction.payment_method_name ? methodLabel : formatLabel(methodLabel);
+            const statusLabel = transaction.status ? formatLabel(transaction.status) : null;
+            const infoChips = [
+              { label: 'Type', value: formattedType }
+            ];
+
+            if (formattedMethod) {
+              infoChips.push({ label: 'Method', value: formattedMethod });
+            }
+
+            if (statusLabel && statusLabel.toLowerCase() !== 'active') {
+              infoChips.push({ label: 'Status', value: statusLabel });
+            }
+
+            const chipClass = darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700';
+
             return (
             <div
               key={transaction.id}
@@ -468,14 +505,22 @@ export default function TransactionHistory({
                     
                     <div className={`flex items-center gap-3 text-sm ${isUndone ? 'text-gray-400 line-through' : 'text-gray-500'}`}>
                       <span>{formatDate(transaction.date)}</span>
-                      {transaction.payment_method_name && (
-                        <>
-                          <span>•</span>
-                          <span>{transaction.payment_method_name}</span>
-                        </>
-                      )}
                     </div>
                     
+                    {infoChips.length > 0 && (
+                      <div className={`flex flex-wrap gap-2 mt-2 text-xs ${isUndone ? 'text-gray-400' : ''}`}>
+                        {infoChips.map((chip, index) => (
+                          <span
+                            key={`${transaction.id}-${chip.label}-${index}`}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded ${chipClass}`}
+                          >
+                            <span className="font-semibold">{chip.label}:</span>
+                            <span className="capitalize">{chip.value}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
                     {transaction.notes && (
                       <p className={`text-sm mt-1 ${isUndone ? 'text-gray-400 line-through' : 'text-gray-500'}`}>{transaction.notes}</p>
                     )}

@@ -7,21 +7,31 @@ export const formatCurrency = (amount) => {
 };
 
 export const formatDate = (date) => {
-  return new Date(date).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' });
+  if (!date) return '';
+  // Parse date string as local date (YYYY-MM-DD) without timezone conversion
+  const [year, month, day] = date.split('T')[0].split('-');
+  const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  return localDate.toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
 export const getDaysUntil = (date) => {
+  if (!date) return 0;
+  // Parse dates without timezone conversion
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const targetDate = new Date(date);
+  
+  const [year, month, day] = date.split('T')[0].split('-');
+  const targetDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
   targetDate.setHours(0, 0, 0, 0);
+  
   const diffTime = targetDate - today;
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return diffDays;
 };
 
 export const predictNextDate = (lastDate, frequency) => {
-  const date = new Date(lastDate);
+  const [year, month, day] = lastDate.split('T')[0].split('-');
+  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
   switch (frequency) {
     case 'weekly':
       date.setDate(date.getDate() + 7);
@@ -153,3 +163,211 @@ export const validateAvailableCash = async () => {
     throw error;
   }
 };
+
+// ============================================
+// BANK ACCOUNT HELPER FUNCTIONS
+// Phase 2B: Helper functions for bank account operations
+//
+// PURPOSE:
+// - Utility functions for working with bank accounts
+// - Balance calculations and validations
+// - Display formatting
+//
+// SAFETY: These are pure utility functions that don't modify data
+// ============================================
+
+/**
+ * Calculate total balance across all bank accounts
+ * Replaces the old single "Available Cash" value
+ *
+ * @param {Array} bankAccounts - Array of bank account objects
+ * @returns {number} Total balance across all accounts
+ */
+export function calculateTotalBankBalance(bankAccounts) {
+  if (!bankAccounts || !Array.isArray(bankAccounts)) {
+    console.warn('⚠️ calculateTotalBankBalance: Invalid input, returning 0');
+    return 0;
+  }
+
+  const total = bankAccounts.reduce((sum, account) => {
+    const balance = parseFloat(account.balance) || 0;
+    return sum + balance;
+  }, 0);
+
+  return total;
+}
+
+/**
+ * Calculate true available cash (total bank balance minus reserved funds)
+ * This is the new version of the "True Available" calculation
+ *
+ * FORMULA: Total Bank Balance - Total Reserved = True Available
+ *
+ * @param {Array} bankAccounts - Array of bank account objects
+ * @param {Array} reservedFunds - Array of reserved fund objects
+ * @returns {number} True available amount (can be negative if over-allocated)
+ */
+export function calculateTrueAvailable(bankAccounts, reservedFunds) {
+  const totalBankBalance = calculateTotalBankBalance(bankAccounts);
+
+  const totalReserved = reservedFunds.reduce((sum, fund) => {
+    return sum + (parseFloat(fund.amount) || 0);
+  }, 0);
+
+  const trueAvailable = totalBankBalance - totalReserved;
+
+  return trueAvailable;
+}
+
+/**
+ * Get account balance by ID
+ * Safe getter that returns 0 if account not found
+ *
+ * @param {Array} bankAccounts - Array of bank account objects
+ * @param {string} accountId - Account ID to find
+ * @returns {number} Account balance or 0 if not found
+ */
+export function getAccountBalance(bankAccounts, accountId) {
+  if (!bankAccounts || !accountId) return 0;
+
+  const account = bankAccounts.find(acc => acc.id === accountId);
+  return account ? (parseFloat(account.balance) || 0) : 0;
+}
+
+/**
+ * Get primary account from bank accounts array
+ * Returns the account marked as is_primary: true
+ *
+ * @param {Array} bankAccounts - Array of bank account objects
+ * @returns {Object|null} Primary account or null if none exists
+ */
+export function getPrimaryAccountFromArray(bankAccounts) {
+  if (!bankAccounts || !Array.isArray(bankAccounts)) return null;
+
+  return bankAccounts.find(account => account.is_primary === true) || null;
+}
+
+/**
+ * Validate if account has sufficient balance for a transaction
+ *
+ * @param {Array} bankAccounts - Array of bank account objects
+ * @param {string} accountId - Account ID to check
+ * @param {number} amount - Amount needed
+ * @returns {boolean} True if sufficient funds, false otherwise
+ */
+export function hasSufficientFunds(bankAccounts, accountId, amount) {
+  const balance = getAccountBalance(bankAccounts, accountId);
+  return balance >= amount;
+}
+
+/**
+ * Format account display name with institution (if available)
+ * Examples:
+ * - "Primary Checking (Chase)"
+ * - "Savings Account"
+ *
+ * @param {Object} account - Bank account object
+ * @returns {string} Formatted account name
+ */
+export function formatAccountName(account) {
+  if (!account) return 'Unknown Account';
+
+  if (account.institution && account.institution.trim()) {
+    return `${account.name} (${account.institution})`;
+  }
+
+  return account.name;
+}
+
+/**
+ * Get human-readable account type display name
+ *
+ * @param {string} accountType - Account type code ('checking', 'savings', etc.)
+ * @returns {string} Display name
+ */
+export function getAccountTypeDisplay(accountType) {
+  const types = {
+    'checking': 'Checking',
+    'savings': 'Savings',
+    'investment': 'Investment',
+    'cash': 'Cash'
+  };
+
+  return types[accountType] || 'Other';
+}
+
+/**
+ * Get account type icon emoji
+ * Visual indicator for different account types
+ *
+ * @param {string} accountType - Account type code
+ * @returns {string} Emoji icon
+ */
+export function getAccountTypeIcon(accountType) {
+  const icons = {
+    'checking': '🏦',
+    'savings': '💰',
+    'investment': '📈',
+    'cash': '💵'
+  };
+
+  return icons[accountType] || '🏦';
+}
+
+/**
+ * Validate bank account data before saving
+ * Returns array of validation errors (empty if valid)
+ *
+ * @param {Object} accountData - Account data to validate
+ * @returns {Array<string>} Array of error messages (empty if valid)
+ */
+export function validateBankAccountData(accountData) {
+  const errors = [];
+
+  if (!accountData.name || accountData.name.trim() === '') {
+    errors.push('Account name is required');
+  }
+
+  if (accountData.balance === undefined || accountData.balance === null) {
+    errors.push('Account balance is required');
+  }
+
+  if (isNaN(parseFloat(accountData.balance))) {
+    errors.push('Account balance must be a valid number');
+  }
+
+  if (!accountData.account_type) {
+    errors.push('Account type is required');
+  }
+
+  const validTypes = ['checking', 'savings', 'investment', 'cash'];
+  if (accountData.account_type && !validTypes.includes(accountData.account_type)) {
+    errors.push(`Account type must be one of: ${validTypes.join(', ')}`);
+  }
+
+  return errors;
+}
+
+/**
+ * Sort bank accounts for display
+ * Primary account first, then by creation date
+ *
+ * @param {Array} bankAccounts - Array of bank account objects
+ * @returns {Array} Sorted array (does not mutate original)
+ */
+export function sortBankAccounts(bankAccounts) {
+  if (!bankAccounts || !Array.isArray(bankAccounts)) return [];
+
+  return [...bankAccounts].sort((a, b) => {
+    // Primary account always first
+    if (a.is_primary && !b.is_primary) return -1;
+    if (!a.is_primary && b.is_primary) return 1;
+
+    // Then sort by creation date (oldest first)
+    return new Date(a.created_at) - new Date(b.created_at);
+  });
+}
+
+// ============================================
+// END OF BANK ACCOUNT HELPER FUNCTIONS
+// ============================================

@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, ChevronRight, Edit2 } from 'lucide-react';
-import { formatCurrency, formatDate } from '../utils/helpers';
+import { formatCurrency, formatDate, calculateTotalBankBalance } from '../utils/helpers';
 
-export default function Dashboard({ 
-  darkMode, 
-  availableCash, 
-  totalReserved, 
+export default function Dashboard({
+  darkMode,
+  availableCash,
+  totalReserved,
   trueAvailable,
   upcomingObligations,
   nextIncome,
@@ -15,7 +15,8 @@ export default function Dashboard({
   loans,
   alertSettings,
   onNavigate,
-  onUpdateAlertSettings
+  onUpdateAlertSettings,
+  bankAccounts
 }) {
   const urgentDays = alertSettings?.defaultDays || 7;
   const upcomingDays = alertSettings?.upcomingDays || 30;
@@ -234,6 +235,17 @@ export default function Dashboard({
           <div className="text-2xl font-bold">{formatCurrency(totalLoanDebt)}</div>
           <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1`}>{loans.length} loans</div>
         </button>
+        {bankAccounts && bankAccounts.length > 0 && (
+          <button
+            type="button"
+            onClick={() => handleSummaryNavigate('bank-accounts')}
+            className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 text-left hover:bg-gray-100/60 dark:hover:bg-gray-700/40 transition-colors col-span-2`}
+          >
+            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-1`}>Bank Accounts</div>
+            <div className="text-2xl font-bold">{formatCurrency(calculateTotalBankBalance(bankAccounts))}</div>
+            <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1`}>{bankAccounts.length} {bankAccounts.length === 1 ? 'account' : 'accounts'}</div>
+          </button>
+        )}
       </div>
     </div>
   );

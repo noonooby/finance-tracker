@@ -69,7 +69,15 @@ export const undoActivity = async (activity, onUpdate) => {
 
     switch (action_type) {
       case 'add':
-        if (entity_type === 'card' && snapshot?.isGiftCard) {
+        if (entity_type === 'bank_account') {
+          // Undo bank account add = delete the bank account
+          try {
+            const { deleteBankAccount } = await import('./db');
+            await deleteBankAccount(entity_id);
+          } catch (error) {
+            console.error('Error undoing bank account add:', error);
+          }
+        } else if (entity_type === 'card' && snapshot?.isGiftCard) {
           await dbOperation('creditCards', 'delete', entity_id, { skipActivityLog: true });
 
           if (snapshot.amount) {
@@ -113,7 +121,17 @@ export const undoActivity = async (activity, onUpdate) => {
       case 'edit':
         // Undo edit = restore previous snapshot
         if (snapshot) {
-          await dbOperation(getStoreNameFromEntityType(entity_type), 'put', snapshot, { skipActivityLog: true });
+          if (entity_type === 'bank_account' && snapshot.previous) {
+            // Undo bank account edit = restore previous state
+            try {
+              const { upsertBankAccount } = await import('./db');
+              await upsertBankAccount(snapshot.previous);
+            } catch (error) {
+              console.error('Error undoing bank account edit:', error);
+            }
+          } else {
+            await dbOperation(getStoreNameFromEntityType(entity_type), 'put', snapshot, { skipActivityLog: true });
+          }
         }
         break;
 
@@ -126,7 +144,17 @@ export const undoActivity = async (activity, onUpdate) => {
             snapshotData = restoredIncome;
           }
 
-          await dbOperation(getStoreNameFromEntityType(entity_type), 'put', snapshotData, { skipActivityLog: true });
+          if (entity_type === 'bank_account') {
+            // Undo bank account delete = restore the account
+            try {
+              const { upsertBankAccount } = await import('./db');
+              await upsertBankAccount(snapshotData);
+            } catch (error) {
+              console.error('Error undoing bank account delete:', error);
+            }
+          } else {
+            await dbOperation(getStoreNameFromEntityType(entity_type), 'put', snapshotData, { skipActivityLog: true });
+          }
 
           if (entity_type === 'transaction') {
             await applyTransactionEffects(snapshot);
@@ -207,9 +235,18 @@ export const undoActivity = async (activity, onUpdate) => {
       case 'payment':
         // Undo payment = restore loan, reserved fund, and cash
         if (snapshot) {
+          console.log('🔄 Undoing payment for', entity_type, entity_id);
+          console.log('📊 Snapshot data:', {
+            hasEntity: !!snapshot.entity,
+            affectedFunds: snapshot.affectedFunds?.length || 0,
+            bankAdjustments: snapshot.bankAdjustments?.length || 0
+          });
+
           // Restore the loan or card entity
           if (snapshot.entity) {
+            console.log('💾 Restoring', entity_type, 'entity');
             await dbOperation(getStoreNameFromEntityType(entity_type), 'put', snapshot.entity, { skipActivityLog: true });
+            console.log('✅', entity_type, 'entity restored');
           }
 
           // Restore the user's available cash
@@ -220,14 +257,167 @@ export const undoActivity = async (activity, onUpdate) => {
             });
           }
 
-          // Restore any affected reserved fund
-          if (snapshot.affectedFund) {
-            await dbOperation('reservedFunds', 'put', snapshot.affectedFund, { skipActivityLog: true });
+          const resolveFundId = (fund) => {
+            if (!fund) return null;
+            if (fund.id !== undefined && fund.id !== null) return String(fund.id);
+            if (fund.fund_id !== undefined && fund.fund_id !== null) return String(fund.fund_id);
+            if (fund.uuid !== undefined && fund.uuid !== null) return String(fund.uuid);
+            return null;
+          };
+
+          const fundAdjustments = new Map();
+          let bankHelpers = null;
+
+          const queueFundRestoration = (fundEntry, amountUsed) => {
+            if (!fundEntry) {
+              console.log('⚠️ queueFundRestoration: fundEntry is null/undefined');
+              return;
+            }
+            const fundSnapshot = fundEntry.fund || fundEntry;
+            const fundId = resolveFundId(fundSnapshot);
+            if (!fundId) {
+              console.log('⚠️ queueFundRestoration: Could not resolve fund ID from snapshot');
+              return;
+            }
+
+            console.log('📝 Queueing fund restoration:', fundSnapshot.name, 'ID:', fundId, 'Amount:', fundSnapshot.amount);
+
+            const numericAmount = Number(amountUsed) || 0;
+            const existing = fundAdjustments.get(fundId) || { fund: fundSnapshot, amount: 0 };
+
+            // Prefer the most complete snapshot if multiple provided
+            if (!existing.fund && fundSnapshot) {
+              existing.fund = fundSnapshot;
+            }
+            existing.amount += numericAmount;
+            fundAdjustments.set(fundId, existing);
+          };
+
+          if (Array.isArray(snapshot.affectedFunds) && snapshot.affectedFunds.length > 0) {
+            for (const entry of snapshot.affectedFunds) {
+              if (!entry) continue;
+              const amountUsed = entry.amountUsed ?? snapshot.paymentAmount ?? entry.amount ?? 0;
+              queueFundRestoration(entry, amountUsed);
+            }
+          } else if (snapshot.affectedFund) {
+            const amountUsed =
+              snapshot.affectedFundAmountUsed ??
+              snapshot.paymentAmount ??
+              snapshot.amount ??
+              0;
+            queueFundRestoration(snapshot.affectedFund, amountUsed);
+          }
+
+          if (fundAdjustments.size > 0) {
+            console.log('🔄 Undoing payment - restoring', fundAdjustments.size, 'fund(s)');
+            for (const { fund, amount } of fundAdjustments.values()) {
+              try {
+                console.log('💾 Restoring reserved fund:', fund.name, 'with amount:', fund.amount);
+
+                // Remove display-only fields that don't exist in database schema
+                const { source_account_name, ...fundToRestore } = fund;
+
+                await dbOperation('reservedFunds', 'put', fundToRestore, { skipActivityLog: true });
+                console.log('✅ Reserved fund restored successfully');
+              } catch (fundError) {
+                console.error('❌ Error restoring reserved fund during undo:', fundError);
+              }
+
+              const amountToRestore = Number(amount) || 0;
+              if (fund?.source_account_id && amountToRestore > 0) {
+                try {
+                  if (!bankHelpers) {
+                    bankHelpers = await import('./db');
+                  }
+                  const { getBankAccount, updateBankAccountBalance } = bankHelpers;
+                  const bankAccount = await getBankAccount(fund.source_account_id);
+                  if (bankAccount) {
+                    const currentBalance = Number(bankAccount.balance) || 0;
+                    const restoredBalance = Math.round((currentBalance + amountToRestore) * 100) / 100;
+                    console.log('💰 Restoring bank account balance:', bankAccount.name, 'from', currentBalance, 'to', restoredBalance);
+                    await updateBankAccountBalance(bankAccount.id, restoredBalance);
+                    console.log('✅ Bank account balance restored');
+                  }
+                } catch (bankError) {
+                  console.error('❌ Error restoring bank account for reserved fund undo:', bankError);
+                }
+              }
+            }
+          }
+
+          const bankAdjustmentsList = Array.isArray(snapshot.bankAdjustments) ? snapshot.bankAdjustments : [];
+          if (bankAdjustmentsList.length > 0) {
+            if (!bankHelpers) {
+              bankHelpers = await import('./db');
+            }
+            const { getBankAccount, updateBankAccountBalance } = bankHelpers;
+            for (const adjustment of bankAdjustmentsList) {
+              if (!adjustment) continue;
+              const { accountId, previousBalance } = adjustment;
+              if (!accountId || previousBalance === undefined || previousBalance === null) continue;
+              try {
+                const account = await getBankAccount(accountId);
+                if (!account) continue;
+                const balanceValue = Number(previousBalance);
+                const targetBalance = Number.isFinite(balanceValue) ? balanceValue : Number(account.balance) || 0;
+                await updateBankAccountBalance(accountId, targetBalance);
+              } catch (bankError) {
+                console.error('Error restoring bank account during undo:', bankError);
+              }
+            }
           }
 
           // Mark related transaction as undone for visibility in history
           if (snapshot.transactionId) {
             await markTransactionUndone(snapshot.transactionId);
+          }
+          if (Array.isArray(snapshot.fundTransactionIds) && snapshot.fundTransactionIds.length > 0) {
+            for (const fundTransactionId of snapshot.fundTransactionIds) {
+              if (!fundTransactionId) continue;
+              await markTransactionUndone(fundTransactionId);
+            }
+          }
+    }
+        break;
+
+      case 'transfer':
+        // Undo bank account transfer - reverse the transfer amounts
+        if (snapshot && snapshot.fromAccount && snapshot.toAccount && snapshot.amount) {
+          try {
+            const { updateBankAccountBalance, getBankAccount } = await import('./db');
+
+            const amount = Number(snapshot.amount) || 0;
+            if (!(amount > 0)) break;
+
+            const [fromAccount, toAccount] = await Promise.all([
+              getBankAccount(snapshot.fromAccount),
+              getBankAccount(snapshot.toAccount)
+            ]);
+
+            if (fromAccount) {
+              const fromBalance = Number(fromAccount.balance) || 0;
+              const targetBalance =
+                snapshot.fromPreviousBalance !== undefined && snapshot.fromPreviousBalance !== null
+                  ? Number(snapshot.fromPreviousBalance) || 0
+                  : Math.round((fromBalance + amount) * 100) / 100;
+              await updateBankAccountBalance(snapshot.fromAccount, Math.max(0, Math.round(targetBalance * 100) / 100));
+            }
+
+            if (toAccount) {
+              const toBalance = Number(toAccount.balance) || 0;
+              const targetBalance =
+                snapshot.toPreviousBalance !== undefined && snapshot.toPreviousBalance !== null
+                  ? Number(snapshot.toPreviousBalance) || 0
+                  : Math.round((toBalance - amount) * 100) / 100;
+              await updateBankAccountBalance(snapshot.toAccount, Math.max(0, Math.round(targetBalance * 100) / 100));
+            }
+
+            // Mark the transfer transaction as undone
+            if (snapshot.transactionId) {
+              await markTransactionUndone(snapshot.transactionId);
+            }
+          } catch (error) {
+            console.error('Error undoing bank account transfer:', error);
           }
         }
         break;
@@ -260,6 +450,7 @@ const getStoreNameFromEntityType = (entityType) => {
     fund: 'reservedFunds',
     income: 'income',
     transaction: 'transactions',
+    bank_account: 'bankAccounts',
   };
   return map[entityType] || entityType;
 };

@@ -1,18 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Plus, DollarSign, Edit2, X } from 'lucide-react';
-import { formatCurrency, formatDate, predictNextDate, getDaysUntil, generateId } from '../utils/helpers';
+import { formatCurrency, formatDate, predictNextDate, getDaysUntil, generateId, getPrimaryAccountFromArray } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import SmartInput from './SmartInput';
 import { autoDepositDueIncome } from '../utils/autoPay';
-export default function Income({ 
-  darkMode, 
+export default function Income({
+  darkMode,
   income,
   availableCash,
   onUpdate,
   onUpdateCash,
   focusTarget,
-  onClearFocus
+  onClearFocus,
+  bankAccounts
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -24,7 +25,8 @@ export default function Income({
     reservedAmount: '',
     recurringDurationType: 'indefinite',
     recurringUntilDate: '',
-    recurringOccurrences: ''
+    recurringOccurrences: '',
+    depositAccountId: ''
   });
   const incomeRefs = useRef({});
   const [predictionCount, setPredictionCount] = useState(8);
@@ -87,7 +89,8 @@ export default function Income({
         formData.recurringDurationType === 'occurrences'
           ? parseInt(formData.recurringOccurrences, 10) || null
           : null,
-      recurring_occurrences_completed: editingItem?.recurring_occurrences_completed || 0
+      recurring_occurrences_completed: editingItem?.recurring_occurrences_completed || 0,
+      deposit_account_id: formData.depositAccountId || null
     };
     
     const savedIncome = await dbOperation('income', 'put', incomeEntry, { skipActivityLog: true });
@@ -116,7 +119,9 @@ export default function Income({
       if (formData.reservedAmount && parseFloat(formData.reservedAmount) > 0) {
         newCash -= parseFloat(formData.reservedAmount);
       }
-      await onUpdateCash(newCash);
+      await onUpdateCash(newCash, {
+        accountId: formData.depositAccountId || undefined
+      });
 
       await logActivity(
         'income',
@@ -140,6 +145,7 @@ export default function Income({
   };
 
   const handleEdit = (inc) => {
+    const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
     setFormData({
       source: inc.source,
       amount: inc.amount.toString(),
@@ -148,7 +154,8 @@ export default function Income({
       reservedAmount: '',
       recurringDurationType: inc.recurring_duration_type || 'indefinite',
       recurringUntilDate: inc.recurring_until_date || '',
-      recurringOccurrences: inc.recurring_occurrences_total?.toString() || ''
+      recurringOccurrences: inc.recurring_occurrences_total?.toString() || '',
+      depositAccountId: inc.deposit_account_id || primaryAccount?.id || ''
     });
     setEditingItem(inc);
     setShowAddForm(true);
@@ -190,7 +197,9 @@ export default function Income({
       );
 
       const newCash = previousCash - inc.amount;
-      await onUpdateCash(newCash);
+      await onUpdateCash(newCash, {
+        accountId: inc.deposit_account_id || undefined
+      });
       await dbOperation('income', 'delete', id, { skipActivityLog: true });
 
       for (const trx of relatedTransactions) {
@@ -206,6 +215,7 @@ export default function Income({
   };
 
   const resetForm = () => {
+    const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
     setFormData({
       source: 'Salary',
       amount: '',
@@ -214,7 +224,8 @@ export default function Income({
       reservedAmount: '',
       recurringDurationType: 'indefinite',
       recurringUntilDate: '',
-      recurringOccurrences: ''
+      recurringOccurrences: '',
+      depositAccountId: primaryAccount?.id || ''
     });
     setShowAddForm(false);
     setEditingItem(null);
@@ -335,6 +346,25 @@ export default function Income({
             onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
             className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
           />
+          {bankAccounts && bankAccounts.length > 0 && (
+            <div>
+              <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                Deposit to Account (Optional)
+              </label>
+              <select
+                value={formData.depositAccountId}
+                onChange={(e) => setFormData({ ...formData, depositAccountId: e.target.value })}
+                className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+              >
+                <option value="">Select account</option>
+                {bankAccounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.name} {account.is_primary ? '(Primary)' : ''} - {formatCurrency(account.balance)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Date Received *</label>
             <input
