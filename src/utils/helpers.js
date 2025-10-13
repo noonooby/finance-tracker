@@ -66,12 +66,31 @@ export const DEFAULT_CATEGORIES = [
   { id: 'other_income', name: 'Other Income', color: '#6b7280', icon: '💵', is_income: true }
 ];
 
-// Recalculate available cash based on all transactions
+// ============================================
+// LEGACY AVAILABLE CASH FUNCTIONS
+// ============================================
+// WARNING: These functions are from the old system before bank accounts were implemented.
+// They calculate "availableCash" based on transaction history, which doesn't properly
+// account for bank account transfers and other modern features.
+//
+// KNOWN ISSUES:
+// - Doesn't account for bank account transfers
+// - Doesn't sync with actual bank account balances
+// - May produce incorrect results in apps using bank accounts
+//
+// RECOMMENDATION: These should eventually be deprecated or replaced with bank-account-aware logic
+// ============================================
 
+// Recalculate available cash based on all transactions
+// NOTE: This is imported by activityLogger, so we cannot import it here to avoid circular dependency
 export const recalculateAvailableCash = async () => {
   try {
+    // Get the current value BEFORE making changes (for undo capability)
+    const previousCashSetting = await dbOperation('settings', 'get', 'availableCash');
+    const previousCash = previousCashSetting?.value || 0;
+
     const transactions = await dbOperation('transactions', 'getAll');
-    const sortedTransactions = transactions.sort((a, b) => 
+    const sortedTransactions = transactions.sort((a, b) =>
       new Date(a.date) - new Date(b.date)
     );
 
@@ -98,13 +117,18 @@ export const recalculateAvailableCash = async () => {
       }
     }
 
-    await dbOperation('settings', 'put', { 
-      key: 'availableCash', 
-      value: calculatedCash 
+    await dbOperation('settings', 'put', {
+      key: 'availableCash',
+      value: calculatedCash
     });
 
     console.log(`Available cash recalculated: $${calculatedCash.toFixed(2)}`);
-    return calculatedCash;
+
+    // Return both old and new values for activity logging
+    return {
+      newCash: calculatedCash,
+      previousCash: previousCash
+    };
 
   } catch (error) {
     console.error('Error recalculating available cash:', error);

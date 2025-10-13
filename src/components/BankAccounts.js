@@ -17,7 +17,7 @@
 // ============================================
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle } from 'lucide-react';
+import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle, ListFilter } from 'lucide-react';
 import { formatCurrency, generateId, validateBankAccountData, getAccountTypeIcon, sortBankAccounts } from '../utils/helpers';
 import {
   //getAllBankAccounts,
@@ -36,13 +36,15 @@ import SmartInput from './SmartInput';
  * @param {Function} onUpdate - Callback to refresh parent state after changes
  * @param {Object} focusTarget - Target account to highlight/scroll to
  * @param {Function} onClearFocus - Clear focus target callback
+ * @param {Function} onNavigateToTransactions - Navigate to transaction history with filters
  */
 export default function BankAccounts({
   darkMode,
   bankAccounts,
   onUpdate,
   focusTarget,
-  onClearFocus
+  onClearFocus,
+  onNavigateToTransactions
 }) {
   // ============================================
   // STATE MANAGEMENT
@@ -705,6 +707,13 @@ export default function BankAccounts({
                         <Star size={18} />
                       </button>
                     )}
+                    <button
+                      onClick={() => onNavigateToTransactions && onNavigateToTransactions({ bankAccount: account.id })}
+                      className={`p-2 rounded ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'}`}
+                      title="View transactions"
+                    >
+                      <ListFilter size={18} />
+                    </button>
                     <button
                       onClick={() => handleEdit(account)}
                       className={`p-2 rounded ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'}`}

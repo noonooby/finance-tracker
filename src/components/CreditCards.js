@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, Edit2, X, CreditCard, ShoppingBag } from 'lucide-react';
+import { Plus, Edit2, X, CreditCard, ShoppingBag, ListFilter } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId, calculateTotalBankBalance } from '../utils/helpers';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import AddTransaction from './AddTransaction';
@@ -18,7 +18,8 @@ export default function CreditCards({
   onUpdateCash,
   focusTarget,
   onClearFocus,
-  bankAccounts
+  bankAccounts,
+  onNavigateToTransactions
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -1008,6 +1009,13 @@ export default function CreditCards({
                 </div>
                 <div className="flex gap-2">
                   <button
+                    onClick={() => onNavigateToTransactions && onNavigateToTransactions({ creditCard: card.id })}
+                    className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
+                    title="View transactions"
+                  >
+                    <ListFilter size={18} />
+                  </button>
+                  <button
                     onClick={() => handleEdit(card)}
                     className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}
                   >
@@ -1166,6 +1174,13 @@ export default function CreditCards({
                     className="bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700"
                   >
                     Make Payment
+                  </button>
+                  <button
+                    onClick={() => onNavigateToTransactions && onNavigateToTransactions({ creditCard: card.id })}
+                    className={`p-2 rounded ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'}`}
+                    title="View transactions"
+                    >
+                  <ListFilter size={18} />
                   </button>
                 </div>
               )}

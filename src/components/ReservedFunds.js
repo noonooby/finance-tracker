@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, Edit2, X, Calendar, Copy } from 'lucide-react';
+import { Plus, Edit2, X, Calendar, Copy, ListFilter } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId, getPrimaryAccountFromArray } from '../utils/helpers';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 
-export default function ReservedFunds({ 
-  darkMode, 
+export default function ReservedFunds({
+  darkMode,
   reservedFunds,
   creditCards,
   loans,
@@ -13,7 +13,8 @@ export default function ReservedFunds({
   onUpdate,
   focusTarget,
   onClearFocus,
-  bankAccounts
+  bankAccounts,
+  onNavigateToTransactions
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -624,6 +625,13 @@ export default function ReservedFunds({
                     title="Use as template"
                   >
                     <Copy size={18} />
+                  </button>
+                  <button
+                    onClick={() => onNavigateToTransactions && onNavigateToTransactions({ reservedFund: resolvedId })}
+                    className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
+                    title="View transactions"
+                  >
+                    <ListFilter size={18} />
                   </button>
                   <button
                     onClick={() => handleEdit(fund)}

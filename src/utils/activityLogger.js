@@ -422,6 +422,22 @@ export const undoActivity = async (activity, onUpdate) => {
         }
         break;
 
+      case 'recalculate_cash':
+        // Undo recalculate cash operation - restore previous value
+        if (snapshot && snapshot.previousValue !== undefined) {
+          try {
+            console.log('🔄 Undoing recalculate cash - restoring previous value:', snapshot.previousValue);
+            await dbOperation('settings', 'put', {
+              key: 'availableCash',
+              value: snapshot.previousValue
+            });
+            console.log('✅ Available cash restored to:', snapshot.previousValue);
+          } catch (error) {
+            console.error('Error undoing recalculate cash:', error);
+          }
+        }
+        break;
+
       default:
         console.warn('Unknown action type for undo:', action_type);
         return false;

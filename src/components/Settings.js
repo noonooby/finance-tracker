@@ -1,66 +1,17 @@
 import React, { useState } from 'react';
-import { Settings as SettingsIcon, RefreshCw, CheckCircle, AlertCircle, Trash2, Database } from 'lucide-react';
-import { recalculateAvailableCash, validateAvailableCash } from '../utils/helpers';
+import { Settings as SettingsIcon, AlertCircle, Trash2, Database, CheckCircle } from 'lucide-react';
 import { deleteAllUserData } from '../utils/db';
 import CategoryManager from './CategoryManager';
 import { fetchAllKnownEntities, deleteKnownEntity } from '../utils/knownEntities';
 
 export default function Settings({ darkMode, onUpdate, onReloadCategories }) {
-  const [recalculating, setRecalculating] = useState(false);
-  const [validating, setValidating] = useState(false);
-  const [validationResult, setValidationResult] = useState(null);
   const [message, setMessage] = useState(null);
   const [deletingAll, setDeletingAll] = useState(false);
   const [knownEntities, setKnownEntities] = useState({});
   const [loadingEntities, setLoadingEntities] = useState(false);
   const [showEntities, setShowEntities] = useState(false);
 
-  const handleRecalculate = async () => {
-    if (!window.confirm('This will recalculate your available cash based on all transactions. Continue?')) {
-      return;
-    }
-
-    setRecalculating(true);
-    setMessage(null);
-
-    try {
-      const newCash = await recalculateAvailableCash();
-      setMessage({
-        type: 'success',
-        text: `Available cash recalculated: $${newCash.toFixed(2)}`
-      });
-      if (onUpdate) await onUpdate();
-    } catch (error) {
-      setMessage({
-        type: 'error',
-        text: 'Error recalculating cash. Please try again.'
-      });
-    } finally {
-      setRecalculating(false);
-    }
-  };
-
-  const handleValidate = async () => {
-    setValidating(true);
-    setMessage(null);
-
-    try {
-      const result = await validateAvailableCash();
-      setValidationResult(result);
-      setMessage({
-        type: result.isValid ? 'success' : 'warning',
-        text: result.message
-      });
-    } catch (error) {
-      setMessage({
-        type: 'error',
-        text: 'Error validating cash. Please try again.'
-      });
-    } finally {
-      setValidating(false);
-    }
-  };
-
+  
   const handleDeleteAllData = async () => {
     if (!window.confirm('This will permanently delete all of your data for this account. This action cannot be undone. Continue?')) {
       return;
@@ -141,43 +92,6 @@ export default function Settings({ darkMode, onUpdate, onReloadCategories }) {
           <p>{message.text}</p>
         </div>
       )}
-
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 space-y-4`}>
-        <h3 className="text-lg font-semibold">Available Cash Management</h3>
-        
-        <button
-          onClick={handleValidate}
-          disabled={validating}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-blue-600 hover:bg-blue-50"
-        >
-          <CheckCircle size={20} className="text-blue-600" />
-          <span>{validating ? 'Validating...' : 'Validate Available Cash'}</span>
-        </button>
-
-        {validationResult && (
-          <div className={`p-4 rounded-lg ${validationResult.isValid ? 'bg-green-50' : 'bg-yellow-50'}`}>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span>Expected:</span>
-                <span className="font-mono">${validationResult.expected.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Current:</span>
-                <span className="font-mono">${validationResult.actual.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <button
-          onClick={handleRecalculate}
-          disabled={recalculating}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <RefreshCw size={20} className={recalculating ? 'animate-spin' : ''} />
-          <span>{recalculating ? 'Recalculating...' : 'Recalculate Available Cash'}</span>
-        </button>
-      </div>
 
       {/* Category Manager Section */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6`}>

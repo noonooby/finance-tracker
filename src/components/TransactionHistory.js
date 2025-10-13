@@ -27,7 +27,12 @@ export default function TransactionHistory({
     category: 'all',
     dateFrom: '',
     dateTo: '',
-    paymentMethod: 'all'
+    paymentMethod: 'all',
+    creditCard: 'all',
+    loan: 'all',
+    bankAccount: 'all',
+    incomeSource: 'all',
+    reservedFund: 'all'
   });
 
   const isPaymentType = (type) =>
@@ -78,6 +83,61 @@ export default function TransactionHistory({
     if (filters.paymentMethod !== 'all') {
       filtered = filtered.filter(t => t.payment_method === filters.paymentMethod);
     }
+// Filter by specific credit card
+if (filters.creditCard !== 'all') {
+  filtered = filtered.filter(t => {
+    if (t.payment_method === 'credit_card' && t.card_id === filters.creditCard) return true;
+    if (t.payment_method_id === filters.creditCard && t.payment_method === 'credit_card') return true;
+    if ((t.type === 'credit_card_payment' || t.type === 'payment') && t.card_id === filters.creditCard) return true;
+    return false;
+  });
+}
+
+// Filter by specific loan
+if (filters.loan !== 'all') {
+  filtered = filtered.filter(t => {
+    if (t.payment_method === 'loan' && t.loan_id === filters.loan) return true;
+    if (t.payment_method_id === filters.loan && t.payment_method === 'loan') return true;
+    if ((t.type === 'loan_payment' || t.type === 'payment') && t.loan_id === filters.loan) return true;
+    return false;
+  });
+}
+
+// Filter by specific bank account
+if (filters.bankAccount !== 'all') {
+  filtered = filtered.filter(t => {
+    if (t.bank_account_id === filters.bankAccount) return true;
+    if (t.from_account_id === filters.bankAccount || t.to_account_id === filters.bankAccount) return true;
+    return false;
+  });
+}
+// Filter by specific income source
+if (filters.incomeSource !== 'all') {
+  filtered = filtered.filter(t => {
+    if (t.type === 'income' && t.payment_method_id === filters.incomeSource) return true;
+    if (t.income_id === filters.incomeSource) return true;
+    return false;
+  });
+}
+
+// Filter by reserved fund
+if (filters.reservedFund !== 'all') {
+  filtered = filtered.filter(t => {
+    if (t.reserved_fund_id === filters.reservedFund) return true;
+    if (t.fund_id === filters.reservedFund) return true;
+    return false;
+  });
+}
+// Read filters from sessionStorage on mount (for navigation from other tabs)
+
+// Filter by specific income source
+if (filters.incomeSource !== 'all') {
+  filtered = filtered.filter(t => {
+    if (t.type === 'income' && t.payment_method_id === filters.incomeSource) return true;
+    if (t.income_id === filters.incomeSource) return true;
+    return false;
+  });
+}
 
     setFilteredTransactions(filtered);
   }, [transactions, filters]);
@@ -95,6 +155,20 @@ export default function TransactionHistory({
       amount: t.amount
     })));
   }, [transactions]);
+
+  useEffect(() => {
+    const storedFilters = sessionStorage.getItem('transactionFilters');
+    if (storedFilters) {
+      try {
+        const parsedFilters = JSON.parse(storedFilters);
+        setFilters(prevFilters => ({ ...prevFilters, ...parsedFilters }));
+        // Clear the stored filters after applying
+        sessionStorage.removeItem('transactionFilters');
+      } catch (error) {
+        console.error('Error parsing stored filters:', error);
+      }
+    }
+  }, []);
 
   const loadTransactions = useCallback(async () => {
     try {
@@ -390,7 +464,7 @@ export default function TransactionHistory({
           />
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
           <select
             value={filters.type}
             onChange={(e) => setFilters({ ...filters, type: e.target.value })}
@@ -423,6 +497,57 @@ export default function TransactionHistory({
             <option value="credit_card">Credit Card</option>
             <option value="loan">Loan</option>
           </select>
+          <select
+            value={filters.creditCard}
+            onChange={(e) => setFilters({ ...filters, creditCard: e.target.value })}
+            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          >
+            <option value="all">All Cards</option>
+            {creditCards && creditCards.map(card => (
+              <option key={card.id} value={card.id}>
+                {card.name} {card.is_gift_card ? '🎁' : '💳'}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filters.loan}
+            onChange={(e) => setFilters({ ...filters, loan: e.target.value })}
+            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          >
+            <option value="all">All Loans</option>
+            {loans && loans.map(loan => (
+              <option key={loan.id} value={loan.id}>
+                {loan.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filters.bankAccount}
+            onChange={(e) => setFilters({ ...filters, bankAccount: e.target.value })}
+            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          >
+            <option value="all">All Accounts</option>
+            {bankAccounts && bankAccounts.map(account => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filters.reservedFund}
+            onChange={(e) => setFilters({ ...filters, reservedFund: e.target.value })}
+            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          >
+            <option value="all">All Funds</option>
+            {reservedFunds && reservedFunds.map(fund => (
+              <option key={fund.id} value={fund.id}>
+                {fund.name}
+              </option>
+            ))}
+          </select>
 
           <input
             type="date"
@@ -439,6 +564,58 @@ export default function TransactionHistory({
             className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
             placeholder="To"
           />
+
+          <select
+            value={filters.creditCard}
+            onChange={(e) => setFilters({ ...filters, creditCard: e.target.value })}
+            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          >
+            <option value="all">All Cards</option>
+            {creditCards && creditCards.map(card => (
+              <option key={card.id} value={card.id}>
+                {card.name} {card.is_gift_card ? '🎁' : '💳'}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filters.loan}
+            onChange={(e) => setFilters({ ...filters, loan: e.target.value })}
+            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          >
+            <option value="all">All Loans</option>
+            {loans && loans.map(loan => (
+              <option key={loan.id} value={loan.id}>
+                {loan.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filters.bankAccount}
+            onChange={(e) => setFilters({ ...filters, bankAccount: e.target.value })}
+            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          >
+            <option value="all">All Accounts</option>
+            {bankAccounts && bankAccounts.map(account => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filters.reservedFund}
+            onChange={(e) => setFilters({ ...filters, reservedFund: e.target.value })}
+            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          >
+            <option value="all">All Funds</option>
+            {reservedFunds && reservedFunds.map(fund => (
+              <option key={fund.id} value={fund.id}>
+                {fund.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

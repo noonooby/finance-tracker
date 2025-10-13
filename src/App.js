@@ -698,6 +698,13 @@ export default function FinanceTracker() {
     ? calculateTotalBankBalance(bankAccounts)
     : availableCash;
 
+  const navigateToTransactionHistory = useCallback((filterConfig = {}) => {
+    setCurrentView('transactions');
+    // Store filter config in sessionStorage for TransactionHistory to read
+    if (Object.keys(filterConfig).length > 0) {
+      sessionStorage.setItem('transactionFilters', JSON.stringify(filterConfig));
+    }
+  }, []); 
   const handleEditCash = () => {
     setCashInput(displayAvailableCash.toString());
     setEditingCash(true);
@@ -1000,6 +1007,7 @@ export default function FinanceTracker() {
             focusTarget={focusTarget}
             onClearFocus={clearFocusTarget}
             bankAccounts={bankAccounts}
+            onNavigateToTransactions={navigateToTransactionHistory}  // Navigate to Transaction History
           />
         )}
         {currentView === 'loans' && (
@@ -1016,6 +1024,7 @@ export default function FinanceTracker() {
             onClearFocus={clearFocusTarget}
             bankAccounts={bankAccounts}
             hasMigratedToBankAccounts={hasMigratedToBankAccounts}
+            onNavigateToTransactions={navigateToTransactionHistory}  // Navigate to Transaction History
           />
         )}
         {currentView === 'reserved' && (
@@ -1029,6 +1038,7 @@ export default function FinanceTracker() {
             focusTarget={focusTarget}
             onClearFocus={clearFocusTarget}
             bankAccounts={bankAccounts}
+            onNavigateToTransactions={navigateToTransactionHistory}  // Navigate to Transaction History
           />
         )}
         {currentView === 'income' && (
@@ -1041,6 +1051,7 @@ export default function FinanceTracker() {
             focusTarget={focusTarget}
             onClearFocus={clearFocusTarget}
             bankAccounts={bankAccounts}
+            onNavigateToTransactions={navigateToTransactionHistory}  // Navigate to Transaction History
           />
         )}
         {currentView === 'bank-accounts' && (
@@ -1053,6 +1064,7 @@ export default function FinanceTracker() {
             }}
             focusTarget={focusTarget}
             onClearFocus={clearFocusTarget}
+            onNavigateToTransactions={navigateToTransactionHistory}  // Navigate to Transaction History
           />
         )}
         {currentView === 'transactions' && (

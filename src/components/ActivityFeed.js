@@ -167,6 +167,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [undoingId, setUndoingId] = useState(null);
+  const [entityFilter, setEntityFilter] = useState('all');
 
   useEffect(() => {
     loadActivities();
@@ -261,6 +262,12 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
     );
   }
 
+  // Filter activities by entity type
+  const filteredActivities = activities.filter(activity => {
+    if (entityFilter === 'all') return true;
+    return activity.entity_type === entityFilter;
+  });
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-4">
@@ -271,7 +278,31 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
         <span className="text-sm text-gray-500">Last 50 actions</span>
       </div>
 
-      {activities.map((activity) => {
+      {/* Filter UI */}
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4`}>
+        <select
+          value={entityFilter}
+          onChange={(e) => setEntityFilter(e.target.value)}
+          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+        >
+          <option value="all">All Entity Types</option>
+          <option value="card">Credit Cards</option>
+          <option value="loan">Loans</option>
+          <option value="bank_account">Bank Accounts</option>
+          <option value="income">Income</option>
+          <option value="fund">Reserved Funds</option>
+        </select>
+      </div>
+
+      {filteredActivities.length === 0 && (
+        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-8 text-center`}>
+          <Activity size={48} className="mx-auto mb-4 text-gray-400" />
+          <p className="text-gray-500">No activities found</p>
+          <p className="text-sm text-gray-400 mt-2">Try adjusting your filters</p>
+        </div>
+      )}
+
+      {filteredActivities.map((activity) => {
         const snapshot = parseSnapshot(activity.snapshot) || {};
         const amountValue = extractActivityAmount(activity, snapshot);
         const amountDisplay = amountValue !== null ? formatCurrency(amountValue) : null;

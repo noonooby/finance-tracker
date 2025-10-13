@@ -1,14 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Edit2, X, TrendingUp } from 'lucide-react';
+import { Plus, Edit2, X, TrendingUp, ListFilter } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId } from '../utils/helpers';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import SmartInput from './SmartInput';
 import { processOverdueLoans } from '../utils/autoPay';
 
-export default function Loans({ 
-  darkMode, 
-  loans, 
+export default function Loans({
+  darkMode,
+  loans,
   categories,
   availableCash,
   reservedFunds,
@@ -18,7 +18,8 @@ export default function Loans({
   focusTarget,
   onClearFocus,
   bankAccounts,
-  hasMigratedToBankAccounts
+  hasMigratedToBankAccounts,
+  onNavigateToTransactions
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -873,6 +874,13 @@ export default function Loans({
                   )}
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => onNavigateToTransactions && onNavigateToTransactions({ loan: loan.id })}
+                    className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
+                    title="View transactions"
+                  >
+                    <ListFilter size={18} />
+                  </button>
                   <button onClick={() => handleEdit(loan)} className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}>
                     <Edit2 size={18} />
                   </button>

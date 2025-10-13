@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, DollarSign, Edit2, X } from 'lucide-react';
+import { Plus, DollarSign, Edit2, X, ListFilter } from 'lucide-react';
 import { formatCurrency, formatDate, predictNextDate, getDaysUntil, generateId, getPrimaryAccountFromArray } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
@@ -13,7 +13,8 @@ export default function Income({
   onUpdateCash,
   focusTarget,
   onClearFocus,
-  bankAccounts
+  bankAccounts,
+  onNavigateToTransactions
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -571,6 +572,13 @@ export default function Income({
                     <div className="text-2xl font-bold text-green-600">{formatCurrency(inc.amount)}</div>
                   </div>
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => onNavigateToTransactions && onNavigateToTransactions({ incomeSource: inc.id })}
+                      className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
+                      title="View transactions"
+                    >
+                      <ListFilter size={18} />
+                    </button>
                     <button
                       onClick={() => handleEdit(inc)}
                       className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}
