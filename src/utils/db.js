@@ -75,7 +75,9 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
             return [
               { key: 'availableCash', value: result.available_cash },
               { key: 'darkMode', value: result.dark_mode },
-              { key: 'alertSettings', value: result.alert_settings }
+              { key: 'alertSettings', value: result.alert_settings },
+              { key: 'cashInHand', value: result.cash_in_hand || 0 },
+              { key: 'showCashInDashboard', value: result.show_cash_in_dashboard || false }
             ];
           }
           return [];
@@ -104,6 +106,12 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
           if (result && data === 'availableCash') {
             return { key: 'availableCash', value: result.available_cash };
           }
+          if (result && data === 'cashInHand') {
+            return { key: 'cashInHand', value: result.cash_in_hand || 0 };
+          }
+          if (result && data === 'showCashInDashboard') {
+            return { key: 'showCashInDashboard', value: result.show_cash_in_dashboard || false };
+          }
           return null;
         }
         
@@ -130,7 +138,9 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
             user_id: user.id,
             available_cash: data.key === 'availableCash' ? data.value : undefined,
             dark_mode: data.key === 'darkMode' ? data.value : undefined,
-            alert_settings: data.key === 'alertSettings' ? data.value : undefined
+            alert_settings: data.key === 'alertSettings' ? data.value : undefined,
+            cash_in_hand: data.key === 'cashInHand' ? data.value : undefined,
+            show_cash_in_dashboard: data.key === 'showCashInDashboard' ? data.value : undefined
           };
           
           Object.keys(settingsData).forEach(key => 
@@ -171,6 +181,15 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
             previousData = existing;
           }
         }
+        if (!data.id) {
+          data.id =
+            data?.entity_id ||
+            logOptions?.entity_id ||
+            data?.previous?.id ||
+            data?.updated?.id ||
+            data?.loan_id ||
+            crypto.randomUUID();
+        }
         
         const insertData = { ...data, user_id: user.id };
         
@@ -182,7 +201,6 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
         
         if (error) throw error;
         
-        // Log activity
         if (!logOptions.skipActivityLog && ENTITY_TYPE_MAP[storeName]) {
           const entityName = (result?.name ?? data.name) || (result?.source ?? data.source) || 'Item';
           const entityType = ENTITY_TYPE_MAP[storeName];
@@ -225,7 +243,6 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
       }
 
       case 'delete': {
-        // Get the item before deleting for snapshot
         let deletedItem = null;
         if (!logOptions.skipActivityLog && ENTITY_TYPE_MAP[storeName]) {
           const { data: item } = await supabase
@@ -246,7 +263,6 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
         
         if (error) throw error;
         
-        // Log activity
         if (deletedItem && !logOptions.skipActivityLog) {
           const entityType = ENTITY_TYPE_MAP[storeName];
           let entityName = deletedItem.name || deletedItem.source || 'Item';
@@ -300,41 +316,90 @@ export const deleteAllUserData = async () => {
     throw new Error('Not authenticated');
   }
 
-  const tables = ['credit_cards', 'loans', 'reserved_funds', 'income', 'transactions', 'categories', 'activities'];
+  const tables = [
+    'activities',
+    'transactions',
+    'budgets',
+    'reserved_funds',
+    'income',
+    'credit_cards',
+    'loans',
+    'categories',
+    'known_entities',
+    'bank_accounts'
+  ];
 
   for (const table of tables) {
-    const { error } = await supabase
-      .from(table)
-      .delete()
-      .eq('user_id', user.id);
+    try {
+      const { error } = await supabase
+        .from(table)
+        .delete()
+        .eq('user_id', user.id);
 
-    if (error && error.code !== 'PGRST116') throw error;
+      if (error && error.code !== 'PGRST116') {
+        console.error(`Error deleting from ${table}:`, error);
+        throw error;
+      }
+      console.log(`✅ Deleted all data from ${table}`);
+    } catch (tableError) {
+      console.error(`❌ Failed to delete from ${table}:`, tableError);
+      throw tableError;
+    }
   }
 
-  await supabase
-    .from('settings')
-    .delete()
-    .eq('user_id', user.id);
+  try {
+    await supabase
+      .from('settings')
+      .update({
+        available_cash: 0,
+        dark_mode: false,
+        alert_settings: { defaultDays: 7 },
+        cash_in_hand: 0,
+        show_cash_in_dashboard: false,
+        theme: 'auto',
+        currency: 'USD',
+        currency_symbol: '$',
+        date_format: 'MM/DD/YYYY',
+        first_day_of_week: 'sunday',
+        number_format: 'comma',
+        default_alert_days: 7,
+        credit_card_alert_days: 7,
+        loan_alert_days: 7,
+        low_balance_alerts: true,
+        low_balance_threshold: 100,
+        cash_in_hand_low_threshold: 50,
+        email_notifications: false,
+        reminder_time: '09:00',
+        default_payment_method: 'cash_in_hand',
+        auto_categorization: true,
+        round_up_transactions: false,
+        monthly_budget_enabled: false,
+        monthly_budget_amount: 0,
+        budget_alert_at_80: true,
+        budget_alert_at_90: true,
+        budget_alert_at_100: true,
+        default_overdraft_allowed: false,
+        default_overdraft_limit: 0,
+        category_budgets: {},
+        auto_process_due_payments: true,
+        auto_mark_cleared_days: 0,
+        smart_suggestions: true,
+        default_transaction_time: 'now',
+        custom_transaction_time: '12:00',
+        require_notes_for_expenses_over: 0,
+        require_notes_for_payments: false,
+        confirm_large_transactions: true,
+        large_transaction_threshold: 500,
+        transaction_templates: [],
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', user.id);
+    console.log('✅ Settings reset to defaults');
+  } catch (settingsError) {
+    console.error('❌ Error resetting settings:', settingsError);
+  }
 };
 
-/**
- * ============================================
- * BANK ACCOUNTS OPERATIONS
- * Phase 1: Database layer for bank accounts
- *
- * SAFETY NOTES:
- * - These functions are NEW and don't modify existing operations
- * - They use the same dbOperation pattern as existing code
- * - They follow existing authentication patterns
- * - No existing functions are modified
- * ============================================
- */
-
-/**
- * Get all bank accounts for the current user
- * @returns {Promise<Array>} Array of bank account objects
- * @throws {Error} If not authenticated or database error
- */
 export async function getAllBankAccounts() {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -344,11 +409,10 @@ export async function getAllBankAccounts() {
       .from('bank_accounts')
       .select('*')
       .eq('user_id', user.id)
-      .order('is_primary', { ascending: false }) // Primary account first
+      .order('is_primary', { ascending: false })
       .order('created_at', { ascending: true });
 
     if (error) throw error;
-
     console.log('📊 Loaded bank accounts:', data?.length || 0);
     return data || [];
   } catch (error) {
@@ -357,12 +421,6 @@ export async function getAllBankAccounts() {
   }
 }
 
-/**
- * Get a single bank account by ID
- * @param {string} accountId - The bank account ID
- * @returns {Promise<Object>} Bank account object
- * @throws {Error} If account not found or not authorized
- */
 export async function getBankAccount(accountId) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -383,11 +441,6 @@ export async function getBankAccount(accountId) {
   }
 }
 
-/**
- * Get the primary bank account
- * Used as default for transactions when no account is specified
- * @returns {Promise<Object|null>} Primary bank account or null if none exists
- */
 export async function getPrimaryBankAccount() {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -398,7 +451,7 @@ export async function getPrimaryBankAccount() {
       .select('*')
       .eq('user_id', user.id)
       .eq('is_primary', true)
-      .maybeSingle(); // Use maybeSingle() to avoid error when no rows
+      .maybeSingle();
 
     if (error) throw error;
     return data || null;
@@ -408,32 +461,17 @@ export async function getPrimaryBankAccount() {
   }
 }
 
-/**
- * Create or update a bank account
- * IMPORTANT: If setting as primary, this will unset other primary accounts
- *
- * @param {Object} accountData - Bank account data
- * @param {string} accountData.id - Account ID (required for updates)
- * @param {string} accountData.name - Account name
- * @param {number} accountData.balance - Account balance
- * @param {string} accountData.account_type - 'checking', 'savings', 'investment', 'cash'
- * @param {boolean} accountData.is_primary - Whether this is the primary account
- * @param {string} [accountData.institution] - Bank name (optional)
- * @param {string} [accountData.notes] - Additional notes (optional)
- * @returns {Promise<Object>} Created/updated bank account
- */
 export async function upsertBankAccount(accountData) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    // SAFETY CHECK: If setting as primary, unset other primary accounts first
     if (accountData.is_primary) {
       await supabase
         .from('bank_accounts')
         .update({ is_primary: false })
         .eq('user_id', user.id)
-        .neq('id', accountData.id || 'new-account'); // Don't affect current account
+        .neq('id', accountData.id || 'new-account');
     }
 
     const payload = {
@@ -449,7 +487,6 @@ export async function upsertBankAccount(accountData) {
       .single();
 
     if (error) throw error;
-
     console.log('✅ Bank account saved:', data.name);
     return data;
   } catch (error) {
@@ -458,24 +495,11 @@ export async function upsertBankAccount(accountData) {
   }
 }
 
-/**
- * Delete a bank account
- *
- * IMPORTANT SAFETY CHECKS:
- * - Cannot delete primary account (must set another as primary first)
- * - Foreign key constraints will set related records to NULL:
- *   - reserved_funds.source_account_id → NULL
- *   - income.deposit_account_id → NULL
- *
- * @param {string} accountId - The bank account ID to delete
- * @throws {Error} If trying to delete primary account
- */
 export async function deleteBankAccount(accountId) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    // SAFETY CHECK: Don't allow deleting primary account
     const account = await getBankAccount(accountId);
     if (account?.is_primary) {
       throw new Error('Cannot delete primary account. Set another account as primary first.');
@@ -488,7 +512,6 @@ export async function deleteBankAccount(accountId) {
       .eq('user_id', user.id);
 
     if (error) throw error;
-
     console.log('🗑️ Bank account deleted:', account.name);
   } catch (error) {
     console.error('❌ Error deleting bank account:', error);
@@ -496,14 +519,6 @@ export async function deleteBankAccount(accountId) {
   }
 }
 
-/**
- * Update bank account balance
- * Used for deposits, withdrawals, and balance corrections
- *
- * @param {string} accountId - The bank account ID
- * @param {number} newBalance - The new balance
- * @returns {Promise<Object>} Updated bank account
- */
 export async function updateBankAccountBalance(accountId, newBalance) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -521,7 +536,6 @@ export async function updateBankAccountBalance(accountId, newBalance) {
       .single();
 
     if (error) throw error;
-
     console.log('💰 Balance updated:', data.name, '→', newBalance);
     return data;
   } catch (error) {
@@ -530,19 +544,12 @@ export async function updateBankAccountBalance(accountId, newBalance) {
   }
 }
 
-/**
- * Get total balance across all bank accounts
- * This replaces the old single "availableCash" concept
- *
- * @returns {Promise<number>} Total balance across all accounts
- */
 export async function getTotalBankBalance() {
   try {
     const accounts = await getAllBankAccounts();
     const total = accounts.reduce((sum, account) => {
       return sum + (parseFloat(account.balance) || 0);
     }, 0);
-
     console.log('💵 Total bank balance:', total);
     return total;
   } catch (error) {
@@ -551,17 +558,6 @@ export async function getTotalBankBalance() {
   }
 }
 
-/**
- * Transfer money between bank accounts
- * Creates a transaction record and updates both account balances
- *
- * @param {string} fromAccountId - Source account ID
- * @param {string} toAccountId - Destination account ID
- * @param {number} amount - Amount to transfer
- * @param {string} [description] - Transfer description
- * @returns {Promise<Object>} Transfer details
- * @throws {Error} If insufficient funds or accounts not found
- */
 export async function transferBetweenAccounts(fromAccountId, toAccountId, amount, description = 'Account Transfer') {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -572,7 +568,6 @@ export async function transferBetweenAccounts(fromAccountId, toAccountId, amount
       throw new Error('Transfer amount must be a positive number');
     }
 
-    // Get both accounts
     const fromAccount = await getBankAccount(fromAccountId);
     const toAccount = await getBankAccount(toAccountId);
 
@@ -584,7 +579,6 @@ export async function transferBetweenAccounts(fromAccountId, toAccountId, amount
     const toBalance = Number(toAccount.balance) || 0;
     const normalizedAmount = Math.round(amountValue * 100) / 100;
 
-    // Check sufficient funds
     if (fromBalance < normalizedAmount) {
       throw new Error(
         `Insufficient funds in ${fromAccount.name}. `
@@ -595,17 +589,15 @@ export async function transferBetweenAccounts(fromAccountId, toAccountId, amount
     const newFromBalance = Math.max(0, Math.round((fromBalance - normalizedAmount) * 100) / 100);
     const newToBalance = Math.round((toBalance + normalizedAmount) * 100) / 100;
 
-    // Update balances and capture updated records
     const updatedFromAccount = await updateBankAccountBalance(fromAccountId, newFromBalance);
     const updatedToAccount = await updateBankAccountBalance(toAccountId, newToBalance);
 
-    // Create transaction record for audit trail
     const transaction = {
       type: 'transfer',
       amount: normalizedAmount,
       date: new Date().toISOString().split('T')[0],
       description: description,
-      notes: `Transfer from ${fromAccount.name} to ${toAccount.name}`,
+      notes: `Transferred $${normalizedAmount.toFixed(2)} from ${fromAccount.name} ($${fromBalance.toFixed(2)} → $${newFromBalance.toFixed(2)}) to ${toAccount.name} ($${toBalance.toFixed(2)} → $${newToBalance.toFixed(2)}).`,
       payment_method: 'transfer',
       payment_method_id: fromAccountId,
       payment_method_name: fromAccount.name,
@@ -614,7 +606,6 @@ export async function transferBetweenAccounts(fromAccountId, toAccountId, amount
     };
 
     const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
-
     console.log('💸 Transfer complete:', fromAccount.name, '→', toAccount.name, normalizedAmount);
 
     return {
@@ -634,6 +625,151 @@ export async function transferBetweenAccounts(fromAccountId, toAccountId, amount
   }
 }
 
-// ============================================
-// END OF BANK ACCOUNTS OPERATIONS
-// ============================================
+export async function getCashInHand() {
+  try {
+    const setting = await dbOperation('settings', 'get', 'cashInHand');
+    return Number(setting?.value) || 0;
+  } catch (error) {
+    console.error('❌ Error getting cash in hand:', error);
+    return 0;
+  }
+}
+
+export async function updateCashInHand(newAmount) {
+  try {
+    await dbOperation('settings', 'put', { key: 'cashInHand', value: newAmount });
+    console.log('💵 Cash in hand updated:', newAmount);
+  } catch (error) {
+    console.error('❌ Error updating cash in hand:', error);
+    throw error;
+  }
+}
+
+export async function withdrawCashFromBank(accountId, amount) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const account = await getBankAccount(accountId);
+    if (!account) throw new Error('Account not found');
+
+    const currentBalance = Number(account.balance) || 0;
+    const withdrawAmount = Number(amount) || 0;
+    const newBalance = currentBalance - withdrawAmount;
+
+    if (newBalance < 0) {
+      if (!account.allows_overdraft) {
+        throw new Error(
+          `Insufficient funds in '${account.name}'.\n` +
+          `Available: ${currentBalance.toFixed(2)}\n` +
+          `Required: ${withdrawAmount.toFixed(2)}\n\n` +
+          `This account does not allow overdraft.`
+        );
+      }
+      
+      const overdraftAmount = Math.abs(newBalance);
+      if (overdraftAmount > (account.overdraft_limit || 0)) {
+        throw new Error(
+          `Insufficient funds in '${account.name}'.\n` +
+          `This would exceed your overdraft limit.\n\n` +
+          `Available: ${currentBalance.toFixed(2)}\n` +
+          `Overdraft: ${account.overdraft_limit.toFixed(2)}\n` +
+          `Total: ${(currentBalance + account.overdraft_limit).toFixed(2)}\n` +
+          `Required: ${withdrawAmount.toFixed(2)}`
+        );
+      }
+    }
+
+    await updateBankAccountBalance(accountId, newBalance);
+
+    const currentCash = await getCashInHand();
+    const newCash = currentCash + withdrawAmount;
+    await updateCashInHand(newCash);
+
+    const transaction = {
+      type: 'cash_withdrawal',
+      amount: withdrawAmount,
+      date: new Date().toISOString().split('T')[0],
+      description: `Withdrew cash from ${account.name}`,
+      payment_method: 'cash_withdrawal',
+      payment_method_id: accountId,
+      payment_method_name: account.name,
+      status: 'active',
+      undone_at: null
+    };
+
+    const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+    console.log('💵 Cash withdrawn:', withdrawAmount, 'from', account.name);
+
+    return {
+      accountName: account.name,
+      accountId,
+      amount: withdrawAmount,
+      previousBankBalance: currentBalance,
+      newBankBalance: newBalance,
+      previousCashInHand: currentCash,
+      newCashInHand: newCash,
+      transactionId: savedTransaction?.id
+    };
+  } catch (error) {
+    console.error('❌ Error withdrawing cash:', error);
+    throw error;
+  }
+}
+
+export async function depositCashToBank(accountId, amount) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const account = await getBankAccount(accountId);
+    if (!account) throw new Error('Account not found');
+
+    const currentCash = await getCashInHand();
+    const depositAmount = Number(amount) || 0;
+
+    if (depositAmount > currentCash) {
+      throw new Error(
+        `Insufficient cash in hand.\n` +
+        `Available: ${currentCash.toFixed(2)}\n` +
+        `Required: ${depositAmount.toFixed(2)}`
+      );
+    }
+
+    const currentBalance = Number(account.balance) || 0;
+    const newBalance = currentBalance + depositAmount;
+    const newCash = Math.max(0, currentCash - depositAmount);
+
+    await updateBankAccountBalance(accountId, newBalance);
+    await updateCashInHand(newCash);
+
+    const transaction = {
+      type: 'cash_deposit',
+      amount: depositAmount,
+      date: new Date().toISOString().split('T')[0],
+      description: `Deposited cash to ${account.name}`,
+      payment_method: 'cash_deposit',
+      payment_method_id: accountId,
+      payment_method_name: account.name,
+      status: 'active',
+      undone_at: null
+    };
+
+    const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+    console.log('💵 Cash deposited:', depositAmount, 'to', account.name);
+
+    return {
+      accountName: account.name,
+      accountId,
+      amount: depositAmount,
+      previousBankBalance: currentBalance,
+      newBankBalance: newBalance,
+      previousCashInHand: currentCash,
+      newCashInHand: newCash,
+      transactionId: savedTransaction?.id
+    };
+  } catch (error) {
+    console.error('❌ Error depositing cash:', error);
+    throw error;
+  }
+}

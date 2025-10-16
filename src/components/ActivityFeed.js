@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Undo2, Activity, CreditCard, TrendingUp, Calendar, DollarSign } from 'lucide-react';
+import { Undo2, Activity, CreditCard, TrendingUp, Calendar, DollarSign, Wallet, Building2 } from 'lucide-react';
 import { supabase } from '../utils/supabase';
 import { undoActivity } from '../utils/activityLogger';
 
@@ -28,6 +28,28 @@ const formatCurrency = (value) => {
 const extractActivityAmount = (activity, snapshot = {}) => {
   if (!snapshot || typeof snapshot !== 'object') return null;
 
+  // FOR EDIT ACTIONS: Display the NEW/UPDATED amount (not the old amount)
+  // The details section already shows "Balance: $180 → $200", so we just
+  // want to display the final state ($200) in the main amount display.
+  if (activity.action_type === 'edit' && snapshot.updated) {
+    const updatedAmountCandidates = [
+      snapshot.updated.balance,
+      snapshot.updated.amount,
+      snapshot.updated.credit_limit,
+      snapshot.updated.payment_amount,
+      snapshot.updated.original_amount,
+      snapshot.updated.purchase_amount
+    ];
+    
+    for (const candidate of updatedAmountCandidates) {
+      const numeric = Number(candidate);
+      if (Number.isFinite(numeric) && numeric !== 0) {
+        return Math.abs(numeric);
+      }
+    }
+  }
+
+  // FOR OTHER ACTIONS (add/delete/payment/income): Use existing extraction logic
   if (Array.isArray(snapshot.affectedFunds) && snapshot.affectedFunds.length > 0) {
     const total = snapshot.affectedFunds.reduce((sum, entry) => {
       const amount = Number(entry?.amountUsed ?? entry?.amount ?? 0);
@@ -215,6 +237,8 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       case 'loan': return <TrendingUp size={16} />;
       case 'fund': return <Calendar size={16} />;
       case 'income': return <DollarSign size={16} />;
+      case 'bank_account': return <Building2 size={16} />;
+      case 'cash': return <Wallet size={16} />;
       default: return <Activity size={16} />;
     }
   };
@@ -225,6 +249,8 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       case 'edit': return 'text-blue-600';
       case 'delete': return 'text-red-600';
       case 'payment': return 'text-purple-600';
+      case 'cash_withdrawal': return 'text-orange-600';
+      case 'cash_deposit': return 'text-teal-600';
       default: return 'text-gray-600';
     }
   };

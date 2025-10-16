@@ -134,9 +134,66 @@ export default function ReservedFunds({
     
     const savedFund = await dbOperation('reservedFunds', 'put', fundPayload, { skipActivityLog: true });
     if (!editingItem) {
-      await logActivity('add', 'fund', savedFund.id, savedFund.name, `Added fund: ${savedFund.name} ($${savedFund.amount})`, null);
+      // Build detailed description for ADD
+      let description = `Added reserved fund '${savedFund.name}' - Amount ${formatCurrency(savedFund.amount)} • Due ${formatDate(savedFund.due_date)} • Frequency ${savedFund.frequency || 'N/A'}`;
+      if (savedFund.recurring) {
+        description += ` • Recurring`;
+      }
+      if (savedFund.is_lumpsum) {
+        description += ` • Lumpsum`;
+      }
+      
+      await logActivity(
+        'add',
+        'fund',
+        savedFund.id,
+        savedFund.name,
+        description,
+        savedFund
+      );
     } else {
-      await logActivity('edit', 'fund', savedFund.id, savedFund.name, `Updated fund: ${savedFund.name}`, null);
+      // Build detailed description for EDIT
+      const oldAmount = parseFloat(editingItem.amount) || 0;
+      const newAmount = parseFloat(savedFund.amount) || 0;
+      const oldDueDate = editingItem.due_date || '';
+      const newDueDate = savedFund.due_date || '';
+      const oldFrequency = editingItem.frequency || '';
+      const newFrequency = savedFund.frequency || '';
+      const oldName = editingItem.name || '';
+      const newName = savedFund.name || '';
+      
+      let details = '';
+      if (oldName !== newName) {
+        details += `Name "${oldName}" → "${newName}" • `;
+      }
+      if (oldAmount !== newAmount) {
+        details += `Amount ${formatCurrency(oldAmount)} → ${formatCurrency(newAmount)} • `;
+      }
+      if (oldDueDate !== newDueDate) {
+        details += `Due date ${formatDate(oldDueDate)} → ${formatDate(newDueDate)} • `;
+      }
+      if (oldFrequency !== newFrequency) {
+        details += `Frequency ${oldFrequency} → ${newFrequency} • `;
+      }
+      
+      // Remove trailing bullet
+      details = details.replace(/ • $/, '');
+      
+      const description = details
+        ? `Updated reserved fund '${savedFund.name}' - ${details}`
+        : `Updated reserved fund '${savedFund.name}'`;
+      
+      await logActivity(
+        'edit',
+        'fund',
+        savedFund.id,
+        savedFund.name,
+        description,
+        {
+          previous: { ...editingItem, id: editingItem.id || savedFund.id, name: editingItem.name || savedFund.name },
+          updated: { ...savedFund, id: savedFund.id, name: savedFund.name }
+        }
+      );
     }
     await onUpdate();
     resetForm();
@@ -271,8 +328,23 @@ export default function ReservedFunds({
     if (window.confirm('Delete this reserved fund?')) {
       const fund = reservedFunds.find(f => resolveFundId(f) === id);
       if (!fund) return;
-    
-      await logActivity('delete', 'fund', id, fund.name, `Deleted fund: ${fund.name}`, fund);
+      // Build detailed description for DELETE
+      let description = `Deleted reserved fund '${fund.name}' - Amount ${formatCurrency(fund.amount)} • Due ${formatDate(fund.due_date)} • Frequency ${fund.frequency || 'N/A'}`;
+      if (fund.recurring) {
+        description += ` • Recurring`;
+      }
+      if (fund.is_lumpsum) {
+        description += ` • Lumpsum`;
+      }
+      
+      await logActivity(
+        'delete',
+        'fund',
+        id,
+        fund.name,
+        description,
+        fund
+      );
       await dbOperation('reservedFunds', 'delete', id, { skipActivityLog: true });
       await onUpdate();
     }

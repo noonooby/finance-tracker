@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, CreditCard, Wallet, TrendingUp } from 'lucide-react';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
+import { formatCurrency } from '../utils/helpers';
 import SmartInput from './SmartInput';
 
 export default function AddTransaction({ 
@@ -17,8 +18,15 @@ export default function AddTransaction({
   bankAccounts,
   preselectedCard = null,
   preselectedLoan = null,
-  preselectedType = 'expense'
+  preselectedType = 'expense',
+  cashInHand = 0,
+  onUpdateCashInHand = null
 }) {
+  // Get primary bank account for default selection
+  const primaryBank = bankAccounts?.find(acc => acc.is_primary);
+  const defaultPaymentMethod = preselectedCard ? 'credit_card' : preselectedLoan ? 'loan' : (primaryBank ? 'bank_account' : 'cash_in_hand');
+  const defaultPaymentMethodId = preselectedCard?.id || preselectedLoan?.id || (primaryBank?.id || null);
+
   const [formData, setFormData] = useState({
     type: preselectedType,
     amount: '',
@@ -26,9 +34,13 @@ export default function AddTransaction({
     description: '',
     notes: '',
     categoryId: '',
-    paymentMethod: preselectedCard ? 'credit_card' : preselectedLoan ? 'loan' : 'cash',
-    paymentMethodId: preselectedCard?.id || preselectedLoan?.id || null,
-    incomeSource: ''
+    paymentMethod: defaultPaymentMethod,
+    paymentMethodId: defaultPaymentMethodId,
+    incomeSource: '',
+    incomeDestination: 'bank', // 'bank' or 'cash_in_hand'
+    incomeAccountId: primaryBank?.id || '',
+    paymentSource: 'cash_in_hand', // For payments: 'cash_in_hand', 'bank_account', 'reserved_fund'
+    paymentSourceId: null
   });
 
   const [saving, setSaving] = useState(false);
@@ -96,10 +108,11 @@ export default function AddTransaction({
           }
 
           const previousCardBalance = card.balance;
+          const newCardBalance = card.balance + amount;
 
           await dbOperation('creditCards', 'put', {
             ...card,
-            balance: card.balance + amount
+            balance: newCardBalance
           }, { skipActivityLog: true });
 
           transaction.card_id = card.id;
@@ -110,7 +123,7 @@ export default function AddTransaction({
             entityType: 'card',
             entityId: card.id,
             entityName: card.name,
-            description: `Expense: $${amount.toFixed(2)} on ${card.name} - ${formData.description}`,
+            description: `Expense '${formData.description}' for ${formatCurrency(amount)} using '${card.name}' - Balance ${formatCurrency(previousCardBalance)} → ${formatCurrency(newCardBalance)}`,
             snapshot: {
               amount,
               category: category?.name,
@@ -121,7 +134,113 @@ export default function AddTransaction({
             }
           };
 
+        } else if (formData.paymentMethod === 'bank_account') {
+          const account = bankAccounts.find(a => a.id === formData.paymentMethodId);
+          if (!account) {
+            alert('Please select a bank account');
+            setSaving(false);
+            return;
+          }
+          
+          const currentBalance = Number(account.balance) || 0;
+          const newBalance = currentBalance - amount;
+          
+          // Validate overdraft
+          if (newBalance < 0) {
+            if (!account.allows_overdraft) {
+              alert(
+                `Insufficient funds in '${account.name}'.\n` +
+                `Available: ${formatCurrency(currentBalance)}\n` +
+                `Required: ${formatCurrency(amount)}\n\n` +
+                `This account does not allow overdraft.`
+              );
+              setSaving(false);
+              return;
+            }
+            
+            const overdraftAmount = Math.abs(newBalance);
+            if (overdraftAmount > (account.overdraft_limit || 0)) {
+              alert(
+                `Insufficient funds in '${account.name}'.\n` +
+                `This would exceed your overdraft limit.\n\n` +
+                `Available: ${formatCurrency(currentBalance)}\n` +
+                `Overdraft: ${formatCurrency(account.overdraft_limit)}\n` +
+                `Total: ${formatCurrency(currentBalance + account.overdraft_limit)}\n` +
+                `Required: ${formatCurrency(amount)}`
+              );
+              setSaving(false);
+              return;
+            }
+            
+            // Show overdraft warning
+            const proceed = window.confirm(
+              `⚠️ This will put '${account.name}' in overdraft.\n` +
+              `Balance will be ${formatCurrency(newBalance)}.\n` +
+              `Overdraft fees may apply if not resolved by end of day.\n\n` +
+              `Continue?`
+            );
+            if (!proceed) {
+              setSaving(false);
+              return;
+            }
+          }
+          
+          const { updateBankAccountBalance } = await import('../utils/db');
+          await updateBankAccountBalance(account.id, newBalance);
+          
+          transaction.payment_method_name = account.name;
+          
+          activityDetails = {
+            actionType: 'expense',
+            entityType: 'bank_account',
+            entityId: account.id,
+            entityName: account.name,
+            description: `Expense '${formData.description}' for ${formatCurrency(amount)} using '${account.name}' - Balance ${formatCurrency(currentBalance)} → ${formatCurrency(newBalance)}`,
+            snapshot: {
+              amount,
+              category: category?.name,
+              description: formData.description,
+              accountId: account.id,
+              previousBalance: currentBalance,
+              newBalance,
+              paymentMethodName: account.name
+            }
+          };
+
+        } else if (formData.paymentMethod === 'cash_in_hand') {
+          const currentCash = cashInHand || 0;
+          if (amount > currentCash) {
+            alert(
+              `Insufficient cash in hand.\n` +
+              `Available: ${formatCurrency(currentCash)}\n` +
+              `Required: ${formatCurrency(amount)}`
+            );
+            setSaving(false);
+            return;
+          }
+          
+          const newCashInHand = currentCash - amount;
+          if (onUpdateCashInHand) await onUpdateCashInHand(newCashInHand);
+          
+          transaction.payment_method_name = 'Cash in Hand';
+
+          activityDetails = {
+            actionType: 'expense',
+            entityType: 'cash',
+            entityId: 'cash-in-hand',
+            entityName: 'Cash in Hand',
+            description: `Expense '${formData.description}' for ${formatCurrency(amount)} using Cash in Hand - Balance ${formatCurrency(currentCash)} → ${formatCurrency(newCashInHand)}`,
+            snapshot: {
+              amount,
+              category: category?.name,
+              description: formData.description,
+              previousCash: currentCash,
+              newCash: newCashInHand,
+              paymentMethodName: 'Cash in Hand'
+            }
+          };
         } else if (formData.paymentMethod === 'cash') {
+          // Legacy cash - still supported but deprecated
           const newCash = availableCash - amount;
           await onUpdateCash(newCash);
           transaction.payment_method_name = 'Cash';
@@ -131,7 +250,7 @@ export default function AddTransaction({
             entityType: 'cash',
             entityId: 'cash-expense',
             entityName: 'Cash',
-            description: `Cash expense: $${amount.toFixed(2)} - ${formData.description}`,
+            description: `Expense '${formData.description}' for ${formatCurrency(amount)} using Cash - Balance ${formatCurrency(availableCash)} → ${formatCurrency(newCash)}`,
             snapshot: {
               amount,
               category: category?.name,
@@ -144,29 +263,77 @@ export default function AddTransaction({
         }
 
       } else if (formData.type === 'income') {
-        transaction.payment_method = 'cash';
-        transaction.payment_method_name = 'Cash';
         transaction.income_source = formData.incomeSource;
 
-        const newCash = availableCash + amount;
-        await onUpdateCash(newCash);
+        // Handle deposit destination
+        if (formData.incomeDestination === 'cash_in_hand') {
+          // Add to cash in hand
+          const currentCash = cashInHand || 0;
+          const newCash = currentCash + amount;
+          if (onUpdateCashInHand) await onUpdateCashInHand(newCash);
+          
+          transaction.payment_method = 'cash_in_hand';
+          transaction.payment_method_name = 'Cash in Hand';
 
-        activityDetails = {
-          actionType: 'income',
-          entityType: 'income',
-          entityId: formData.incomeSource || 'income',
-          entityName: formData.incomeSource || 'Income',
-          description: `Income: $${amount.toFixed(2)} from ${formData.incomeSource || 'source'}`,
-          snapshot: {
-            amount,
-            source: formData.incomeSource,
-            previousCash: availableCash,
-            newCash,
-            paymentMethodName: 'Cash'
+          activityDetails = {
+            actionType: 'income',
+            entityType: 'income',
+            entityId: formData.incomeSource || 'income',
+            entityName: formData.incomeSource || 'Income',
+            description: `Income of ${formatCurrency(amount)} from '${formData.incomeSource}' to Cash in Hand - Balance ${formatCurrency(currentCash)} → ${formatCurrency(newCash)}`,
+            snapshot: {
+              amount,
+              source: formData.incomeSource,
+              depositTarget: 'cash_in_hand',
+              previousCash: currentCash,
+              newCash,
+              paymentMethodName: 'Cash in Hand'
+            }
+          };
+        } else {
+          // Add to bank account
+          const account = bankAccounts?.find(a => a.id === formData.incomeAccountId);
+          if (!account) {
+            alert('Please select a bank account');
+            setSaving(false);
+            return;
           }
-        };
+          
+          const currentBalance = Number(account.balance) || 0;
+          const newBalance = currentBalance + amount;
+          
+          const { updateBankAccountBalance } = await import('../utils/db');
+          await updateBankAccountBalance(account.id, newBalance);
+          await onUpdateCash(null, { syncOnly: true });
+          
+          transaction.payment_method = 'bank_account';
+          transaction.payment_method_id = account.id;
+          transaction.payment_method_name = account.name;
+
+          activityDetails = {
+            actionType: 'income',
+            entityType: 'income',
+            entityId: formData.incomeSource || 'income',
+            entityName: formData.incomeSource || 'Income',
+            description: `Income of ${formatCurrency(amount)} from '${formData.incomeSource}' to '${account.name}' - Balance ${formatCurrency(currentBalance)} → ${formatCurrency(newBalance)}`,
+            snapshot: {
+              amount,
+              source: formData.incomeSource,
+              depositTarget: 'bank',
+              depositAccountId: account.id,
+              depositAccountName: account.name,
+              previousBalance: currentBalance,
+              newBalance,
+              paymentMethodName: account.name
+            }
+          };
+        }
 
       } else if (formData.type === 'payment') {
+        // Parse payment source
+        const paymentSource = formData.paymentSource;
+        const paymentSourceId = formData.paymentSourceId;
+        
         if (formData.paymentMethod === 'credit_card') {
           const card = creditCards.find(c => c.id === formData.paymentMethodId);
           if (!card) {
@@ -182,24 +349,76 @@ export default function AddTransaction({
             balance: Math.max(0, card.balance - amount)
           }, { skipActivityLog: true });
 
-          const newCash = availableCash - amount;
-          await onUpdateCash(newCash);
-
           transaction.card_id = card.id;
           transaction.payment_method_name = card.name;
+          
+          // Handle payment source
+          let sourceName = 'Cash in Hand';
+          if (paymentSource === 'cash_in_hand') {
+            const currentCash = cashInHand || 0;
+            if (amount > currentCash) {
+              alert(`Insufficient cash in hand. Available: ${formatCurrency(currentCash)}`);
+              setSaving(false);
+              return;
+            }
+            const newCash = currentCash - amount;
+            if (onUpdateCashInHand) await onUpdateCashInHand(newCash);
+            sourceName = 'Cash in Hand';
+          } else if (paymentSource === 'bank_account' && paymentSourceId) {
+            const account = bankAccounts?.find(a => a.id === paymentSourceId);
+            if (!account) {
+              alert('Selected bank account not found');
+              setSaving(false);
+              return;
+            }
+            const currentBalance = Number(account.balance) || 0;
+            if (amount > currentBalance) {
+              alert(`Insufficient funds in ${account.name}. Available: ${formatCurrency(currentBalance)}`);
+              setSaving(false);
+              return;
+            }
+            const { updateBankAccountBalance } = await import('../utils/db');
+            await updateBankAccountBalance(account.id, currentBalance - amount);
+            await onUpdateCash(null, { syncOnly: true });
+            sourceName = account.name;
+          } else if (paymentSource === 'reserved_fund' && paymentSourceId) {
+            const fund = reservedFunds?.find(f => f.id === paymentSourceId);
+            if (!fund) {
+              alert('Selected reserved fund not found');
+              setSaving(false);
+              return;
+            }
+            const fundAmount = Number(fund.amount) || 0;
+            if (amount > fundAmount) {
+              alert(`Insufficient funds in ${fund.name}. Available: ${formatCurrency(fundAmount)}`);
+              setSaving(false);
+              return;
+            }
+            // Update reserved fund
+            await dbOperation('reservedFunds', 'put', {
+              ...fund,
+              amount: fundAmount - amount,
+              last_paid_date: formData.date
+            }, { skipActivityLog: true });
+            sourceName = fund.name;
+          }
 
+          const newCardBalance = Math.max(0, card.balance - amount);
+          
           activityDetails = {
             actionType: 'payment',
             entityType: 'card',
             entityId: card.id,
             entityName: card.name,
-            description: `Payment: $${amount.toFixed(2)} to ${card.name}`,
+            description: `Made payment of ${formatCurrency(amount)} for '${card.name}' from ${sourceName} - Balance ${formatCurrency(previousCardBalance)} → ${formatCurrency(newCardBalance)}`,
             snapshot: {
               entity: { ...card },
-              previousCash: availableCash,
               paymentAmount: amount,
               date: formData.date,
               previousBalance: previousCardBalance,
+              paymentSource,
+              paymentSourceId,
+              paymentSourceName: sourceName,
               paymentMethodName: card.name
             }
           };
@@ -219,24 +438,76 @@ export default function AddTransaction({
             balance: Math.max(0, loan.balance - amount)
           }, { skipActivityLog: true });
 
-          const newCash = availableCash - amount;
-          await onUpdateCash(newCash);
-
           transaction.loan_id = loan.id;
           transaction.payment_method_name = loan.name;
+          
+          // Handle payment source
+          let sourceName = 'Cash in Hand';
+          if (paymentSource === 'cash_in_hand') {
+            const currentCash = cashInHand || 0;
+            if (amount > currentCash) {
+              alert(`Insufficient cash in hand. Available: ${formatCurrency(currentCash)}`);
+              setSaving(false);
+              return;
+            }
+            const newCash = currentCash - amount;
+            if (onUpdateCashInHand) await onUpdateCashInHand(newCash);
+            sourceName = 'Cash in Hand';
+          } else if (paymentSource === 'bank_account' && paymentSourceId) {
+            const account = bankAccounts?.find(a => a.id === paymentSourceId);
+            if (!account) {
+              alert('Selected bank account not found');
+              setSaving(false);
+              return;
+            }
+            const currentBalance = Number(account.balance) || 0;
+            if (amount > currentBalance) {
+              alert(`Insufficient funds in ${account.name}. Available: ${formatCurrency(currentBalance)}`);
+              setSaving(false);
+              return;
+            }
+            const { updateBankAccountBalance } = await import('../utils/db');
+            await updateBankAccountBalance(account.id, currentBalance - amount);
+            await onUpdateCash(null, { syncOnly: true });
+            sourceName = account.name;
+          } else if (paymentSource === 'reserved_fund' && paymentSourceId) {
+            const fund = reservedFunds?.find(f => f.id === paymentSourceId);
+            if (!fund) {
+              alert('Selected reserved fund not found');
+              setSaving(false);
+              return;
+            }
+            const fundAmount = Number(fund.amount) || 0;
+            if (amount > fundAmount) {
+              alert(`Insufficient funds in ${fund.name}. Available: ${formatCurrency(fundAmount)}`);
+              setSaving(false);
+              return;
+            }
+            // Update reserved fund  
+            await dbOperation('reservedFunds', 'put', {
+              ...fund,
+              amount: fundAmount - amount,
+              last_paid_date: formData.date
+            }, { skipActivityLog: true });
+            sourceName = fund.name;
+          }
 
+          const newLoanBalance = Math.max(0, loan.balance - amount);
+          
           activityDetails = {
             actionType: 'payment',
             entityType: 'loan',
             entityId: loan.id,
             entityName: loan.name,
-            description: `Payment: $${amount.toFixed(2)} to ${loan.name}`,
+            description: `Made payment of ${formatCurrency(amount)} for '${loan.name}' from ${sourceName} - Balance ${formatCurrency(previousLoanBalance)} → ${formatCurrency(newLoanBalance)}`,
             snapshot: {
               entity: { ...loan },
-              previousCash: availableCash,
               paymentAmount: amount,
               date: formData.date,
               previousBalance: previousLoanBalance,
+              paymentSource,
+              paymentSourceId,
+              paymentSourceName: sourceName,
               paymentMethodName: loan.name
             }
           };
@@ -315,7 +586,12 @@ export default function AddTransaction({
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => setFormData({ ...formData, type: 'expense', paymentMethod: 'cash', paymentMethodId: null })}
+                onClick={() => setFormData({ 
+                  ...formData, 
+                  type: 'expense', 
+                  paymentMethod: primaryBank ? 'bank_account' : 'cash_in_hand', 
+                  paymentMethodId: primaryBank?.id || null 
+                })}
                 className={`p-3 rounded-lg border-2 transition-colors ${
                   formData.type === 'expense'
                     ? 'border-red-500 bg-red-50 text-red-700'
@@ -409,45 +685,199 @@ export default function AddTransaction({
               </select>
             </div>
           )}
-
-          {/* Payment Method */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Payment Method *</label>
-            <div className="space-y-2">
-              {getPaymentMethodOptions().map(option => (
+          
+          {/* Payment Type Selector (for payments) */}
+          {formData.type === 'payment' && (
+            <div>
+              <label className="block text-sm font-medium mb-2">Payment Type *</label>
+              <div className="grid grid-cols-2 gap-2 mb-4">
                 <button
-                  key={option.value}
                   type="button"
-                  onClick={() => setFormData({ ...formData, paymentMethod: option.value, paymentMethodId: null })}
-                  className={`w-full p-3 rounded-lg border-2 flex items-center gap-2 transition-colors ${
-                    formData.paymentMethod === option.value
+                  onClick={() => setFormData({ ...formData, paymentMethod: 'credit_card', paymentMethodId: null })}
+                  className={`p-3 rounded-lg border-2 transition-colors ${
+                    formData.paymentMethod === 'credit_card'
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
                   }`}
                 >
-                  {option.icon}
-                  {option.label}
+                  💳 Credit Card
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, paymentMethod: 'loan', paymentMethodId: null })}
+                  className={`p-3 rounded-lg border-2 transition-colors ${
+                    formData.paymentMethod === 'loan'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  📈 Loan
+                </button>
+              </div>
             </div>
-          </div>
-
-          {/* Specific Card/Loan Selection */}
-          {(formData.paymentMethod === 'credit_card' || formData.paymentMethod === 'loan') && (
+          )}
+          
+          {/* Payment Source (for payments) */}
+          {formData.type === 'payment' && (
             <div>
-              <label className="block text-sm font-medium mb-2">
-                Select {formData.paymentMethod === 'credit_card' ? 'Card' : 'Loan'} *
+              <label className="block text-sm font-medium mb-2">Pay From *</label>
+              <select
+                value={formData.paymentSourceId ? `${formData.paymentSource}:${formData.paymentSourceId}` : formData.paymentSource}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === 'cash_in_hand') {
+                    setFormData({ ...formData, paymentSource: 'cash_in_hand', paymentSourceId: null });
+                  } else if (value.includes(':')) {
+                    const [source, id] = value.split(':');
+                    setFormData({ ...formData, paymentSource: source, paymentSourceId: id });
+                  }
+                }}
+                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              >
+                <option value="cash_in_hand">💵 Cash in Hand ({formatCurrency(cashInHand || 0)})</option>
+                {bankAccounts && bankAccounts.length > 0 && (
+                  <optgroup label="🏦 Bank Accounts">
+                    {bankAccounts.map(account => (
+                      <option key={account.id} value={`bank_account:${account.id}`}>
+                        {account.name} ({formatCurrency(account.balance)})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {reservedFunds && reservedFunds.filter(f => f.amount > 0).length > 0 && (
+                  <optgroup label="📅 Reserved Funds">
+                    {reservedFunds.filter(f => f.amount > 0).map(fund => (
+                      <option key={fund.id} value={`reserved_fund:${fund.id}`}>
+                        {fund.name} ({formatCurrency(fund.amount)})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+          )}
+          
+          {/* Income Destination */}
+          {formData.type === 'income' && (
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Where is this money going? *
               </label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="incomeDestination"
+                    value="bank"
+                    checked={formData.incomeDestination === 'bank'}
+                    onChange={(e) => setFormData({ ...formData, incomeDestination: e.target.value })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">🏦 Deposit to Bank Account</span>
+                </label>
+                
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="incomeDestination"
+                    value="cash_in_hand"
+                    checked={formData.incomeDestination === 'cash_in_hand'}
+                    onChange={(e) => setFormData({ ...formData, incomeDestination: e.target.value })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">💵 Keep as Cash in Hand</span>
+                </label>
+              </div>
+              
+              {/* Bank Account Selection for Income */}
+              {formData.incomeDestination === 'bank' && bankAccounts && bankAccounts.length > 0 && (
+                <div className="mt-2">
+                  <select
+                    value={formData.incomeAccountId}
+                    onChange={(e) => setFormData({ ...formData, incomeAccountId: e.target.value })}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                  >
+                    <option value="">Select account</option>
+                    {bankAccounts.map(account => (
+                      <option key={account.id} value={account.id}>
+                        {account.name} {account.is_primary ? '(Primary)' : ''} - {formatCurrency(account.balance)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Payment Method for Expenses */}
+          {formData.type === 'expense' && (
+            <div>
+              <label className="block text-sm font-medium mb-2">Payment Method *</label>
+              <select
+                value={formData.paymentMethodId ? `${formData.paymentMethod}:${formData.paymentMethodId}` : formData.paymentMethod}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === 'cash_in_hand') {
+                    setFormData({ ...formData, paymentMethod: 'cash_in_hand', paymentMethodId: null });
+                  } else if (value.includes(':')) {
+                    const [method, id] = value.split(':');
+                    setFormData({ ...formData, paymentMethod: method, paymentMethodId: id });
+                  }
+                }}
+                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                required
+              >
+                <optgroup label="💵 Cash & Bank Accounts">
+                  <option value="cash_in_hand">💵 Cash in Hand (${(cashInHand || 0).toFixed(2)} available)</option>
+                  {bankAccounts && bankAccounts.length > 0 && bankAccounts.map(account => (
+                    <option key={account.id} value={`bank_account:${account.id}`}>
+                      🏦 {account.name} (${account.balance.toFixed(2)} available){account.is_primary ? ' ⭐' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+                
+                {creditCards && creditCards.filter(c => !c.is_gift_card).length > 0 && (
+                  <optgroup label="💳 Credit Cards">
+                    {creditCards.filter(c => !c.is_gift_card).map(card => (
+                      <option key={card.id} value={`credit_card:${card.id}`}>
+                        💳 {card.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                
+                {creditCards && creditCards.filter(c => c.is_gift_card && c.balance > 0).length > 0 && (
+                  <optgroup label="🎁 Gift Cards">
+                    {creditCards.filter(c => c.is_gift_card && c.balance > 0).map(card => (
+                      <option key={card.id} value={`credit_card:${card.id}`}>
+                        🎁 {card.name} (${card.balance.toFixed(2)} available)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+          )}
+
+          {/* Payment Method Selection for Payments */}
+          {formData.type === 'payment' && (
+            <div>
+              <label className="block text-sm font-medium mb-2">Pay To *</label>
               <select
                 value={formData.paymentMethodId || ''}
                 onChange={(e) => setFormData({ ...formData, paymentMethodId: e.target.value })}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
                 required
               >
-                <option value="">Select {formData.paymentMethod === 'credit_card' ? 'card' : 'loan'}</option>
-                {getPaymentMethodItems().map(item => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} - ${item.balance.toFixed(2)}
+                <option value="">Select {formData.paymentMethod === 'credit_card' ? 'credit card' : 'loan'}</option>
+                {formData.paymentMethod === 'credit_card' && creditCards && creditCards.map(card => (
+                  <option key={card.id} value={card.id}>
+                    {card.is_gift_card ? '🎁' : '💳'} {card.name} {card.is_gift_card ? `($${card.balance.toFixed(2)} balance)` : `($${card.balance.toFixed(2)} owed)`}
+                  </option>
+                ))}
+                {formData.paymentMethod === 'loan' && loans && loans.map(loan => (
+                  <option key={loan.id} value={loan.id}>
+                    📈 {loan.name} (${loan.balance.toFixed(2)} remaining)
                   </option>
                 ))}
               </select>

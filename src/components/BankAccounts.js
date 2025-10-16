@@ -17,13 +17,15 @@
 // ============================================
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle, ListFilter } from 'lucide-react';
-import { formatCurrency, generateId, validateBankAccountData, getAccountTypeIcon, sortBankAccounts } from '../utils/helpers';
+import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle, ListFilter, Wallet, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { formatCurrency, generateId, validateBankAccountData, getAccountTypeIcon, sortBankAccounts, formatDate } from '../utils/helpers';
 import {
-  //getAllBankAccounts,
   upsertBankAccount,
   deleteBankAccount,
-  transferBetweenAccounts
+  transferBetweenAccounts,
+  withdrawCashFromBank,
+  depositCashToBank,
+  dbOperation
 } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import SmartInput from './SmartInput';
@@ -44,7 +46,10 @@ export default function BankAccounts({
   onUpdate,
   focusTarget,
   onClearFocus,
-  onNavigateToTransactions
+  onNavigateToTransactions,
+  cashInHand,
+  onUpdateCashInHand,
+  onReloadAll
 }) {
   // ============================================
   // STATE MANAGEMENT
@@ -54,6 +59,15 @@ export default function BankAccounts({
   const [editingItem, setEditingItem] = useState(null);
   const [showTransferForm, setShowTransferForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  
+  // Cash operations modal state
+  const [showCashModal, setShowCashModal] = useState(false);
+  const [cashOperation, setCashOperation] = useState('withdraw');
+  const [cashFormData, setCashFormData] = useState({
+    accountId: '',
+    amount: ''
+  });
+  const [processingCash, setProcessingCash] = useState(false);
 
   // Form data for add/edit
   const [formData, setFormData] = useState({
@@ -61,7 +75,9 @@ export default function BankAccounts({
     balance: '',
     account_type: 'checking',
     is_primary: false,
-    institution: ''
+    institution: '',
+    allows_overdraft: false,
+    overdraft_limit: ''
   });
 
   // Transfer form data
@@ -117,7 +133,9 @@ export default function BankAccounts({
       balance: '',
       account_type: 'checking',
       is_primary: false,
-      institution: ''
+      institution: '',
+      allows_overdraft: false,
+      overdraft_limit: ''
     });
     setShowAddForm(false);
     setEditingItem(null);
@@ -133,7 +151,9 @@ export default function BankAccounts({
       balance: account.balance.toString(),
       account_type: account.account_type || 'checking',
       is_primary: account.is_primary || false,
-      institution: account.institution || ''
+      institution: account.institution || '',
+      allows_overdraft: account.allows_overdraft || false,
+      overdraft_limit: account.overdraft_limit?.toString() || ''
     });
     setEditingItem(account);
     setShowAddForm(true);
@@ -147,6 +167,7 @@ export default function BankAccounts({
    * - Validates data format
    * - Logs activity for undo capability
    * - Prevents duplicate primary accounts
+   * - Warns if balance change doesn't match transactions (traceability)
    */
   const handleAdd = async () => {
     if (saving) return;
@@ -162,6 +183,47 @@ export default function BankAccounts({
       alert(errors.join('\n'));
       return;
     }
+    
+    // Check for balance traceability if editing an existing account
+    if (editingItem) {
+      const oldBalance = parseFloat(editingItem.balance) || 0;
+      const newBalance = parseFloat(formData.balance) || 0;
+      const balanceChange = newBalance - oldBalance;
+      
+      if (Math.abs(balanceChange) > 0.01) {
+        // Significant balance change - check if it matches transaction history
+        try {
+          const transactions = await dbOperation('transactions', 'getAll');
+          
+          // Find transactions that affected this account
+          const accountTransactions = (transactions || []).filter(t => 
+            t.payment_method_id === editingItem.id ||
+            t.from_account_id === editingItem.id ||
+            t.to_account_id === editingItem.id
+          );
+          
+          if (accountTransactions.length > 0 && Math.abs(balanceChange) > 1) {
+            const proceed = window.confirm(
+              `⚠️ Balance Traceability Warning\n\n` +
+              `You're changing the balance by ${formatCurrency(Math.abs(balanceChange))}.\n\n` +
+              `This account has ${accountTransactions.length} transaction(s) in history.\n` +
+              `Manual balance changes may cause discrepancies in your records.\n\n` +
+              `Consider:\n` +
+              `- Adding income if you received money\n` +
+              `- Using Transfer if moving between accounts\n` +
+              `- Using Cash Operations if withdrawing/depositing\n\n` +
+              `Continue with manual balance change?`
+            );
+            
+            if (!proceed) {
+              return;
+            }
+          }
+        } catch (error) {
+          console.warn('Unable to validate balance change:', error);
+        }
+      }
+    }
 
     setSaving(true);
 
@@ -176,6 +238,8 @@ export default function BankAccounts({
         account_type: formData.account_type,
         is_primary: formData.is_primary,
         institution: formData.institution.trim(),
+        allows_overdraft: formData.allows_overdraft || false,
+        overdraft_limit: formData.allows_overdraft ? (parseFloat(formData.overdraft_limit) || 0) : 0,
         created_at: editingItem?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -185,24 +249,85 @@ export default function BankAccounts({
 
       // Log activity for undo capability
       if (editingItem) {
+        // Build detailed description of changes
+        const oldBalance = parseFloat(editingItem.balance) || 0;
+        const newBalance = parseFloat(savedAccount.balance) || 0;
+        const oldType = editingItem.account_type || 'checking';
+        const newType = savedAccount.account_type || 'checking';
+        const oldInstitution = editingItem.institution || '';
+        const newInstitution = savedAccount.institution || '';
+        const oldName = editingItem.name || '';
+        const newName = savedAccount.name || '';
+        const oldPrimary = editingItem.is_primary || false;
+        const newPrimary = savedAccount.is_primary || false;
+        const oldAllowsOverdraft = editingItem.allows_overdraft || false;
+        const newAllowsOverdraft = savedAccount.allows_overdraft || false;
+        const oldOverdraftLimit = parseFloat(editingItem.overdraft_limit) || 0;
+        const newOverdraftLimit = parseFloat(savedAccount.overdraft_limit) || 0;
+
+        let details = '';
+        if (oldName !== newName) {
+          details += `Name "${oldName}" → "${newName}" • `;
+        }
+        if (oldBalance !== newBalance) {
+          details += `Balance ${formatCurrency(oldBalance)} → ${formatCurrency(newBalance)} • `;
+        }
+        if (oldType !== newType) {
+          details += `Type ${oldType} → ${newType} • `;
+        }
+        if (oldInstitution !== newInstitution) {
+          if (oldInstitution && newInstitution) {
+            details += `Institution "${oldInstitution}" → "${newInstitution}" • `;
+          } else if (newInstitution) {
+            details += `Institution added "${newInstitution}" • `;
+          } else if (oldInstitution) {
+            details += `Institution removed "${oldInstitution}" • `;
+          }
+        }
+        if (oldPrimary !== newPrimary) {
+          details += newPrimary ? 'Set as primary account • ' : 'Removed primary status • ';
+        }
+        if (oldAllowsOverdraft !== newAllowsOverdraft) {
+          details += newAllowsOverdraft ? 'Enabled overdraft • ' : 'Disabled overdraft • ';
+        }
+        if (newAllowsOverdraft && oldOverdraftLimit !== newOverdraftLimit) {
+          details += `Overdraft limit ${formatCurrency(oldOverdraftLimit)} → ${formatCurrency(newOverdraftLimit)} • `;
+        }
+        
+        // Remove trailing bullet
+        details = details.replace(/ • $/, '');
+
+        const description = details
+          ? `Updated bank account '${savedAccount.name}' - ${details.trim()}`
+          : `Updated bank account '${savedAccount.name}'`;
+
         await logActivity(
           'edit',
           'bank_account',
           savedAccount.id,
           savedAccount.name,
-          `Updated bank account: ${savedAccount.name}`,
+          description,
           {
-            previous: editingItem,
-            updated: savedAccount
+            previous: { ...editingItem, id: editingItem?.id || savedAccount.id, name: editingItem?.name || savedAccount.name },
+            updated: { ...savedAccount, id: savedAccount?.id, name: savedAccount?.name }
           }
         );
       } else {
+        // Build detailed description for ADD
+        let description = `Added bank account '${savedAccount.name}' - Balance ${formatCurrency(balance)} • Type ${savedAccount.account_type}`;
+        if (savedAccount.institution) {
+          description += ` • Institution ${savedAccount.institution}`;
+        }
+        if (savedAccount.is_primary) {
+          description += ` • Primary account`;
+        }
+
         await logActivity(
           'add',
           'bank_account',
           savedAccount.id,
           savedAccount.name,
-          `Added bank account: ${savedAccount.name} with balance ${formatCurrency(balance)}`,
+          description,
           savedAccount
         );
       }
@@ -217,6 +342,84 @@ export default function BankAccounts({
       alert(`Failed to save bank account: ${error.message}`);
     } finally {
       setSaving(false);
+    }
+  };
+  
+  /**
+   * Handle cash operations (withdraw/deposit)
+   */
+  const handleCashOperation = async () => {
+    if (!cashFormData.accountId || !cashFormData.amount) {
+      alert('Please select an account and enter an amount');
+      return;
+    }
+    
+    const amount = parseFloat(cashFormData.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+    
+    setProcessingCash(true);
+    
+    try {
+      let result;
+      
+      if (cashOperation === 'withdraw') {
+        result = await withdrawCashFromBank(cashFormData.accountId, amount);
+        
+        await logActivity(
+          'cash_withdrawal',
+          'bank_account',
+          result.accountId,
+          result.accountName,
+          `Withdrew ${formatCurrency(result.amount)} from '${result.accountName}' to cash in hand`,
+          {
+            accountId: result.accountId,
+            accountName: result.accountName,
+            amount: result.amount,
+            previousBankBalance: result.previousBankBalance,
+            newBankBalance: result.newBankBalance,
+            previousCashInHand: result.previousCashInHand,
+            newCashInHand: result.newCashInHand,
+            transactionId: result.transactionId
+          }
+        );
+        
+        alert(`Successfully withdrew ${formatCurrency(amount)} from ${result.accountName} to cash in hand`);
+      } else {
+        result = await depositCashToBank(cashFormData.accountId, amount);
+        
+        await logActivity(
+          'cash_deposit',
+          'bank_account',
+          result.accountId,
+          result.accountName,
+          `Deposited ${formatCurrency(result.amount)} from cash in hand to '${result.accountName}'`,
+          {
+            accountId: result.accountId,
+            accountName: result.accountName,
+            amount: result.amount,
+            previousBankBalance: result.previousBankBalance,
+            newBankBalance: result.newBankBalance,
+            previousCashInHand: result.previousCashInHand,
+            newCashInHand: result.newCashInHand,
+            transactionId: result.transactionId
+          }
+        );
+        
+        alert(`Successfully deposited ${formatCurrency(amount)} from cash in hand to ${result.accountName}`);
+      }
+      
+      if (onReloadAll) await onReloadAll();
+      
+      setCashFormData({ accountId: '', amount: '' });
+      setShowCashModal(false);
+    } catch (error) {
+      console.error('Cash operation failed:', error);
+      alert(error.message || 'Cash operation failed');
+    } finally {
+      setProcessingCash(false);
     }
   };
 
@@ -248,13 +451,19 @@ export default function BankAccounts({
     try {
       console.log('🗑️ Deleting bank account:', account.name);
 
+      // Build detailed description for DELETE
+      let description = `Deleted bank account '${account.name}' - Balance ${formatCurrency(account.balance)} • Type ${account.account_type}`;
+      if (account.institution) {
+        description += ` • Institution ${account.institution}`;
+      }
+
       // Log activity BEFORE deletion (for undo capability)
       await logActivity(
         'delete',
         'bank_account',
         accountId,
         account.name,
-        `Deleted bank account: ${account.name} (Balance: ${formatCurrency(account.balance)})`,
+        description,
         account
       );
 
@@ -295,7 +504,7 @@ export default function BankAccounts({
         'bank_account',
         account.id,
         account.name,
-        `Set ${account.name} as primary account`,
+        `Set '${account.name}' as primary account`,
         { previous: account, updated: updatedAccount }
       );
 
@@ -373,18 +582,27 @@ export default function BankAccounts({
         transferData.description
       );
 
+      // Get current date for activity description
+      const transferDate = new Date().toISOString().split('T')[0];
+
+      // Build detailed description for TRANSFER
+      const description = `Transferred ${formatCurrency(result.amount)} from '${result.fromAccount}' to '${result.toAccount}' on ${formatDate(transferDate)}${transferData.description !== 'Account Transfer' ? ` - Note: ${transferData.description}` : ''}`;
+
       // Log activity
       await logActivity(
         'transfer',
         'bank_account',
         result.fromAccountId || transferData.fromAccount,
         result.fromAccount,
-        `Transferred ${formatCurrency(result.amount)} from ${result.fromAccount} to ${result.toAccount}`,
+        description,
         {
           fromAccount: result.fromAccountId || transferData.fromAccount,
           toAccount: result.toAccountId || transferData.toAccount,
+          fromAccountName: result.fromAccount,
+          toAccountName: result.toAccount,
           amount: result.amount,
           description: transferData.description,
+          date: transferDate,
           transactionId: result.transactionId,
           fromPreviousBalance: sourceBalance,
           toPreviousBalance: destinationBalance,
@@ -439,6 +657,17 @@ export default function BankAccounts({
           </p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShowCashModal(!showCashModal)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
+              showCashModal
+                ? darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'
+                : 'bg-purple-600 text-white hover:bg-purple-700'
+            }`}
+          >
+            <Wallet size={20} />
+            {showCashModal ? 'Cancel' : 'Cash'}
+          </button>
           <button
             onClick={() => setShowTransferForm(!showTransferForm)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
@@ -564,6 +793,123 @@ export default function BankAccounts({
           </div>
         </div>
       )}
+      
+      {/* Cash Operations Form */}
+      {showCashModal && (
+        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
+          <h3 className="font-semibold flex items-center gap-2">
+            <Wallet size={18} />
+            Cash Operations
+          </h3>
+          
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Operation Type
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCashOperation('withdraw')}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${cashOperation === 'withdraw'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
+                  : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                <ArrowDownToLine size={18} />
+                Withdraw
+              </button>
+              <button
+                type="button"
+                onClick={() => setCashOperation('deposit')}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${cashOperation === 'deposit'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
+                  : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                <ArrowUpFromLine size={18} />
+                Deposit
+              </button>
+            </div>
+          </div>
+          
+          <div>
+            <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              Select Account *
+            </label>
+            <select
+              value={cashFormData.accountId}
+              onChange={(e) => setCashFormData({ ...cashFormData, accountId: e.target.value })}
+              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+            >
+              <option value="">Choose account</option>
+              {sortedAccounts.map(account => (
+                <option key={account.id} value={account.id}>
+                  {account.name} - {formatCurrency(account.balance)}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              Amount *
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              value={cashFormData.amount}
+              onChange={(e) => setCashFormData({ ...cashFormData, amount: e.target.value })}
+              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+            />
+          </div>
+          
+          {/* Preview */}
+          {cashFormData.accountId && cashFormData.amount && (() => {
+            const selectedAccount = bankAccounts.find(acc => acc.id === cashFormData.accountId);
+            const amount = parseFloat(cashFormData.amount) || 0;
+            if (!selectedAccount || amount <= 0) return null;
+            
+            const currentBankBalance = Number(selectedAccount.balance) || 0;
+            const currentCash = Number(cashInHand) || 0;
+            const newBankBalance = cashOperation === 'withdraw' 
+              ? currentBankBalance - amount
+              : currentBankBalance + amount;
+            const newCashInHand = cashOperation === 'withdraw'
+              ? currentCash + amount
+              : currentCash - amount;
+            
+            return (
+              <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <div className={`text-xs font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preview:</div>
+                <div className={`text-sm space-y-1 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  <div>💵 Cash in Hand: {formatCurrency(currentCash)} → {formatCurrency(newCashInHand)}</div>
+                  <div>🏦 {selectedAccount.name}: {formatCurrency(currentBankBalance)} → {formatCurrency(newBankBalance)}</div>
+                </div>
+              </div>
+            );
+          })()}
+          
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={handleCashOperation}
+              disabled={processingCash}
+              className="flex-1 bg-purple-600 text-white py-2 rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50"
+            >
+              {processingCash ? 'Processing...' : cashOperation === 'withdraw' ? 'Withdraw Cash' : 'Deposit Cash'}
+            </button>
+            <button
+              onClick={() => {
+                setCashFormData({ accountId: '', amount: '' });
+                setShowCashModal(false);
+              }}
+              className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Add/Edit Form */}
       {showAddForm && (
@@ -577,7 +923,7 @@ export default function BankAccounts({
             value={formData.name}
             onChange={(value) => setFormData({ ...formData, name: value })}
             label="Account Name *"
-            placeholder="e.g., Chase Checking"
+            placeholder="e.g., Tangerine Checking"
             darkMode={darkMode}
             required={true}
           />
@@ -636,6 +982,44 @@ export default function BankAccounts({
             />
             <span className="text-sm">Set as primary account</span>
           </label>
+          
+          {/* Overdraft Settings */}
+          <div className={`pt-3 mt-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <h4 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Overdraft Settings</h4>
+            
+            <label className="flex items-center gap-2 mb-3">
+              <input
+                type="checkbox"
+                checked={formData.allows_overdraft}
+                onChange={(e) => setFormData({ 
+                  ...formData, 
+                  allows_overdraft: e.target.checked,
+                  overdraft_limit: e.target.checked ? formData.overdraft_limit : ''
+                })}
+                className="w-4 h-4"
+              />
+              <span className="text-sm">Allow overdraft</span>
+            </label>
+            
+            {formData.allows_overdraft && (
+              <div>
+                <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Overdraft Limit *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="e.g., 500.00"
+                  value={formData.overdraft_limit}
+                  onChange={(e) => setFormData({ ...formData, overdraft_limit: e.target.value })}
+                  className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                />
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Maximum negative balance allowed before transactions are blocked
+                </p>
+              </div>
+            )}
+          </div>
 
           <div className="flex gap-2">
             <button
@@ -688,9 +1072,23 @@ export default function BankAccounts({
                         </span>
                       )}
                     </div>
-                    <div className="text-2xl font-bold text-blue-600 mt-1">
-                      {formatCurrency(account.balance)}
+                    <div className={`text-2xl font-bold mt-1 ${
+                      (Number(account.balance) || 0) < 0
+                        ? 'text-red-600'  // Overdraft
+                        : 'text-blue-600'  // Positive
+                    }`}>
+                      {(Number(account.balance) || 0) < 0 ? 'Overdraft: ' : ''}{formatCurrency(account.balance)}
                     </div>
+                    
+                    {/* Overdraft Warning */}
+                    {(Number(account.balance) || 0) < 0 && account.allows_overdraft && (
+                      <div className="text-xs text-red-600 mt-1 space-y-1">
+                        <div>⚠️ Limit: {formatCurrency(account.overdraft_limit || 0)}</div>
+                        <div>Available: {formatCurrency((account.overdraft_limit || 0) + (Number(account.balance) || 0))}</div>
+                        <div className="font-medium">⚠️ Resolve by end of day to avoid fees</div>
+                      </div>
+                    )}
+                    
                     {account.institution && (
                       <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1`}>
                         {account.institution}

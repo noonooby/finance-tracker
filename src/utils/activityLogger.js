@@ -78,23 +78,44 @@ export const undoActivity = async (activity, onUpdate) => {
             console.error('Error undoing bank account add:', error);
           }
         } else if (entity_type === 'card' && snapshot?.isGiftCard) {
+          // Delete the gift card
           await dbOperation('creditCards', 'delete', entity_id, { skipActivityLog: true });
 
           if (snapshot.amount) {
             const amount = Number(snapshot.amount) || 0;
+            const paymentType = snapshot.paymentMethodType || (snapshot.paymentMethod === 'Cash' ? 'cash' : null);
 
-            if (snapshot.paymentMethod === 'Cash') {
+            // Refund based on payment method type
+            if (paymentType === 'cash') {
+              // Refund to cash
               const cashSetting = await dbOperation('settings', 'get', 'availableCash');
               const currentCash = Number(cashSetting?.value) || 0;
               await dbOperation('settings', 'put', {
                 key: 'availableCash',
                 value: currentCash + amount
               });
-            } else if (snapshot.paymentMethodId) {
+            } else if (paymentType === 'bank_account' && snapshot.paymentMethodId) {
+              // Refund to bank account
+              try {
+                const { getBankAccount, updateBankAccountBalance } = await import('./db');
+                const bankAccount = await getBankAccount(snapshot.paymentMethodId);
+                if (bankAccount) {
+                  const currentBalance = Number(bankAccount.balance) || 0;
+                  const newBalance = currentBalance + amount;
+                  await updateBankAccountBalance(snapshot.paymentMethodId, newBalance);
+                  console.log(`✅ Refunded ${amount} to bank account ${bankAccount.name}`);
+                }
+              } catch (error) {
+                console.error('Error refunding to bank account:', error);
+              }
+            } else if (paymentType === 'credit_card' && snapshot.paymentMethodId) {
+              // Refund to credit card or gift card
               try {
                 const paymentCard = await dbOperation('creditCards', 'get', snapshot.paymentMethodId);
                 if (paymentCard) {
                   const currentBalance = Number(paymentCard.balance) || 0;
+                  // If paid with gift card, add balance back
+                  // If paid with credit card, reduce the balance (reverse the charge)
                   const newBalance = paymentCard.is_gift_card
                     ? currentBalance + amount
                     : currentBalance - amount;
@@ -103,9 +124,10 @@ export const undoActivity = async (activity, onUpdate) => {
                     ...paymentCard,
                     balance: Math.max(0, newBalance)
                   }, { skipActivityLog: true });
+                  console.log(`✅ Refunded ${amount} to card ${paymentCard.name}`);
                 }
               } catch (error) {
-                console.error('Error refunding payment card:', error);
+                console.error('Error refunding to payment card:', error);
               }
             }
           }
@@ -130,7 +152,18 @@ export const undoActivity = async (activity, onUpdate) => {
               console.error('Error undoing bank account edit:', error);
             }
           } else {
-            await dbOperation(getStoreNameFromEntityType(entity_type), 'put', snapshot, { skipActivityLog: true });
+            // Determine correct snapshot to restore (some edits use {previous, updated})
+            const previousState = snapshot.previous || snapshot;
+            const restored = { ...previousState };
+
+            if (!restored.id && entity_id) {
+              restored.id = entity_id;
+            }
+            if (!restored.name && activity.entity_name) {
+              restored.name = activity.entity_name;
+            }
+
+            await dbOperation(getStoreNameFromEntityType(entity_type), 'put', restored, { skipActivityLog: true });
           }
         }
         break;
@@ -153,7 +186,12 @@ export const undoActivity = async (activity, onUpdate) => {
               console.error('Error undoing bank account delete:', error);
             }
           } else {
-            await dbOperation(getStoreNameFromEntityType(entity_type), 'put', snapshotData, { skipActivityLog: true });
+            // Ensure the restored snapshot has an id for Supabase
+            const restored = { ...snapshotData };
+            if (!restored.id && entity_id) {
+              restored.id = entity_id;
+            }
+            await dbOperation(getStoreNameFromEntityType(entity_type), 'put', restored, { skipActivityLog: true });
           }
 
           if (entity_type === 'transaction') {
@@ -219,7 +257,36 @@ export const undoActivity = async (activity, onUpdate) => {
       case 'income':
         await dbOperation('income', 'delete', entity_id, { skipActivityLog: true });
         if (snapshot) {
-          if (snapshot.previousCash !== undefined) {
+          // Handle undo based on where income was deposited
+          if (snapshot.depositTarget === 'cash_in_hand') {
+            // Income was kept as cash in hand - restore cash in hand balance
+            try {
+              const { getCashInHand, updateCashInHand } = await import('./db');
+              const currentCashInHand = await getCashInHand();
+              const amount = Number(snapshot.amount) || 0;
+              const restoredCashInHand = Math.max(0, currentCashInHand - amount);
+              await updateCashInHand(restoredCashInHand);
+              console.log('✅ Cash in hand restored after undoing income');
+            } catch (error) {
+              console.error('Error restoring cash in hand for income undo:', error);
+            }
+          } else if (snapshot.depositTarget === 'bank' && snapshot.depositAccountId) {
+            // Income was deposited to bank account - restore bank account balance
+            try {
+              const { getBankAccount, updateBankAccountBalance } = await import('./db');
+              const bankAccount = await getBankAccount(snapshot.depositAccountId);
+              if (bankAccount) {
+                const currentBalance = Number(bankAccount.balance) || 0;
+                const amount = Number(snapshot.amount) || 0;
+                const restoredBalance = Math.max(0, currentBalance - amount);
+                await updateBankAccountBalance(snapshot.depositAccountId, restoredBalance);
+                console.log('✅ Bank account balance restored after undoing income');
+              }
+            } catch (error) {
+              console.error('Error restoring bank account for income undo:', error);
+            }
+          } else if (snapshot.previousCash !== undefined) {
+            // Legacy: restore old availableCash (for backward compatibility)
             await dbOperation('settings', 'put', {
               key: 'availableCash',
               value: snapshot.previousCash,
@@ -434,6 +501,62 @@ export const undoActivity = async (activity, onUpdate) => {
             console.log('✅ Available cash restored to:', snapshot.previousValue);
           } catch (error) {
             console.error('Error undoing recalculate cash:', error);
+          }
+        }
+        break;
+      
+      case 'cash_withdrawal':
+        // Undo cash withdrawal - reverse: add back to bank, deduct from cash in hand
+        if (snapshot && snapshot.accountId && snapshot.amount) {
+          try {
+            const { updateBankAccountBalance, updateCashInHand, getCashInHand } = await import('./db');
+            
+            // Restore bank account balance
+            if (snapshot.previousBankBalance !== undefined) {
+              await updateBankAccountBalance(snapshot.accountId, snapshot.previousBankBalance);
+            }
+            
+            // Restore cash in hand balance
+            if (snapshot.previousCashInHand !== undefined) {
+              await updateCashInHand(snapshot.previousCashInHand);
+            }
+            
+            // Mark transaction as undone
+            if (snapshot.transactionId) {
+              await markTransactionUndone(snapshot.transactionId);
+            }
+            
+            console.log('✅ Cash withdrawal undone successfully');
+          } catch (error) {
+            console.error('Error undoing cash withdrawal:', error);
+          }
+        }
+        break;
+        
+      case 'cash_deposit':
+        // Undo cash deposit - reverse: deduct from bank, add back to cash in hand
+        if (snapshot && snapshot.accountId && snapshot.amount) {
+          try {
+            const { updateBankAccountBalance, updateCashInHand, getCashInHand } = await import('./db');
+            
+            // Restore bank account balance
+            if (snapshot.previousBankBalance !== undefined) {
+              await updateBankAccountBalance(snapshot.accountId, snapshot.previousBankBalance);
+            }
+            
+            // Restore cash in hand balance
+            if (snapshot.previousCashInHand !== undefined) {
+              await updateCashInHand(snapshot.previousCashInHand);
+            }
+            
+            // Mark transaction as undone
+            if (snapshot.transactionId) {
+              await markTransactionUndone(snapshot.transactionId);
+            }
+            
+            console.log('✅ Cash deposit undone successfully');
+          } catch (error) {
+            console.error('Error undoing cash deposit:', error);
           }
         }
         break;

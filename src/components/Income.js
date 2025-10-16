@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, DollarSign, Edit2, X, ListFilter } from 'lucide-react';
+import { Plus, DollarSign, Edit2, X, ListFilter, AlertCircle } from 'lucide-react';
 import { formatCurrency, formatDate, predictNextDate, getDaysUntil, generateId, getPrimaryAccountFromArray } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
@@ -14,7 +14,9 @@ export default function Income({
   focusTarget,
   onClearFocus,
   bankAccounts,
-  onNavigateToTransactions
+  onNavigateToTransactions,
+  cashInHand,
+  onUpdateCashInHand
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -27,6 +29,7 @@ export default function Income({
     recurringDurationType: 'indefinite',
     recurringUntilDate: '',
     recurringOccurrences: '',
+    depositTarget: 'bank', // 'bank' or 'cash_in_hand'
     depositAccountId: ''
   });
   const incomeRefs = useRef({});
@@ -91,14 +94,67 @@ export default function Income({
           ? parseInt(formData.recurringOccurrences, 10) || null
           : null,
       recurring_occurrences_completed: editingItem?.recurring_occurrences_completed || 0,
-      deposit_account_id: formData.depositAccountId || null
+      deposit_account_id: formData.depositTarget === 'bank' ? (formData.depositAccountId || null) : null
     };
     
     const savedIncome = await dbOperation('income', 'put', incomeEntry, { skipActivityLog: true });
     const incomeId = savedIncome?.id || editingItem?.id;
+    
     if (isEditing) {
-      await logActivity('edit', 'income', incomeId, savedIncome?.source || incomeEntry.source,
-        `Updated income: ${savedIncome?.source || incomeEntry.source} to $${newAmount.toFixed(2)}`, null);
+      // Build detailed description for EDIT
+      const oldSource = editingItem.source || '';
+      const newSource = savedIncome?.source || incomeEntry.source || '';
+      const oldAmount = parseFloat(editingItem.amount) || 0;
+      const oldFrequency = editingItem.frequency || 'onetime';
+      const newFrequency = savedIncome?.frequency || incomeEntry.frequency || 'onetime';
+      const oldDate = editingItem.date || '';
+      const newDate = savedIncome?.date || incomeEntry.date || '';
+      const oldDepositAccount = editingItem.deposit_account_id || null;
+      const newDepositAccount = savedIncome?.deposit_account_id || incomeEntry.deposit_account_id || null;
+      
+      // Get account names for display
+      const oldAccountName = oldDepositAccount 
+        ? bankAccounts.find(a => a.id === oldDepositAccount)?.name || 'Unknown Account'
+        : 'None';
+      const newAccountName = newDepositAccount
+        ? bankAccounts.find(a => a.id === newDepositAccount)?.name || 'Unknown Account'
+        : 'None';
+
+      let details = '';
+      if (oldSource !== newSource) {
+        details += `Source "${oldSource}" → "${newSource}" • `;
+      }
+      if (oldAmount !== newAmount) {
+        details += `Amount ${formatCurrency(oldAmount)} → ${formatCurrency(newAmount)} • `;
+      }
+      if (oldFrequency !== newFrequency) {
+        details += `Frequency ${oldFrequency} → ${newFrequency} • `;
+      }
+      if (oldDate !== newDate) {
+        details += `Date ${formatDate(oldDate)} → ${formatDate(newDate)} • `;
+      }
+      if (oldDepositAccount !== newDepositAccount) {
+        details += `Deposit account ${oldAccountName} → ${newAccountName} • `;
+      }
+      
+      // Remove trailing bullet
+      details = details.replace(/ • $/, '');
+
+      const description = details
+        ? `Updated income '${savedIncome?.source || incomeEntry.source}' - ${details}`
+        : `Updated income '${savedIncome?.source || incomeEntry.source}'`;
+
+      await logActivity(
+        'edit',
+        'income',
+        incomeId,
+        savedIncome?.source || incomeEntry.source,
+        description,
+        {
+          previous: { ...editingItem, id: editingItem?.id || incomeId },
+          updated: { ...savedIncome, id: savedIncome?.id || incomeId }
+        }
+      );
     }
 
     if (!isEditing) {
@@ -116,23 +172,53 @@ export default function Income({
       };
       const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
       
+      // Handle cash vs bank deposit
       let newCash = availableCash + newAmount;
       if (formData.reservedAmount && parseFloat(formData.reservedAmount) > 0) {
         newCash -= parseFloat(formData.reservedAmount);
       }
-      await onUpdateCash(newCash, {
-        accountId: formData.depositAccountId || undefined
-      });
+      
+      if (formData.depositTarget === 'cash_in_hand') {
+        // Add to cash in hand
+        const currentCashInHand = cashInHand || 0;
+        const updatedCashInHand = currentCashInHand + newAmount;
+        if (onUpdateCashInHand) await onUpdateCashInHand(updatedCashInHand);
+      } else {
+        // Add to bank account
+        await onUpdateCash(newCash, {
+          accountId: formData.depositAccountId || undefined
+        });
+      }
+
+      // Get deposit destination for activity description
+      const depositDestination = formData.depositTarget === 'cash_in_hand'
+        ? 'cash in hand'
+        : (formData.depositAccountId
+            ? bankAccounts.find(a => a.id === formData.depositAccountId)?.name || null
+            : null);
+
+      // Build detailed description for ADD
+      let description = `Added income '${formData.source}' - Amount ${formatCurrency(newAmount)} • Frequency ${formData.frequency} • Date ${formatDate(formData.date)}`;
+      if (depositDestination) {
+        description += formData.depositTarget === 'cash_in_hand'
+          ? ` • Kept as cash in hand`
+          : ` • Deposited to ${depositDestination}`;
+      }
 
       await logActivity(
         'income',
         'income',
         incomeId,
         formData.source,
-        `Income: ${formatCurrency(newAmount)} from ${formData.source}`,
+        description,
         {
           amount: newAmount,
           source: formData.source,
+          frequency: formData.frequency,
+          date: formData.date,
+          depositTarget: formData.depositTarget,
+          depositAccountId: formData.depositAccountId,
+          depositDestination,
           previousCash,
           newCash,
           transactionId: savedTransaction?.id,
@@ -156,6 +242,7 @@ export default function Income({
       recurringDurationType: inc.recurring_duration_type || 'indefinite',
       recurringUntilDate: inc.recurring_until_date || '',
       recurringOccurrences: inc.recurring_occurrences_total?.toString() || '',
+      depositTarget: inc.deposit_account_id ? 'bank' : 'cash_in_hand',
       depositAccountId: inc.deposit_account_id || primaryAccount?.id || ''
     });
     setEditingItem(inc);
@@ -184,14 +271,26 @@ export default function Income({
         undone_at: null
       }));
 
+      // Get deposit account name for activity description
+      const depositAccountName = inc.deposit_account_id
+        ? bankAccounts.find(a => a.id === inc.deposit_account_id)?.name || null
+        : null;
+
+      // Build detailed description for DELETE
+      let description = `Deleted income '${inc.source}' - Amount ${formatCurrency(inc.amount)} • Frequency ${inc.frequency || 'onetime'}`;
+      if (depositAccountName) {
+        description += ` • Was deposited to ${depositAccountName}`;
+      }
+
       await logActivity(
         'delete',
         'income',
         id,
         inc.source,
-        `Deleted income: ${inc.source} ($${inc.amount})`,
+        description,
         {
           ...inc,
+          depositAccountName,
           previousCash,
           linkedTransactions: linkedSnapshots
         }
@@ -226,6 +325,7 @@ export default function Income({
       recurringDurationType: 'indefinite',
       recurringUntilDate: '',
       recurringOccurrences: '',
+      depositTarget: 'bank',
       depositAccountId: primaryAccount?.id || ''
     });
     setShowAddForm(false);
@@ -347,10 +447,53 @@ export default function Income({
             onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
             className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
           />
-          {bankAccounts && bankAccounts.length > 0 && (
+          {/* Deposit Destination */}
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Where is this money going? *
+            </label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="depositTarget"
+                  value="bank"
+                  checked={formData.depositTarget === 'bank'}
+                  onChange={(e) => setFormData({ ...formData, depositTarget: e.target.value })}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Deposit to Bank Account</span>
+              </label>
+              
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="depositTarget"
+                  value="cash_in_hand"
+                  checked={formData.depositTarget === 'cash_in_hand'}
+                  onChange={(e) => setFormData({ ...formData, depositTarget: e.target.value })}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Keep as Cash in Hand</span>
+              </label>
+              
+              {/* Warning for cash in hand */}
+              {formData.depositTarget === 'cash_in_hand' && (
+                <div className={`flex items-start gap-2 p-2 rounded ${darkMode ? 'bg-yellow-900/20 border border-yellow-800' : 'bg-yellow-50 border border-yellow-200'}`}>
+                  <AlertCircle size={14} className="text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <p className={`text-xs ${darkMode ? 'text-yellow-300' : 'text-yellow-800'}`}>
+                    Tip: For better tracking and safety, consider depositing income to a bank account instead of keeping as cash.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Bank Account Selection (conditional) */}
+          {formData.depositTarget === 'bank' && bankAccounts && bankAccounts.length > 0 && (
             <div>
               <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                Deposit to Account (Optional)
+                Select Account *
               </label>
               <select
                 value={formData.depositAccountId}

@@ -19,7 +19,9 @@ export default function CreditCards({
   focusTarget,
   onClearFocus,
   bankAccounts,
-  onNavigateToTransactions
+  onNavigateToTransactions,
+  cashInHand,
+  onUpdateCashInHand
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -107,16 +109,11 @@ export default function CreditCards({
   const getPaymentSourceOptions = (card) => {
     const options = [];
 
-    // Add reserved funds
-    reservedFunds.forEach(fund => {
-      const fundAmount = parseFloat(fund.amount) || 0;
-      if (fundAmount > 0) {
-        options.push({
-          value: `reserved_fund:${fund.id}`,
-          label: `${fund.name} (${formatCurrency(fundAmount)})`,
-          type: 'reserved_fund'
-        });
-      }
+    // Add cash in hand
+    options.push({
+      value: 'cash_in_hand',
+      label: `Cash in Hand (${formatCurrency(cashInHand || 0)})`,
+      type: 'cash_in_hand'
     });
 
     // Add bank accounts
@@ -130,11 +127,16 @@ export default function CreditCards({
       });
     }
 
-    // Add cash option
-    options.push({
-      value: 'cash',
-      label: 'Cash',
-      type: 'cash'
+    // Add reserved funds
+    reservedFunds.forEach(fund => {
+      const fundAmount = parseFloat(fund.amount) || 0;
+      if (fundAmount > 0) {
+        options.push({
+          value: `reserved_fund:${fund.id}`,
+          label: `${fund.name} (${formatCurrency(fundAmount)})`,
+          type: 'reserved_fund'
+        });
+      }
     });
 
     return options;
@@ -237,10 +239,88 @@ export default function CreditCards({
     const cardId = savedCard?.id || newCard.id;
     if (!editingItem) {
       if (!formData.isGiftCard) {
-        await logActivity('add', 'card', cardId, savedCard?.name || newCard.name, `Added card: ${savedCard?.name || newCard.name}`, null);
+        await logActivity(
+          'add',
+          'card',
+          cardId,
+          savedCard?.name || newCard.name,
+          `Added credit card '${savedCard?.name || newCard.name}' - Balance ${formatCurrency(savedCard.balance)} • Limit ${formatCurrency(savedCard.credit_limit)} • Rate ${savedCard.interest_rate || 0}% • Due ${savedCard.due_date ? formatDate(savedCard.due_date) : 'N/A'}`,
+          savedCard
+        );
       }
     } else {
-      await logActivity('edit', 'card', cardId, savedCard?.name || newCard.name, `Updated card: ${savedCard?.name || newCard.name}`, null);
+      // Build detailed description of changes
+      const oldName = editingItem.name || '';
+      const newName = savedCard?.name || newCard.name || '';
+      const oldBalance = parseFloat(editingItem.balance) || 0;
+      const newBalance = parseFloat(savedCard.balance) || 0;
+      const oldLimit = parseFloat(editingItem.credit_limit) || 0;
+      const newLimit = parseFloat(savedCard.credit_limit) || 0;
+      const oldDueDate = editingItem.due_date || '';
+      const newDueDate = savedCard.due_date || newCard.due_date || '';
+      const oldStatementDay = parseInt(editingItem.statement_day) || 0;
+      const newStatementDay = parseInt(savedCard.statement_day) || parseInt(newCard.statement_day) || 0;
+      const oldInterestRate = parseFloat(editingItem.interest_rate) || 0;
+      const newInterestRate = parseFloat(savedCard.interest_rate) || parseFloat(newCard.interest_rate) || 0;
+      const oldAlertDays = parseInt(editingItem.alert_days) || 7;
+      const newAlertDays = parseInt(savedCard.alert_days) || parseInt(newCard.alert_days) || 7;
+      const oldExpiryDate = editingItem.expiry_date || '';
+      const newExpiryDate = savedCard.expiry_date || newCard.expiry_date || '';
+      const oldHasExpiry = editingItem.has_expiry || false;
+      const newHasExpiry = savedCard.has_expiry || newCard.has_expiry || false;
+
+      let details = '';
+      if (oldName !== newName) {
+        details += `Name "${oldName}" → "${newName}" • `;
+      }
+      if (oldBalance !== newBalance) {
+        details += `Balance ${formatCurrency(oldBalance)} → ${formatCurrency(newBalance)} • `;
+      }
+      if (!formData.isGiftCard && oldLimit !== newLimit) {
+        details += `Limit ${formatCurrency(oldLimit)} → ${formatCurrency(newLimit)} • `;
+      }
+      if (!formData.isGiftCard && oldDueDate !== newDueDate) {
+        details += `Due date ${oldDueDate ? formatDate(oldDueDate) : 'None'} → ${newDueDate ? formatDate(newDueDate) : 'None'} • `;
+      }
+      if (!formData.isGiftCard && oldStatementDay !== newStatementDay) {
+        details += `Statement day ${oldStatementDay || 'None'} → ${newStatementDay || 'None'} • `;
+      }
+      if (!formData.isGiftCard && oldInterestRate !== newInterestRate) {
+        details += `Interest rate ${oldInterestRate}% → ${newInterestRate}% • `;
+      }
+      if (!formData.isGiftCard && oldAlertDays !== newAlertDays) {
+        details += `Alert days ${oldAlertDays} → ${newAlertDays} • `;
+      }
+      if (formData.isGiftCard && (oldHasExpiry !== newHasExpiry || (newHasExpiry && oldExpiryDate !== newExpiryDate))) {
+        if (!oldHasExpiry && newHasExpiry) {
+          details += `Added expiry date ${formatDate(newExpiryDate)} • `;
+        } else if (oldHasExpiry && !newHasExpiry) {
+          details += `Removed expiry date • `;
+        } else if (oldExpiryDate !== newExpiryDate) {
+          details += `Expiry date ${formatDate(oldExpiryDate)} → ${formatDate(newExpiryDate)} • `;
+        }
+      }
+      
+      // Remove trailing bullet
+      details = details.replace(/ • $/, '');
+
+      const cardType = formData.isGiftCard ? 'gift card' : 'credit card';
+      const description = details
+        ? `Updated ${cardType} '${savedCard?.name || newCard.name}' - ${details}`
+        : `Updated ${cardType} '${savedCard?.name || newCard.name}'`;
+
+      // Use safer snapshot for undo/redo consistency (ensure id/name always present)
+      await logActivity(
+        'edit',
+        'card',
+        cardId,
+        savedCard?.name || newCard.name,
+        description,
+        {
+          previous: { ...editingItem, id: editingItem?.id || cardId, name: editingItem?.name || newCard.name },
+          updated: { ...savedCard, id: savedCard?.id || cardId, name: savedCard?.name || newCard.name }
+        }
+      );
     }
 
     // If it's a new gift card (not editing), create purchase transaction
@@ -266,6 +346,27 @@ export default function CreditCards({
           
           const newCash = availableCash - purchaseAmount;
           await onUpdateCash(newCash);
+          
+        } else if (paymentMethod.startsWith('bank-')) {
+          const bankAccountId = paymentMethod.replace('bank-', '');
+          const paymentAccount = bankAccounts.find(a => a.id === bankAccountId);
+          
+          if (!paymentAccount) {
+            alert('Selected bank account not found');
+            return;
+          }
+          
+          if ((parseFloat(paymentAccount.balance) || 0) < purchaseAmount) {
+            alert(`Insufficient balance in ${paymentAccount.name}. Available: ${formatCurrency(paymentAccount.balance)}`);
+            return;
+          }
+          
+          transaction.payment_method = 'bank_account';
+          transaction.payment_method_id = bankAccountId;
+          transaction.payment_method_name = paymentAccount.name;
+          
+          // Deduct from bank account
+          await updateBankAccountBalance(bankAccountId, (parseFloat(paymentAccount.balance) || 0) - purchaseAmount);
           
         } else if (paymentMethod.startsWith('card-')) {
           const cardIdToCharge = paymentMethod.replace('card-', '');
@@ -318,11 +419,12 @@ export default function CreditCards({
           'card',
           savedCard?.id || newCard.id,
           formData.name,
-          `Purchased gift card: ${formData.name} for ${formatCurrency(purchaseAmount)}`,
+          `Purchased gift card '${formData.name}' for ${formatCurrency(purchaseAmount)} using ${transaction.payment_method_name}`,
           {
             amount: purchaseAmount,
             paymentMethod: transaction.payment_method_name,
             paymentMethodId: transaction.payment_method_id,
+            paymentMethodType: transaction.payment_method,  // 'cash', 'bank_account', 'credit_card'
             transactionId: savedTransaction?.id,
             giftCardId: savedCard?.id || newCard.id,
             isGiftCard: true
@@ -449,7 +551,7 @@ export default function CreditCards({
       // Update card
       const updatedCard = {
         ...card,
-        balance: Math.max(0, cardBalance - paymentAmount),
+        balance: cardBalance - paymentAmount,
         last_payment_date: paymentDate,
         last_auto_payment_date: todayIso
       };
@@ -616,6 +718,29 @@ export default function CreditCards({
         newCash = updatedBankTotal;
         await onUpdateCash(updatedBankTotal);
 
+      } else if (sourceType === 'cash_in_hand') {
+        const currentCash = cashInHand || 0;
+        if (paymentAmount > currentCash) {
+          alert(
+            `Insufficient cash in hand.\n` +
+            `Available: ${formatCurrency(currentCash)}\n` +
+            `Required: ${formatCurrency(paymentAmount)}`
+          );
+          return;
+        }
+        
+        const newCashInHand = currentCash - paymentAmount;
+        if (onUpdateCashInHand) await onUpdateCashInHand(newCashInHand);
+        
+        paymentMethod = 'cash_in_hand';
+        paymentMethodId = null;
+        paymentMethodName = 'Cash in Hand';
+        sourceName = 'Cash in Hand';
+        
+        // No change to total available cash calculation
+        newCash = previousCash;
+        await onUpdateCash(previousCash);
+
       } else {
         // Cash payment
         paymentMethod = 'cash';
@@ -644,6 +769,11 @@ export default function CreditCards({
       };
       const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
 
+      // ✅ Ensure card snapshots always carry valid ID and name for undo safety
+      if (!originalCard.id) originalCard.id = cardId; // Safety: ensure originalCard has ID
+      if (!originalCard.name) originalCard.name = card.name; // Safety: ensure originalCard has name
+      if (!updatedCard.id) updatedCard.id = cardId; // Safety: ensure updatedCard has ID
+      if (!updatedCard.name) updatedCard.name = card.name; // Safety: ensure updatedCard has name
       const snapshot = {
         entity: originalCard,
         paymentAmount,
@@ -663,13 +793,14 @@ export default function CreditCards({
         transactionId: savedTransaction?.id,
         isManualPayment: true
       };
-
+      const previousBalance = parseFloat(originalCard.balance) || 0;
+      const newBalance = parseFloat(updatedCard.balance) || 0;
       await logActivity(
         'payment',
         'card',
         cardId,
         card.name,
-        `Made payment of ${formatCurrency(paymentAmount)} for ${card.name}`,
+        `Made payment of ${formatCurrency(paymentAmount)} for '${card.name}' from ${sourceName} - Balance ${formatCurrency(previousBalance)} → ${formatCurrency(newBalance)}`,
         snapshot
       );
 
@@ -685,7 +816,14 @@ export default function CreditCards({
   const handleDelete = async (id) => {
     if (window.confirm('Delete this credit card?')) {
       const card = creditCards.find(c => c.id === id);
-      await logActivity('delete', 'card', id, card.name, `Deleted card: ${card.name}`, card);
+      await logActivity(
+        'delete',
+        'card',
+        id,
+        card.name,
+        `Deleted ${card.is_gift_card ? 'gift card' : 'credit card'} '${card.name}' - Balance ${formatCurrency(card.balance)}${!card.is_gift_card ? ` • Limit ${formatCurrency(card.credit_limit)} • Rate ${card.interest_rate || 0}% • Due ${card.due_date ? formatDate(card.due_date) : 'N/A'}` : ''}`,
+        card
+      );
       await dbOperation('creditCards', 'delete', id, { skipActivityLog: true });
       await onUpdate();
     }
@@ -869,6 +1007,18 @@ export default function CreditCards({
                   className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
                 >
                   <option value="cash">💵 Cash</option>
+                  
+                  {/* Bank Accounts */}
+                  {bankAccounts && bankAccounts.length > 0 && (
+                    <optgroup label="Bank Accounts">
+                      {bankAccounts.map(account => (
+                        <option key={account.id} value={`bank-${account.id}`}>
+                          🏦 {account.name} ({formatCurrency(account.balance)} available)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  
                   <optgroup label="Credit Cards">
                     {creditCards.filter(card => !card.is_gift_card).map(card => (
                       <option key={card.id} value={`card-${card.id}`}>
@@ -974,7 +1124,19 @@ export default function CreditCards({
                       </span>
                     )}
                   </div>
-                  <div className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(card.balance)}</div>
+                  <div
+                    className={`text-2xl font-bold mt-1 ${
+                      card.balance < 0
+                        ? 'text-green-600'        // overpaid → green
+                        : card.balance === 0
+                        ? darkMode
+                          ? 'text-gray-300'       // neutral gray (dark mode)
+                          : 'text-gray-600'       // neutral gray (light mode)
+                        : 'text-red-600'          // owe → red
+                    }`}
+                  >
+                    {formatCurrency(card.balance)}
+                  </div>
                   {card.is_gift_card ? (
                     <>
                       {card.purchase_amount > 0 && (
@@ -1174,13 +1336,6 @@ export default function CreditCards({
                     className="bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700"
                   >
                     Make Payment
-                  </button>
-                  <button
-                    onClick={() => onNavigateToTransactions && onNavigateToTransactions({ creditCard: card.id })}
-                    className={`p-2 rounded ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'}`}
-                    title="View transactions"
-                    >
-                  <ListFilter size={18} />
                   </button>
                 </div>
               )}

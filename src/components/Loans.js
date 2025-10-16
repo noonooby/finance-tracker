@@ -18,8 +18,11 @@ export default function Loans({
   focusTarget,
   onClearFocus,
   bankAccounts,
+  creditCards,
   hasMigratedToBankAccounts,
-  onNavigateToTransactions
+  onNavigateToTransactions,
+  cashInHand,
+  onUpdateCashInHand
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -118,21 +121,18 @@ export default function Loans({
     }
     return options;
   };
-
-  const getPaymentSourceOptions = (loan) => {
+  //Payment Source Options
+  const getPaymentSourceOptions = (loan) => {  
     const options = [];
-    const fundOptions = getLoanReservedFundOptions(loan);
-    if (fundOptions.length > 0) {
-      for (const option of fundOptions) {
-        options.push({
-          value: option.value,
-          label: `Reserved Fund: ${option.label}`,
-          type: 'reserved_fund',
-          fund: option.fund
-        });
-      }
-    }
-
+    
+    // Add cash in hand first
+    options.push({
+      value: 'cash_in_hand',
+      label: `Cash in Hand (${formatCurrency(cashInHand || 0)})`,
+      type: 'cash_in_hand'
+    });
+    
+    // Add bank accounts
     if (bankAccounts && bankAccounts.length > 0) {
       for (const account of bankAccounts) {
         const balance = parseFloat(account.balance) || 0;
@@ -144,12 +144,32 @@ export default function Loans({
         });
       }
     }
-
-    options.push({
-      value: 'cash',
-      label: 'Cash',
-      type: 'cash'
-    });
+    
+    // Add reserved funds
+    const fundOptions = getLoanReservedFundOptions(loan);
+    if (fundOptions.length > 0) {
+      for (const option of fundOptions) {
+        options.push({
+          value: option.value,
+          label: `Reserved Fund: ${option.label}`,
+          type: 'reserved_fund',
+          fund: option.fund
+        });
+      }
+    }
+     
+    // Add credit cards
+    if (creditCards && creditCards.length > 0) {
+      for (const card of creditCards) {
+        const balance = parseFloat(card.balance) || 0;
+        options.push({
+          value: `credit_card:${card.id}`,
+          label: `${card.name} (Bal: ${formatCurrency(balance)})`,
+          type: 'credit_card',
+          card
+        });
+      }
+    }
 
     return options;
   };
@@ -280,9 +300,47 @@ export default function Loans({
       const effectiveId = savedLoan?.id || loanId;
 
       if (editingItem) {
-        await logActivity('edit', 'loan', effectiveId, savedLoan?.name || loanPayload.name, `Updated loan: ${savedLoan?.name || loanPayload.name}`, null);
+        const oldBalance = parseFloat(editingItem.balance) || 0;
+        const newBalance = parseFloat(savedLoan.balance) || 0;
+        const oldPayment = parseFloat(editingItem.payment_amount) || 0;
+        const newPayment = parseFloat(savedLoan.payment_amount) || 0;
+
+        let details = '';
+        if (oldBalance !== newBalance) {
+          details += `Balance ${formatCurrency(oldBalance)} → ${formatCurrency(newBalance)} • `;
+        }
+        if (oldPayment !== newPayment) {
+          details += `Payment ${formatCurrency(oldPayment)} → ${formatCurrency(newPayment)} • `;
+        }
+        
+        // Remove trailing bullet
+        details = details.replace(/ • $/, '');
+
+        const description = details
+          ? `Updated loan '${savedLoan?.name || loanPayload.name}' - ${details}`
+          : `Updated loan '${savedLoan?.name || loanPayload.name}'`;
+
+        // ✅ Ensure snapshots always carry ID and NAME for undo safety and consistency
+        await logActivity(
+          'edit',
+          'loan',
+          effectiveId,
+          savedLoan?.name || loanPayload.name,
+          description,
+          {
+            previous: { ...editingItem, id: editingItem.id || effectiveId, name: editingItem.name || loanPayload.name },
+            updated: { ...savedLoan, id: savedLoan?.id || effectiveId, name: savedLoan?.name || loanPayload.name }
+          }
+        );
       } else {
-        await logActivity('add', 'loan', effectiveId, savedLoan?.name || loanPayload.name, `Added loan: ${savedLoan?.name || loanPayload.name}`, null);
+        await logActivity(
+          'add',
+          'loan',
+          effectiveId,
+          savedLoan?.name || loanPayload.name,
+          `Added loan '${savedLoan?.name || loanPayload.name}' - Principal ${formatCurrency(savedLoan?.principal || loanPayload.principal)} • Balance ${formatCurrency(savedLoan?.balance || loanPayload.balance)} • Payment ${formatCurrency(savedLoan?.payment_amount || loanPayload.payment_amount)} ${savedLoan?.frequency || loanPayload.frequency}`,
+          savedLoan
+        );
       }
 
       await onUpdate();
@@ -564,12 +622,8 @@ export default function Loans({
       paymentMethodName = fund.name;
       sourceName = fund.name;
 
-      if (hasMigratedToBankAccounts) {
-        await onUpdateCash(null, { syncOnly: true });
-      } else {
-        newCash = previousCash - paymentAmount;
-        await onUpdateCash(newCash);
-      }
+      // Bank accounts are updated separately - just sync total
+      await onUpdateCash(null, { syncOnly: true });
     } else if (sourceType === 'bank_account') {
       const account = bankAccounts.find((acc) => String(acc.id) === String(sourceId));
       if (!account) {
@@ -592,7 +646,6 @@ export default function Loans({
         newBalance: updatedBalance,
         amount: paymentAmount
       });
-
       paymentMethod = 'bank_account';
       paymentMethodId = account.id;
       paymentMethodName = account.name;
@@ -604,6 +657,47 @@ export default function Loans({
         newCash = previousCash - paymentAmount;
         await onUpdateCash(newCash);
       }
+    } else if (sourceType === 'credit_card') {
+      // ✅ Pay the loan using a credit card (this ADDS to the card balance)
+      const card = creditCards?.find((c) => String(c.id) === String(sourceId));
+      if (!card) {
+        alert('Selected credit card was not found.');
+        return;
+      }
+ 
+      const currentBalance = parseFloat(card.balance) || 0;
+      const updatedCard = { ...card, balance: currentBalance + paymentAmount };
+      await dbOperation('creditCards', 'put', updatedCard, { skipActivityLog: true });
+ 
+      paymentMethod = 'credit_card';
+      paymentMethodId = card.id;
+      paymentMethodName = card.name;
+      sourceName = card.name;
+ 
+      // Paying with a credit card does not change cash immediately
+      newCash = previousCash;
+      await onUpdateCash(newCash);
+    } else if (sourceType === 'cash_in_hand') {
+      const currentCash = cashInHand || 0;
+      if (paymentAmount > currentCash) {
+        alert(
+          `Insufficient cash in hand.\n` +
+          `Available: ${formatCurrency(currentCash)}\n` +
+          `Required: ${formatCurrency(paymentAmount)}`
+        );
+        return;
+      }
+      
+      const newCashInHand = currentCash - paymentAmount;
+      if (onUpdateCashInHand) await onUpdateCashInHand(newCashInHand);
+      
+      paymentMethod = 'cash_in_hand';
+      paymentMethodId = null;
+      paymentMethodName = 'Cash in Hand';
+      sourceName = 'Cash in Hand';
+      
+      newCash = previousCash;
+      await onUpdateCash(newCash);
     } else {
       paymentMethod = 'cash';
       paymentMethodId = null;
@@ -623,6 +717,8 @@ export default function Loans({
         payment_method: paymentMethod,
         payment_method_id: paymentMethodId,
         payment_method_name: paymentMethodName,
+        card_id: sourceType === 'credit_card' ? paymentMethodId : null,
+        subtype: sourceType === 'credit_card' ? 'loan_via_credit_card' : null,
         description: `Payment for loan ${loan.name}${sourceName ? ` from ${sourceName}` : ''}`,
         created_at: new Date().toISOString(),
         status: 'active',
@@ -630,8 +726,12 @@ export default function Loans({
       };
       const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
 
+      // ✅ Ensure snapshots always carry ID for undo safety
+      if (!originalLoan.id) originalLoan.id = loanId;
+      if (!updatedLoan.id) updatedLoan.id = loanId;
       const snapshot = {
-        entity: originalLoan,  // Use original loan state for undo
+        entity: { ...originalLoan, id: loanId }, // Use original loan state for undo, guarantee id
+        updatedLoan: { ...updatedLoan, id: loanId }, // Guarantee id for undo safety
         paymentAmount,
         date: paymentDate,
         previousCash,
@@ -647,15 +747,17 @@ export default function Loans({
         fundTransactionIds,
         bankAdjustments,
         transactionId: savedTransaction?.id,
-        isManualPayment: true
+        isManualPayment: true,
+        cardEffect: sourceType === 'credit_card' ? { cardId: paymentMethodId, delta: +paymentAmount } : null
       };
-
+      const previousBalance = parseFloat(originalLoan.balance) || 0;
+      const newBalance = parseFloat(updatedLoan.balance) || 0;
       await logActivity(
         'payment',
         'loan',
         loanId,
         loan.name,
-        `Made payment of ${formatCurrency(paymentAmount)} for ${loan.name}`,
+        `Made payment of ${formatCurrency(paymentAmount)} for '${loan.name}' from ${sourceName} - Balance ${formatCurrency(previousBalance)} → ${formatCurrency(newBalance)}`,
         snapshot
       );
 
@@ -671,7 +773,18 @@ export default function Loans({
 
   const handleDelete = async (id) => {
     if (window.confirm('Delete this loan?')) {
-      await dbOperation('loans', 'delete', id);
+      await dbOperation('loans', 'delete', id, { skipActivityLog: true });
+      const loan = loans.find(l => l.id === id);
+      if (loan) {
+        await logActivity(
+          'delete',
+          'loan',
+          loan.id,
+          loan.name,
+          `Deleted loan '${loan.name}' - Principal ${formatCurrency(loan.principal)} • Balance ${formatCurrency(loan.balance)} • Payment ${formatCurrency(loan.payment_amount)} ${loan.frequency}`,
+          loan
+        );
+      }
       await onUpdate();
     }
   };

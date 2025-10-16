@@ -1,8 +1,7 @@
 import Settings from './components/Settings';
-import Reports from './components/Reports';
 import { Settings as SettingsIcon } from 'lucide-react';
 import React, { useState, useEffect, useCallback } from 'react';
-import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X, Activity, List, Plus, Building2, BarChart3 } from 'lucide-react';
+import { CreditCard, TrendingUp, Calendar, DollarSign, Download, Upload, Moon, Sun, Edit2, Check, X, Activity, List, Plus, Building2 } from 'lucide-react';
 import { supabase } from './utils/supabase';
 import { dbOperation } from './utils/db';
 import { getDaysUntil, predictNextDate, DEFAULT_CATEGORIES, formatCurrency, generateId, calculateTotalBankBalance } from './utils/helpers';
@@ -44,10 +43,13 @@ export default function FinanceTracker() {
   const [cashInput, setCashInput] = useState('');
   const [focusTarget, setFocusTarget] = useState(null);
   const [showAddTransactionModal, setShowAddTransactionModal] = useState(false);
+  // Bank accounts state
   const [bankAccounts, setBankAccounts] = useState([]);
   const [isMigrating, setIsMigrating] = useState(false);
+  // Cash in hand state
   const [cashInHand, setCashInHand] = useState(0);
   const [showCashInDashboard, setShowCashInDashboard] = useState(false);
+  // Latest activities for Dashboard
   const [latestActivities, setLatestActivities] = useState([]);
 
   useEffect(() => {
@@ -165,6 +167,7 @@ export default function FinanceTracker() {
         upcomingDays: alertValue.upcomingDays ?? 30
       });
       
+      // Load cash in hand settings
       const cashInHandSetting = settings?.find(s => s.key === 'cashInHand');
       setCashInHand(Number(cashInHandSetting?.value) || 0);
       
@@ -173,12 +176,15 @@ export default function FinanceTracker() {
 
       await loadBankAccounts();
       await checkAndMigrate();
+      
+      // Load latest activities for Dashboard
+      await loadLatestActivities();
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
-  }, [loadBankAccounts, checkAndMigrate]);
+  }, [loadBankAccounts, checkAndMigrate, loadLatestActivities]);
 
   const loadCategories = useCallback(async () => {
     try {
@@ -194,7 +200,7 @@ export default function FinanceTracker() {
       console.error('Error loading categories:', error);
     }
   }, []);
-
+  
   const loadLatestActivities = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -221,17 +227,11 @@ export default function FinanceTracker() {
     }
   }, [session, loadAllData, loadCategories]);
 
-  // Load latest activities after data loads (separate to avoid circular deps)
-  useEffect(() => {
-    if (session && !loading) {
-      loadLatestActivities();
-    }
-  }, [session, loading, loadLatestActivities]);
-
   const handleUpdateCash = useCallback(async (newAmount, options = {}) => {
     try {
       const { accountId: preferredAccountId, delta, syncOnly = false } = options || {};
 
+      // Load latest accounts and totals
       const accounts = await getAllBankAccounts();
       setBankAccounts(accounts);
 
@@ -248,6 +248,7 @@ export default function FinanceTracker() {
         return;
       }
 
+      // Determine desired total after adjustment
       let desiredTotal = currentTotal;
       if (typeof delta === 'number' && Number.isFinite(delta)) {
         desiredTotal = currentTotal + delta;
@@ -263,6 +264,7 @@ export default function FinanceTracker() {
         return;
       }
 
+      // Identify target account
       const matchesPreferred = preferredAccountId
         ? accounts.find(acc => String(acc.id) === String(preferredAccountId))
         : null;
@@ -334,23 +336,389 @@ export default function FinanceTracker() {
     }
   }, []);
 
+  const autoPayObligations = useCallback(async () => {
+    if (!session) return;
+
+    try {
+      if (!creditCards.length && !loans.length) return;
+
+      const today = new Date().toISOString().split('T')[0];
+      let updatedCash = availableCash;
+      let hasChanges = false;
+
+      const normalizeId = (value) => {
+        if (value === null || value === undefined) return null;
+        if (typeof value === 'object') {
+          if (value.id !== undefined) return String(value.id);
+          if (value.value !== undefined) return String(value.value);
+          return null;
+        }
+        return String(value);
+      };
+
+      const normalizeDateOnly = (value) => {
+        if (!value) return null;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return null;
+        date.setHours(0, 0, 0, 0);
+        return date;
+      };
+
+      const fundAvailableOnOrBeforeDueDate = (fund, dueDateIso) => {
+        if (!fund || !dueDateIso) return false;
+        const dueDate = normalizeDateOnly(dueDateIso);
+        if (!dueDate) return false;
+
+        const created = normalizeDateOnly(fund.created_at || fund.last_paid_date || fund.updated_at || fund.due_date);
+        if (!created) return true;
+
+        return created <= dueDate;
+      };
+
+      const reservedFundMap = new Map();
+      reservedFunds.forEach((fund) => {
+        const key = normalizeId(fund.id);
+        if (key) {
+          reservedFundMap.set(key, { ...fund, id: key });
+        }
+      });
+
+      const updateReservedFund = async (fund, amountUsed, { isLinked }) => {
+        if (!fund) return null;
+        const key = normalizeId(fund.id);
+        if (!key) return null;
+
+        const startingAmount = Number(fund.amount) || 0;
+        const remaining = Math.max(0, startingAmount - amountUsed);
+        const updatedFund = {
+          ...fund,
+          amount: remaining,
+          last_paid_date: today
+        };
+
+        if (fund.recurring) {
+          updatedFund.due_date = predictNextDate(fund.due_date, fund.frequency || 'monthly');
+        }
+
+        const shouldDelete = !fund.recurring && !fund.is_lumpsum && remaining <= 0;
+
+        if (shouldDelete) {
+          await dbOperation('reservedFunds', 'delete', key, { skipActivityLog: true });
+          reservedFundMap.delete(key);
+        } else {
+          await dbOperation('reservedFunds', 'put', updatedFund, { skipActivityLog: true });
+          reservedFundMap.set(key, updatedFund);
+        }
+
+        return {
+          before: fund,
+          after: shouldDelete ? null : updatedFund,
+          amountApplied: amountUsed,
+          isLinked
+        };
+      };
+
+      const processCardPayment = async (card) => {
+        const cardId = normalizeId(card.id);
+        if (!cardId) return;
+        if (!card?.due_date || (card.balance ?? 0) <= 0) return;
+        if (getDaysUntil(card.due_date) !== 0) return;
+        if (card.last_auto_payment_date === today) return;
+
+        const dueDateIso = card.due_date;
+
+        const linkedFund = [...reservedFundMap.values()].find(
+          (fund) =>
+            fund?.linked_to?.type === 'credit_card' &&
+            normalizeId(fund?.linked_to?.id) === cardId &&
+            (fund.amount ?? 0) > 0 &&
+            fundAvailableOnOrBeforeDueDate(fund, dueDateIso)
+        );
+
+        let fundUsed = linkedFund;
+        let fundContext = { isLinked: !!linkedFund };
+
+        if (!fundUsed || !fundAvailableOnOrBeforeDueDate(fundUsed, dueDateIso)) {
+          fundUsed = [...reservedFundMap.values()].find(
+            (fund) =>
+              fund?.is_lumpsum &&
+              (fund.amount ?? 0) > 0 &&
+              Array.isArray(fund.linked_items) &&
+              fund.linked_items.some((item) => item.type === 'credit_card' && normalizeId(item.id) === cardId) &&
+              fundAvailableOnOrBeforeDueDate(fund, dueDateIso)
+          );
+          fundContext = { isLinked: false };
+        }
+
+        if (!fundUsed || !fundAvailableOnOrBeforeDueDate(fundUsed, dueDateIso)) return;
+
+        const paymentAmount = Math.min(Number(card.balance) || 0, Number(fundUsed.amount) || 0);
+        if (paymentAmount <= 0) return;
+
+        const fundResult = await updateReservedFund(fundUsed, paymentAmount, fundContext);
+        if (!fundResult) return;
+
+        const previousCash = updatedCash;
+        updatedCash -= paymentAmount;
+        hasChanges = true;
+
+        await dbOperation('creditCards', 'put', {
+          ...card,
+          balance: Math.max(0, (Number(card.balance) || 0) - paymentAmount),
+          last_auto_payment_date: today
+        }, { skipActivityLog: true });
+
+        const paymentTransaction = {
+          type: 'payment',
+          card_id: cardId,
+          amount: paymentAmount,
+          date: today,
+          payment_method: 'credit_card',
+          payment_method_id: cardId,
+          payment_method_name: card.name,
+          category_id: 'auto_payment',
+          category_name: 'Auto Payment',
+          description: `Auto payment for ${card.name}`,
+          created_at: new Date().toISOString(),
+          status: 'active',
+          undone_at: null,
+          auto_generated: true
+        };
+
+        const savedTransaction = await dbOperation('transactions', 'put', paymentTransaction, { skipActivityLog: true });
+
+        if (fundResult.isLinked) {
+          const fundTransaction = {
+            type: 'reserved_fund_paid',
+            amount: paymentAmount,
+            date: today,
+            description: `Reserved fund applied: ${fundResult.before.name}`,
+            notes: `Auto payment for ${card.name}`,
+            created_at: new Date().toISOString(),
+            status: 'active',
+            undone_at: null,
+            payment_method: 'reserved_fund',
+            payment_method_id: normalizeId(fundResult.before?.id),
+            auto_generated: true
+          };
+          await dbOperation('transactions', 'put', fundTransaction, { skipActivityLog: true });
+        }
+
+        await logActivity(
+        'payment',
+        'card',
+        cardId,
+        card.name,
+        `Auto payment of ${formatCurrency(paymentAmount)} for '${card.name}' from reserved fund`,
+        {
+        entity: { ...card },
+        paymentAmount,
+        date: today,
+        previousCash,
+        affectedFund: fundResult.before,
+        transactionId: savedTransaction?.id
+        }
+        );
+      };
+
+      const processLoanPayment = async (loan) => {
+        const loanId = normalizeId(loan.id);
+        if (!loanId) return;
+        if (!loan?.next_payment_date || (loan.payment_amount ?? 0) <= 0) return;
+        if (getDaysUntil(loan.next_payment_date) !== 0) return;
+        if (loan.last_auto_payment_date === today) return;
+
+        const dueDateIso = loan.next_payment_date;
+
+        const linkedFund = [...reservedFundMap.values()].find(
+          (fund) =>
+            fund?.linked_to?.type === 'loan' &&
+            normalizeId(fund?.linked_to?.id) === loanId &&
+            (fund.amount ?? 0) > 0 &&
+            fundAvailableOnOrBeforeDueDate(fund, dueDateIso)
+        );
+
+        let fundUsed = linkedFund;
+        let fundContext = { isLinked: !!linkedFund };
+
+        if (!fundUsed) {
+          fundUsed = [...reservedFundMap.values()].find(
+            (fund) =>
+              fund?.is_lumpsum &&
+              (fund.amount ?? 0) > 0 &&
+              Array.isArray(fund.linked_items) &&
+              fund.linked_items.some((item) => item.type === 'loan' && normalizeId(item.id) === loanId) &&
+              fundAvailableOnOrBeforeDueDate(fund, dueDateIso)
+          );
+          fundContext = { isLinked: false };
+        }
+
+        if (!fundUsed || !fundAvailableOnOrBeforeDueDate(fundUsed, dueDateIso)) return;
+
+        const amountDue = Number(loan.payment_amount) || 0;
+        const paymentAmount = Math.min(amountDue, Number(fundUsed.amount) || 0);
+        if (paymentAmount <= 0) return;
+
+        const fundResult = await updateReservedFund(fundUsed, paymentAmount, fundContext);
+        if (!fundResult) return;
+
+        const previousCash = updatedCash;
+        updatedCash -= paymentAmount;
+        hasChanges = true;
+
+        await dbOperation('loans', 'put', {
+          ...loan,
+          balance: Math.max(0, (Number(loan.balance) || 0) - paymentAmount),
+          last_payment_date: today,
+          next_payment_date: predictNextDate(today, loan.frequency || 'monthly'),
+          last_auto_payment_date: today
+        }, { skipActivityLog: true });
+
+        const paymentTransaction = {
+          type: 'payment',
+          loan_id: loanId,
+          amount: paymentAmount,
+          date: today,
+          category_id: 'auto_payment',
+          category_name: 'Auto Payment',
+          payment_method: 'loan',
+          payment_method_id: loanId,
+          payment_method_name: loan.name,
+          description: `Auto payment for ${loan.name}`,
+          created_at: new Date().toISOString(),
+          status: 'active',
+          undone_at: null,
+          auto_generated: true
+        };
+
+        const savedTransaction = await dbOperation('transactions', 'put', paymentTransaction, { skipActivityLog: true });
+
+        await logActivity(
+          'payment',
+          'loan',
+          loanId,
+          loan.name,
+          `Auto payment of ${formatCurrency(paymentAmount)} for '${loan.name}' from reserved fund`,
+          {
+            entity: { ...loan },
+            paymentAmount,
+            date: today,
+            previousCash,
+            affectedFund: fundResult.before,
+            transactionId: savedTransaction?.id
+          }
+        );
+      };
+
+      for (const card of creditCards) {
+        await processCardPayment(card);
+      }
+
+      for (const loan of loans) {
+        await processLoanPayment(loan);
+      }
+
+      if (hasChanges) {
+        if (updatedCash !== availableCash) {
+          await saveAvailableCash(updatedCash);
+        }
+        await loadAllData();
+      }
+    } catch (error) {
+      console.error('Auto payment failed:', error);
+    }
+  }, [session, creditCards, loans, reservedFunds, availableCash, saveAvailableCash, loadAllData]);
+
+  const checkAutoIncome = useCallback(async () => {
+    try {
+      if (income.length === 0) return;
+
+      const today = new Date().toISOString().split('T')[0];
+      const sortedIncome = [...income].sort((a, b) => new Date(b.date) - new Date(a.date));
+      const lastIncome = sortedIncome[0];
+
+      if (!lastIncome?.frequency || lastIncome.frequency === 'onetime') return;
+
+      const nextDate = predictNextDate(lastIncome.date, lastIncome.frequency);
+
+      if (nextDate === today) {
+        const alreadyLogged = income.some(inc => inc.date === today && inc.source === lastIncome.source);
+        
+        if (!alreadyLogged) {
+          const newIncome = {
+            id: generateId(),
+            source: lastIncome.source,
+            amount: lastIncome.amount,
+            date: today,
+            frequency: lastIncome.frequency,
+            createdAt: new Date().toISOString(),
+            autoAdded: true
+          };
+
+          await dbOperation('income', 'put', newIncome, { skipActivityLog: true });
+
+          const transaction = {
+            type: 'income',
+            source: newIncome.source,
+            amount: newIncome.amount,
+            date: today,
+            createdAt: new Date().toISOString(),
+            payment_method: 'cash',
+            payment_method_id: newIncome.id,
+            payment_method_name: 'Cash',
+            status: 'active',
+            undone_at: null
+          };
+          const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+
+          const currentCash = await dbOperation('settings', 'get', 'availableCash');
+          const previousCash = currentCash?.value || 0;
+          const newCash = previousCash + newIncome.amount;
+          await dbOperation('settings', 'put', { key: 'availableCash', value: newCash });
+
+          await logActivity(
+            'income',
+            'income',
+            newIncome.id,
+            newIncome.source,
+            `Auto deposited income '${newIncome.source}' - Amount ${formatCurrency(newIncome.amount)}`,
+            {
+              amount: newIncome.amount,
+              source: newIncome.source,
+              previousCash,
+              newCash,
+              transactionId: savedTransaction?.id,
+              incomeId: newIncome.id,
+              autoGenerated: true
+            }
+          );
+
+          await loadAllData();
+        }
+      }
+    } catch (error) {
+      console.error('Auto-income generation failed:', error);
+    }
+  }, [income, loadAllData]);
+
+  // View change handler - simplified to avoid hoisting issues
   const handleViewChange = (newView) => {
     setCurrentView(newView);
-    // Reload latest activities when switching views
-    if (session) {
-      loadLatestActivities();
-    }
   };
 
+  // Remove timer-based auto-checks - now triggered on tab changes only
+  // Old code removed: useEffect timers for checkAutoIncome and autoPayObligations
+
+  // Calculate total available cash (bank accounts + cash in hand)
   const displayAvailableCash = calculateTotalBankBalance(bankAccounts) + cashInHand;
 
   const navigateToTransactionHistory = useCallback((filterConfig = {}) => {
     setCurrentView('transactions');
+    // Store filter config in sessionStorage for TransactionHistory to read
     if (Object.keys(filterConfig).length > 0) {
       sessionStorage.setItem('transactionFilters', JSON.stringify(filterConfig));
     }
   }, []); 
-
   const handleEditCash = () => {
     setCashInput(displayAvailableCash.toString());
     setEditingCash(true);
@@ -471,39 +839,54 @@ export default function FinanceTracker() {
     };
 
     const obligations = [];
+    
+    // Global alert window settings from Dashboard
+    // - warningDays: Determines what shows as "Urgent" (default 7 days)
+    // - upcomingWindow: Determines what shows as "Upcoming" (default 30 days)
     const warningDays = alertSettings.defaultDays || 7;
     const upcomingWindow = alertSettings.upcomingDays || 30;
     
+    // IMPORTANT: For Dashboard display, we ALWAYS use the global alert windows above.
+    // Individual card/loan alert_days settings exist for their own alert behaviors
+    // (e.g., showing red warnings on Cards/Loans pages), but do NOT affect
+    // Dashboard filtering. This keeps the Dashboard view consistent and user-controlled.
+    
+    // Process Credit Cards
     creditCards.forEach(card => {
       if (card.balance > 0 && card.due_date) {
         const days = getDaysUntil(card.due_date);
+        // Note: card.alert_days exists but is NOT used for Dashboard urgent filtering
         obligations.push({
           type: 'credit_card',
           name: card.name,
           amount: card.balance,
           dueDate: card.due_date,
           days,
-          urgent: days <= warningDays && days >= 0,
+          urgent: days <= warningDays && days >= 0,  // ✅ Uses global warningDays
           id: normalizeId(card.id)
         });
       }
     });
     
+    // Process Loans
     loans.forEach(loan => {
       if (loan.next_payment_date) {
         const days = getDaysUntil(loan.next_payment_date);
+        // Note: loan.alert_days exists but is NOT used for Dashboard urgent filtering
         obligations.push({
           type: 'loan',
           name: loan.name,
           amount: loan.payment_amount,
           dueDate: loan.next_payment_date,
           days,
-          urgent: days <= warningDays && days >= 0,
+          urgent: days <= warningDays && days >= 0,  // ✅ Uses global warningDays
           id: normalizeId(loan.id)
         });
       }
     });
     
+    // Process Reserved Funds
+    // Reserved funds don't have individual alert_days, so they always use global setting
     reservedFunds.forEach(fund => {
       if (!fund?.due_date) return;
       const days = getDaysUntil(fund.due_date);
@@ -513,11 +896,15 @@ export default function FinanceTracker() {
         amount: fund.amount,
         dueDate: fund.due_date,
         days,
-        urgent: days <= warningDays && days >= 0,
+        urgent: days <= warningDays && days >= 0,  // ✅ Uses global warningDays
         id: normalizeId(fund.id)
       });
     });
     
+    // Filter and sort obligations
+    // - Show only obligations with days >= 0 (not overdue/past)
+    // - Show only if urgent OR within upcoming window
+    // - Sort by days (soonest first)
     return obligations
       .filter(obligation => obligation.days >= 0 && (obligation.urgent || obligation.days <= upcomingWindow))
       .sort((a, b) => a.days - b.days);
@@ -554,6 +941,35 @@ export default function FinanceTracker() {
             <h1 className="text-2xl font-bold">Finance Tracker</h1>
             {isMigrating && (
               <span className="text-xs text-blue-500">Syncing accounts…</span>
+            )}
+            {currentView === 'dashboard' && (
+              <div className="flex items-center gap-2">
+                {editingCash ? (
+                  <>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={cashInput}
+                      onChange={(e) => setCashInput(e.target.value)}
+                      className={`w-32 px-2 py-1 text-sm border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded`}
+                    />
+                    <button onClick={handleSaveCash} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                      <Check size={18} />
+                    </button>
+                    <button onClick={handleCancelEditCash} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                      <X size={18} />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={handleEditCash}
+                    className={`p-1 ${darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'} rounded`}
+                    title="Edit Available Cash"
+                  >
+                    <Edit2 size={18} />
+                  </button>
+                )}
+              </div>
             )}
           </div>
           <div className="flex gap-2">
@@ -612,7 +1028,7 @@ export default function FinanceTracker() {
             onUpdateCashInHand={async (newAmount) => {
               await dbOperation('settings', 'put', { key: 'cashInHand', value: newAmount });
               setCashInHand(newAmount);
-              loadLatestActivities();
+              await loadLatestActivities();
             }}
             onToggleCashDisplay={async (show) => {
               await dbOperation('settings', 'put', { key: 'showCashInDashboard', value: show });
@@ -676,7 +1092,7 @@ export default function FinanceTracker() {
             focusTarget={focusTarget}
             onClearFocus={clearFocusTarget}
             bankAccounts={bankAccounts}
-            onNavigateToTransactions={navigateToTransactionHistory}
+            onNavigateToTransactions={navigateToTransactionHistory}  // Navigate to Transaction History
           />
         )}
         {currentView === 'income' && (
@@ -759,23 +1175,15 @@ export default function FinanceTracker() {
             }}
           />
         )}
-        {currentView === 'reports' && (
-          <Reports
-            darkMode={darkMode}
-            categories={categories}
-            cashInHand={cashInHand}
-          />
-        )}
       </div>
-
-      <button
+        {/* Floating Add Transaction Button */}
+        <button
         onClick={openAddTransaction}
         className="fixed bottom-24 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center z-20"
         title="Add Transaction"
-      >
+        >
         <Plus size={28} />
-      </button>
-
+        </button>
       <div className={`fixed bottom-0 left-0 right-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-t px-2 py-2 flex justify-around`}>
         <button
           onClick={() => handleViewChange('dashboard')}
@@ -834,20 +1242,16 @@ export default function FinanceTracker() {
           <span className="text-xs font-medium">Transactions</span>
         </button>
         <button
-          onClick={() => handleViewChange('reports')}
-          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg ${currentView === 'reports' ? 'text-blue-600 bg-blue-50' : darkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
-          <BarChart3 size={24} />
-          <span className="text-xs font-medium">Reports</span>
-        </button>
-        <button
-          onClick={() => handleViewChange('settings')}
-          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg ${currentView === 'settings' ? 'text-blue-600 bg-blue-50' : darkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
-          <SettingsIcon size={24} />
-          <span className="text-xs font-medium">Settings</span>
-        </button>
+           onClick={() => handleViewChange('settings')}
+           className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg ${
+           currentView === 'settings' ? 'text-blue-600 bg-blue-50' : darkMode ? 'text-gray-400' : 'text-gray-600'
+  }`}
+>
+  <SettingsIcon size={24} />
+  <span className="text-xs font-medium">Settings</span>
+</button>
       </div>
     </div>
+    
   );
 }

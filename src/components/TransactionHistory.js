@@ -15,7 +15,9 @@ export default function TransactionHistory({
   onUpdateCash,
   showAddModal,
   onCloseAddModal,
-  bankAccounts
+  bankAccounts,
+  cashInHand = 0,
+  onUpdateCashInHand
 }) {
   const [transactions, setTransactions] = useState([]);
   const [filteredTransactions, setFilteredTransactions] = useState([]);
@@ -246,6 +248,18 @@ if (filters.incomeSource !== 'all') {
       }
     } else if (isPaymentType(transaction.type)) {
       const paymentSubtype = resolvePaymentSubtype(transaction);
+       // ✅ Special case: loan paid via credit card
+      if (transaction.subtype === 'loan_via_credit_card') {
+       const cardId = transaction.card_id || transaction.payment_method_id;
+       const loanId = transaction.loan_id || transaction.payment_method_id;
+
+      // Reverse: card ↓ , loan ↑ , cash unchanged
+      if (cardId) await updateCardBalance(cardId, -amount);
+      if (loanId) await updateLoanBalance(loanId, amount);
+
+      // cashDelta stays 0
+      return; // prevent the generic logic below from running
+  }
       if (paymentSubtype === 'credit_card') {
         const cardId = transaction.card_id || transaction.payment_method_id;
         await updateCardBalance(cardId, amount);
@@ -423,6 +437,8 @@ if (filters.incomeSource !== 'all') {
           availableCash={availableCash}
           onUpdateCash={onUpdateCash}
           bankAccounts={bankAccounts}
+          cashInHand={cashInHand}
+          onUpdateCashInHand={onUpdateCashInHand}
         />
       )}
 
@@ -493,9 +509,15 @@ if (filters.incomeSource !== 'all') {
             className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
           >
             <option value="all">All Methods</option>
-            <option value="cash">Cash</option>
-            <option value="credit_card">Credit Card</option>
+            <option value="cash_in_hand">💵 Cash in Hand</option>
+            <option value="bank_account">🏦 Bank Account</option>
+            <option value="cash">Cash (Legacy)</option>
+            <option value="credit_card">💳 Credit Card</option>
             <option value="loan">Loan</option>
+            <option value="reserved_fund">Reserved Fund</option>
+            <option value="transfer">Transfer</option>
+            <option value="cash_withdrawal">Cash Withdrawal</option>
+            <option value="cash_deposit">Cash Deposit</option>
           </select>
           <select
             value={filters.creditCard}
@@ -503,11 +525,24 @@ if (filters.incomeSource !== 'all') {
             className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
           >
             <option value="all">All Cards</option>
-            {creditCards && creditCards.map(card => (
-              <option key={card.id} value={card.id}>
-                {card.name} {card.is_gift_card ? '🎁' : '💳'}
-              </option>
-            ))}
+            {creditCards && creditCards.filter(c => !c.is_gift_card).length > 0 && (
+              <optgroup label="💳 Credit Cards">
+                {creditCards.filter(c => !c.is_gift_card).map(card => (
+                  <option key={card.id} value={card.id}>
+                    {card.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {creditCards && creditCards.filter(c => c.is_gift_card).length > 0 && (
+              <optgroup label="🎁 Gift Cards">
+                {creditCards.filter(c => c.is_gift_card).map(card => (
+                  <option key={card.id} value={card.id}>
+                    {card.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
 
           <select
@@ -628,15 +663,56 @@ if (filters.incomeSource !== 'all') {
           filteredTransactions.map((transaction) => {
             const isUndone = transaction.status === 'undone';
             const formatLabel = (value) => {
-              if (!value) return '';
-              const cleaned = value.replace(/_/g, ' ');
-              return cleaned
-                .toLowerCase()
-                .replace(/\b\w/g, (char) => char.toUpperCase());
+            if (!value) return '';
+            const cleaned = value.replace(/_/g, ' ');
+            return cleaned
+            .toLowerCase()
+            .replace(/\b\w/g, (char) => char.toUpperCase());
             };
+  
+  // Format payment method for display with proper icons and names
+  const formatPaymentMethod = (transaction) => {
+    const method = transaction.payment_method;
+    const methodName = transaction.payment_method_name;
+    
+    // Use custom name if available
+    if (methodName) return methodName;
+    
+    // Otherwise format the method type nicely
+    switch (method) {
+      case 'cash_in_hand':
+        return 'Cash in Hand';
+      case 'bank_account':
+        return 'Bank Account';
+      case 'credit_card':
+        return 'Credit Card';
+      case 'reserved_fund':
+        return 'Reserved Fund';
+      case 'cash_withdrawal':
+        return 'Cash Withdrawal';
+      case 'cash_deposit':
+        return 'Cash Deposit';
+      case 'transfer':
+        return 'Transfer';
+      case 'cash':
+        return 'Cash';
+      case 'loan':
+        return 'Loan';
+      default:
+        return formatLabel(method);
+    }
+  };
+  
+  // Format transaction description for neat display
+  const formatDescription = (transaction) => {
+    const desc = transaction.description || transaction.income_source || 'Transaction';
+    
+    // Ensure first letter is capitalized
+    if (!desc) return 'Transaction';
+    return desc.charAt(0).toUpperCase() + desc.slice(1);
+  };
             const formattedType = formatLabel(transaction.type || 'transaction');
-            const methodLabel = transaction.payment_method_name || transaction.payment_method || null;
-            const formattedMethod = transaction.payment_method_name ? methodLabel : formatLabel(methodLabel);
+            const formattedMethod = formatPaymentMethod(transaction);
             const statusLabel = transaction.status ? formatLabel(transaction.status) : null;
             const infoChips = [
               { label: 'Type', value: formattedType }
@@ -666,7 +742,7 @@ if (filters.incomeSource !== 'all') {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className={`font-semibold ${isUndone ? 'line-through text-gray-400' : ''}`}>
-                        {transaction.description || transaction.income_source || 'Transaction'}
+                        {formatDescription(transaction)}
                       </h3>
                       {transaction.category_name && (
                         <span className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
@@ -692,7 +768,7 @@ if (filters.incomeSource !== 'all') {
                             className={`inline-flex items-center gap-1 px-2 py-1 rounded ${chipClass}`}
                           >
                             <span className="font-semibold">{chip.label}:</span>
-                            <span className="capitalize">{chip.value}</span>
+                            <span>{chip.value}</span>
                           </span>
                         ))}
                       </div>
