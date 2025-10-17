@@ -1,10 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Edit2, X, TrendingUp, ListFilter } from 'lucide-react';
+import { Plus, Edit2, X, TrendingUp, ListFilter, Star } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId } from '../utils/helpers';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import SmartInput from './SmartInput';
 import { processOverdueLoans } from '../utils/autoPay';
+import {
+  getUserPreferences,
+  togglePinnedLoan
+} from '../utils/userPreferencesManager';
 
 export default function Loans({
   darkMode,
@@ -25,7 +29,7 @@ export default function Loans({
   onUpdateCashInHand
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
+  const [editingItem, setEditingItem] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     principal: '',
@@ -51,11 +55,45 @@ export default function Loans({
   const [savingLoan, setSavingLoan] = useState(false);
   const [processingResults, setProcessingResults] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [pinnedLoans, setPinnedLoans] = useState([]);
+  
   const defaultLoanCategory = useMemo(() => {
     if (!categories || categories.length === 0) return 'loan_payment';
     const match = categories.find((cat) => cat.id === 'loan_payment');
     return match?.id || categories[0].id;
   }, [categories]);
+
+  // Load pinned loans
+  useEffect(() => {
+    loadPinnedLoans();
+  }, []);
+  
+  const loadPinnedLoans = async () => {
+    try {
+      const prefs = await getUserPreferences();
+      setPinnedLoans(prefs.pinned_loans || []);
+    } catch (error) {
+      console.error('Error loading pinned loans:', error);
+    }
+  };
+  
+  const handleTogglePin = async (loanId) => {
+    try {
+      await togglePinnedLoan(loanId);
+      await loadPinnedLoans();
+    } catch (error) {
+      console.error('Error toggling pin:', error);
+    }
+  };
+  
+  // Sort loans: pinned first, then by creation date
+  const sortedLoans = [...loans].sort((a, b) => {
+    const aIsPinned = pinnedLoans.includes(a.id);
+    const bIsPinned = pinnedLoans.includes(b.id);
+    if (aIsPinned && !bIsPinned) return -1;
+    if (!aIsPinned && bIsPinned) return 1;
+    return 0;
+  });
 
   const adjustBankAccountForFund = async (fund, amount) => {
     if (!fund?.source_account_id || !amount || amount <= 0) return null;
@@ -121,6 +159,7 @@ export default function Loans({
     }
     return options;
   };
+  
   //Payment Source Options
   const getPaymentSourceOptions = (loan) => {  
     const options = [];
@@ -951,7 +990,7 @@ export default function Loans({
             <p>No loans added yet</p>
           </div>
         ) : (
-          loans.map(loan => (
+          sortedLoans.map(loan => (
             <div
               key={String(normalizeId(loan.id))}
               ref={(el) => {
@@ -964,7 +1003,12 @@ export default function Loans({
             >
               <div className="flex justify-between items-start mb-3">
                 <div>
-                  <h3 className="font-bold text-lg">{loan.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-lg">{loan.name}</h3>
+                    {pinnedLoans.includes(loan.id) && (
+                      <Star size={16} className="text-yellow-500 fill-current" title="Pinned" />
+                    )}
+                  </div>
                   <div className="text-2xl font-bold text-orange-600 mt-1">{formatCurrency(loan.balance)}</div>
                   <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
                     of {formatCurrency(loan.principal)} ({((loan.balance / loan.principal) * 100).toFixed(1)}% remaining)
@@ -987,6 +1031,17 @@ export default function Loans({
                   )}
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => handleTogglePin(loan.id)}
+                    className={`p-2 rounded ${
+                      pinnedLoans.includes(loan.id)
+                        ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
+                        : darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-400 hover:bg-gray-100'
+                    }`}
+                    title={pinnedLoans.includes(loan.id) ? 'Unpin loan' : 'Pin loan'}
+                  >
+                    <Star size={18} className={pinnedLoans.includes(loan.id) ? 'fill-current' : ''} />
+                  </button>
                   <button
                     onClick={() => onNavigateToTransactions && onNavigateToTransactions({ loan: loan.id })}
                     className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}

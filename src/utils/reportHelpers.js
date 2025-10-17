@@ -16,17 +16,25 @@ export const filterTransactions = (transactions, filters) => {
 
   // Date range filter
   if (filters.startDate && filters.endDate) {
-    const start = parseISO(filters.startDate);
-    const end = parseISO(filters.endDate);
+    // Simple date comparison (works with ISO format YYYY-MM-DD)
     filtered = filtered.filter(t => {
-      const transactionDate = parseISO(t.date);
-      return isWithinInterval(transactionDate, { start, end });
+      const transactionDateStr = t.date;
+      return transactionDateStr >= filters.startDate && transactionDateStr <= filters.endDate;
     });
   }
 
   // Transaction type filter
   if (filters.type && filters.type !== 'all') {
-    filtered = filtered.filter(t => t.type === filters.type);
+    if (filters.type === 'payment') {
+      // Include all payment types
+      filtered = filtered.filter(t => 
+        t.type === 'payment' || 
+        t.type === 'loan_payment' || 
+        t.type === 'credit_card_payment'
+      );
+    } else {
+      filtered = filtered.filter(t => t.type === filters.type);
+    }
   }
 
   // Category filter
@@ -36,14 +44,18 @@ export const filterTransactions = (transactions, filters) => {
 
   // Payment method filter
   if (filters.paymentMethods && filters.paymentMethods.length > 0) {
-    filtered = filtered.filter(t => filters.paymentMethods.includes(t.payment_method));
+    filtered = filtered.filter(t => {
+      // Check both payment_method and source fields for payment transactions
+      const method = t.payment_method || t.source || t.payment_method_type;
+      return filters.paymentMethods.includes(method);
+    });
   }
 
   // Amount range filter
-  if (filters.minAmount !== undefined && filters.minAmount !== null) {
+  if (filters.minAmount !== undefined && filters.minAmount !== null && filters.minAmount !== '') {
     filtered = filtered.filter(t => Number(t.amount) >= Number(filters.minAmount));
   }
-  if (filters.maxAmount !== undefined && filters.maxAmount !== null) {
+  if (filters.maxAmount !== undefined && filters.maxAmount !== null && filters.maxAmount !== '') {
     filtered = filtered.filter(t => Number(t.amount) <= Number(filters.maxAmount));
   }
 

@@ -23,8 +23,8 @@ export default function MonthlySummary({
   onExportCSV 
 }) {
   const [filters, setFilters] = useState({
-    preset: 'last30',
-    ...getDateRangePreset('last30'),
+    preset: 'allTime',
+    ...getDateRangePreset('allTime'),
     type: 'all',
     categories: [],
     paymentMethods: [],

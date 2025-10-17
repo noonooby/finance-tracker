@@ -509,7 +509,7 @@ export const undoActivity = async (activity, onUpdate) => {
         // Undo cash withdrawal - reverse: add back to bank, deduct from cash in hand
         if (snapshot && snapshot.accountId && snapshot.amount) {
           try {
-            const { updateBankAccountBalance, updateCashInHand, getCashInHand } = await import('./db');
+            const { updateBankAccountBalance, updateCashInHand } = await import('./db');
             
             // Restore bank account balance
             if (snapshot.previousBankBalance !== undefined) {
@@ -537,7 +537,7 @@ export const undoActivity = async (activity, onUpdate) => {
         // Undo cash deposit - reverse: deduct from bank, add back to cash in hand
         if (snapshot && snapshot.accountId && snapshot.amount) {
           try {
-            const { updateBankAccountBalance, updateCashInHand, getCashInHand } = await import('./db');
+            const { updateBankAccountBalance, updateCashInHand } = await import('./db');
             
             // Restore bank account balance
             if (snapshot.previousBankBalance !== undefined) {
@@ -557,6 +557,45 @@ export const undoActivity = async (activity, onUpdate) => {
             console.log('✅ Cash deposit undone successfully');
           } catch (error) {
             console.error('Error undoing cash deposit:', error);
+          }
+        }
+        break;
+      
+      case 'edit_setting':
+      case 'set_budget':
+      case 'delete_budget':
+        // Undo settings changes
+        if (snapshot && snapshot.settingKey) {
+          try {
+            const { setSetting, setCategoryBudget, deleteCategoryBudget } = await import('./settingsManager');
+            
+            if (action_type === 'edit_setting') {
+              // Restore previous setting value
+              if (snapshot.previousValue !== undefined) {
+                await setSetting(snapshot.settingKey, snapshot.previousValue);
+                console.log(`✅ Setting '${snapshot.settingKey}' restored to:`, snapshot.previousValue);
+              }
+            } else if (action_type === 'set_budget') {
+              // Undo budget set - either restore previous budget or delete it
+              const categoryId = snapshot.categoryId;
+              const previousBudget = snapshot.previousBudget || 0;
+              
+              if (previousBudget > 0) {
+                await setCategoryBudget(categoryId, previousBudget);
+                console.log(`✅ Category budget restored to: ${previousBudget}`);
+              } else {
+                await deleteCategoryBudget(categoryId);
+                console.log('✅ Category budget removed');
+              }
+            } else if (action_type === 'delete_budget') {
+              // Undo budget delete - restore the budget
+              if (snapshot.categoryId && snapshot.previousBudget) {
+                await setCategoryBudget(snapshot.categoryId, snapshot.previousBudget);
+                console.log(`✅ Category budget restored: ${snapshot.previousBudget}`);
+              }
+            }
+          } catch (error) {
+            console.error('Error undoing setting change:', error);
           }
         }
         break;

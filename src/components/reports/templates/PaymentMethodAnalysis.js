@@ -22,8 +22,8 @@ export default function PaymentMethodAnalysis({
   onExportCSV 
 }) {
   const [filters, setFilters] = useState({
-    preset: 'last30',
-    ...getDateRangePreset('last30'),
+    preset: 'allTime',
+    ...getDateRangePreset('allTime'),
     type: 'all',
     categories: [],
     paymentMethods: [],
@@ -169,6 +169,7 @@ export default function PaymentMethodAnalysis({
           icon={CreditCard}
           color="blue"
           darkMode={darkMode}
+          formatValue={false}
         />
         <SummaryCard
           title="Total Amount"
@@ -185,6 +186,7 @@ export default function PaymentMethodAnalysis({
           icon={CreditCard}
           color="purple"
           darkMode={darkMode}
+          formatValue={false}
         />
         <SummaryCard
           title="Average per Method"

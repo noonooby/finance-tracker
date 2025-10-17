@@ -4,11 +4,12 @@ import { supabase } from './supabase';
 export const DEFAULT_SETTINGS = {
   // Display & Appearance
   theme: 'auto',
-  currency: 'USD',
+  currency: 'CAD',
   currencySymbol: '$',
   dateFormat: 'MM/DD/YYYY',
   firstDayOfWeek: 'sunday',
   numberFormat: 'comma',
+  showViewOnlyActivities: true,
   
   // Notifications & Alerts
   defaultAlertDays: 7,
@@ -34,13 +35,13 @@ export const DEFAULT_SETTINGS = {
   
   // Automation & Recurring
   autoProcessDuePayments: true,
-  autoMarkClearedDays: 0, // 0 = disabled, otherwise days until auto-clear
+  autoMarkClearedDays: 0,
   smartSuggestions: true,
   
   // Transaction Defaults
-  defaultTransactionTime: 'now', // 'now' or 'custom'
+  defaultTransactionTime: 'now',
   customTransactionTime: '12:00',
-  requireNotesForExpensesOver: 0, // 0 = disabled, otherwise amount threshold
+  requireNotesForExpensesOver: 0,
   requireNotesForPayments: false,
   confirmLargeTransactions: true,
   largeTransactionThreshold: 500,
@@ -60,6 +61,7 @@ const SETTINGS_COLUMN_MAP = {
   dateFormat: 'date_format',
   firstDayOfWeek: 'first_day_of_week',
   numberFormat: 'number_format',
+  showViewOnlyActivities: 'show_view_only_activities',
   defaultAlertDays: 'default_alert_days',
   creditCardAlertDays: 'credit_card_alert_days',
   loanAlertDays: 'loan_alert_days',
@@ -79,11 +81,9 @@ const SETTINGS_COLUMN_MAP = {
   defaultOverdraftAllowed: 'default_overdraft_allowed',
   defaultOverdraftLimit: 'default_overdraft_limit',
   categoryBudgets: 'category_budgets',
-  // Automation & Recurring
   autoProcessDuePayments: 'auto_process_due_payments',
   autoMarkClearedDays: 'auto_mark_cleared_days',
   smartSuggestions: 'smart_suggestions',
-  // Transaction Defaults
   defaultTransactionTime: 'default_transaction_time',
   customTransactionTime: 'custom_transaction_time',
   requireNotesForExpensesOver: 'require_notes_for_expenses_over',
@@ -93,10 +93,6 @@ const SETTINGS_COLUMN_MAP = {
   transactionTemplates: 'transaction_templates',
 };
 
-/**
- * Get all settings from the database
- * @returns {Promise<Object>} All settings merged with defaults
- */
 export async function getAllSettings() {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -110,10 +106,8 @@ export async function getAllSettings() {
     
     if (error && error.code !== 'PGRST116') throw error;
 
-    // Start with defaults
     const settings = { ...DEFAULT_SETTINGS };
 
-    // Merge database values
     if (data) {
       Object.keys(SETTINGS_COLUMN_MAP).forEach(jsKey => {
         const dbKey = SETTINGS_COLUMN_MAP[jsKey];
@@ -130,12 +124,6 @@ export async function getAllSettings() {
   }
 }
 
-/**
- * Get a specific setting value
- * @param {string} key - Setting key (JavaScript camelCase)
- * @param {*} defaultValue - Default value if setting doesn't exist
- * @returns {Promise<*>} Setting value
- */
 export async function getSetting(key, defaultValue = null) {
   try {
     const allSettings = await getAllSettings();
@@ -146,12 +134,6 @@ export async function getSetting(key, defaultValue = null) {
   }
 }
 
-/**
- * Set a setting value in the database
- * @param {string} key - Setting key (JavaScript camelCase)
- * @param {*} value - Setting value
- * @returns {Promise<void>}
- */
 export async function setSetting(key, value) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -162,7 +144,6 @@ export async function setSetting(key, value) {
       throw new Error(`Unknown setting key: ${key}`);
     }
 
-    // Check if settings row exists
     const { data: existing } = await supabase
       .from('settings')
       .select('user_id')
@@ -175,7 +156,6 @@ export async function setSetting(key, value) {
     };
 
     if (existing) {
-      // Update existing row
       const { error } = await supabase
         .from('settings')
         .update(updateData)
@@ -183,7 +163,6 @@ export async function setSetting(key, value) {
       
       if (error) throw error;
     } else {
-      // Insert new row with all defaults
       const insertData = {
         user_id: user.id,
         ...updateData
@@ -201,24 +180,17 @@ export async function setSetting(key, value) {
   }
 }
 
-/**
- * Set multiple settings at once
- * @param {Object} settings - Object with setting key-value pairs (JavaScript camelCase)
- * @returns {Promise<void>}
- */
 export async function setMultipleSettings(settings) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    // Check if settings row exists
     const { data: existing } = await supabase
       .from('settings')
       .select('user_id')
       .eq('user_id', user.id)
       .maybeSingle();
 
-    // Convert JavaScript keys to database columns
     const updateData = {};
     Object.entries(settings).forEach(([jsKey, value]) => {
       const dbColumn = SETTINGS_COLUMN_MAP[jsKey];
@@ -229,7 +201,6 @@ export async function setMultipleSettings(settings) {
     updateData.updated_at = new Date().toISOString();
 
     if (existing) {
-      // Update existing row
       const { error } = await supabase
         .from('settings')
         .update(updateData)
@@ -237,7 +208,6 @@ export async function setMultipleSettings(settings) {
       
       if (error) throw error;
     } else {
-      // Insert new row
       const insertData = {
         user_id: user.id,
         ...updateData
@@ -255,10 +225,6 @@ export async function setMultipleSettings(settings) {
   }
 }
 
-/**
- * Reset all settings to defaults
- * @returns {Promise<void>}
- */
 export async function resetAllSettings() {
   try {
     await setMultipleSettings(DEFAULT_SETTINGS);
@@ -268,11 +234,6 @@ export async function resetAllSettings() {
   }
 }
 
-/**
- * Get category budget
- * @param {string} categoryId - Category ID
- * @returns {Promise<number>} Budget amount (0 if not set)
- */
 export async function getCategoryBudget(categoryId) {
   try {
     const budgets = await getSetting('categoryBudgets', {});
@@ -283,12 +244,6 @@ export async function getCategoryBudget(categoryId) {
   }
 }
 
-/**
- * Set category budget
- * @param {string} categoryId - Category ID
- * @param {number} amount - Budget amount
- * @returns {Promise<void>}
- */
 export async function setCategoryBudget(categoryId, amount) {
   try {
     const budgets = await getSetting('categoryBudgets', {});
@@ -300,11 +255,6 @@ export async function setCategoryBudget(categoryId, amount) {
   }
 }
 
-/**
- * Delete category budget
- * @param {string} categoryId - Category ID
- * @returns {Promise<void>}
- */
 export async function deleteCategoryBudget(categoryId) {
   try {
     const budgets = await getSetting('categoryBudgets', {});

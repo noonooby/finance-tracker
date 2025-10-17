@@ -1,8 +1,28 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, ChevronRight, Edit2, Wallet, ArrowDownToLine, ArrowUpFromLine, Activity } from 'lucide-react';
-import { formatCurrency, formatDate, calculateTotalBankBalance } from '../utils/helpers';
+import { AlertCircle, Settings as SettingsIcon, Eye, EyeOff, Wallet, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { formatCurrency } from '../utils/helpers';
 import { withdrawCashFromBank, depositCashToBank } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
+import {
+  getUserPreferences,
+  toggleDashboardSection,
+  updateDashboardWidgets,
+  toggleCompactMode
+} from '../utils/userPreferencesManager';
+
+// Dashboard Widgets
+import {
+  CashBalanceWidget,
+  UrgentObligationsWidget,
+  UpcomingObligationsWidget,
+  NextIncomeWidget,
+  DebtSummaryWidget,
+  BankAccountsWidget,
+  LatestUpdatesWidget
+} from './dashboard/widgets';
+
+// Dashboard Sections
+import AlertSettingsSection from './dashboard/AlertSettingsSection';
 
 export default function Dashboard({
   darkMode,
@@ -26,15 +46,25 @@ export default function Dashboard({
   onReloadAll,
   latestActivities
 }) {
-  const urgentDays = alertSettings?.defaultDays || 7;
   const upcomingDays = alertSettings?.upcomingDays || 30;
-  const [showAlertEditor, setShowAlertEditor] = useState(false);
-  const [urgentInput, setUrgentInput] = useState(urgentDays);
-  const [upcomingInput, setUpcomingInput] = useState(upcomingDays);
+  
+  // Dashboard preferences
+  const [collapsedSections, setCollapsedSections] = useState([]);
+  const [visibleWidgets, setVisibleWidgets] = useState([
+    'cash_balance',
+    'urgent_obligations',
+    'upcoming_obligations',
+    'next_income',
+    'debt_summary',
+    'bank_accounts',
+    'latest_updates'
+  ]);
+  const [compactMode, setCompactMode] = useState(false);
+  const [showCustomization, setShowCustomization] = useState(false);
   
   // Cash operations modal state
   const [showCashModal, setShowCashModal] = useState(false);
-  const [cashOperation, setCashOperation] = useState('withdraw'); // 'withdraw' or 'deposit'
+  const [cashOperation, setCashOperation] = useState('withdraw');
   const [cashFormData, setCashFormData] = useState({
     accountId: '',
     amount: ''
@@ -44,20 +74,68 @@ export default function Dashboard({
   // Get accounts in overdraft
   const overdraftAccounts = (bankAccounts || []).filter(acc => (Number(acc.balance) || 0) < 0);
 
+  // Load preferences on mount
   useEffect(() => {
-    setUrgentInput(urgentDays);
-    setUpcomingInput(upcomingDays);
-  }, [urgentDays, upcomingDays]);
+    loadPreferences();
+  }, []);
 
-  const handleSaveAlertSettings = () => {
-    const parsedUrgent = Math.max(0, parseInt(urgentInput, 10) || 0);
-    const parsedUpcoming = Math.max(0, parseInt(upcomingInput, 10) || 0);
-    onUpdateAlertSettings?.({
-      defaultDays: parsedUrgent,
-      upcomingDays: parsedUpcoming
-    });
-    setShowAlertEditor(false);
+  const loadPreferences = async () => {
+    try {
+      const prefs = await getUserPreferences();
+      setCollapsedSections(prefs.collapsed_dashboard_sections || []);
+      setVisibleWidgets(prefs.visible_dashboard_widgets || [
+        'cash_balance',
+        'urgent_obligations',
+        'upcoming_obligations',
+        'next_income',
+        'debt_summary',
+        'bank_accounts',
+        'latest_updates'
+      ]);
+      setCompactMode(prefs.dashboard_compact_mode || false);
+    } catch (error) {
+      console.error('Error loading preferences:', error);
+    }
   };
+
+  const handleToggleSection = async (sectionId) => {
+    try {
+      const newCollapsed = collapsedSections.includes(sectionId)
+        ? collapsedSections.filter(id => id !== sectionId)
+        : [...collapsedSections, sectionId];
+      
+      setCollapsedSections(newCollapsed);
+      await toggleDashboardSection(sectionId);
+    } catch (error) {
+      console.error('Error toggling section:', error);
+    }
+  };
+
+  const handleToggleWidget = async (widgetId) => {
+    try {
+      const newVisible = visibleWidgets.includes(widgetId)
+        ? visibleWidgets.filter(id => id !== widgetId)
+        : [...visibleWidgets, widgetId];
+      
+      setVisibleWidgets(newVisible);
+      await updateDashboardWidgets(newVisible);
+    } catch (error) {
+      console.error('Error toggling widget:', error);
+    }
+  };
+
+  const handleToggleCompactMode = async () => {
+    try {
+      const newCompactMode = !compactMode;
+      setCompactMode(newCompactMode);
+      await toggleCompactMode(newCompactMode);
+    } catch (error) {
+      console.error('Error toggling compact mode:', error);
+    }
+  };
+
+  const isWidgetVisible = (widgetId) => visibleWidgets.includes(widgetId);
+  const isSectionCollapsed = (sectionId) => collapsedSections.includes(sectionId);
 
   const handleObligationClick = (obligation) => {
     if (!obligation || !onNavigate) return;
@@ -98,12 +176,10 @@ export default function Dashboard({
     
     try {
       let result;
-      const account = bankAccounts.find(acc => acc.id === cashFormData.accountId);
       
       if (cashOperation === 'withdraw') {
         result = await withdrawCashFromBank(cashFormData.accountId, amount);
         
-        // Log activity
         await logActivity(
           'cash_withdrawal',
           'bank_account',
@@ -126,7 +202,6 @@ export default function Dashboard({
       } else {
         result = await depositCashToBank(cashFormData.accountId, amount);
         
-        // Log activity
         await logActivity(
           'cash_deposit',
           'bank_account',
@@ -148,10 +223,8 @@ export default function Dashboard({
         alert(`Successfully deposited ${formatCurrency(amount)} from cash in hand to ${result.accountName}`);
       }
       
-      // Reload all data
       if (onReloadAll) await onReloadAll();
       
-      // Reset and close modal
       setCashFormData({ accountId: '', amount: '' });
       setShowCashModal(false);
     } catch (error) {
@@ -162,8 +235,116 @@ export default function Dashboard({
     }
   };
 
+  const availableWidgets = [
+    { id: 'cash_balance', label: 'Cash Balance', icon: '💵' },
+    { id: 'urgent_obligations', label: 'Urgent Obligations', icon: '⚠️' },
+    { id: 'upcoming_obligations', label: 'Upcoming Obligations', icon: '📅' },
+    { id: 'next_income', label: 'Next Income', icon: '💰' },
+    { id: 'debt_summary', label: 'Debt Summary', icon: '💳' },
+    { id: 'bank_accounts', label: 'Bank Accounts', icon: '🏦' },
+    { id: 'latest_updates', label: 'Latest Updates', icon: '📋' }
+  ];
+
   return (
     <div className="space-y-4">
+      {/* Dashboard Customization Button */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowCustomization(true)}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+            darkMode
+              ? 'bg-gray-700 hover:bg-gray-600 text-white'
+              : 'bg-gray-200 hover:bg-gray-300'
+          }`}
+        >
+          <SettingsIcon size={18} />
+          Customize Dashboard
+        </button>
+      </div>
+
+      {/* Customization Panel */}
+      {showCustomization && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowCustomization(false)}>
+          <div 
+            className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <SettingsIcon size={24} />
+                Customize Dashboard
+              </h3>
+              <button
+                onClick={() => setShowCustomization(false)}
+                className={`text-2xl leading-none ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-6">
+              {/* Compact Mode */}
+              <div>
+                <h4 className="font-semibold mb-3">Display Mode</h4>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={compactMode}
+                    onChange={handleToggleCompactMode}
+                    className="w-4 h-4"
+                  />
+                  <div>
+                    <div className="font-medium">Compact Mode</div>
+                    <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Reduce spacing and padding for a denser view
+                    </div>
+                  </div>
+                </label>
+              </div>
+              
+              {/* Widget Visibility */}
+              <div>
+                <h4 className="font-semibold mb-3">Visible Widgets</h4>
+                <div className="space-y-2">
+                  {availableWidgets.map(widget => (
+                    <label key={widget.id} className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={isWidgetVisible(widget.id)}
+                        onChange={() => handleToggleWidget(widget.id)}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-xl">{widget.icon}</span>
+                      <span className="flex-1">{widget.label}</span>
+                      {isWidgetVisible(widget.id) ? (
+                        <Eye size={16} className="text-green-600" />
+                      ) : (
+                        <EyeOff size={16} className="text-gray-400" />
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              
+              <div className={`p-3 rounded-lg ${darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'} border`}>
+                <p className="text-sm">
+                  💡 <strong>Tip:</strong> Your dashboard preferences are saved automatically and will sync across all your devices.
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowCustomization(false)}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Overdraft Warning Banner */}
       {overdraftAccounts.length > 0 && (
         <div className={`${darkMode ? 'bg-red-900 border-red-700' : 'bg-red-50 border-red-200'} border rounded-lg p-4`}>
@@ -181,255 +362,97 @@ export default function Dashboard({
         </div>
       )}
       
-      <div className={`${darkMode ? 'bg-blue-900' : 'bg-gradient-to-r from-blue-600 to-blue-700'} rounded-lg p-6 text-white`}>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-medium opacity-90">Total Available</h2>
-          <button
-            onClick={() => setShowCashModal(true)}
-            className={`flex items-center gap-1 px-3 py-1 text-xs rounded ${darkMode ? 'bg-blue-800 hover:bg-blue-700' : 'bg-blue-600 hover:bg-blue-500'} text-white`}
-            title="Cash Operations"
-          >
-            <Wallet size={14} />
-            Cash
-          </button>
-        </div>
-        <div className="text-4xl font-bold mb-1">{formatCurrency(availableCash)}</div>
-        
-        {/* Cash Breakdown (if toggle enabled) */}
-        {showCashInDashboard && (
-          <div className="text-sm opacity-90 mt-2 space-y-1">
-            <div>💵 Cash in Hand: {formatCurrency(cashInHand || 0)}</div>
-            <div>🏦 Bank Accounts: {formatCurrency(calculateTotalBankBalance(bankAccounts || []))}</div>
-          </div>
-        )}
-        
-        <div className="text-sm opacity-90 mt-2">Reserved: {formatCurrency(totalReserved)}</div>
-        <div className={`mt-3 pt-3 ${darkMode ? 'border-blue-800' : 'border-blue-500'} border-t`}>
-          <div className="text-lg font-semibold">True Available: {formatCurrency(trueAvailable)}</div>
-        </div>
-      </div>
-
-      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-4`}>
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Obligation Alerts</h3>
-          <button
-            onClick={() => setShowAlertEditor((prev) => !prev)}
-            className={`flex items-center gap-2 px-3 py-1 text-sm rounded ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-          >
-            <Edit2 size={16} />
-            {showAlertEditor ? 'Close' : 'Edit'}
-          </button>
-        </div>
-        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          Default urgent window: <span className="font-semibold">{urgentDays} days</span> • Upcoming window: <span className="font-semibold">{upcomingDays} days</span>
-        </p>
-        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1`}>
-          Note: Individual cards and loans may use custom alert windows
-        </p>
-        {showAlertEditor && (
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                Default Urgent Window (days)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={urgentInput}
-                onChange={(e) => setUrgentInput(e.target.value)}
-                className={`w-full px-3 py-2 border rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-              />
-              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                Cards/loans can override this
-              </p>
-            </div>
-            <div>
-              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                Upcoming (days)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={upcomingInput}
-                onChange={(e) => setUpcomingInput(e.target.value)}
-                className={`w-full px-3 py-2 border rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-              />
-            </div>
-            <div className="md:col-span-2 flex gap-2">
-              <button
-                onClick={handleSaveAlertSettings}
-                className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => {
-                  setShowAlertEditor(false);
-                  setUrgentInput(urgentDays);
-                  setUpcomingInput(upcomingDays);
-                }}
-                className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {upcomingObligations.filter(o => o.urgent).length > 0 && (
-        <div className={`${darkMode ? 'bg-red-900 border-red-700' : 'bg-red-50 border-red-200'} border rounded-lg p-4`}>
-          <div className={`flex items-center gap-2 ${darkMode ? 'text-red-200' : 'text-red-800'} font-semibold mb-3`}>
-            <AlertCircle size={20} />
-            <span>Urgent Obligations</span>
-          </div>
-          <div className="space-y-2">
-            {upcomingObligations.filter(o => o.urgent).map(obl => (
-              <button
-                key={obl.id}
-                type="button"
-                onClick={() => handleObligationClick(obl)}
-                className="w-full flex justify-between items-center text-sm rounded-lg px-3 py-2 transition-colors hover:bg-red-100/60 dark:hover:bg-red-800/40"
-              >
-                <span className="font-medium">{obl.name}</span>
-                <div className="flex items-center gap-2">
-                  <div className="text-right">
-                    <div className="font-semibold">{formatCurrency(obl.amount)}</div>
-                    <div className={`text-xs ${darkMode ? 'text-red-300' : 'text-red-600'}`}>
-                      {obl.days === 0 ? 'Today' : obl.days === 1 ? 'Tomorrow' : `${obl.days} days`}
-                    </div>
-                  </div>
-                  <ChevronRight size={16} className={darkMode ? 'text-red-200' : 'text-red-500'} />
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* Cash Balance Widget */}
+      {isWidgetVisible('cash_balance') && (
+        <CashBalanceWidget
+          darkMode={darkMode}
+          availableCash={availableCash}
+          totalReserved={totalReserved}
+          trueAvailable={trueAvailable}
+          cashInHand={cashInHand}
+          bankAccounts={bankAccounts}
+          showCashInDashboard={showCashInDashboard}
+          compactMode={compactMode}
+          onCashOperation={() => setShowCashModal(true)}
+        />
       )}
 
-      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4`}>
-        <h3 className="font-semibold mb-3">Upcoming Obligations ({upcomingDays} Days)</h3>
-        <div className="space-y-3">
-          {upcomingObligations.filter(o => !o.urgent).length === 0 ? (
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No upcoming obligations</p>
-          ) : (
-            upcomingObligations.filter(o => !o.urgent).map(obl => (
-              <button
-                key={obl.id}
-                type="button"
-                onClick={() => handleObligationClick(obl)}
-                className={`w-full flex justify-between items-center pb-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-100'} last:border-0 text-left hover:bg-gray-100/60 dark:hover:bg-gray-700/40 rounded-lg px-2`}
-              >
-                <div className="py-1">
-                  <div className="font-medium">{obl.name}</div>
-                  <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} capitalize`}>{obl.type.replace('_', ' ')}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="text-right">
-                    <div className="font-semibold">{formatCurrency(obl.amount)}</div>
-                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{obl.days} days</div>
-                  </div>
-                  <ChevronRight size={16} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      </div>
+      {/* Alert Settings */}
+      <AlertSettingsSection
+        darkMode={darkMode}
+        alertSettings={alertSettings}
+        compactMode={compactMode}
+        isCollapsed={isSectionCollapsed('alert_settings')}
+        onToggleCollapse={() => handleToggleSection('alert_settings')}
+        onSave={onUpdateAlertSettings}
+      />
 
-      {nextIncome && (
-        <div className={`${darkMode ? 'bg-green-900 border-green-700' : 'bg-green-50 border-green-200'} border rounded-lg p-4`}>
-          <h3 className={`font-semibold ${darkMode ? 'text-green-200' : 'text-green-800'} mb-2`}>Next Income</h3>
-          <div className="flex justify-between items-center">
-            <div>
-              <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{nextIncome.source}</div>
-              <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{formatDate(nextIncome.date)}</div>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleSummaryNavigate('income')}
-              className="flex items-center gap-2 text-right text-left md:text-right"
-            >
-              <div className={`text-lg font-bold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>{formatCurrency(nextIncome.amount)}</div>
-              <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{nextIncome.days} days</div>
-              <ChevronRight size={16} className={darkMode ? 'text-green-200' : 'text-green-600'} />
-            </button>
-          </div>
-        </div>
+      {/* Urgent Obligations Widget */}
+      {isWidgetVisible('urgent_obligations') && (
+        <UrgentObligationsWidget
+          darkMode={darkMode}
+          obligations={upcomingObligations}
+          compactMode={compactMode}
+          onObligationClick={handleObligationClick}
+        />
       )}
 
-      <div className="grid grid-cols-2 gap-4">
-        <button
-          type="button"
-          onClick={() => handleSummaryNavigate('cards')}
-          className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 text-left hover:bg-gray-100/60 dark:hover:bg-gray-700/40 transition-colors`}
-        >
-          <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-1`}>Credit Cards</div>
-          <div className="text-2xl font-bold">{formatCurrency(totalCreditCardDebt)}</div>
-          <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1`}>{creditCards.length} cards</div>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSummaryNavigate('loans')}
-          className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 text-left hover:bg-gray-100/60 dark:hover:bg-gray-700/40 transition-colors`}
-        >
-          <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-1`}>Loans</div>
-          <div className="text-2xl font-bold">{formatCurrency(totalLoanDebt)}</div>
-          <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1`}>{loans.length} loans</div>
-        </button>
-        {bankAccounts && bankAccounts.length > 0 && (
-          <button
-            type="button"
-            onClick={() => handleSummaryNavigate('bank-accounts')}
-            className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 text-left hover:bg-gray-100/60 dark:hover:bg-gray-700/40 transition-colors col-span-2`}
-          >
-            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-1`}>Bank Accounts</div>
-            <div className="text-2xl font-bold">{formatCurrency(calculateTotalBankBalance(bankAccounts))}</div>
-            <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1`}>{bankAccounts.length} {bankAccounts.length === 1 ? 'account' : 'accounts'}</div>
-          </button>
-        )}
-      </div>
+      {/* Upcoming Obligations Widget */}
+      {isWidgetVisible('upcoming_obligations') && (
+        <UpcomingObligationsWidget
+          darkMode={darkMode}
+          obligations={upcomingObligations}
+          upcomingDays={upcomingDays}
+          compactMode={compactMode}
+          isCollapsed={isSectionCollapsed('upcoming_obligations')}
+          onToggleCollapse={() => handleToggleSection('upcoming_obligations')}
+          onObligationClick={handleObligationClick}
+        />
+      )}
+
+      {/* Next Income Widget */}
+      {isWidgetVisible('next_income') && (
+        <NextIncomeWidget
+          darkMode={darkMode}
+          nextIncome={nextIncome}
+          compactMode={compactMode}
+          onNavigate={handleSummaryNavigate}
+        />
+      )}
+
+      {/* Debt Summary Widget */}
+      {isWidgetVisible('debt_summary') && (
+        <DebtSummaryWidget
+          darkMode={darkMode}
+          totalCreditCardDebt={totalCreditCardDebt}
+          totalLoanDebt={totalLoanDebt}
+          creditCardsCount={creditCards.length}
+          loansCount={loans.length}
+          compactMode={compactMode}
+          onNavigate={handleSummaryNavigate}
+        />
+      )}
+
+      {/* Bank Accounts Widget */}
+      {isWidgetVisible('bank_accounts') && (
+        <BankAccountsWidget
+          darkMode={darkMode}
+          bankAccounts={bankAccounts}
+          compactMode={compactMode}
+          onNavigate={handleSummaryNavigate}
+        />
+      )}
       
-      {/* Latest Updates */}
-      {latestActivities && latestActivities.length > 0 && (
-        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4`}>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold flex items-center gap-2">
-              <Activity size={18} />
-              Latest Updates
-            </h3>
-            <button
-              onClick={() => onNavigate?.({ view: 'activity' })}
-              className={`text-xs px-3 py-1 rounded ${darkMode ? 'bg-blue-900 text-blue-200 hover:bg-blue-800' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
-            >
-              View All
-            </button>
-          </div>
-          <div className="space-y-2">
-            {latestActivities.slice(0, 5).map(activity => {
-              const timeDiff = Date.now() - new Date(activity.created_at).getTime();
-              const minutesAgo = Math.floor(timeDiff / 60000);
-              const hoursAgo = Math.floor(timeDiff / 3600000);
-              const daysAgo = Math.floor(timeDiff / 86400000);
-              
-              const timeAgo = minutesAgo < 1 ? 'Just now' 
-                : minutesAgo < 60 ? `${minutesAgo}m ago`
-                : hoursAgo < 24 ? `${hoursAgo}h ago`
-                : `${daysAgo}d ago`;
-              
-              return (
-                <div key={activity.id} className={`text-sm pb-2 border-b last:border-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                  <div className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                    {activity.description}
-                  </div>
-                  <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {timeAgo}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      {/* Latest Updates Widget */}
+      {isWidgetVisible('latest_updates') && (
+        <LatestUpdatesWidget
+          darkMode={darkMode}
+          activities={latestActivities}
+          compactMode={compactMode}
+          isCollapsed={isSectionCollapsed('latest_updates')}
+          onToggleCollapse={() => handleToggleSection('latest_updates')}
+          onViewAll={() => onNavigate?.({ view: 'activity' })}
+        />
       )}
       
       {/* Cash Operations Modal */}

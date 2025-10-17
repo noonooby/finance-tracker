@@ -1,13 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Settings as SettingsIcon, AlertCircle, Trash2, Database, CheckCircle, Wallet, Edit2,
-  Palette, Bell, DollarSign, ChevronDown, ChevronUp
+  Settings as SettingsIcon, AlertCircle, Trash2, Database, Wallet, Edit2,
+  Palette, Bell, DollarSign, ChevronDown, ChevronUp, Target, X, TrendingUp, Grid
 } from 'lucide-react';
 import { deleteAllUserData, dbOperation } from '../utils/db';
 import CategoryManager from './CategoryManager';
+import BudgetHistory from './BudgetHistory';
 import { fetchAllKnownEntities, deleteKnownEntity } from '../utils/knownEntities';
 import { formatCurrency } from '../utils/helpers';
-import { getAllSettings, setSetting, setMultipleSettings, setCategoryBudget, getCategoryBudget } from '../utils/settingsManager';
+import { getAllSettings, setSetting, getCategoryBudget, setCategoryBudget, deleteCategoryBudget } from '../utils/settingsManager';
+import { fetchCategories } from '../utils/categories';
+import { logActivity } from '../utils/activityLogger';
+import { trackCurrentMonth, checkAndFinalizePreviousMonths } from '../utils/budgetTrackingManager';
+import {
+  getUserPreferences,
+  toggleDashboardSection,
+  updateDashboardWidgets,
+  toggleCompactMode,
+  toggleSettingsSection,
+  updateCollapsedSettingsSections
+} from '../utils/userPreferencesManager';
 
 export default function Settings({ 
   darkMode, 
@@ -17,9 +29,8 @@ export default function Settings({
   showCashInDashboard, 
   onUpdateCashInHand, 
   onToggleCashDisplay,
-  categories = []
+  categories: categoriesProp = []
 }) {
-  const [message, setMessage] = useState(null);
   const [deletingAll, setDeletingAll] = useState(false);
   const [knownEntities, setKnownEntities] = useState({});
   const [loadingEntities, setLoadingEntities] = useState(false);
@@ -31,6 +42,13 @@ export default function Settings({
   const [settings, setSettings] = useState({});
   const [loadingSettings, setLoadingSettings] = useState(true);
   
+  // Category budgets state
+  const [categoryBudgetInputs, setCategoryBudgetInputs] = useState({});
+  const [loadingBudgets, setLoadingBudgets] = useState(false);
+  
+  // Local categories state (fallback if prop not loaded)
+  const [localCategories, setLocalCategories] = useState([]);
+  
   // Collapsible sections
   const [expandedSections, setExpandedSections] = useState({
     appearance: false,
@@ -38,16 +56,29 @@ export default function Settings({
     financial: false,
     automation: false,
     transactionDefaults: false,
-    categories: true,
+    categories: false,
+    categoryBudgets: false,
+    budgetHistory: false,
     suggestions: false,
     cash: false,
     danger: false
   });
 
-  // Load settings on mount
+  // Load settings and categories on mount
   useEffect(() => {
     loadSettings();
+    loadLocalCategories();
+    loadSettingsUIPreferences();
   }, []);
+
+  // Check and finalize previous month budgets on mount
+  useEffect(() => {
+    if (settings.categoryBudgets && Object.keys(settings.categoryBudgets).length > 0) {
+      checkAndFinalizePreviousMonths(settings.categoryBudgets).catch(err => {
+        console.warn('Failed to finalize previous months:', err);
+      });
+    }
+  }, [settings.categoryBudgets]);
 
   const loadSettings = async () => {
     try {
@@ -56,33 +87,386 @@ export default function Settings({
       setLoadingSettings(false);
     } catch (error) {
       console.error('Error loading settings:', error);
-      showMessage('error', 'Failed to load settings');
       setLoadingSettings(false);
     }
   };
 
-  const showMessage = (type, text) => {
-    setMessage({ type, text });
-    setTimeout(() => setMessage(null), 5000);
+  const loadLocalCategories = async () => {
+    try {
+      const cats = await fetchCategories();
+      setLocalCategories(cats);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
   };
 
-  const toggleSection = (section) => {
+  const loadSettingsUIPreferences = async () => {
+    try {
+      const prefs = await getUserPreferences();
+      const collapsed = prefs.collapsed_settings_sections || [];
+      
+      // If this is first load (empty array), initialize with all sections collapsed
+      if (collapsed.length === 0) {
+        // Set all sections to collapsed in database
+        const allSections = [
+          'appearance', 'notifications', 'financial', 'automation',
+          'transactionDefaults', 'categories', 'categoryBudgets', 
+          'budgetHistory', 'suggestions', 'cash', 'danger'
+        ];
+        await updateCollapsedSettingsSections(allSections);
+        // Keep UI collapsed (default state already set)
+        return;
+      }
+      
+      // Build expanded state from database
+      const newExpandedState = {
+        appearance: false,
+        notifications: false,
+        financial: false,
+        automation: false,
+        transactionDefaults: false,
+        categories: false,
+        categoryBudgets: false,
+        budgetHistory: false,
+        suggestions: false,
+        cash: false,
+        danger: false
+      };
+      
+      // Mark sections as expanded only if they're NOT in the collapsed array
+      Object.keys(newExpandedState).forEach(section => {
+        newExpandedState[section] = !collapsed.includes(section);
+      });
+      
+      setExpandedSections(newExpandedState);
+    } catch (error) {
+      console.error('Error loading Settings UI preferences:', error);
+    }
+  };
+
+  const toggleSection = async (section) => {
+    const newState = !expandedSections[section];
+    console.log(`🔄 Toggling ${section}: ${expandedSections[section]} → ${newState}`);
+    
     setExpandedSections(prev => ({
       ...prev,
-      [section]: !prev[section]
+      [section]: newState
     }));
+    
+    // Persist to database
+    try {
+      await toggleSettingsSection(section);
+      console.log(`✅ Persisted ${section} to database`);
+    } catch (error) {
+      console.error('Error persisting section state:', error);
+    }
+  };
+
+  /**
+   * Setting metadata for activity logging
+   * Defines which settings are undoable vs view-only
+   */
+  const SETTING_METADATA = {
+    // HIGH/MEDIUM PRIORITY - Undoable (with snapshot)
+    currency: {
+      undoable: true,
+      formatDescription: (oldVal, newVal) => `Changed currency from ${oldVal} to ${newVal}`,
+      displayName: 'Currency'
+    },
+    monthlyBudgetAmount: {
+      undoable: true,
+      formatDescription: (oldVal, newVal) => `Updated monthly budget from ${formatCurrency(oldVal)} to ${formatCurrency(newVal)}`,
+      displayName: 'Monthly Budget'
+    },
+    defaultOverdraftLimit: {
+      undoable: true,
+      formatDescription: (oldVal, newVal) => `Updated default overdraft limit from ${formatCurrency(oldVal)} to ${formatCurrency(newVal)}`,
+      displayName: 'Default Overdraft Limit'
+    },
+    lowBalanceThreshold: {
+      undoable: true,
+      formatDescription: (oldVal, newVal) => `Updated bank account low balance threshold from ${formatCurrency(oldVal)} to ${formatCurrency(newVal)}`,
+      displayName: 'Low Balance Threshold'
+    },
+    cashInHandLowThreshold: {
+      undoable: true,
+      formatDescription: (oldVal, newVal) => `Updated cash in hand low threshold from ${formatCurrency(oldVal)} to ${formatCurrency(newVal)}`,
+      displayName: 'Cash Low Threshold'
+    },
+    
+    // LOW PRIORITY - View-only (no snapshot/undo)
+    dateFormat: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => `Changed date format from ${oldVal} to ${newVal}`,
+      displayName: 'Date Format'
+    },
+    firstDayOfWeek: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => `Changed first day of week from ${oldVal} to ${newVal}`,
+      displayName: 'First Day of Week'
+    },
+    numberFormat: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => `Changed number format from ${oldVal === 'comma' ? '1,234.56' : '1.234,56'} to ${newVal === 'comma' ? '1,234.56' : '1.234,56'}`,
+      displayName: 'Number Format'
+    },
+    defaultPaymentMethod: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => {
+        const labels = { cash_in_hand: 'Cash in Hand', bank_account: 'Bank Account', credit_card: 'Credit Card' };
+        return `Changed default payment method from ${labels[oldVal] || oldVal} to ${labels[newVal] || newVal}`;
+      },
+      displayName: 'Default Payment Method'
+    },
+    autoCategorization: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled auto-categorization' : 'Disabled auto-categorization',
+      displayName: 'Auto-Categorization'
+    },
+    roundUpTransactions: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled round up transactions' : 'Disabled round up transactions',
+      displayName: 'Round Up Transactions'
+    },
+    monthlyBudgetEnabled: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled monthly budget' : 'Disabled monthly budget',
+      displayName: 'Monthly Budget'
+    },
+    budgetAlertAt80: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled 80% budget alert' : 'Disabled 80% budget alert',
+      displayName: '80% Budget Alert'
+    },
+    budgetAlertAt90: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled 90% budget alert' : 'Disabled 90% budget alert',
+      displayName: '90% Budget Alert'
+    },
+    budgetAlertAt100: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled 100% budget alert' : 'Disabled 100% budget alert',
+      displayName: '100% Budget Alert'
+    },
+    defaultOverdraftAllowed: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled allow overdraft by default' : 'Disabled allow overdraft by default',
+      displayName: 'Default Overdraft Allowed'
+    },
+    autoProcessDuePayments: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled auto-process due payments' : 'Disabled auto-process due payments',
+      displayName: 'Auto-Process Payments'
+    },
+    autoMarkClearedDays: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal > 0 ? `Enabled auto-mark cleared after ${newVal} days` : 'Disabled auto-mark cleared',
+      displayName: 'Auto-Mark Cleared'
+    },
+    smartSuggestions: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled smart suggestions' : 'Disabled smart suggestions',
+      displayName: 'Smart Suggestions'
+    },
+    defaultTransactionTime: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => `Changed transaction timestamp from ${oldVal === 'now' ? 'current time' : 'custom time'} to ${newVal === 'now' ? 'current time' : 'custom time'}`,
+      displayName: 'Transaction Timestamp'
+    },
+    customTransactionTime: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => `Changed custom transaction time from ${oldVal} to ${newVal}`,
+      displayName: 'Custom Transaction Time'
+    },
+    requireNotesForExpensesOver: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal > 0 ? `Set require notes for expenses over ${formatCurrency(newVal)}` : 'Disabled require notes for large expenses',
+      displayName: 'Require Notes for Expenses'
+    },
+    requireNotesForPayments: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled require notes for all payments' : 'Disabled require notes for payments',
+      displayName: 'Require Notes for Payments'
+    },
+    confirmLargeTransactions: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled confirm large transactions' : 'Disabled confirm large transactions',
+      displayName: 'Confirm Large Transactions'
+    },
+    largeTransactionThreshold: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => `Changed large transaction threshold from ${formatCurrency(oldVal)} to ${formatCurrency(newVal)}`,
+      displayName: 'Large Transaction Threshold'
+    },
+    defaultAlertDays: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => `Changed default alert days from ${oldVal} to ${newVal} days`,
+      displayName: 'Default Alert Days'
+    },
+    creditCardAlertDays: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => `Changed credit card alert days from ${oldVal} to ${newVal} days`,
+      displayName: 'Credit Card Alert Days'
+    },
+    loanAlertDays: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => `Changed loan alert days from ${oldVal} to ${newVal} days`,
+      displayName: 'Loan Alert Days'
+    },
+    lowBalanceAlerts: {
+      undoable: false,
+      formatDescription: (oldVal, newVal) => newVal ? 'Enabled low balance alerts' : 'Disabled low balance alerts',
+      displayName: 'Low Balance Alerts'
+    },
   };
 
   const updateSetting = async (key, value) => {
     try {
+      const oldValue = settings[key];
       await setSetting(key, value);
       setSettings(prev => ({ ...prev, [key]: value }));
-      showMessage('success', 'Setting updated successfully');
       
-      // Note: Alert days are just defaults for new items, no need to reload existing data
+      // Log activity if metadata exists for this setting
+      const metadata = SETTING_METADATA[key];
+      if (metadata) {
+        const description = metadata.formatDescription(oldValue, value);
+        
+        if (metadata.undoable) {
+          // HIGH/MEDIUM priority - log with snapshot for undo
+          await logActivity(
+            'edit_setting',
+            key,
+            `setting-${key}`,
+            metadata.displayName,
+            description,
+            {
+              settingKey: key,
+              previousValue: oldValue,
+              newValue: value
+            }
+          );
+        } else {
+          // LOW priority - log without snapshot (view-only)
+          await logActivity(
+            'setting_change',
+            key,
+            `setting-${key}`,
+            metadata.displayName,
+            description,
+            null  // No snapshot = no undo button
+          );
+        }
+      }
+      
+      // Silent success (consistent with rest of app)
     } catch (error) {
       console.error(`Error updating setting ${key}:`, error);
-      showMessage('error', 'Failed to update setting');
+      alert('Failed to update setting. Please try again.');
+    }
+  };
+  
+  const handleSetCategoryBudget = async (categoryId) => {
+    const amount = parseFloat(categoryBudgetInputs[categoryId]);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid budget amount');
+      return;
+    }
+
+    try {
+      setLoadingBudgets(true);
+      
+      // Get category name for description
+      const category = categories.find(c => c.id === categoryId);
+      const categoryName = category?.name || 'Category';
+      
+      // Get previous budget (if any)
+      const previousBudget = categoryBudgets[categoryId] || 0;
+      
+      await setCategoryBudget(categoryId, amount);
+      
+      // Update local state
+      const updatedBudgets = { ...(settings.categoryBudgets || {}), [categoryId]: amount };
+      setSettings(prev => ({ ...prev, categoryBudgets: updatedBudgets }));
+      
+      // Clear input
+      setCategoryBudgetInputs(prev => ({ ...prev, [categoryId]: '' }));
+      
+      // Log activity with snapshot for undo
+      const description = previousBudget > 0
+        ? `Updated ${categoryName} budget from ${formatCurrency(previousBudget)} to ${formatCurrency(amount)} per month`
+        : `Set ${categoryName} budget to ${formatCurrency(amount)} per month`;
+      
+      await logActivity(
+        'set_budget',
+        'category_budget',
+        categoryId,
+        categoryName,
+        description,
+        {
+          settingKey: 'categoryBudgets',
+          categoryId,
+          amount,
+          previousBudget,
+          categoryName
+        }
+      );
+      
+      // Track budget for current month (background operation)
+      trackCurrentMonth(categoryId, amount).catch(err => {
+        console.warn('Failed to track budget:', err);
+      });
+      
+      console.log('✅ Category budget saved');
+    } catch (error) {
+      console.error('Error setting category budget:', error);
+      alert('Failed to save category budget');
+    } finally {
+      setLoadingBudgets(false);
+    }
+  };
+
+  const handleDeleteCategoryBudget = async (categoryId) => {
+    if (!window.confirm('Remove budget for this category?')) return;
+
+    try {
+      setLoadingBudgets(true);
+      
+      // Get category name and current budget for description
+      const category = categories.find(c => c.id === categoryId);
+      const categoryName = category?.name || 'Category';
+      const previousBudget = categoryBudgets[categoryId] || 0;
+      
+      await deleteCategoryBudget(categoryId);
+      
+      // Update local state
+      const updatedBudgets = { ...(settings.categoryBudgets || {}) };
+      delete updatedBudgets[categoryId];
+      setSettings(prev => ({ ...prev, categoryBudgets: updatedBudgets }));
+      
+      // Note: We keep historical budget data even when budget is deleted
+      // This preserves historical trends for analysis
+      
+      // Log activity with snapshot for undo
+      await logActivity(
+        'delete_budget',
+        'category_budget',
+        categoryId,
+        categoryName,
+        `Removed ${categoryName} budget (was ${formatCurrency(previousBudget)} per month)`,
+        {
+          settingKey: 'categoryBudgets',
+          categoryId,
+          previousBudget,
+          categoryName
+        }
+      );
+      
+      console.log('✅ Category budget removed');
+    } catch (error) {
+      console.error('Error deleting category budget:', error);
+      alert('Failed to remove category budget');
+    } finally {
+      setLoadingBudgets(false);
     }
   };
   
@@ -92,16 +476,15 @@ export default function Settings({
     }
 
     setDeletingAll(true);
-    setMessage(null);
 
     try {
       await deleteAllUserData();
-      showMessage('success', 'All data deleted successfully');
+      alert('All data deleted successfully');
       if (onUpdate) await onUpdate();
       if (onReloadCategories) await onReloadCategories();
     } catch (error) {
       console.error('Error deleting data:', error);
-      showMessage('error', 'Failed to delete data. Please try again.');
+      alert('Failed to delete data. Please try again.');
     } finally {
       setDeletingAll(false);
     }
@@ -115,7 +498,7 @@ export default function Settings({
       setShowEntities(true);
     } catch (error) {
       console.error('Error loading entities:', error);
-      showMessage('error', 'Error loading suggestions. Please try again.');
+      alert('Error loading suggestions. Please try again.');
     } finally {
       setLoadingEntities(false);
     }
@@ -127,10 +510,10 @@ export default function Settings({
     try {
       await deleteKnownEntity(entityId);
       await handleLoadEntities();
-      showMessage('success', 'Suggestion deleted successfully');
+      console.log('✅ Suggestion deleted');
     } catch (error) {
       console.error('Error deleting entity:', error);
-      showMessage('error', 'Error deleting suggestion');
+      alert('Error deleting suggestion');
     }
   };
   
@@ -147,21 +530,57 @@ export default function Settings({
     }
     
     try {
+      const oldAmount = cashInHand || 0;
+      
       if (onUpdateCashInHand) {
         await onUpdateCashInHand(newAmount);
-        showMessage('success', 'Cash in hand updated successfully');
+        
+        // Log activity with snapshot for undo (HIGH PRIORITY)
+        await logActivity(
+          'edit_setting',
+          'cash_in_hand',
+          'cash-in-hand',
+          'Cash in Hand',
+          `Updated cash in hand from ${formatCurrency(oldAmount)} to ${formatCurrency(newAmount)}`,
+          {
+            settingKey: 'cashInHand',
+            previousValue: oldAmount,
+            newValue: newAmount
+          }
+        );
+        
+        console.log('✅ Cash in hand updated');
       }
       setEditingCash(false);
       setCashInput('');
     } catch (error) {
       console.error('Error updating cash in hand:', error);
-      showMessage('error', 'Error updating cash in hand');
+      alert('Error updating cash in hand');
     }
   };
   
   const handleCancelEditCash = () => {
     setEditingCash(false);
     setCashInput('');
+  };
+
+  const handleToggleCashDisplay = async (show) => {
+    if (onToggleCashDisplay) {
+      const oldValue = showCashInDashboard || false;
+      await onToggleCashDisplay(show);
+      
+      // Log as view-only activity (LOW PRIORITY)
+      await logActivity(
+        'setting_change',
+        'showCashInDashboard',
+        'setting-showCashInDashboard',
+        'Cash Display',
+        show ? 'Enabled cash breakdown on dashboard' : 'Disabled cash breakdown on dashboard',
+        null  // No snapshot = no undo
+      );
+      
+      console.log('✅ Cash display toggled');
+    }
   };
 
   const SectionHeader = ({ title, icon: Icon, section }) => (
@@ -179,23 +598,17 @@ export default function Settings({
     </button>
   );
 
+  // Use either prop categories or locally loaded categories
+  const categories = categoriesProp.length > 0 ? categoriesProp : localCategories;
+  const expenseCategories = categories.filter(cat => !cat.is_income);
+  const categoryBudgets = settings.categoryBudgets || {};
+
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold flex items-center gap-2">
         <SettingsIcon size={24} />
         Settings
       </h2>
-
-      {message && (
-        <div className={`p-4 rounded-lg flex items-start gap-3 ${
-          message.type === 'success' ? 'bg-green-50 text-green-800' :
-          message.type === 'warning' ? 'bg-yellow-50 text-yellow-800' :
-          'bg-red-50 text-red-800'
-        }`}>
-          {message.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-          <p>{message.text}</p>
-        </div>
-      )}
 
       {/* Display & Appearance */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg overflow-hidden`}>
@@ -206,10 +619,10 @@ export default function Settings({
             {/* Currency Settings */}
             <div>
               <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                Currency
+                Default Currency
               </label>
               <select
-                value={settings.currency || 'USD'}
+                value={settings.currency || 'CAD'}
                 onChange={(e) => {
                   const curr = e.target.value;
                   const symbols = { USD: '$', CAD: '$', EUR: '€', GBP: '£', INR: '₹', JPY: '¥' };
@@ -218,13 +631,16 @@ export default function Settings({
                 }}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
               >
-                <option value="USD">USD - US Dollar ($)</option>
                 <option value="CAD">CAD - Canadian Dollar ($)</option>
+                <option value="USD">USD - US Dollar ($)</option>
                 <option value="EUR">EUR - Euro (€)</option>
                 <option value="GBP">GBP - British Pound (£)</option>
                 <option value="INR">INR - Indian Rupee (₹)</option>
                 <option value="JPY">JPY - Japanese Yen (¥)</option>
               </select>
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                This will be used for all monetary displays throughout the app
+              </p>
             </div>
 
             {/* Date Format */}
@@ -788,22 +1204,122 @@ export default function Settings({
 
       {/* Category Manager Section */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg overflow-hidden`}>
-        <button
-          onClick={() => toggleSection('categories')}
-          className={`w-full flex items-center justify-between p-4 rounded-lg transition-colors ${
-            darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
-          }`}
-        >
-          <h3 className="text-lg font-semibold">Categories</h3>
-          {expandedSections.categories ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-        </button>
+        <SectionHeader title="Categories" icon={Grid} section="categories" />
         
         {expandedSections.categories && (
           <div className="p-6 border-t border-gray-700">
             <CategoryManager
               darkMode={darkMode}
-              onUpdate={onReloadCategories}
+              onUpdate={() => {
+                onReloadCategories();
+                loadLocalCategories();
+              }}
             />
+          </div>
+        )}
+      </div>
+
+      {/* Budget History Section */}
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg overflow-hidden`}>
+        <SectionHeader title="Budget History" icon={TrendingUp} section="budgetHistory" />
+        
+        {expandedSections.budgetHistory && (
+          <div className="p-6 border-t border-gray-700">
+            <BudgetHistory
+              darkMode={darkMode}
+              categories={categories}
+              categoryBudgets={categoryBudgets}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Category Budgets Section */}
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg overflow-hidden`}>
+        <SectionHeader title="Category Budgets" icon={Target} section="categoryBudgets" />
+        
+        {expandedSections.categoryBudgets && (
+          <div className="p-6 space-y-4 border-t border-gray-700">
+            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Set monthly spending limits for each expense category to track and control your spending.
+            </p>
+
+            {expenseCategories.length === 0 ? (
+              <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                <Target size={48} className="mx-auto mb-3 opacity-30" />
+                <p>Loading categories...</p>
+                <p className="text-sm mt-1">If categories don't appear, add them in the Categories section above</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {expenseCategories.map(category => {
+                  const currentBudget = categoryBudgets[category.id];
+                  const hasBudget = currentBudget && currentBudget > 0;
+
+                  return (
+                    <div
+                      key={category.id}
+                      className={`border ${darkMode ? 'border-gray-700' : 'border-gray-200'} rounded-lg p-4`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">{category.icon}</span>
+                          <div>
+                            <div className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                              {category.name}
+                            </div>
+                            {hasBudget && (
+                              <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                Monthly Budget: {formatCurrency(currentBudget)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {hasBudget && (
+                          <button
+                            onClick={() => handleDeleteCategoryBudget(category.id)}
+                            className={`p-2 rounded ${darkMode ? 'hover:bg-gray-600 text-red-400' : 'hover:bg-gray-200 text-red-600'}`}
+                            title="Remove budget"
+                            disabled={loadingBudgets}
+                          >
+                            <X size={16} />
+                          </button>
+                        )}
+                      </div>
+
+                      {!hasBudget && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="number"
+                            step="10"
+                            placeholder="Monthly budget amount"
+                            value={categoryBudgetInputs[category.id] || ''}
+                            onChange={(e) => setCategoryBudgetInputs(prev => ({
+                              ...prev,
+                              [category.id]: e.target.value
+                            }))}
+                            className={`flex-1 px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                          />
+                          <button
+                            onClick={() => handleSetCategoryBudget(category.id)}
+                            disabled={loadingBudgets || !categoryBudgetInputs[category.id]}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Set
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className={`${darkMode ? 'bg-blue-900/20 border-blue-700' : 'bg-blue-50 border-blue-200'} border rounded-lg p-3 mt-4`}>
+              <p className={`text-xs ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>
+                💡 <strong>Tip:</strong> Category budgets are tracked automatically! View your spending trends and history in the "Budget History" section above.
+              </p>
+            </div>
           </div>
         )}
       </div>
@@ -827,12 +1343,12 @@ export default function Settings({
           <div className="p-6 space-y-4 border-t border-gray-700">
             <div className="flex items-center justify-between">
               <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                View and manage suggestions that Claude has learned from your inputs.
+                View and manage suggestions that the app has learned from your inputs.
               </p>
               <button
                 onClick={handleLoadEntities}
                 disabled={loadingEntities}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-blue-600 text-blue-600 hover:bg-blue-50"
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 ${darkMode ? 'border-blue-500 text-blue-400 hover:bg-blue-900/30' : 'border-blue-600 text-blue-600 hover:bg-blue-50'}`}
               >
                 <Database size={20} />
                 <span>{loadingEntities ? 'Loading...' : showEntities ? 'Refresh' : 'View'}</span>
@@ -961,12 +1477,7 @@ export default function Settings({
                 <input
                   type="checkbox"
                   checked={showCashInDashboard || false}
-                  onChange={(e) => {
-                    if (onToggleCashDisplay) {
-                      onToggleCashDisplay(e.target.checked);
-                      showMessage('success', e.target.checked ? 'Cash breakdown will now show on Dashboard' : 'Cash breakdown hidden from Dashboard');
-                    }
-                  }}
+                  onChange={(e) => handleToggleCashDisplay(e.target.checked)}
                   className="w-4 h-4"
                 />
                 <div className="flex-1">

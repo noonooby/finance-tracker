@@ -1,11 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, Edit2, X, CreditCard, ShoppingBag, ListFilter } from 'lucide-react';
+import { Plus, Edit2, X, CreditCard, ShoppingBag, ListFilter, Star } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId, calculateTotalBankBalance } from '../utils/helpers';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import AddTransaction from './AddTransaction';
 import { logActivity } from '../utils/activityLogger';
 import SmartInput from './SmartInput';
 import { processOverdueCreditCards } from '../utils/autoPay';
+import {
+  getUserPreferences,
+  togglePinnedCreditCard
+} from '../utils/userPreferencesManager';
 
 export default function CreditCards({ 
   darkMode, 
@@ -53,6 +57,39 @@ export default function CreditCards({
   const cardRefs = useRef({});
   const [processingResults, setProcessingResults] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [pinnedCards, setPinnedCards] = useState([]);
+  
+  // Load pinned cards
+  useEffect(() => {
+    loadPinnedCards();
+  }, []);
+  
+  const loadPinnedCards = async () => {
+    try {
+      const prefs = await getUserPreferences();
+      setPinnedCards(prefs.pinned_credit_cards || []);
+    } catch (error) {
+      console.error('Error loading pinned cards:', error);
+    }
+  };
+  
+  const handleTogglePin = async (cardId) => {
+    try {
+      await togglePinnedCreditCard(cardId);
+      await loadPinnedCards();
+    } catch (error) {
+      console.error('Error toggling pin:', error);
+    }
+  };
+  
+  // Sort cards: pinned first, then by creation date
+  const sortedCards = [...creditCards].sort((a, b) => {
+    const aIsPinned = pinnedCards.includes(a.id);
+    const bIsPinned = pinnedCards.includes(b.id);
+    if (aIsPinned && !bIsPinned) return -1;
+    if (!aIsPinned && bIsPinned) return 1;
+    return 0;
+  });
 
   const adjustBankAccountForFund = async (fund, amount) => {
     if (!fund?.source_account_id || !amount || amount <= 0) return;
@@ -1103,7 +1140,7 @@ export default function CreditCards({
             <p>No credit cards added yet</p>
           </div>
         ) : (
-          creditCards.map(card => (
+          sortedCards.map(card => (
             <div
               key={String(normalizeId(card.id))}
               ref={(el) => {
@@ -1115,9 +1152,12 @@ export default function CreditCards({
               className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${focusTarget?.type === 'card' && normalizeId(focusTarget.id) === normalizeId(card.id) ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
             >
               <div className="flex justify-between items-start mb-3">
-                <div>
+                <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-bold text-lg">{card.name}</h3>
+                    {pinnedCards.includes(card.id) && (
+                      <Star size={16} className="text-yellow-500 fill-current" title="Pinned" />
+                    )}
                     {card.is_gift_card && (
                       <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700 font-medium">
                         🎁 Gift Card
@@ -1170,6 +1210,17 @@ export default function CreditCards({
                   )}
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => handleTogglePin(card.id)}
+                    className={`p-2 rounded ${
+                      pinnedCards.includes(card.id)
+                        ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
+                        : darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-400 hover:bg-gray-100'
+                    }`}
+                    title={pinnedCards.includes(card.id) ? 'Unpin card' : 'Pin card'}
+                  >
+                    <Star size={18} className={pinnedCards.includes(card.id) ? 'fill-current' : ''} />
+                  </button>
                   <button
                     onClick={() => onNavigateToTransactions && onNavigateToTransactions({ creditCard: card.id })}
                     className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}

@@ -4,6 +4,12 @@ import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import { formatCurrency } from '../utils/helpers';
 import SmartInput from './SmartInput';
+import {
+  addRecentTransaction,
+  addRecentCategory,
+  addRecentPaymentMethod,
+  getUserPreferences
+} from '../utils/userPreferencesManager';
 
 export default function AddTransaction({ 
   darkMode, 
@@ -44,6 +50,74 @@ export default function AddTransaction({
   });
 
   const [saving, setSaving] = useState(false);
+  const [recentCategories, setRecentCategories] = useState([]);
+  const [recentPaymentMethods, setRecentPaymentMethods] = useState([]);
+  
+  // Load recent items on mount
+  useEffect(() => {
+    loadRecentCategories();
+    loadRecentPaymentMethods();
+  }, []);
+  
+  const loadRecentCategories = async () => {
+    try {
+      const prefs = await getUserPreferences();
+      const recentIds = prefs.recent_categories || [];
+      const recent = recentIds
+        .map(id => categories.find(c => c.id === id))
+        .filter(Boolean)
+        .slice(0, 5);
+      setRecentCategories(recent);
+    } catch (error) {
+      console.error('Error loading recent categories:', error);
+    }
+  };
+
+  const loadRecentPaymentMethods = async () => {
+    try {
+      const prefs = await getUserPreferences();
+      const recentPMs = prefs.recent_payment_methods || [];
+      
+      // Parse recent payment methods and match with current data
+      const parsed = recentPMs
+        .map(pm => {
+          if (pm === 'cash_in_hand') {
+            return { type: 'cash_in_hand', id: null, name: 'Cash in Hand', icon: '💵' };
+          } else if (pm.startsWith('credit_card:')) {
+            const id = pm.replace('credit_card:', '');
+            const card = creditCards?.find(c => c.id === id);
+            if (card) {
+              return { 
+                type: 'credit_card', 
+                id: card.id, 
+                name: card.name, 
+                icon: card.is_gift_card ? '🎁' : '💳' 
+              };
+            }
+          } else if (pm.startsWith('bank_account:')) {
+            const id = pm.replace('bank_account:', '');
+            const account = bankAccounts?.find(a => a.id === id);
+            if (account) {
+              return { 
+                type: 'bank_account', 
+                id: account.id, 
+                name: account.name, 
+                icon: '🏦',
+                balance: account.balance,
+                isPrimary: account.is_primary
+              };
+            }
+          }
+          return null;
+        })
+        .filter(Boolean)
+        .slice(0, 5);
+      
+      setRecentPaymentMethods(parsed);
+    } catch (error) {
+      console.error('Error loading recent payment methods:', error);
+    }
+  };
 
   useEffect(() => {
     if (preselectedCard) {
@@ -98,6 +172,9 @@ export default function AddTransaction({
         undone_at: null
       };
 
+      // Track payment method used
+      let paymentMethodString = null;
+
       if (formData.type === 'expense') {
         if (formData.paymentMethod === 'credit_card') {
           const card = creditCards.find(c => c.id === formData.paymentMethodId);
@@ -117,6 +194,7 @@ export default function AddTransaction({
 
           transaction.card_id = card.id;
           transaction.payment_method_name = card.name;
+          paymentMethodString = `credit_card:${card.id}`;
 
           activityDetails = {
             actionType: 'expense',
@@ -189,6 +267,7 @@ export default function AddTransaction({
           await updateBankAccountBalance(account.id, newBalance);
           
           transaction.payment_method_name = account.name;
+          paymentMethodString = `bank_account:${account.id}`;
           
           activityDetails = {
             actionType: 'expense',
@@ -223,6 +302,7 @@ export default function AddTransaction({
           if (onUpdateCashInHand) await onUpdateCashInHand(newCashInHand);
           
           transaction.payment_method_name = 'Cash in Hand';
+          paymentMethodString = 'cash_in_hand';
 
           activityDetails = {
             actionType: 'expense',
@@ -531,6 +611,23 @@ export default function AddTransaction({
         );
       }
 
+      // Track recent items (don't await - background operation)
+      if (savedTransaction?.id) {
+        addRecentTransaction(savedTransaction.id).catch(err => 
+          console.warn('Failed to track recent transaction:', err)
+        );
+      }
+      if (formData.categoryId) {
+        addRecentCategory(formData.categoryId).catch(err => 
+          console.warn('Failed to track recent category:', err)
+        );
+      }
+      if (paymentMethodString) {
+        addRecentPaymentMethod(paymentMethodString).catch(err => 
+          console.warn('Failed to track recent payment method:', err)
+        );
+      }
+
       await onUpdate();
       onClose();
     } catch (error) {
@@ -539,34 +636,6 @@ export default function AddTransaction({
     } finally {
       setSaving(false);
     }
-  };
-
-  const getPaymentMethodOptions = () => {
-    if (formData.type === 'expense') {
-      return [
-        { value: 'cash', label: 'Cash', icon: <Wallet size={18} /> },
-        { value: 'credit_card', label: 'Credit Card', icon: <CreditCard size={18} /> }
-      ];
-    } else if (formData.type === 'payment') {
-      return [
-        { value: 'credit_card', label: 'Credit Card', icon: <CreditCard size={18} /> },
-        { value: 'loan', label: 'Loan', icon: <TrendingUp size={18} /> }
-      ];
-    } else if (formData.type === 'income') {
-      return [
-        { value: 'cash', label: 'Cash', icon: <Wallet size={18} /> }
-      ];
-    }
-    return [];
-  };
-
-  const getPaymentMethodItems = () => {
-    if (formData.paymentMethod === 'credit_card') {
-      return creditCards;
-    } else if (formData.paymentMethod === 'loan') {
-      return loans;
-    }
-    return [];
   };
 
   return (
@@ -677,11 +746,22 @@ export default function AddTransaction({
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
               >
                 <option value="">Select category</option>
-                {categories.filter(c => !c.is_income).map(cat => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.icon} {cat.name}
-                  </option>
-                ))}
+                {recentCategories.length > 0 && (
+                  <optgroup label="⏱️ Recent">
+                    {recentCategories.map(cat => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.icon} {cat.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="📂 All Categories">
+                  {categories.filter(c => !c.is_income).map(cat => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.icon} {cat.name}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
           )}
@@ -827,6 +907,22 @@ export default function AddTransaction({
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
                 required
               >
+                {/* Recent Payment Methods */}
+                {recentPaymentMethods.length > 0 && (
+                  <optgroup label="⏱️ Recent">
+                    {recentPaymentMethods.map(pm => (
+                      <option 
+                        key={pm.id || 'cash_in_hand'} 
+                        value={pm.type === 'cash_in_hand' ? 'cash_in_hand' : `${pm.type}:${pm.id}`}
+                      >
+                        {pm.icon} {pm.name}
+                        {pm.type === 'bank_account' && pm.balance !== undefined && ` ($${pm.balance.toFixed(2)} available)`}
+                        {pm.isPrimary && ' ⭐'}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                
                 <optgroup label="💵 Cash & Bank Accounts">
                   <option value="cash_in_hand">💵 Cash in Hand (${(cashInHand || 0).toFixed(2)} available)</option>
                   {bankAccounts && bankAccounts.length > 0 && bankAccounts.map(account => (

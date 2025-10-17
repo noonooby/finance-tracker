@@ -1,9 +1,33 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, DollarSign, TrendingUp, TrendingDown, Trash2 } from 'lucide-react';
+import { Save, FolderOpen } from 'lucide-react';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import AddTransaction from './AddTransaction';
+import {
+  getAllSavedFilters,
+  saveFilter,
+  deleteSavedFilter,
+  toggleFilterPin,
+  trackFilterUsage,
+  duplicateFilter,
+  getQuickFilterSuggestions
+} from '../utils/savedFiltersManager';
 
+// Transaction Components (UI only - no financial logic)
+import {
+  TransactionSummaryCards,
+  FilterPanel,
+  SavedFiltersPanel,
+  TransactionCard,
+  QuickFiltersDropdown,
+  SaveFilterDialog
+} from './transactions';
+
+/**
+ * Transaction History Component
+ * Main container - handles all business logic and financial operations
+ * UI components are extracted for modularity
+ */
 export default function TransactionHistory({
   darkMode,
   categories,
@@ -19,6 +43,7 @@ export default function TransactionHistory({
   cashInHand = 0,
   onUpdateCashInHand
 }) {
+  // === STATE MANAGEMENT ===
   const [transactions, setTransactions] = useState([]);
   const [filteredTransactions, setFilteredTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +62,16 @@ export default function TransactionHistory({
     reservedFund: 'all'
   });
 
+  // Saved filters state
+  const [savedFilters, setSavedFilters] = useState([]);
+  const [quickFilters, setQuickFilters] = useState([]);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
+  const [filterName, setFilterName] = useState('');
+  const [saveAsPin, setSaveAsPin] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  // === HELPER FUNCTIONS (Safe - No Side Effects) ===
   const isPaymentType = (type) =>
     type === 'payment' || type === 'loan_payment' || type === 'credit_card_payment' || type === 'reserved_fund_paid';
 
@@ -49,6 +84,36 @@ export default function TransactionHistory({
     return null;
   };
 
+  const getTotalsByType = () => {
+    const totals = {
+      income: 0,
+      expense: 0,
+      payment: 0
+    };
+
+    filteredTransactions.forEach(t => {
+      if (t.status === 'undone') return;
+      const amount = Number(t.amount) || 0;
+      if (t.type === 'income') {
+        totals.income += amount;
+      } else if (t.type === 'expense') {
+        totals.expense += amount;
+      } else if (isPaymentType(t.type)) {
+        totals.payment += amount;
+      }
+    });
+
+    return totals;
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
+  };
+
+  // === FILTER LOGIC (Keep in main component) ===
   const applyFilters = useCallback(() => {
     let filtered = [...transactions];
 
@@ -85,93 +150,53 @@ export default function TransactionHistory({
     if (filters.paymentMethod !== 'all') {
       filtered = filtered.filter(t => t.payment_method === filters.paymentMethod);
     }
-// Filter by specific credit card
-if (filters.creditCard !== 'all') {
-  filtered = filtered.filter(t => {
-    if (t.payment_method === 'credit_card' && t.card_id === filters.creditCard) return true;
-    if (t.payment_method_id === filters.creditCard && t.payment_method === 'credit_card') return true;
-    if ((t.type === 'credit_card_payment' || t.type === 'payment') && t.card_id === filters.creditCard) return true;
-    return false;
-  });
-}
 
-// Filter by specific loan
-if (filters.loan !== 'all') {
-  filtered = filtered.filter(t => {
-    if (t.payment_method === 'loan' && t.loan_id === filters.loan) return true;
-    if (t.payment_method_id === filters.loan && t.payment_method === 'loan') return true;
-    if ((t.type === 'loan_payment' || t.type === 'payment') && t.loan_id === filters.loan) return true;
-    return false;
-  });
-}
+    if (filters.creditCard !== 'all') {
+      filtered = filtered.filter(t => {
+        if (t.payment_method === 'credit_card' && t.card_id === filters.creditCard) return true;
+        if (t.payment_method_id === filters.creditCard && t.payment_method === 'credit_card') return true;
+        if ((t.type === 'credit_card_payment' || t.type === 'payment') && t.card_id === filters.creditCard) return true;
+        return false;
+      });
+    }
 
-// Filter by specific bank account
-if (filters.bankAccount !== 'all') {
-  filtered = filtered.filter(t => {
-    if (t.bank_account_id === filters.bankAccount) return true;
-    if (t.from_account_id === filters.bankAccount || t.to_account_id === filters.bankAccount) return true;
-    return false;
-  });
-}
-// Filter by specific income source
-if (filters.incomeSource !== 'all') {
-  filtered = filtered.filter(t => {
-    if (t.type === 'income' && t.payment_method_id === filters.incomeSource) return true;
-    if (t.income_id === filters.incomeSource) return true;
-    return false;
-  });
-}
+    if (filters.loan !== 'all') {
+      filtered = filtered.filter(t => {
+        if (t.payment_method === 'loan' && t.loan_id === filters.loan) return true;
+        if (t.payment_method_id === filters.loan && t.payment_method === 'loan') return true;
+        if ((t.type === 'loan_payment' || t.type === 'payment') && t.loan_id === filters.loan) return true;
+        return false;
+      });
+    }
 
-// Filter by reserved fund
-if (filters.reservedFund !== 'all') {
-  filtered = filtered.filter(t => {
-    if (t.reserved_fund_id === filters.reservedFund) return true;
-    if (t.fund_id === filters.reservedFund) return true;
-    return false;
-  });
-}
-// Read filters from sessionStorage on mount (for navigation from other tabs)
+    if (filters.bankAccount !== 'all') {
+      filtered = filtered.filter(t => {
+        if (t.bank_account_id === filters.bankAccount) return true;
+        if (t.from_account_id === filters.bankAccount || t.to_account_id === filters.bankAccount) return true;
+        return false;
+      });
+    }
 
-// Filter by specific income source
-if (filters.incomeSource !== 'all') {
-  filtered = filtered.filter(t => {
-    if (t.type === 'income' && t.payment_method_id === filters.incomeSource) return true;
-    if (t.income_id === filters.incomeSource) return true;
-    return false;
-  });
-}
+    if (filters.incomeSource !== 'all') {
+      filtered = filtered.filter(t => {
+        if (t.type === 'income' && t.payment_method_id === filters.incomeSource) return true;
+        if (t.income_id === filters.incomeSource) return true;
+        return false;
+      });
+    }
+
+    if (filters.reservedFund !== 'all') {
+      filtered = filtered.filter(t => {
+        if (t.reserved_fund_id === filters.reservedFund) return true;
+        if (t.fund_id === filters.reservedFund) return true;
+        return false;
+      });
+    }
 
     setFilteredTransactions(filtered);
   }, [transactions, filters]);
 
-  useEffect(() => {
-    applyFilters();
-  }, [applyFilters]);
-
-  useEffect(() => {
-    console.log('All transactions:', transactions.map(t => ({
-      id: t.id,
-      type: t.type,
-      payment_method: t.payment_method,
-      description: t.description,
-      amount: t.amount
-    })));
-  }, [transactions]);
-
-  useEffect(() => {
-    const storedFilters = sessionStorage.getItem('transactionFilters');
-    if (storedFilters) {
-      try {
-        const parsedFilters = JSON.parse(storedFilters);
-        setFilters(prevFilters => ({ ...prevFilters, ...parsedFilters }));
-        // Clear the stored filters after applying
-        sessionStorage.removeItem('transactionFilters');
-      } catch (error) {
-        console.error('Error parsing stored filters:', error);
-      }
-    }
-  }, []);
-
+  // === DATA LOADING ===
   const loadTransactions = useCallback(async () => {
     try {
       const data = await dbOperation('transactions', 'getAll');
@@ -183,15 +208,167 @@ if (filters.incomeSource !== 'all') {
     }
   }, []);
 
+  const loadSavedFilters = async () => {
+    try {
+      const filters = await getAllSavedFilters('transaction');
+      setSavedFilters(filters);
+    } catch (error) {
+      console.error('Error loading saved filters:', error);
+    }
+  };
+
+  const loadQuickFilters = async () => {
+    try {
+      const suggestions = await getQuickFilterSuggestions('transaction', 5);
+      setQuickFilters(suggestions);
+    } catch (error) {
+      console.error('Error loading quick filters:', error);
+    }
+  };
+
+  // === EFFECTS ===
+  useEffect(() => {
+    loadSavedFilters();
+    loadQuickFilters();
+  }, []);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
+
+  useEffect(() => {
+    const storedFilters = sessionStorage.getItem('transactionFilters');
+    if (storedFilters) {
+      try {
+        const parsedFilters = JSON.parse(storedFilters);
+        setFilters(prevFilters => ({ ...prevFilters, ...parsedFilters }));
+        sessionStorage.removeItem('transactionFilters');
+      } catch (error) {
+        console.error('Error parsing stored filters:', error);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     loadTransactions();
   }, [loadTransactions]);
 
+  // === EVENT HANDLERS (Safe - UI Only) ===
   const handleModalClose = useCallback(async () => {
     if (onCloseAddModal) onCloseAddModal();
     await loadTransactions();
   }, [onCloseAddModal, loadTransactions]);
 
+  const handleClearFilters = () => {
+    setFilters({
+      search: '',
+      type: 'all',
+      category: 'all',
+      dateFrom: '',
+      dateTo: '',
+      paymentMethod: 'all',
+      creditCard: 'all',
+      loan: 'all',
+      bankAccount: 'all',
+      incomeSource: 'all',
+      reservedFund: 'all'
+    });
+  };
+
+  // === SAVED FILTERS HANDLERS ===
+  const handleSaveFilter = async () => {
+    if (!filterName.trim()) {
+      setSaveError('Filter name is required');
+      return;
+    }
+
+    const hasActiveFilters = Object.entries(filters).some(([key, value]) => {
+      if (key === 'search') return value.trim() !== '';
+      return value !== 'all' && value !== '';
+    });
+
+    if (!hasActiveFilters) {
+      setSaveError('Please set at least one filter before saving');
+      return;
+    }
+
+    try {
+      setSaveError('');
+      const filterData = {
+        name: filterName.trim(),
+        filter_type: 'transaction',
+        filters: filters,
+        is_pinned: saveAsPin
+      };
+
+      await saveFilter(filterData);
+      await loadSavedFilters();
+      await loadQuickFilters();
+      
+      setFilterName('');
+      setSaveAsPin(false);
+      setShowSaveDialog(false);
+      
+      alert(`✅ Filter "${filterData.name}" saved successfully!`);
+    } catch (error) {
+      console.error('Error saving filter:', error);
+      setSaveError(error.message || 'Failed to save filter');
+    }
+  };
+
+  const handleLoadFilter = async (savedFilter) => {
+    try {
+      setFilters(savedFilter.filters);
+      await trackFilterUsage(savedFilter.id);
+      await loadSavedFilters();
+      await loadQuickFilters();
+    } catch (error) {
+      console.error('Error loading filter:', error);
+    }
+  };
+
+  const handleTogglePin = async (filter) => {
+    try {
+      await toggleFilterPin(filter.id, !filter.is_pinned);
+      await loadSavedFilters();
+      await loadQuickFilters();
+    } catch (error) {
+      console.error('Error toggling pin:', error);
+    }
+  };
+
+  const handleDeleteFilter = async (filter) => {
+    if (!window.confirm(`Are you sure you want to delete "${filter.name}"?`)) {
+      return;
+    }
+
+    try {
+      await deleteSavedFilter(filter.id);
+      await loadSavedFilters();
+      await loadQuickFilters();
+      alert('🗑️ Filter deleted successfully');
+    } catch (error) {
+      console.error('Error deleting filter:', error);
+      alert('Failed to delete filter');
+    }
+  };
+
+  const handleDuplicateFilter = async (filter) => {
+    try {
+      await duplicateFilter(filter.id);
+      await loadSavedFilters();
+      alert(`✅ Filter duplicated successfully!`);
+    } catch (error) {
+      console.error('Error duplicating filter:', error);
+      alert('Failed to duplicate filter');
+    }
+  };
+
+  // === CRITICAL FINANCIAL LOGIC (STAYS HERE - DO NOT EXTRACT) ===
+  /**
+   * Reverts the financial effects of a transaction
+   * CRITICAL: This handles money - DO NOT move to separate file
+   */
   const revertTransactionEffects = useCallback(async (transaction) => {
     if (!transaction || transaction.status === 'undone') return;
 
@@ -248,18 +425,13 @@ if (filters.incomeSource !== 'all') {
       }
     } else if (isPaymentType(transaction.type)) {
       const paymentSubtype = resolvePaymentSubtype(transaction);
-       // ✅ Special case: loan paid via credit card
       if (transaction.subtype === 'loan_via_credit_card') {
-       const cardId = transaction.card_id || transaction.payment_method_id;
-       const loanId = transaction.loan_id || transaction.payment_method_id;
-
-      // Reverse: card ↓ , loan ↑ , cash unchanged
-      if (cardId) await updateCardBalance(cardId, -amount);
-      if (loanId) await updateLoanBalance(loanId, amount);
-
-      // cashDelta stays 0
-      return; // prevent the generic logic below from running
-  }
+        const cardId = transaction.card_id || transaction.payment_method_id;
+        const loanId = transaction.loan_id || transaction.payment_method_id;
+        if (cardId) await updateCardBalance(cardId, -amount);
+        if (loanId) await updateLoanBalance(loanId, amount);
+        return;
+      }
       if (paymentSubtype === 'credit_card') {
         const cardId = transaction.card_id || transaction.payment_method_id;
         await updateCardBalance(cardId, amount);
@@ -272,7 +444,6 @@ if (filters.incomeSource !== 'all') {
         cashDelta += amount;
       }
     } else {
-      // For other transaction types, fall back to payment method metadata if available
       if (transaction.payment_method === 'cash') {
         cashDelta += amount;
       } else if (transaction.payment_method === 'credit_card') {
@@ -300,6 +471,10 @@ if (filters.incomeSource !== 'all') {
     }
   }, [availableCash, creditCards, loans, onUpdateCash]);
 
+  /**
+   * Handles transaction deletion
+   * CRITICAL: Reverts financial effects - DO NOT move to separate file
+   */
   const handleDelete = async (transaction) => {
     if (!window.confirm('Are you sure you want to delete this transaction?')) return;
 
@@ -310,8 +485,11 @@ if (filters.incomeSource !== 'all') {
         status: 'active',
         undone_at: null
       };
+      
+      // Revert financial effects FIRST
       await revertTransactionEffects(transaction);
 
+      // Handle linked income deletion
       if (transaction.type === 'income' && transaction.payment_method_id) {
         const incomeId = transaction.payment_method_id;
         try {
@@ -337,6 +515,7 @@ if (filters.incomeSource !== 'all') {
         }
       }
 
+      // Delete transaction
       await dbOperation('transactions', 'delete', transaction.id);
       await onUpdate();
       await loadTransactions();
@@ -346,70 +525,7 @@ if (filters.incomeSource !== 'all') {
     }
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
-  const getTypeIcon = (type) => {
-    switch (type) {
-      case 'income':
-        return <TrendingUp className="text-green-600" size={20} />;
-      case 'expense':
-        return <TrendingDown className="text-red-600" size={20} />;
-      case 'payment':
-      case 'loan_payment':
-      case 'credit_card_payment':
-        return <DollarSign className="text-blue-600" size={20} />;
-      default:
-        return <DollarSign className="text-gray-600" size={20} />;
-    }
-  };
-
-  const getTypeColor = (type) => {
-    switch (type) {
-      case 'income':
-        return 'text-green-600 bg-green-50';
-      case 'expense':
-        return 'text-red-600 bg-red-50';
-      case 'payment':
-      case 'loan_payment':
-      case 'credit_card_payment':
-        return 'text-blue-600 bg-blue-50';
-      default:
-        return 'text-gray-600 bg-gray-50';
-    }
-  };
-
-  const getTotalsByType = () => {
-    const totals = {
-      income: 0,
-      expense: 0,
-      payment: 0
-    };
-
-    filteredTransactions.forEach(t => {
-      if (t.status === 'undone') return;
-      const amount = Number(t.amount) || 0;
-      if (t.type === 'income') {
-        totals.income += amount;
-      } else if (t.type === 'expense') {
-        totals.expense += amount;
-      } else if (isPaymentType(t.type)) {
-        totals.payment += amount;
-      }
-    });
-
-    return totals;
-  };
-
+  // === RENDER ===
   const totals = getTotalsByType();
 
   if (loading) {
@@ -422,6 +538,7 @@ if (filters.incomeSource !== 'all') {
 
   return (
     <div className="space-y-4">
+      {/* Add Transaction Modal */}
       {showAddModal && (
         <AddTransaction
           darkMode={darkMode}
@@ -442,365 +559,116 @@ if (filters.incomeSource !== 'all') {
         />
       )}
 
-      <h2 className="text-2xl font-bold">Transactions</h2>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4`}>
-          <div className="flex items-center gap-2 text-green-600 mb-2">
-            <TrendingUp size={20} />
-            <span className="font-medium">Income</span>
-          </div>
-          <p className="text-2xl font-bold">{formatCurrency(totals.income)}</p>
-        </div>
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4`}>
-          <div className="flex items-center gap-2 text-red-600 mb-2">
-            <TrendingDown size={20} />
-            <span className="font-medium">Expenses</span>
-          </div>
-          <p className="text-2xl font-bold">{formatCurrency(totals.expense)}</p>
-        </div>
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4`}>
-          <div className="flex items-center gap-2 text-blue-600 mb-2">
-            <DollarSign size={20} />
-            <span className="font-medium">Payments</span>
-          </div>
-          <p className="text-2xl font-bold">{formatCurrency(totals.payment)}</p>
+      {/* Header with Actions */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Transactions</h2>
+        
+        <div className="flex gap-2">
+          <QuickFiltersDropdown
+            darkMode={darkMode}
+            quickFilters={quickFilters}
+            onLoadFilter={handleLoadFilter}
+          />
+          
+          <button
+            onClick={() => setShowFiltersPanel(!showFiltersPanel)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+              showFiltersPanel
+                ? 'bg-blue-600 text-white'
+                : darkMode
+                ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                : 'bg-gray-200 hover:bg-gray-300'
+            }`}
+          >
+            <FolderOpen size={18} />
+            Saved Filters
+            {savedFilters.length > 0 && (
+              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                showFiltersPanel ? 'bg-blue-500' : 'bg-blue-600 text-white'
+              }`}>
+                {savedFilters.length}
+              </span>
+            )}
+          </button>
+          
+          <button
+            onClick={() => setShowSaveDialog(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+          >
+            <Save size={18} />
+            Save Filter
+          </button>
         </div>
       </div>
 
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4 space-y-4`}>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            placeholder="Search transactions..."
-            value={filters.search}
-            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-            className={`w-full pl-10 pr-4 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          />
-        </div>
+      {/* Saved Filters Panel */}
+      {showFiltersPanel && savedFilters.length > 0 && (
+        <SavedFiltersPanel
+          darkMode={darkMode}
+          savedFilters={savedFilters}
+          onLoadFilter={handleLoadFilter}
+          onTogglePin={handleTogglePin}
+          onDuplicateFilter={handleDuplicateFilter}
+          onDeleteFilter={handleDeleteFilter}
+        />
+      )}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          <select
-            value={filters.type}
-            onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          >
-            <option value="all">All Types</option>
-            <option value="expense">Expenses</option>
-            <option value="income">Income</option>
-            <option value="payment">Payments</option>
-          </select>
+      {/* Save Filter Dialog */}
+      <SaveFilterDialog
+        darkMode={darkMode}
+        show={showSaveDialog}
+        filterName={filterName}
+        saveAsPin={saveAsPin}
+        saveError={saveError}
+        onFilterNameChange={(name) => {
+          setFilterName(name);
+          setSaveError('');
+        }}
+        onSaveAsPinChange={setSaveAsPin}
+        onSave={handleSaveFilter}
+        onCancel={() => {
+          setShowSaveDialog(false);
+          setFilterName('');
+          setSaveAsPin(false);
+          setSaveError('');
+        }}
+      />
 
-          <select
-            value={filters.category}
-            onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          >
-            <option value="all">All Categories</option>
-            {categories.map(cat => (
-              <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
-            ))}
-          </select>
+      {/* Summary Cards */}
+      <TransactionSummaryCards
+        darkMode={darkMode}
+        totals={totals}
+        formatCurrency={formatCurrency}
+      />
 
-          <select
-            value={filters.paymentMethod}
-            onChange={(e) => setFilters({ ...filters, paymentMethod: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          >
-            <option value="all">All Methods</option>
-            <option value="cash_in_hand">💵 Cash in Hand</option>
-            <option value="bank_account">🏦 Bank Account</option>
-            <option value="cash">Cash (Legacy)</option>
-            <option value="credit_card">💳 Credit Card</option>
-            <option value="loan">Loan</option>
-            <option value="reserved_fund">Reserved Fund</option>
-            <option value="transfer">Transfer</option>
-            <option value="cash_withdrawal">Cash Withdrawal</option>
-            <option value="cash_deposit">Cash Deposit</option>
-          </select>
-          <select
-            value={filters.creditCard}
-            onChange={(e) => setFilters({ ...filters, creditCard: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          >
-            <option value="all">All Cards</option>
-            {creditCards && creditCards.filter(c => !c.is_gift_card).length > 0 && (
-              <optgroup label="💳 Credit Cards">
-                {creditCards.filter(c => !c.is_gift_card).map(card => (
-                  <option key={card.id} value={card.id}>
-                    {card.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {creditCards && creditCards.filter(c => c.is_gift_card).length > 0 && (
-              <optgroup label="🎁 Gift Cards">
-                {creditCards.filter(c => c.is_gift_card).map(card => (
-                  <option key={card.id} value={card.id}>
-                    {card.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
+      {/* Filter Panel */}
+      <FilterPanel
+        darkMode={darkMode}
+        filters={filters}
+        onFiltersChange={setFilters}
+        categories={categories}
+        creditCards={creditCards}
+        loans={loans}
+        bankAccounts={bankAccounts}
+        reservedFunds={reservedFunds}
+        onClearFilters={handleClearFilters}
+      />
 
-          <select
-            value={filters.loan}
-            onChange={(e) => setFilters({ ...filters, loan: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          >
-            <option value="all">All Loans</option>
-            {loans && loans.map(loan => (
-              <option key={loan.id} value={loan.id}>
-                {loan.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={filters.bankAccount}
-            onChange={(e) => setFilters({ ...filters, bankAccount: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          >
-            <option value="all">All Accounts</option>
-            {bankAccounts && bankAccounts.map(account => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={filters.reservedFund}
-            onChange={(e) => setFilters({ ...filters, reservedFund: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          >
-            <option value="all">All Funds</option>
-            {reservedFunds && reservedFunds.map(fund => (
-              <option key={fund.id} value={fund.id}>
-                {fund.name}
-              </option>
-            ))}
-          </select>
-
-          <input
-            type="date"
-            value={filters.dateFrom}
-            onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-            placeholder="From"
-          />
-
-          <input
-            type="date"
-            value={filters.dateTo}
-            onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-            placeholder="To"
-          />
-
-          <select
-            value={filters.creditCard}
-            onChange={(e) => setFilters({ ...filters, creditCard: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          >
-            <option value="all">All Cards</option>
-            {creditCards && creditCards.map(card => (
-              <option key={card.id} value={card.id}>
-                {card.name} {card.is_gift_card ? '🎁' : '💳'}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={filters.loan}
-            onChange={(e) => setFilters({ ...filters, loan: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          >
-            <option value="all">All Loans</option>
-            {loans && loans.map(loan => (
-              <option key={loan.id} value={loan.id}>
-                {loan.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={filters.bankAccount}
-            onChange={(e) => setFilters({ ...filters, bankAccount: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          >
-            <option value="all">All Accounts</option>
-            {bankAccounts && bankAccounts.map(account => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={filters.reservedFund}
-            onChange={(e) => setFilters({ ...filters, reservedFund: e.target.value })}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-          >
-            <option value="all">All Funds</option>
-            {reservedFunds && reservedFunds.map(fund => (
-              <option key={fund.id} value={fund.id}>
-                {fund.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
+      {/* Transaction List */}
       <div className="space-y-2">
         {filteredTransactions.length === 0 ? (
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-8 text-center`}>
             <p className="text-gray-500">No transactions found</p>
           </div>
         ) : (
-          filteredTransactions.map((transaction) => {
-            const isUndone = transaction.status === 'undone';
-            const formatLabel = (value) => {
-            if (!value) return '';
-            const cleaned = value.replace(/_/g, ' ');
-            return cleaned
-            .toLowerCase()
-            .replace(/\b\w/g, (char) => char.toUpperCase());
-            };
-  
-  // Format payment method for display with proper icons and names
-  const formatPaymentMethod = (transaction) => {
-    const method = transaction.payment_method;
-    const methodName = transaction.payment_method_name;
-    
-    // Use custom name if available
-    if (methodName) return methodName;
-    
-    // Otherwise format the method type nicely
-    switch (method) {
-      case 'cash_in_hand':
-        return 'Cash in Hand';
-      case 'bank_account':
-        return 'Bank Account';
-      case 'credit_card':
-        return 'Credit Card';
-      case 'reserved_fund':
-        return 'Reserved Fund';
-      case 'cash_withdrawal':
-        return 'Cash Withdrawal';
-      case 'cash_deposit':
-        return 'Cash Deposit';
-      case 'transfer':
-        return 'Transfer';
-      case 'cash':
-        return 'Cash';
-      case 'loan':
-        return 'Loan';
-      default:
-        return formatLabel(method);
-    }
-  };
-  
-  // Format transaction description for neat display
-  const formatDescription = (transaction) => {
-    const desc = transaction.description || transaction.income_source || 'Transaction';
-    
-    // Ensure first letter is capitalized
-    if (!desc) return 'Transaction';
-    return desc.charAt(0).toUpperCase() + desc.slice(1);
-  };
-            const formattedType = formatLabel(transaction.type || 'transaction');
-            const formattedMethod = formatPaymentMethod(transaction);
-            const statusLabel = transaction.status ? formatLabel(transaction.status) : null;
-            const infoChips = [
-              { label: 'Type', value: formattedType }
-            ];
-
-            if (formattedMethod) {
-              infoChips.push({ label: 'Method', value: formattedMethod });
-            }
-
-            if (statusLabel && statusLabel.toLowerCase() !== 'active') {
-              infoChips.push({ label: 'Status', value: statusLabel });
-            }
-
-            const chipClass = darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700';
-
-            return (
-            <div
+          filteredTransactions.map((transaction) => (
+            <TransactionCard
               key={transaction.id}
-              className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-4 hover:shadow-md transition-shadow ${isUndone ? 'opacity-75' : ''}`}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3 flex-1">
-                  <div className={`p-2 rounded-lg ${getTypeColor(transaction.type)}`}>
-                    {getTypeIcon(transaction.type)}
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className={`font-semibold ${isUndone ? 'line-through text-gray-400' : ''}`}>
-                        {formatDescription(transaction)}
-                      </h3>
-                      {transaction.category_name && (
-                        <span className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                          {transaction.category_name}
-                        </span>
-                      )}
-                      {isUndone && (
-                        <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">
-                          Undone
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className={`flex items-center gap-3 text-sm ${isUndone ? 'text-gray-400 line-through' : 'text-gray-500'}`}>
-                      <span>{formatDate(transaction.date)}</span>
-                    </div>
-                    
-                    {infoChips.length > 0 && (
-                      <div className={`flex flex-wrap gap-2 mt-2 text-xs ${isUndone ? 'text-gray-400' : ''}`}>
-                        {infoChips.map((chip, index) => (
-                          <span
-                            key={`${transaction.id}-${chip.label}-${index}`}
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded ${chipClass}`}
-                          >
-                            <span className="font-semibold">{chip.label}:</span>
-                            <span>{chip.value}</span>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {transaction.notes && (
-                      <p className={`text-sm mt-1 ${isUndone ? 'text-gray-400 line-through' : 'text-gray-500'}`}>{transaction.notes}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <p className={`text-xl font-bold ${
-                    transaction.type === 'income' ? 'text-green-600' : 
-                    transaction.type === 'expense' ? 'text-red-600' : 
-                    'text-blue-600'
-                  } ${isUndone ? 'line-through text-gray-400' : ''}`}>
-                    {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
-                  </p>
-                  
-                  <button
-                    onClick={() => handleDelete(transaction)}
-                    className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} text-red-600`}
-                    title="Delete"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })
+              transaction={transaction}
+              darkMode={darkMode}
+              onDelete={handleDelete}
+            />
+          ))
         )}
       </div>
     </div>

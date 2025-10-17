@@ -14,11 +14,12 @@
 // - Activity logging for all operations
 // - Dark mode support
 // - Undo capability through activity feed
+// - Pin accounts for quick access
 // ============================================
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle, ListFilter, Wallet, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
-import { formatCurrency, generateId, validateBankAccountData, getAccountTypeIcon, sortBankAccounts, formatDate } from '../utils/helpers';
+import { formatCurrency, generateId, validateBankAccountData, getAccountTypeIcon, formatDate } from '../utils/helpers';
 import {
   upsertBankAccount,
   deleteBankAccount,
@@ -29,6 +30,10 @@ import {
 } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import SmartInput from './SmartInput';
+import {
+  getUserPreferences,
+  togglePinnedBankAccount
+} from '../utils/userPreferencesManager';
 
 /**
  * BankAccounts Component
@@ -59,6 +64,7 @@ export default function BankAccounts({
   const [editingItem, setEditingItem] = useState(null);
   const [showTransferForm, setShowTransferForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [pinnedAccounts, setPinnedAccounts] = useState([]);
   
   // Cash operations modal state
   const [showCashModal, setShowCashModal] = useState(false);
@@ -90,6 +96,44 @@ export default function BankAccounts({
 
   // Refs for scrolling to focused account
   const accountRefs = useRef({});
+
+  // Load pinned accounts
+  useEffect(() => {
+    loadPinnedAccounts();
+  }, []);
+  
+  const loadPinnedAccounts = async () => {
+    try {
+      const prefs = await getUserPreferences();
+      setPinnedAccounts(prefs.pinned_bank_accounts || []);
+    } catch (error) {
+      console.error('Error loading pinned accounts:', error);
+    }
+  };
+  
+  const handleTogglePin = async (accountId) => {
+    try {
+      await togglePinnedBankAccount(accountId);
+      await loadPinnedAccounts();
+    } catch (error) {
+      console.error('Error toggling pin:', error);
+    }
+  };
+  
+  // Sort accounts: primary first, then pinned, then others
+  const sortedAccounts = [...bankAccounts].sort((a, b) => {
+    // Primary always first
+    if (a.is_primary && !b.is_primary) return -1;
+    if (!a.is_primary && b.is_primary) return 1;
+    
+    // Then pinned accounts
+    const aIsPinned = pinnedAccounts.includes(a.id);
+    const bIsPinned = pinnedAccounts.includes(b.id);
+    if (aIsPinned && !bIsPinned) return -1;
+    if (!aIsPinned && bIsPinned) return 1;
+    
+    return 0;
+  });
 
   // ============================================
   // FOCUS HANDLING (for navigation from Dashboard)
@@ -637,7 +681,6 @@ export default function BankAccounts({
   // ============================================
 
   const totalBalance = bankAccounts.reduce((sum, acc) => sum + (parseFloat(acc.balance) || 0), 0);
-  const sortedAccounts = sortBankAccounts(bankAccounts);
 
   // ============================================
   // RENDER
@@ -1051,6 +1094,7 @@ export default function BankAccounts({
           sortedAccounts.map(account => {
             const accountKey = String(normalizeId(account.id));
             const isHighlighted = focusTarget?.type === 'bank_account' && normalizeId(focusTarget.id) === normalizeId(account.id);
+            const isPinned = pinnedAccounts.includes(account.id);
 
             return (
               <div
@@ -1070,6 +1114,9 @@ export default function BankAccounts({
                           <Star size={12} fill="currentColor" />
                           Primary
                         </span>
+                      )}
+                      {isPinned && !account.is_primary && (
+                        <Star size={16} className="text-yellow-500 fill-current" title="Pinned" />
                       )}
                     </div>
                     <div className={`text-2xl font-bold mt-1 ${
@@ -1097,13 +1144,26 @@ export default function BankAccounts({
                   </div>
                   <div className="flex gap-2">
                     {!account.is_primary && (
-                      <button
-                        onClick={() => handleSetPrimary(account)}
-                        className={`p-2 rounded ${darkMode ? 'text-yellow-400 hover:bg-gray-700' : 'text-yellow-600 hover:bg-yellow-50'}`}
-                        title="Set as primary account"
-                      >
-                        <Star size={18} />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleTogglePin(account.id)}
+                          className={`p-2 rounded ${
+                            isPinned
+                              ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
+                              : darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-400 hover:bg-gray-100'
+                          }`}
+                          title={isPinned ? 'Unpin account' : 'Pin account'}
+                        >
+                          <Star size={18} className={isPinned ? 'fill-current' : ''} />
+                        </button>
+                        <button
+                          onClick={() => handleSetPrimary(account)}
+                          className={`p-2 rounded ${darkMode ? 'text-yellow-400 hover:bg-gray-700' : 'text-yellow-600 hover:bg-yellow-50'}`}
+                          title="Set as primary account"
+                        >
+                          <Star size={18} />
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={() => onNavigateToTransactions && onNavigateToTransactions({ bankAccount: account.id })}
@@ -1147,7 +1207,7 @@ export default function BankAccounts({
         <div className={`flex items-start gap-2 p-3 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
           <AlertCircle size={16} className={darkMode ? 'text-blue-400 mt-0.5' : 'text-blue-600 mt-0.5'} />
           <p className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-800'}`}>
-            The primary account is used as the default for transactions. You can set a different account as primary at any time.
+            The primary account is used as the default for transactions. Pin your favorite accounts for quick access.
           </p>
         </div>
       )}

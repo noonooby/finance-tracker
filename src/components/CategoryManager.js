@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Check, X, Save } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, X, Save, Star } from 'lucide-react';
 import { fetchCategories, addCategory, updateCategory, deleteCategory, seedDefaultCategories } from '../utils/categories';
 import IconPicker from './IconPicker';
+import {
+  getUserPreferences,
+  toggleFavoriteCategory
+} from '../utils/userPreferencesManager';
 
 /**
  * CategoryManager Component
@@ -14,6 +18,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [favoriteCategories, setFavoriteCategories] = useState([]);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -25,7 +30,26 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
   // Load categories on mount
   useEffect(() => {
     loadCategories();
+    loadFavoriteCategories();
   }, []);
+  
+  const loadFavoriteCategories = async () => {
+    try {
+      const prefs = await getUserPreferences();
+      setFavoriteCategories(prefs.favorite_categories || []);
+    } catch (error) {
+      console.error('Error loading favorite categories:', error);
+    }
+  };
+  
+  const handleToggleFavorite = async (categoryId) => {
+    try {
+      await toggleFavoriteCategory(categoryId);
+      await loadFavoriteCategories();
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
+  };
 
   const loadCategories = async () => {
     setLoading(true);
@@ -162,9 +186,16 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
     }
   };
 
-  const filteredCategories = categories.filter(cat => 
-    activeTab === 'income' ? cat.is_income : !cat.is_income
-  );
+  // Sort categories: favorites first, then others
+  const filteredCategories = categories
+    .filter(cat => activeTab === 'income' ? cat.is_income : !cat.is_income)
+    .sort((a, b) => {
+      const aIsFavorite = favoriteCategories.includes(a.id);
+      const bIsFavorite = favoriteCategories.includes(b.id);
+      if (aIsFavorite && !bIsFavorite) return -1;
+      if (!aIsFavorite && bIsFavorite) return 1;
+      return 0;
+    });
 
   const colorOptions = [
     { value: '#10b981', label: 'Green' },
@@ -362,132 +393,154 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
             <p className="text-sm mt-2">Add your first category above!</p>
           </div>
         ) : (
-          filteredCategories.map((category) => (
-            <div
-              key={category.id}
-              className={`p-4 rounded-lg border ${
-                darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-              }`}
-            >
-              {editingId === category.id ? (
-                /* Edit Mode */
-                <div className="space-y-3">
-                  <div>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className={`w-full px-3 py-2 border rounded-lg ${
-                        darkMode
-                          ? 'bg-gray-700 border-gray-600 text-white'
-                          : 'bg-white border-gray-300 text-gray-900'
-                      }`}
+          filteredCategories.map((category) => {
+            const isFavorite = favoriteCategories.includes(category.id);
+            
+            return (
+              <div
+                key={category.id}
+                className={`p-4 rounded-lg border ${
+                  darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+                }`}
+              >
+                {editingId === category.id ? (
+                  /* Edit Mode */
+                  <div className="space-y-3">
+                    <div>
+                      <input
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className={`w-full px-3 py-2 border rounded-lg ${
+                          darkMode
+                            ? 'bg-gray-700 border-gray-600 text-white'
+                            : 'bg-white border-gray-300 text-gray-900'
+                        }`}
+                      />
+                    </div>
+
+                    <IconPicker
+                      selectedIcon={formData.icon}
+                      onSelect={(icon) => setFormData({ ...formData, icon })}
+                      darkMode={darkMode}
                     />
-                  </div>
 
-                  <IconPicker
-                    selectedIcon={formData.icon}
-                    onSelect={(icon) => setFormData({ ...formData, icon })}
-                    darkMode={darkMode}
-                  />
+                    <div className="grid grid-cols-4 gap-2">
+                      {colorOptions.map((color) => (
+                        <button
+                          key={color.value}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, color: color.value })}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 ${
+                            formData.color === color.value
+                              ? 'border-blue-500'
+                              : darkMode
+                              ? 'border-gray-600'
+                              : 'border-gray-300'
+                          }`}
+                        >
+                          <div
+                            className="w-4 h-4 rounded-full"
+                            style={{ backgroundColor: color.value }}
+                          />
+                          <span className="text-sm">{color.label}</span>
+                        </button>
+                      ))}
+                    </div>
 
-                  <div className="grid grid-cols-4 gap-2">
-                    {colorOptions.map((color) => (
+                    <div className="flex gap-2">
                       <button
-                        key={color.value}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, color: color.value })}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 ${
-                          formData.color === color.value
-                            ? 'border-blue-500'
-                            : darkMode
-                            ? 'border-gray-600'
-                            : 'border-gray-300'
+                        onClick={() => handleSaveEdit(category.id)}
+                        disabled={saving}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                      >
+                        <Check size={16} />
+                        Save
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        className={`px-4 py-2 rounded-lg ${
+                          darkMode
+                            ? 'bg-gray-700 text-gray-200'
+                            : 'bg-gray-200 text-gray-700'
                         }`}
                       >
-                        <div
-                          className="w-4 h-4 rounded-full"
-                          style={{ backgroundColor: color.value }}
-                        />
-                        <span className="text-sm">{color.label}</span>
+                        <X size={16} />
                       </button>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleSaveEdit(category.id)}
-                      disabled={saving}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                    >
-                      <Check size={16} />
-                      Save
-                    </button>
-                    <button
-                      onClick={handleCancelEdit}
-                      className={`px-4 py-2 rounded-lg ${
-                        darkMode
-                          ? 'bg-gray-700 text-gray-200'
-                          : 'bg-gray-200 text-gray-700'
-                      }`}
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* View Mode */
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">{category.icon || '📦'}</span>
-                    <div>
-                      <div className="font-semibold">{category.name}</div>
-                      {category.is_system && (
-                        <span className={`text-xs ${
-                          darkMode ? 'text-gray-500' : 'text-gray-400'
-                        }`}>
-                          System Category
-                        </span>
-                      )}
                     </div>
-                    <div
-                      className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-800"
-                      style={{ backgroundColor: category.color }}
-                      title={category.color}
-                    />
                   </div>
+                ) : (
+                  /* View Mode */
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{category.icon || '📦'}</span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{category.name}</span>
+                          {isFavorite && (
+                            <Star size={14} className="text-yellow-500 fill-current" title="Favorite" />
+                          )}
+                        </div>
+                        {category.is_system && (
+                          <span className={`text-xs ${
+                            darkMode ? 'text-gray-500' : 'text-gray-400'
+                          }`}>
+                            System Category
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-800"
+                        style={{ backgroundColor: category.color }}
+                        title={category.color}
+                      />
+                    </div>
 
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleEdit(category)}
-                      className={`p-2 rounded-lg transition-colors ${
-                        darkMode
-                          ? 'hover:bg-gray-700 text-blue-400'
-                          : 'hover:bg-blue-50 text-blue-600'
-                      }`}
-                      title="Edit category"
-                    >
-                      <Edit2 size={18} />
-                    </button>
-                    {!category.is_system && (
+                    <div className="flex gap-2">
                       <button
-                        onClick={() => handleDelete(category.id, category.name)}
-                        disabled={saving}
+                        onClick={() => handleToggleFavorite(category.id)}
+                        className={`p-2 rounded-lg transition-colors ${
+                          isFavorite
+                            ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
+                            : darkMode
+                            ? 'text-gray-400 hover:bg-gray-700'
+                            : 'text-gray-400 hover:bg-gray-100'
+                        }`}
+                        title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                      >
+                        <Star size={18} className={isFavorite ? 'fill-current' : ''} />
+                      </button>
+                      <button
+                        onClick={() => handleEdit(category)}
                         className={`p-2 rounded-lg transition-colors ${
                           darkMode
-                            ? 'hover:bg-gray-700 text-red-400'
-                            : 'hover:bg-red-50 text-red-600'
-                        } disabled:opacity-50`}
-                        title="Delete category"
+                            ? 'hover:bg-gray-700 text-blue-400'
+                            : 'hover:bg-blue-50 text-blue-600'
+                        }`}
+                        title="Edit category"
                       >
-                        <Trash2 size={18} />
+                        <Edit2 size={18} />
                       </button>
-                    )}
+                      {!category.is_system && (
+                        <button
+                          onClick={() => handleDelete(category.id, category.name)}
+                          disabled={saving}
+                          className={`p-2 rounded-lg transition-colors ${
+                            darkMode
+                              ? 'hover:bg-gray-700 text-red-400'
+                              : 'hover:bg-red-50 text-red-600'
+                          } disabled:opacity-50`}
+                          title="Delete category"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          ))
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     </div>

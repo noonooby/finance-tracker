@@ -22,8 +22,8 @@ export default function CategoryAnalysis({
   onExportCSV 
 }) {
   const [filters, setFilters] = useState({
-    preset: 'last30',
-    ...getDateRangePreset('last30'),
+    preset: 'allTime',
+    ...getDateRangePreset('allTime'),
     type: 'expense', // Focus on expenses for category analysis
     categories: [],
     paymentMethods: [],
@@ -160,7 +160,7 @@ export default function CategoryAnalysis({
         />
         <SummaryCard
           title="Categories Used"
-          value={categoryData.length}
+          value={`${categoryData.length} ${categoryData.length === 1 ? 'category' : 'categories'}`}
           subtitle={`Out of ${categories.filter(c => !c.is_income).length} total`}
           icon={TrendingDown}
           color="blue"
