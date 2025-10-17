@@ -3,7 +3,7 @@
  * Data processing and aggregation utilities for reports
  */
 
-import { format, startOfMonth, endOfMonth, subDays, startOfYear, endOfYear, isWithinInterval, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, subDays, startOfYear, endOfYear, parseISO } from 'date-fns';
 
 /**
  * Filter transactions based on report filters

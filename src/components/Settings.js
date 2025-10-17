@@ -3,20 +3,17 @@ import {
   Settings as SettingsIcon, AlertCircle, Trash2, Database, Wallet, Edit2,
   Palette, Bell, DollarSign, ChevronDown, ChevronUp, Target, X, TrendingUp, Grid
 } from 'lucide-react';
-import { deleteAllUserData, dbOperation } from '../utils/db';
+import { deleteAllUserData } from '../utils/db';
 import CategoryManager from './CategoryManager';
 import BudgetHistory from './BudgetHistory';
 import { fetchAllKnownEntities, deleteKnownEntity } from '../utils/knownEntities';
 import { formatCurrency } from '../utils/helpers';
-import { getAllSettings, setSetting, getCategoryBudget, setCategoryBudget, deleteCategoryBudget } from '../utils/settingsManager';
+import { getAllSettings, setSetting, setCategoryBudget, deleteCategoryBudget } from '../utils/settingsManager';
 import { fetchCategories } from '../utils/categories';
 import { logActivity } from '../utils/activityLogger';
 import { trackCurrentMonth, checkAndFinalizePreviousMonths } from '../utils/budgetTrackingManager';
 import {
   getUserPreferences,
-  toggleDashboardSection,
-  updateDashboardWidgets,
-  toggleCompactMode,
   toggleSettingsSection,
   updateCollapsedSettingsSections
 } from '../utils/userPreferencesManager';
@@ -40,7 +37,6 @@ export default function Settings({
   
   // Settings state
   const [settings, setSettings] = useState({});
-  const [loadingSettings, setLoadingSettings] = useState(true);
   
   // Category budgets state
   const [categoryBudgetInputs, setCategoryBudgetInputs] = useState({});
@@ -84,10 +80,8 @@ export default function Settings({
     try {
       const allSettings = await getAllSettings();
       setSettings(allSettings);
-      setLoadingSettings(false);
     } catch (error) {
       console.error('Error loading settings:', error);
-      setLoadingSettings(false);
     }
   };
 
@@ -566,7 +560,6 @@ export default function Settings({
 
   const handleToggleCashDisplay = async (show) => {
     if (onToggleCashDisplay) {
-      const oldValue = showCashInDashboard || false;
       await onToggleCashDisplay(show);
       
       // Log as view-only activity (LOW PRIORITY)

@@ -544,8 +544,6 @@ export async function getBudgetChartData(categoryId, months = 6) {
 export async function checkAndFinalizePreviousMonths(categoryBudgets) {
   try {
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
     
     // Only run on the first 3 days of the month
     if (now.getDate() > 3) return;

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Minus, Target, Calendar, DollarSign } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Target, Calendar } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import {
-  getBudgetHistory,
   getBudgetSummary,
   getBudgetChartData,
   getCurrentBudgetStatus
@@ -23,6 +22,7 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
 
   useEffect(() => {
     loadBudgetData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory, monthsToShow, categoryBudgets]);
 
   const loadBudgetData = async () => {

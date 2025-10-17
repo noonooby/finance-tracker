@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, CreditCard, Wallet, TrendingUp } from 'lucide-react';
+import { X } from 'lucide-react';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import { formatCurrency } from '../utils/helpers';
@@ -52,12 +52,6 @@ export default function AddTransaction({
   const [saving, setSaving] = useState(false);
   const [recentCategories, setRecentCategories] = useState([]);
   const [recentPaymentMethods, setRecentPaymentMethods] = useState([]);
-  
-  // Load recent items on mount
-  useEffect(() => {
-    loadRecentCategories();
-    loadRecentPaymentMethods();
-  }, []);
   
   const loadRecentCategories = async () => {
     try {
@@ -118,6 +112,13 @@ export default function AddTransaction({
       console.error('Error loading recent payment methods:', error);
     }
   };
+  
+  // Load recent items on mount
+  useEffect(() => {
+    loadRecentCategories();
+    loadRecentPaymentMethods();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (preselectedCard) {
