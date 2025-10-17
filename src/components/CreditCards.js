@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, Edit2, X, CreditCard, ShoppingBag, ListFilter, Star } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId, calculateTotalBankBalance } from '../utils/helpers';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
@@ -10,6 +10,10 @@ import {
   getUserPreferences,
   togglePinnedCreditCard
 } from '../utils/userPreferencesManager';
+import {
+  getCardPaymentContext,
+  saveCardPaymentContext
+} from '../utils/formContexts';
 
 export default function CreditCards({ 
   darkMode, 
@@ -200,20 +204,68 @@ export default function CreditCards({
     });
   };
 
-  // Open payment form with recommended values
-  const openPaymentForm = (card) => {
+  // Load payment context for a card
+  const loadCardPaymentContext = useCallback(async (card) => {
+    try {
+      const context = await getCardPaymentContext(card.id);
+      if (context) {
+        // Build source string from context
+        let sourceString = 'cash_in_hand';
+        if (context.payment_source === 'bank_account' && context.payment_source_id) {
+          sourceString = `bank_account:${context.payment_source_id}`;
+        } else if (context.payment_source === 'reserved_fund' && context.payment_source_id) {
+          sourceString = `reserved_fund:${context.payment_source_id}`;
+        } else if (context.payment_source === 'cash_in_hand') {
+          sourceString = 'cash_in_hand';
+        }
+        
+        const recommended = getRecommendedAmountForCard(card);
+        const hasRecommended = Number.isFinite(recommended) && recommended > 0;
+        const useRecommended = context.amount_mode === 'full_balance' || context.amount_mode === 'recommended';
+        
+        return {
+          source: sourceString,
+          amountMode: useRecommended && hasRecommended ? 'recommended' : 'custom',
+          amount: useRecommended && hasRecommended ? recommended.toFixed(2) : ''
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error('Error loading card payment context:', error);
+      return null;
+    }
+  }, []);
+
+  // Open payment form with recommended values and context
+  const openPaymentForm = async (card) => {
     if (!card) return;
-    const options = getPaymentSourceOptions(card);
-    const defaultSource = options.length > 0 ? options[0].value : 'cash';
-    const recommended = getRecommendedAmountForCard(card);
-    const hasRecommended = Number.isFinite(recommended) && recommended > 0;
-    setPaymentForm({
-      amount: hasRecommended ? recommended.toFixed(2) : '',
-      amountMode: hasRecommended ? 'recommended' : 'custom',
-      date: new Date().toISOString().split('T')[0],
-      category: 'other',
-      source: defaultSource
-    });
+    
+    // Try to load saved context first
+    const savedContext = await loadCardPaymentContext(card);
+    
+    if (savedContext) {
+      // Use saved context
+      setPaymentForm({
+        ...savedContext,
+        date: new Date().toISOString().split('T')[0],
+        category: 'other'
+      });
+      console.log('✅ Applied payment context for card:', card.name);
+    } else {
+      // Use defaults
+      const options = getPaymentSourceOptions(card);
+      const defaultSource = options.length > 0 ? options[0].value : 'cash';
+      const recommended = getRecommendedAmountForCard(card);
+      const hasRecommended = Number.isFinite(recommended) && recommended > 0;
+      setPaymentForm({
+        amount: hasRecommended ? recommended.toFixed(2) : '',
+        amountMode: hasRecommended ? 'recommended' : 'custom',
+        date: new Date().toISOString().split('T')[0],
+        category: 'other',
+        source: defaultSource
+      });
+    }
+    
     setPayingCard(card.id);
   };
 
@@ -840,6 +892,13 @@ export default function CreditCards({
         `Made payment of ${formatCurrency(paymentAmount)} for '${card.name}' from ${sourceName} - Balance ${formatCurrency(previousBalance)} → ${formatCurrency(newBalance)}`,
         snapshot
       );
+
+      // Save payment context (non-blocking)
+      saveCardPaymentContext(cardId, {
+        paymentSource: sourceType,
+        paymentSourceId: sourceId,
+        amountMode: paymentForm.amountMode
+      }).catch(err => console.warn('Failed to save card payment context:', err));
 
       await onUpdate();
       setPayingCard(null);

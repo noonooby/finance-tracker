@@ -1,10 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, DollarSign, Edit2, X, ListFilter, AlertCircle } from 'lucide-react';
 import { formatCurrency, formatDate, predictNextDate, getDaysUntil, generateId, getPrimaryAccountFromArray } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
-import SmartInput from './SmartInput';
 import { autoDepositDueIncome } from '../utils/autoPay';
+import {
+  getIncomeSourceContext,
+  saveIncomeSourceContext,
+  getRecentIncomeSources,
+  getLastUsedIncomeContext,
+  applyIncomeContext
+} from '../utils/formContexts';
+
 export default function Income({
   darkMode,
   income,
@@ -21,17 +28,19 @@ export default function Income({
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({
-    source: 'Salary',
+    source: '',
     amount: '',
     date: new Date().toISOString().split('T')[0],
-    frequency: 'biweekly',
+    frequency: 'onetime',
     reservedAmount: '',
     recurringDurationType: 'indefinite',
     recurringUntilDate: '',
     recurringOccurrences: '',
-    depositTarget: 'bank', // 'bank' or 'cash_in_hand'
+    depositTarget: 'bank',
     depositAccountId: ''
   });
+  const [recentSources, setRecentSources] = useState([]);
+  const sourceInputRef = useRef(null);
   const incomeRefs = useRef({});
   const [predictionCount, setPredictionCount] = useState(8);
 
@@ -44,6 +53,77 @@ export default function Income({
     }
     return String(value);
   };
+
+  // Load income contexts on mount
+  const loadIncomeContexts = useCallback(async () => {
+    try {
+      const recent = await getRecentIncomeSources(5);
+      setRecentSources(recent);
+      
+      if (!editingItem) {
+        const lastContext = await getLastUsedIncomeContext();
+        if (lastContext) {
+          const contextData = applyIncomeContext(lastContext);
+          setFormData(prev => ({
+            ...prev,
+            source: lastContext.source_name,
+            ...contextData
+          }));
+          
+          setTimeout(() => {
+            if (sourceInputRef.current) {
+              sourceInputRef.current.select();
+              sourceInputRef.current.focus();
+            }
+          }, 100);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading income contexts:', error);
+    }
+  }, [editingItem]);
+
+  useEffect(() => {
+    loadIncomeContexts();
+  }, [loadIncomeContexts]);
+
+  // Handle quick-select button click
+  const handleSelectSource = useCallback(async (sourceContext) => {
+    try {
+      const contextData = applyIncomeContext(sourceContext);
+      setFormData(prev => ({
+        ...prev,
+        source: sourceContext.source_name,
+        ...contextData
+      }));
+      setTimeout(() => {
+        const amountInput = document.querySelector('input[placeholder="Amount Received *"]');
+        if (amountInput) amountInput.focus();
+      }, 50);
+    } catch (error) {
+      console.error('Error applying context:', error);
+    }
+  }, []);
+
+  // Handle source input change
+  const handleSourceChange = (value) => {
+    setFormData(prev => ({ ...prev, source: value }));
+  };
+
+  // Load context when user leaves source field
+  const handleSourceBlur = useCallback(async () => {
+    if (!formData.source?.trim()) return;
+    try {
+      const context = await getIncomeSourceContext(formData.source);
+      if (context) {
+        const contextData = applyIncomeContext(context);
+        setFormData(prev => ({ ...prev, ...contextData }));
+        console.log('✅ Applied context for:', formData.source);
+      }
+    } catch (error) {
+      console.error('Error loading context:', error);
+    }
+  }, [formData.source]);
 
   useEffect(() => {
     if (focusTarget?.type === 'income' && focusTarget.id) {
@@ -164,8 +244,8 @@ export default function Income({
         type: 'income',
         amount: newAmount,
         date: formData.date,
-        income_source: formData.source,     // ✅ CORRECT FIELD NAME
-        payment_method: 'cash',             // ✅ REQUIRED FIELD
+        income_source: formData.source,
+        payment_method: 'cash',
         payment_method_id: incomeId,
         status: 'active',
         undone_at: null
@@ -225,6 +305,15 @@ export default function Income({
           incomeId
         }
       );
+
+      // Save context for future use (non-blocking)
+      if (formData.source) {
+        saveIncomeSourceContext(formData.source, {
+          depositTarget: formData.depositTarget,
+          depositAccountId: formData.depositAccountId,
+          frequency: formData.frequency
+        }).catch(err => console.warn('Failed to save income context:', err));
+      }
     }
 
     await onUpdate();
@@ -317,10 +406,10 @@ export default function Income({
   const resetForm = () => {
     const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
     setFormData({
-      source: 'Salary',
+      source: '',
       amount: '',
       date: new Date().toISOString().split('T')[0],
-      frequency: 'biweekly',
+      frequency: 'onetime',
       reservedAmount: '',
       recurringDurationType: 'indefinite',
       recurringUntilDate: '',
@@ -330,6 +419,7 @@ export default function Income({
     });
     setShowAddForm(false);
     setEditingItem(null);
+    loadIncomeContexts().catch(console.error);
   };
 
   useEffect(() => {
@@ -430,15 +520,53 @@ export default function Income({
 
       {showAddForm && (
         <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
-          <SmartInput
-            type="income_source"
-            value={formData.source}
-            onChange={(value) => setFormData({ ...formData, source: value })}
-            label="Source *"
-            placeholder="e.g., Salary, Bonus, Freelance"
-            darkMode={darkMode}
-            required={true}
-          />
+          
+          {/* Quick-Select Buttons */}
+          {recentSources.length > 0 && !editingItem && (
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Recent Sources
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {recentSources.map(source => (
+                  <button
+                    key={source.source_name}
+                    type="button"
+                    onClick={() => handleSelectSource(source)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      formData.source === source.source_name
+                        ? 'bg-blue-600 text-white'
+                        : darkMode 
+                          ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                    }`}
+                  >
+                    {source.source_name}
+                    {source.usage_count > 10 && ' ⭐'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Source Input */}
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {recentSources.length > 0 ? 'Or type new source *' : 'Source *'}
+            </label>
+            <input
+              ref={sourceInputRef}
+              type="text"
+              value={formData.source}
+              onChange={(e) => handleSourceChange(e.target.value)}
+              onBlur={handleSourceBlur}
+              placeholder="e.g., Salary, Bonus, Freelance"
+              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              required
+              autoFocus={!editingItem && recentSources.length === 0}
+            />
+          </div>
+
           <input
             type="number"
             step="0.01"
@@ -447,6 +575,7 @@ export default function Income({
             onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
             className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
           />
+          
           {/* Deposit Destination */}
           <div>
             <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>

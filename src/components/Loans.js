@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Plus, Edit2, X, TrendingUp, ListFilter, Star } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId } from '../utils/helpers';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
@@ -9,6 +9,10 @@ import {
   getUserPreferences,
   togglePinnedLoan
 } from '../utils/userPreferencesManager';
+import {
+  getLoanPaymentContext,
+  saveLoanPaymentContext
+} from '../utils/formContexts';
 
 export default function Loans({
   darkMode,
@@ -241,19 +245,69 @@ export default function Loans({
     });
   };
 
-  const openPaymentForm = (loan) => {
+  // Load payment context for a loan
+  const loadLoanPaymentContext = useCallback(async (loan) => {
+    try {
+      const context = await getLoanPaymentContext(loan.id);
+      if (context) {
+        // Build source string from context
+        let sourceString = 'cash_in_hand';
+        if (context.payment_source === 'bank_account' && context.payment_source_id) {
+          sourceString = `bank_account:${context.payment_source_id}`;
+        } else if (context.payment_source === 'reserved_fund' && context.payment_source_id) {
+          sourceString = `reserved_fund:${context.payment_source_id}`;
+        } else if (context.payment_source === 'credit_card' && context.payment_source_id) {
+          sourceString = `credit_card:${context.payment_source_id}`;
+        } else if (context.payment_source === 'cash_in_hand') {
+          sourceString = 'cash_in_hand';
+        }
+        
+        const recommended = getRecommendedAmountForSource(loan);
+        const hasRecommended = Number.isFinite(recommended) && recommended > 0;
+        const useRecommended = context.amount_mode === 'full_payment' || context.amount_mode === 'recommended';
+        
+        return {
+          source: sourceString,
+          amountMode: useRecommended && hasRecommended ? 'recommended' : 'custom',
+          amount: useRecommended && hasRecommended ? recommended.toFixed(2) : ''
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error('Error loading loan payment context:', error);
+      return null;
+    }
+  }, []);
+
+  const openPaymentForm = async (loan) => {
     if (!loan) return;
-    const options = getPaymentSourceOptions(loan);
-    const defaultSource = options.length > 0 ? options[0].value : 'cash';
-    const recommended = getRecommendedAmountForSource(loan);
-    const hasRecommended = Number.isFinite(recommended) && recommended > 0;
-    setPaymentForm({
-      amount: hasRecommended ? recommended.toFixed(2) : '',
-      amountMode: hasRecommended ? 'recommended' : 'custom',
-      date: new Date().toISOString().split('T')[0],
-      category: defaultLoanCategory,
-      source: defaultSource
-    });
+    
+    // Try to load saved context first
+    const savedContext = await loadLoanPaymentContext(loan);
+    
+    if (savedContext) {
+      // Use saved context
+      setPaymentForm({
+        ...savedContext,
+        date: new Date().toISOString().split('T')[0],
+        category: defaultLoanCategory
+      });
+      console.log('✅ Applied payment context for loan:', loan.name);
+    } else {
+      // Use defaults
+      const options = getPaymentSourceOptions(loan);
+      const defaultSource = options.length > 0 ? options[0].value : 'cash';
+      const recommended = getRecommendedAmountForSource(loan);
+      const hasRecommended = Number.isFinite(recommended) && recommended > 0;
+      setPaymentForm({
+        amount: hasRecommended ? recommended.toFixed(2) : '',
+        amountMode: hasRecommended ? 'recommended' : 'custom',
+        date: new Date().toISOString().split('T')[0],
+        category: defaultLoanCategory,
+        source: defaultSource
+      });
+    }
+    
     setPayingLoan(loan.id);
   };
 
@@ -799,6 +853,13 @@ export default function Loans({
         `Made payment of ${formatCurrency(paymentAmount)} for '${loan.name}' from ${sourceName} - Balance ${formatCurrency(previousBalance)} → ${formatCurrency(newBalance)}`,
         snapshot
       );
+
+      // Save payment context (non-blocking)
+      saveLoanPaymentContext(loanId, {
+        paymentSource: sourceType,
+        paymentSourceId: sourceId,
+        amountMode: paymentForm.amountMode
+      }).catch(err => console.warn('Failed to save loan payment context:', err));
 
       await onUpdate();
       setPayingLoan(null);

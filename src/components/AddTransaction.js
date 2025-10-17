@@ -1,15 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X } from 'lucide-react';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import { formatCurrency } from '../utils/helpers';
-import SmartInput from './SmartInput';
 import {
   addRecentTransaction,
   addRecentCategory,
   addRecentPaymentMethod,
   getUserPreferences
 } from '../utils/userPreferencesManager';
+import {
+  getExpenseContext,
+  saveExpenseContext,
+  getRecentExpenseDescriptions,
+  getLastUsedExpenseContext,
+  applyExpenseContext
+} from '../utils/formContexts';
 
 export default function AddTransaction({ 
   darkMode, 
@@ -43,15 +49,89 @@ export default function AddTransaction({
     paymentMethod: defaultPaymentMethod,
     paymentMethodId: defaultPaymentMethodId,
     incomeSource: '',
-    incomeDestination: 'bank', // 'bank' or 'cash_in_hand'
+    incomeDestination: 'bank',
     incomeAccountId: primaryBank?.id || '',
-    paymentSource: 'cash_in_hand', // For payments: 'cash_in_hand', 'bank_account', 'reserved_fund'
+    paymentSource: 'cash_in_hand',
     paymentSourceId: null
   });
 
   const [saving, setSaving] = useState(false);
   const [recentCategories, setRecentCategories] = useState([]);
   const [recentPaymentMethods, setRecentPaymentMethods] = useState([]);
+  const [recentExpenses, setRecentExpenses] = useState([]);
+  const descriptionInputRef = useRef(null);
+  
+  // Load expense contexts on mount
+  const loadExpenseContexts = useCallback(async () => {
+    try {
+      if (formData.type === 'expense') {
+        const recent = await getRecentExpenseDescriptions(5);
+        setRecentExpenses(recent);
+        
+        // Pre-fill last used expense context
+        const lastContext = await getLastUsedExpenseContext();
+        if (lastContext && !formData.description) {
+          const contextData = applyExpenseContext(lastContext);
+          setFormData(prev => ({
+            ...prev,
+            description: lastContext.description,
+            ...contextData
+          }));
+          
+          setTimeout(() => {
+            if (descriptionInputRef.current) {
+              descriptionInputRef.current.select();
+              descriptionInputRef.current.focus();
+            }
+          }, 100);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading expense contexts:', error);
+    }
+  }, [formData.type, formData.description]);
+
+  useEffect(() => {
+    loadExpenseContexts();
+  }, [loadExpenseContexts]);
+
+  // Handle quick-select expense button click
+  const handleSelectExpense = useCallback(async (expenseContext) => {
+    try {
+      const contextData = applyExpenseContext(expenseContext);
+      setFormData(prev => ({
+        ...prev,
+        description: expenseContext.description,
+        ...contextData
+      }));
+      setTimeout(() => {
+        const amountInput = document.querySelector('input[type="number"][step="0.01"]');
+        if (amountInput) amountInput.focus();
+      }, 50);
+    } catch (error) {
+      console.error('Error applying expense context:', error);
+    }
+  }, []);
+
+  // Handle description change
+  const handleDescriptionChange = (value) => {
+    setFormData(prev => ({ ...prev, description: value }));
+  };
+
+  // Load context when user leaves description field
+  const handleDescriptionBlur = useCallback(async () => {
+    if (!formData.description?.trim() || formData.type !== 'expense') return;
+    try {
+      const context = await getExpenseContext(formData.description);
+      if (context) {
+        const contextData = applyExpenseContext(context);
+        setFormData(prev => ({ ...prev, ...contextData }));
+        console.log('✅ Applied expense context for:', formData.description);
+      }
+    } catch (error) {
+      console.error('Error loading expense context:', error);
+    }
+  }, [formData.description, formData.type]);
   
   const loadRecentCategories = async () => {
     try {
@@ -72,7 +152,6 @@ export default function AddTransaction({
       const prefs = await getUserPreferences();
       const recentPMs = prefs.recent_payment_methods || [];
       
-      // Parse recent payment methods and match with current data
       const parsed = recentPMs
         .map(pm => {
           if (pm === 'cash_in_hand') {
@@ -113,7 +192,6 @@ export default function AddTransaction({
     }
   };
   
-  // Load recent items on mount
   useEffect(() => {
     loadRecentCategories();
     loadRecentPaymentMethods();
@@ -173,7 +251,6 @@ export default function AddTransaction({
         undone_at: null
       };
 
-      // Track payment method used
       let paymentMethodString = null;
 
       if (formData.type === 'expense') {
@@ -224,7 +301,6 @@ export default function AddTransaction({
           const currentBalance = Number(account.balance) || 0;
           const newBalance = currentBalance - amount;
           
-          // Validate overdraft
           if (newBalance < 0) {
             if (!account.allows_overdraft) {
               alert(
@@ -251,7 +327,6 @@ export default function AddTransaction({
               return;
             }
             
-            // Show overdraft warning
             const proceed = window.confirm(
               `⚠️ This will put '${account.name}' in overdraft.\n` +
               `Balance will be ${formatCurrency(newBalance)}.\n` +
@@ -321,7 +396,6 @@ export default function AddTransaction({
             }
           };
         } else if (formData.paymentMethod === 'cash') {
-          // Legacy cash - still supported but deprecated
           const newCash = availableCash - amount;
           await onUpdateCash(newCash);
           transaction.payment_method_name = 'Cash';
@@ -343,12 +417,19 @@ export default function AddTransaction({
           };
         }
 
+        // Save expense context (non-blocking)
+        if (formData.description) {
+          saveExpenseContext(formData.description, {
+            categoryId: formData.categoryId,
+            paymentMethod: formData.paymentMethod,
+            paymentMethodId: formData.paymentMethodId
+          }).catch(err => console.warn('Failed to save expense context:', err));
+        }
+
       } else if (formData.type === 'income') {
         transaction.income_source = formData.incomeSource;
 
-        // Handle deposit destination
         if (formData.incomeDestination === 'cash_in_hand') {
-          // Add to cash in hand
           const currentCash = cashInHand || 0;
           const newCash = currentCash + amount;
           if (onUpdateCashInHand) await onUpdateCashInHand(newCash);
@@ -372,7 +453,6 @@ export default function AddTransaction({
             }
           };
         } else {
-          // Add to bank account
           const account = bankAccounts?.find(a => a.id === formData.incomeAccountId);
           if (!account) {
             alert('Please select a bank account');
@@ -411,7 +491,6 @@ export default function AddTransaction({
         }
 
       } else if (formData.type === 'payment') {
-        // Parse payment source
         const paymentSource = formData.paymentSource;
         const paymentSourceId = formData.paymentSourceId;
         
@@ -433,7 +512,6 @@ export default function AddTransaction({
           transaction.card_id = card.id;
           transaction.payment_method_name = card.name;
           
-          // Handle payment source
           let sourceName = 'Cash in Hand';
           if (paymentSource === 'cash_in_hand') {
             const currentCash = cashInHand || 0;
@@ -475,7 +553,6 @@ export default function AddTransaction({
               setSaving(false);
               return;
             }
-            // Update reserved fund
             await dbOperation('reservedFunds', 'put', {
               ...fund,
               amount: fundAmount - amount,
@@ -522,7 +599,6 @@ export default function AddTransaction({
           transaction.loan_id = loan.id;
           transaction.payment_method_name = loan.name;
           
-          // Handle payment source
           let sourceName = 'Cash in Hand';
           if (paymentSource === 'cash_in_hand') {
             const currentCash = cashInHand || 0;
@@ -564,7 +640,6 @@ export default function AddTransaction({
               setSaving(false);
               return;
             }
-            // Update reserved fund  
             await dbOperation('reservedFunds', 'put', {
               ...fund,
               amount: fundAmount - amount,
@@ -612,7 +687,6 @@ export default function AddTransaction({
         );
       }
 
-      // Track recent items (don't await - background operation)
       if (savedTransaction?.id) {
         addRecentTransaction(savedTransaction.id).catch(err => 
           console.warn('Failed to track recent transaction:', err)
@@ -721,19 +795,55 @@ export default function AddTransaction({
             />
           </div>
 
-          {/* Description/Source with Smart Input */}
+          {/* Quick-Select Expense Buttons (for expenses only) */}
+          {formData.type === 'expense' && recentExpenses.length > 0 && (
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Recent Expenses
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {recentExpenses.map(expense => (
+                  <button
+                    key={expense.description}
+                    type="button"
+                    onClick={() => handleSelectExpense(expense)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      formData.description === expense.description
+                        ? 'bg-blue-600 text-white'
+                        : darkMode 
+                          ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                    }`}
+                  >
+                    {expense.description}
+                    {expense.usage_count > 10 && ' ⭐'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Description/Source Input */}
           <div>
-            <SmartInput
-              type="description"
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {formData.type === 'income' ? 'Source *' : recentExpenses.length > 0 && formData.type === 'expense' ? 'Or type new expense *' : 'Description *'}
+            </label>
+            <input
+              ref={formData.type === 'expense' ? descriptionInputRef : null}
+              type="text"
               value={formData.type === 'income' ? formData.incomeSource : formData.description}
-              onChange={(value) => setFormData({
-                ...formData,
-                [formData.type === 'income' ? 'incomeSource' : 'description']: value
-              })}
-              label={formData.type === 'income' ? 'Source *' : 'Description *'}
-              placeholder={formData.type === 'income' ? 'Salary, Freelance, etc.' : 'Coffee, Gas, etc.'}
-              darkMode={darkMode}
-              required={true}
+              onChange={(e) => {
+                if (formData.type === 'income') {
+                  setFormData({ ...formData, incomeSource: e.target.value });
+                } else {
+                  handleDescriptionChange(e.target.value);
+                }
+              }}
+              onBlur={formData.type === 'expense' ? handleDescriptionBlur : undefined}
+              placeholder={formData.type === 'income' ? 'Salary, Freelance, etc.' : 'Coffee, Gas, Groceries, etc.'}
+              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              required
+              autoFocus={formData.type === 'expense' && recentExpenses.length === 0}
             />
           </div>
 
@@ -870,7 +980,6 @@ export default function AddTransaction({
                 </label>
               </div>
               
-              {/* Bank Account Selection for Income */}
               {formData.incomeDestination === 'bank' && bankAccounts && bankAccounts.length > 0 && (
                 <div className="mt-2">
                   <select
@@ -908,7 +1017,6 @@ export default function AddTransaction({
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
                 required
               >
-                {/* Recent Payment Methods */}
                 {recentPaymentMethods.length > 0 && (
                   <optgroup label="⏱️ Recent">
                     {recentPaymentMethods.map(pm => (
