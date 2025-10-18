@@ -552,7 +552,7 @@ export async function getTotalBankBalance() {
   }
 }
 
-export async function transferBetweenAccounts(fromAccountId, toAccountId, amount, description = 'Account Transfer') {
+export async function transferBetweenAccounts(fromAccountId, toAccountId, amount, description = 'Account Transfer', transferDate = null) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
@@ -586,10 +586,12 @@ export async function transferBetweenAccounts(fromAccountId, toAccountId, amount
     const updatedFromAccount = await updateBankAccountBalance(fromAccountId, newFromBalance);
     const updatedToAccount = await updateBankAccountBalance(toAccountId, newToBalance);
 
+    const effectiveDate = transferDate || new Date().toISOString().split('T')[0];
+
     const transaction = {
       type: 'transfer',
       amount: normalizedAmount,
-      date: new Date().toISOString().split('T')[0],
+      date: effectiveDate,
       description: description,
       notes: `Transferred $${normalizedAmount.toFixed(2)} from ${fromAccount.name} ($${fromBalance.toFixed(2)} → $${newFromBalance.toFixed(2)}) to ${toAccount.name} ($${toBalance.toFixed(2)} → $${newToBalance.toFixed(2)}).`,
       payment_method: 'transfer',

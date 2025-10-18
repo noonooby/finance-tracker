@@ -97,7 +97,8 @@ export default function BankAccounts({
     fromAccount: '',
     toAccount: '',
     amount: '',
-    description: 'Account Transfer'
+    description: 'Account Transfer',
+    date: new Date().toISOString().split('T')[0]
   });
 
   // Refs for scrolling to focused account
@@ -650,11 +651,12 @@ export default function BankAccounts({
         transferData.fromAccount,
         transferData.toAccount,
         amount,
-        transferData.description
+        transferData.description,
+        transferData.date
       );
 
-      // Get current date for activity description
-      const transferDate = new Date().toISOString().split('T')[0];
+      // Use the date from the form
+      const transferDate = transferData.date;
 
       // Build detailed description for TRANSFER
       const description = `Transferred ${formatCurrency(transferResult.amount)} from '${transferResult.fromAccount}' to '${transferResult.toAccount}' on ${formatDate(transferDate)}${transferData.description !== 'Account Transfer' ? ` - Note: ${transferData.description}` : ''}`;
@@ -689,7 +691,8 @@ export default function BankAccounts({
         fromAccount: '',
         toAccount: '',
         amount: '',
-        description: 'Account Transfer'
+        description: 'Account Transfer',
+        date: new Date().toISOString().split('T')[0]
       });
       setShowTransferForm(false);
 
@@ -834,6 +837,18 @@ export default function BankAccounts({
               className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
             />
           </div>
+          
+          <div>
+            <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              Transfer Date *
+            </label>
+            <input
+              type="date"
+              value={transferData.date}
+              onChange={(e) => setTransferData({ ...transferData, date: e.target.value })}
+              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+            />
+          </div>
 
           <div>
             <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -863,7 +878,8 @@ export default function BankAccounts({
                   fromAccount: '',
                   toAccount: '',
                   amount: '',
-                  description: 'Account Transfer'
+                  description: 'Account Transfer',
+                  date: new Date().toISOString().split('T')[0]
                 });
                 setShowTransferForm(false);
               }}
