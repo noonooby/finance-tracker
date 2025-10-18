@@ -4,7 +4,6 @@ import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId }
 import { formatFrequency } from '../utils/sentenceCase';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
-import SmartInput from './SmartInput';
 import { upsertKnownEntity } from '../utils/knownEntities';
 import { processOverdueLoans } from '../utils/autoPay';
 import RecentTransactions from './shared/RecentTransactions';
@@ -87,7 +86,7 @@ export default function Loans({
   useEffect(() => {
     loadPinnedLoans();
     loadRecentLoanNames();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   
   const loadRecentLoanNames = async () => {
     try {

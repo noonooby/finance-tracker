@@ -33,14 +33,14 @@ export default function RecentTransactions({
   // Load preferences on mount
   useEffect(() => {
     loadPreferences();
-  }, [entityType, entityId]);
+  }, [entityType, entityId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load transactions when count changes OR on initial load
   useEffect(() => {
     if (initialLoadDone || !isCollapsed) {
       loadTransactions();
     }
-  }, [displayCount, entityId]);
+  }, [displayCount, entityId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initial load to check if we have transactions
   useEffect(() => {
@@ -48,7 +48,7 @@ export default function RecentTransactions({
       loadTransactions();
       setInitialLoadDone(true);
     }
-  }, [entityId]);
+  }, [entityId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadPreferences = async () => {
     try {

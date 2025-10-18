@@ -1,11 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, Edit2, X, CreditCard, ShoppingBag, ListFilter, Star } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId, calculateTotalBankBalance } from '../utils/helpers';
-import { formatFrequency } from '../utils/sentenceCase';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import AddTransaction from './AddTransaction';
 import { logActivity } from '../utils/activityLogger';
-import SmartInput from './SmartInput';
 import { upsertKnownEntity } from '../utils/knownEntities';
 import { processOverdueCreditCards } from '../utils/autoPay';
 import RecentTransactions from './shared/RecentTransactions';

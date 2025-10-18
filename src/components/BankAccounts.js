@@ -80,7 +80,6 @@ export default function BankAccounts({
     accountId: '',
     amount: ''
   });
-  const [processingCash, setProcessingCash] = useState(false);
 
   // Form data for add/edit
   const [formData, setFormData] = useState({
@@ -422,8 +421,6 @@ export default function BankAccounts({
       return;
     }
     
-    setProcessingCash(true);
-    
     const actionId = `cash-${cashOperation}-${cashFormData.accountId}`;
     
     const actionResult = await executeAction(actionId, async () => {
@@ -482,8 +479,6 @@ export default function BankAccounts({
         amount: opResult.amount
       };
     });
-    
-    setProcessingCash(false);
     
     if (actionResult.success) {
       const operationText = actionResult.data.operation === 'withdraw' ? 'withdrawn from' : 'deposited to';
