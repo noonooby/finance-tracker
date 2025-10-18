@@ -323,6 +323,26 @@ export const undoActivity = async (activity, onUpdate) => {
               value: snapshot.previousCash,
             });
           }
+          
+          // Restore credit card balance if payment was made with a card
+          if (snapshot.cardEffect && snapshot.cardEffect.cardId && snapshot.cardEffect.delta) {
+            try {
+              console.log('💳 Undoing credit card effect:', snapshot.cardEffect);
+              const card = await dbOperation('creditCards', 'get', snapshot.cardEffect.cardId);
+              if (card) {
+                const currentBalance = Number(card.balance) || 0;
+                // Reverse the card charge: if we added to card balance, subtract it back
+                const restoredBalance = currentBalance - snapshot.cardEffect.delta;
+                await dbOperation('creditCards', 'put', {
+                  ...card,
+                  balance: Math.max(0, restoredBalance)
+                }, { skipActivityLog: true });
+                console.log('✅ Credit card balance restored:', card.name, 'to', restoredBalance);
+              }
+            } catch (cardError) {
+              console.error('❌ Error restoring credit card during loan payment undo:', cardError);
+            }
+          }
 
           const resolveFundId = (fund) => {
             if (!fund) return null;
