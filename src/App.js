@@ -7,9 +7,13 @@ import { AuthProvider, FinanceDataProvider, ThemeProvider, UIProvider } from './
 // Custom Hooks
 import { useAuth } from './hooks/useAuth';
 import { useFinanceData } from './hooks/useFinanceData';
+import { useTheme } from './hooks/useTheme';
 
 // Routes
 import { AppRoutes } from './routes';
+
+// Toast Container
+import ToastContainer from './components/shared/ToastContainer';
 
 /**
  * App Initializer - Loads data when authenticated
@@ -17,6 +21,7 @@ import { AppRoutes } from './routes';
 function AppInitializer({ children }) {
   const { session, initializing } = useAuth();
   const { loadDataProgressively, loadLatestActivities } = useFinanceData();
+  const { darkMode } = useTheme();
 
   // Load data when session becomes available
   useEffect(() => {
@@ -32,7 +37,12 @@ function AppInitializer({ children }) {
     }
   }, [session, loadLatestActivities]);
 
-  return children;
+  return (
+    <>
+      {children}
+      <ToastContainer darkMode={darkMode} />
+    </>
+  );
 }
 
 /**

@@ -29,3 +29,12 @@ export {
   getLoanPaymentContext,
   saveLoanPaymentContext
 } from './loanPaymentContexts';
+
+export {
+  getLoanCreationContext,
+  saveLoanCreationContext,
+  getRecentLoanNames,
+  getLastUsedLoanContext,
+  deleteLoanCreationContext,
+  applyLoanCreationContext
+} from './loanCreationContexts';

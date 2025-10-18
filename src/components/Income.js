@@ -1,9 +1,13 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, DollarSign, Edit2, X, ListFilter, AlertCircle } from 'lucide-react';
 import { formatCurrency, formatDate, predictNextDate, getDaysUntil, generateId, getPrimaryAccountFromArray } from '../utils/helpers';
+import { formatFrequency } from '../utils/sentenceCase';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import { autoDepositDueIncome } from '../utils/autoPay';
+import useAsyncAction from '../hooks/useAsyncAction';
+import ActionButton from './shared/ActionButton';
+import { showToast } from '../utils/toast';
 import {
   getIncomeSourceContext,
   saveIncomeSourceContext,
@@ -43,6 +47,9 @@ export default function Income({
   const sourceInputRef = useRef(null);
   const incomeRefs = useRef({});
   const [predictionCount, setPredictionCount] = useState(8);
+  
+  // Async action hook for handling all async operations
+  const { executeAction, isProcessing: isActionProcessing } = useAsyncAction();
 
   const normalizeId = (value) => {
     if (value === null || value === undefined) return null;
@@ -140,23 +147,27 @@ export default function Income({
 
   const handleAdd = async () => {
     if (!formData.source || !formData.amount || !formData.date) {
-      alert('Please fill in required fields: Source, Amount, and Date');
+      showToast.error('Please fill in required fields: Source, Amount, and Date');
       return;
     }
 
     if (formData.frequency !== 'onetime') {
       if (formData.recurringDurationType === 'until_date' && !formData.recurringUntilDate) {
-        alert('Please specify the end date for recurring income');
+        showToast.error('Please specify the end date for recurring income');
         return;
       }
       if (
         formData.recurringDurationType === 'occurrences' &&
         (!formData.recurringOccurrences || parseInt(formData.recurringOccurrences, 10) < 1)
       ) {
-        alert('Please specify the number of times this income will occur');
+        showToast.error('Please specify the number of times this income will occur');
         return;
       }
     }
+    
+    const actionId = editingItem ? `edit-income-${editingItem.id}` : 'add-income';
+    
+    const result = await executeAction(actionId, async () => {
     
     const isEditing = !!editingItem;
     const newAmount = parseFloat(formData.amount) || 0;
@@ -278,7 +289,7 @@ export default function Income({
             : null);
 
       // Build detailed description for ADD
-      let description = `Added income '${formData.source}' - Amount ${formatCurrency(newAmount)} • Frequency ${formData.frequency} • Date ${formatDate(formData.date)}`;
+      let description = `Added income '${formData.source}' - Amount ${formatCurrency(newAmount)} • Frequency ${formatFrequency(formData.frequency)} • Date ${formatDate(formData.date)}`;
       if (depositDestination) {
         description += formData.depositTarget === 'cash_in_hand'
           ? ` • Kept as cash in hand`
@@ -318,7 +329,21 @@ export default function Income({
 
     await onUpdate();
     resetForm();
-  };
+    
+    return {
+      source: formData.source,
+      amount: newAmount,
+      isNew: !isEditing
+    };
+  });
+  
+  if (result.success) {
+    const action = result.data.isNew ? 'logged' : 'updated';
+    showToast.success(`Income from '${result.data.source}' ${action} successfully`);
+  } else {
+    showToast.error(`Failed to save income: ${result.error.message}`);
+  }
+};
 
   const handleEdit = (inc) => {
     const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
@@ -339,9 +364,14 @@ export default function Income({
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Delete this income entry?')) {
-      const inc = income.find(i => String(i.id) === String(id));
-      if (!inc) return;
+    if (!window.confirm('Delete this income entry?')) {
+      return;
+    }
+    
+    const inc = income.find(i => String(i.id) === String(id));
+    if (!inc) return;
+    
+    const result = await executeAction(`delete-income-${id}`, async () => {
 
       const previousCash = availableCash;
       let relatedTransactions = [];
@@ -366,7 +396,7 @@ export default function Income({
         : null;
 
       // Build detailed description for DELETE
-      let description = `Deleted income '${inc.source}' - Amount ${formatCurrency(inc.amount)} • Frequency ${inc.frequency || 'onetime'}`;
+      let description = `Deleted income '${inc.source}' - Amount ${formatCurrency(inc.amount)} • Frequency ${formatFrequency(inc.frequency) || 'One Time'}`;
       if (depositAccountName) {
         description += ` • Was deposited to ${depositAccountName}`;
       }
@@ -400,6 +430,14 @@ export default function Income({
       }
 
       await onUpdate();
+      
+      return { source: inc.source, amount: inc.amount };
+    });
+    
+    if (result.success) {
+      showToast.success(`Income from '${result.data.source}' deleted successfully`);
+    } else {
+      showToast.error(`Failed to delete income: ${result.error.message}`);
     }
   };
 
@@ -733,15 +771,20 @@ export default function Income({
             />
           )}
           <div className="flex gap-2">
-            <button onClick={handleAdd} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium">
-              {editingItem ? 'Update Income' : 'Log Income'}
-            </button>
-            <button
+            <ActionButton
+              onClick={handleAdd}
+              processing={isActionProcessing(editingItem ? `edit-income-${editingItem.id}` : 'add-income')}
+              variant="primary"
+              processingText={editingItem ? 'Updating Income...' : 'Logging Income...'}
+              idleText={editingItem ? 'Update Income' : 'Log Income'}
+              fullWidth
+            />
+            <ActionButton
               onClick={resetForm}
-              className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
-            >
-              Cancel
-            </button>
+              variant="secondary"
+              idleText="Cancel"
+              fullWidth
+            />
           </div>
         </div>
       )}
@@ -780,7 +823,7 @@ export default function Income({
                 <div>
                   <div className="font-medium">{pred.source}</div>
                   <div className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
-                    {formatDate(pred.date)} • {pred.frequency}
+                    {formatDate(pred.date)} • {formatFrequency(pred.frequency)}
                   </div>
                 </div>
                 <div className="text-right">
@@ -817,7 +860,7 @@ export default function Income({
                 <div>
                   <h3 className="font-bold">{inc.source}</h3>
                   <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    <span className="capitalize">{inc.frequency}</span>
+                    <span>{formatFrequency(inc.frequency)}</span>
                     {inc.frequency !== 'onetime' && inc.recurring_duration_type && (
                       <span className="ml-2">
                         {inc.recurring_duration_type === 'until_date' && inc.recurring_until_date && (

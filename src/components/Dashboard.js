@@ -246,18 +246,18 @@ export default function Dashboard({
   ];
 
   return (
-    <div className="space-y-4">
+    <div className={compactMode ? 'space-y-1.5' : 'space-y-4'}>
       {/* Dashboard Customization Button */}
       <div className="flex justify-end">
         <button
           onClick={() => setShowCustomization(true)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+          className={`flex items-center ${compactMode ? 'gap-1 px-2 py-1 text-xs' : 'gap-2 px-4 py-2'} rounded-lg ${
             darkMode
               ? 'bg-gray-700 hover:bg-gray-600 text-white'
               : 'bg-gray-200 hover:bg-gray-300'
           }`}
         >
-          <SettingsIcon size={18} />
+          <SettingsIcon size={compactMode ? 14 : 18} />
           Customize Dashboard
         </button>
       </div>
@@ -347,14 +347,14 @@ export default function Dashboard({
 
       {/* Overdraft Warning Banner */}
       {overdraftAccounts.length > 0 && (
-        <div className={`${darkMode ? 'bg-red-900 border-red-700' : 'bg-red-50 border-red-200'} border rounded-lg p-4`}>
-          <div className={`flex items-center gap-2 ${darkMode ? 'text-red-200' : 'text-red-800'} font-semibold mb-2`}>
-            <AlertCircle size={20} />
+        <div className={`${darkMode ? 'bg-red-900 border-red-700' : 'bg-red-50 border-red-200'} border rounded-lg ${compactMode ? 'p-1.5' : 'p-4'}`}>
+          <div className={`flex items-center ${compactMode ? 'gap-1' : 'gap-2'} ${darkMode ? 'text-red-200' : 'text-red-800'} font-semibold ${compactMode ? 'mb-0.5' : 'mb-2'} ${compactMode ? 'text-xs' : ''}`}>
+            <AlertCircle size={compactMode ? 14 : 20} />
             <span>Overdraft Alert</span>
           </div>
-          <div className="space-y-1">
+          <div className={compactMode ? 'space-y-0' : 'space-y-1'}>
             {overdraftAccounts.map(acc => (
-              <div key={acc.id} className={`text-sm ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
+              <div key={acc.id} className={`${compactMode ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
                 '{acc.name}' is in overdraft by {formatCurrency(Math.abs(acc.balance))}. Resolve soon to avoid fees.
               </div>
             ))}

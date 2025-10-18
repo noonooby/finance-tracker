@@ -16,26 +16,26 @@ export default function LatestUpdatesWidget({
   if (!activities || activities.length === 0) return null;
   
   return (
-    <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border ${compactMode ? 'p-3' : 'p-4'}`}>
-      <div className="flex items-center justify-between mb-3">
+    <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border ${compactMode ? 'p-1.5' : 'p-4'}`}>
+      <div className={`flex items-center justify-between ${compactMode ? 'mb-0.5' : 'mb-3'}`}>
         <button
           onClick={onToggleCollapse}
-          className="flex items-center gap-2 flex-1"
+          className={`flex items-center ${compactMode ? 'gap-0.5' : 'gap-2'} flex-1`}
         >
           {isCollapsed ? (
-            <ChevronRight size={18} className="text-gray-500" />
+            <ChevronRight size={compactMode ? 14 : 18} className="text-gray-500" />
           ) : (
-            <ChevronDown size={18} className="text-gray-500" />
+            <ChevronDown size={compactMode ? 14 : 18} className="text-gray-500" />
           )}
-          <h3 className="font-semibold flex items-center gap-2">
-            <Activity size={18} />
+          <h3 className={`font-semibold flex items-center ${compactMode ? 'gap-0.5' : 'gap-2'} ${compactMode ? 'text-xs' : ''}`}>
+            <Activity size={compactMode ? 14 : 18} />
             Latest Updates
           </h3>
         </button>
         {!isCollapsed && (
           <button
             onClick={onViewAll}
-            className={`text-xs px-3 py-1 rounded ${darkMode ? 'bg-blue-900 text-blue-200 hover:bg-blue-800' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+            className={`${compactMode ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-3 py-1'} rounded ${darkMode ? 'bg-blue-900 text-blue-200 hover:bg-blue-800' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
           >
             View All
           </button>
@@ -43,7 +43,7 @@ export default function LatestUpdatesWidget({
       </div>
       
       {!isCollapsed && (
-        <div className="space-y-2">
+        <div className={compactMode ? 'space-y-0.5' : 'space-y-2'}>
           {activities.slice(0, 5).map(activity => {
             const timeDiff = Date.now() - new Date(activity.created_at).getTime();
             const minutesAgo = Math.floor(timeDiff / 60000);
@@ -58,12 +58,12 @@ export default function LatestUpdatesWidget({
             return (
               <div 
                 key={activity.id} 
-                className={`text-sm ${compactMode ? 'pb-1.5' : 'pb-2'} border-b last:border-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}
+                className={`${compactMode ? 'text-xs' : 'text-sm'} ${compactMode ? 'pb-0.5' : 'pb-2'} border-b last:border-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}
               >
-                <div className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                <div className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'} truncate`}>
                   {activity.description}
                 </div>
-                <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                <div className={`${compactMode ? 'text-[10px]' : 'text-xs'} ${compactMode ? 'mt-0' : 'mt-1'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   {timeAgo}
                 </div>
               </div>

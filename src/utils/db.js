@@ -182,13 +182,7 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
           }
         }
         if (!data.id) {
-          data.id =
-            data?.entity_id ||
-            logOptions?.entity_id ||
-            data?.previous?.id ||
-            data?.updated?.id ||
-            data?.loan_id ||
-            crypto.randomUUID();
+          data.id = crypto.randomUUID();
         }
         
         const insertData = { ...data, user_id: user.id };
@@ -714,6 +708,90 @@ export async function withdrawCashFromBank(accountId, amount) {
   } catch (error) {
     console.error('❌ Error withdrawing cash:', error);
     throw error;
+  }
+}
+
+export async function getCardTransactions(cardId, limit = 5) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('card_id', cardId)
+      .eq('status', 'active')
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('❌ Error fetching card transactions:', error);
+    return [];
+  }
+}
+
+export async function getLoanTransactions(loanId, limit = 5) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('loan_id', loanId)
+      .eq('status', 'active')
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('❌ Error fetching loan transactions:', error);
+    return [];
+  }
+}
+
+export async function getBankAccountTransactions(accountId, limit = 5) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .or(`payment_method_id.eq.${accountId},card_id.eq.null`)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limit * 3);
+
+    if (error) throw error;
+    
+    // Filter transactions that actually affect this bank account
+    const filtered = (data || []).filter(txn => {
+      // Include if payment method is this bank account
+      if (txn.payment_method_id === accountId) return true;
+      
+      // Include cash withdrawals/deposits for this account
+      if ((txn.type === 'cash_withdrawal' || txn.type === 'cash_deposit') && txn.payment_method_id === accountId) return true;
+      
+      // Include transfers
+      if (txn.type === 'transfer' && (txn.payment_method_id === accountId || txn.transfer_to_account_id === accountId)) return true;
+      
+      return false;
+    }).slice(0, limit);
+    
+    return filtered;
+  } catch (error) {
+    console.error('❌ Error fetching bank account transactions:', error);
+    return [];
   }
 }
 

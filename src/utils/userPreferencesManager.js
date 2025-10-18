@@ -441,6 +441,21 @@ export async function getDashboardConfig() {
 }
 
 /**
+ * Update recent transactions display settings for entity type
+ */
+export async function updateRecentTransactionsSettings(entityType, settings) {
+  try {
+    const settingsKey = `recent_transactions_${entityType}`;
+    return await updateUserPreferences({
+      [settingsKey]: settings
+    });
+  } catch (error) {
+    console.error('Error updating recent transactions settings:', error);
+    throw error;
+  }
+}
+
+/**
  * Reset preferences to defaults
  */
 export async function resetPreferences() {

@@ -155,6 +155,46 @@ export default function Settings({
       console.error('Error persisting section state:', error);
     }
   };
+  
+  const handleCollapseAll = async () => {
+    const allSections = Object.keys(expandedSections);
+    
+    // Set all sections to collapsed
+    const newExpandedState = {};
+    allSections.forEach(section => {
+      newExpandedState[section] = false;
+    });
+    
+    setExpandedSections(newExpandedState);
+    
+    // Persist all sections as collapsed
+    try {
+      await updateCollapsedSettingsSections(allSections);
+      console.log('✅ All sections collapsed');
+    } catch (error) {
+      console.error('Error collapsing all sections:', error);
+    }
+  };
+  
+  const handleExpandAll = async () => {
+    const allSections = Object.keys(expandedSections);
+    
+    // Set all sections to expanded
+    const newExpandedState = {};
+    allSections.forEach(section => {
+      newExpandedState[section] = true;
+    });
+    
+    setExpandedSections(newExpandedState);
+    
+    // Persist no sections as collapsed (empty array)
+    try {
+      await updateCollapsedSettingsSections([]);
+      console.log('✅ All sections expanded');
+    } catch (error) {
+      console.error('Error expanding all sections:', error);
+    }
+  };
 
   /**
    * Setting metadata for activity logging
@@ -598,10 +638,42 @@ export default function Settings({
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold flex items-center gap-2">
-        <SettingsIcon size={24} />
-        Settings
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold flex items-center gap-2">
+          <SettingsIcon size={24} />
+          Settings
+        </h2>
+        
+        {/* Collapse/Expand All Button */}
+        <button
+          onClick={() => {
+            // Check if any sections are expanded
+            const anyExpanded = Object.values(expandedSections).some(val => val === true);
+            if (anyExpanded) {
+              handleCollapseAll();
+            } else {
+              handleExpandAll();
+            }
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+            darkMode
+              ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          {Object.values(expandedSections).some(val => val === true) ? (
+            <>
+              <ChevronUp size={18} />
+              Collapse All
+            </>
+          ) : (
+            <>
+              <ChevronDown size={18} />
+              Expand All
+            </>
+          )}
+        </button>
+      </div>
 
       {/* Display & Appearance */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg overflow-hidden`}>

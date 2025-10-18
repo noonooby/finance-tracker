@@ -1,17 +1,28 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Plus, Edit2, X, TrendingUp, ListFilter, Star } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId } from '../utils/helpers';
+import { formatFrequency } from '../utils/sentenceCase';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import SmartInput from './SmartInput';
+import { upsertKnownEntity } from '../utils/knownEntities';
 import { processOverdueLoans } from '../utils/autoPay';
+import RecentTransactions from './shared/RecentTransactions';
+import useAsyncAction from '../hooks/useAsyncAction';
+import ActionButton from './shared/ActionButton';
+import { showToast } from '../utils/toast';
 import {
   getUserPreferences,
   togglePinnedLoan
 } from '../utils/userPreferencesManager';
 import {
   getLoanPaymentContext,
-  saveLoanPaymentContext
+  saveLoanPaymentContext,
+  getLoanCreationContext,
+  saveLoanCreationContext,
+  getRecentLoanNames as getRecentLoanTemplates,
+  getLastUsedLoanContext,
+  applyLoanCreationContext
 } from '../utils/formContexts';
 
 export default function Loans({
@@ -41,7 +52,7 @@ export default function Loans({
     interestRate: '',
     paymentAmount: '',
     frequency: 'monthly',
-    nextPaymentDate: '',
+    nextPaymentDate: new Date().toISOString().split('T')[0],
     alertDays: alertSettings.defaultDays || 7,
     recurringDurationType: 'indefinite',
     recurringUntilDate: '',
@@ -54,6 +65,8 @@ export default function Loans({
     category: 'loan_payment',
     source: ''
   });
+  const [recentLoanNames, setRecentLoanNames] = useState([]);
+  const loanNameInputRef = useRef(null);
   const [payingLoan, setPayingLoan] = useState(null);
   const loanRefs = useRef({});
   const [savingLoan, setSavingLoan] = useState(false);
@@ -61,16 +74,102 @@ export default function Loans({
   const [isProcessing, setIsProcessing] = useState(false);
   const [pinnedLoans, setPinnedLoans] = useState([]);
   
+  // Async action hook for handling all async operations
+  const { executeAction, isProcessing: isActionProcessing } = useAsyncAction();
+  
   const defaultLoanCategory = useMemo(() => {
     if (!categories || categories.length === 0) return 'loan_payment';
     const match = categories.find((cat) => cat.id === 'loan_payment');
     return match?.id || categories[0].id;
   }, [categories]);
 
-  // Load pinned loans
+  // Load pinned loans and recent loan names
   useEffect(() => {
     loadPinnedLoans();
+    loadRecentLoanNames();
   }, []);
+  
+  const loadRecentLoanNames = async () => {
+    try {
+      const recent = await getRecentLoanTemplates(5);
+      setRecentLoanNames(recent);
+      
+      // Pre-fill last used loan template if opening new loan form
+      if (!editingItem) {
+        const lastContext = await getLastUsedLoanContext();
+        if (lastContext) {
+          const contextData = applyLoanCreationContext(lastContext);
+          setFormData(prev => ({
+            ...prev,
+            name: lastContext.loan_name,
+            principal: contextData.principal || '',
+            balance: contextData.principal || '',
+            interestRate: contextData.interestRate || '',
+            paymentAmount: contextData.paymentAmount || '',
+            frequency: contextData.frequency || 'monthly'
+          }));
+          
+          setTimeout(() => {
+            if (loanNameInputRef.current) {
+              loanNameInputRef.current.select();
+              loanNameInputRef.current.focus();
+            }
+          }, 100);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading recent loan names:', error);
+    }
+  };
+  
+  const handleSelectLoanName = useCallback(async (loanTemplate) => {
+    try {
+      const contextData = applyLoanCreationContext(loanTemplate);
+      setFormData(prev => ({
+        ...prev,
+        name: loanTemplate.loan_name,
+        principal: contextData.principal || '',
+        balance: contextData.principal || '',
+        interestRate: contextData.interestRate || '',
+        paymentAmount: contextData.paymentAmount || '',
+        frequency: contextData.frequency || 'monthly'
+      }));
+      setTimeout(() => {
+        const principalInput = document.querySelector('input[placeholder="Principal *"]');
+        if (principalInput) {
+          principalInput.select();
+          principalInput.focus();
+        }
+      }, 50);
+    } catch (error) {
+      console.error('Error applying loan template:', error);
+    }
+  }, []);
+  
+  const handleLoanNameChange = (value) => {
+    setFormData(prev => ({ ...prev, name: value }));
+  };
+  
+  const handleLoanNameBlur = useCallback(async () => {
+    if (!formData.name?.trim() || editingItem) return;
+    try {
+      const context = await getLoanCreationContext(formData.name);
+      if (context) {
+        const contextData = applyLoanCreationContext(context);
+        setFormData(prev => ({
+          ...prev,
+          principal: contextData.principal || prev.principal,
+          balance: contextData.principal || prev.balance,
+          interestRate: contextData.interestRate || prev.interestRate,
+          paymentAmount: contextData.paymentAmount || prev.paymentAmount,
+          frequency: contextData.frequency || prev.frequency
+        }));
+        console.log('✅ Applied loan template for:', formData.name);
+      }
+    } catch (error) {
+      console.error('Error loading loan template:', error);
+    }
+  }, [formData.name, editingItem]);
   
   const loadPinnedLoans = async () => {
     try {
@@ -164,18 +263,15 @@ export default function Loans({
     return options;
   };
   
-  //Payment Source Options
   const getPaymentSourceOptions = (loan) => {  
     const options = [];
     
-    // Add cash in hand first
     options.push({
       value: 'cash_in_hand',
       label: `Cash in Hand (${formatCurrency(cashInHand || 0)})`,
       type: 'cash_in_hand'
     });
     
-    // Add bank accounts
     if (bankAccounts && bankAccounts.length > 0) {
       for (const account of bankAccounts) {
         const balance = parseFloat(account.balance) || 0;
@@ -188,7 +284,6 @@ export default function Loans({
       }
     }
     
-    // Add reserved funds
     const fundOptions = getLoanReservedFundOptions(loan);
     if (fundOptions.length > 0) {
       for (const option of fundOptions) {
@@ -201,7 +296,6 @@ export default function Loans({
       }
     }
      
-    // Add credit cards
     if (creditCards && creditCards.length > 0) {
       for (const card of creditCards) {
         const balance = parseFloat(card.balance) || 0;
@@ -222,12 +316,10 @@ export default function Loans({
     const paymentAmount = Number(loan.payment_amount);
     const balanceAmount = Number(loan.balance);
 
-    // Always prefer the loan's payment_amount as the primary recommendation
     if (Number.isFinite(paymentAmount) && paymentAmount > 0) {
       return paymentAmount;
     }
 
-    // Fallback to balance if no payment amount is set
     if (Number.isFinite(balanceAmount) && balanceAmount > 0) {
       return balanceAmount;
     }
@@ -245,12 +337,10 @@ export default function Loans({
     });
   };
 
-  // Load payment context for a loan
   const loadLoanPaymentContext = useCallback(async (loan) => {
     try {
       const context = await getLoanPaymentContext(loan.id);
       if (context) {
-        // Build source string from context
         let sourceString = 'cash_in_hand';
         if (context.payment_source === 'bank_account' && context.payment_source_id) {
           sourceString = `bank_account:${context.payment_source_id}`;
@@ -282,11 +372,9 @@ export default function Loans({
   const openPaymentForm = async (loan) => {
     if (!loan) return;
     
-    // Try to load saved context first
     const savedContext = await loadLoanPaymentContext(loan);
     
     if (savedContext) {
-      // Use saved context
       setPaymentForm({
         ...savedContext,
         date: new Date().toISOString().split('T')[0],
@@ -294,7 +382,6 @@ export default function Loans({
       });
       console.log('✅ Applied payment context for loan:', loan.name);
     } else {
-      // Use defaults
       const options = getPaymentSourceOptions(loan);
       const defaultSource = options.length > 0 ? options[0].value : 'cash';
       const recommended = getRecommendedAmountForSource(loan);
@@ -348,27 +435,30 @@ export default function Loans({
   const handleAdd = async () => {
     if (savingLoan) return;
     if (!formData.name || !formData.principal || !formData.balance || !formData.paymentAmount || !formData.nextPaymentDate) {
-      alert('Please fill in all required fields');
+      showToast.error('Please fill in all required fields');
       return;
     }
 
     if (formData.recurringDurationType === 'until_date' && !formData.recurringUntilDate) {
-      alert('Please specify the end date for this loan schedule');
+      showToast.error('Please specify the end date for this loan schedule');
       return;
     }
     if (
       formData.recurringDurationType === 'occurrences' &&
       (!formData.recurringOccurrences || parseInt(formData.recurringOccurrences, 10) < 1)
     ) {
-      alert('Please specify the number of payments for this loan schedule');
+      showToast.error('Please specify the number of payments for this loan schedule');
       return;
     }
 
     setSavingLoan(true);
+    
+    const actionId = editingItem ? `edit-loan-${editingItem.id}` : 'add-loan';
+    
+    const result = await executeAction(actionId, async () => {
+      const loanId = editingItem?.id || generateId();
 
-    const loanId = editingItem?.id || generateId();
-
-    const loanPayload = {
+      const loanPayload = {
       id: loanId,
       name: formData.name,
       principal: parseFloat(formData.principal) || 0,
@@ -406,14 +496,12 @@ export default function Loans({
           details += `Payment ${formatCurrency(oldPayment)} → ${formatCurrency(newPayment)} • `;
         }
         
-        // Remove trailing bullet
         details = details.replace(/ • $/, '');
 
         const description = details
           ? `Updated loan '${savedLoan?.name || loanPayload.name}' - ${details}`
           : `Updated loan '${savedLoan?.name || loanPayload.name}'`;
 
-        // ✅ Ensure snapshots always carry ID and NAME for undo safety and consistency
         await logActivity(
           'edit',
           'loan',
@@ -431,20 +519,48 @@ export default function Loans({
           'loan',
           effectiveId,
           savedLoan?.name || loanPayload.name,
-          `Added loan '${savedLoan?.name || loanPayload.name}' - Principal ${formatCurrency(savedLoan?.principal || loanPayload.principal)} • Balance ${formatCurrency(savedLoan?.balance || loanPayload.balance)} • Payment ${formatCurrency(savedLoan?.payment_amount || loanPayload.payment_amount)} ${savedLoan?.frequency || loanPayload.frequency}`,
+          `Added loan '${savedLoan?.name || loanPayload.name}' - Principal ${formatCurrency(savedLoan?.principal || loanPayload.principal)} • Balance ${formatCurrency(savedLoan?.balance || loanPayload.balance)} • Payment ${formatCurrency(savedLoan?.payment_amount || loanPayload.payment_amount)} ${formatFrequency(savedLoan?.frequency || loanPayload.frequency)}`,
           savedLoan
         );
       }
 
+      if (loanPayload.name) {
+        upsertKnownEntity('loan', loanPayload.name).catch(err => 
+          console.warn('Failed to track loan name:', err)
+        );
+      }
+      
+      if (!editingItem && loanPayload.name) {
+        saveLoanCreationContext(loanPayload.name, {
+          principal: loanPayload.principal,
+          interestRate: loanPayload.interest_rate,
+          paymentAmount: loanPayload.payment_amount,
+          frequency: loanPayload.frequency
+        }).catch(err => console.warn('Failed to save loan template:', err));
+      }
+
       await onUpdate();
       resetForm();
+      
+      return {
+        loanName: savedLoan?.name || loanPayload.name,
+        isNew: !editingItem
+      };
     } catch (error) {
       console.error('Error saving loan:', error);
-      alert('Failed to save loan. Please try again.');
+      throw error; // Re-throw to be caught by executeAction
     } finally {
       setSavingLoan(false);
     }
-  };
+  });
+  
+  if (result.success) {
+    const action = result.data.isNew ? 'added' : 'updated';
+    showToast.success(`Loan '${result.data.loanName}' ${action} successfully`);
+  } else {
+    showToast.error(`Failed to save loan: ${result.error.message}`);
+  }
+};
 
   const handleProcessDuePayments = async () => {
     if (isProcessing) return;
@@ -487,7 +603,7 @@ export default function Loans({
       interestRate: '',
       paymentAmount: '',
       frequency: 'monthly',
-      nextPaymentDate: '',
+      nextPaymentDate: new Date().toISOString().split('T')[0],
       alertDays: alertSettings.defaultDays || 7,
       recurringDurationType: 'indefinite',
       recurringUntilDate: '',
@@ -495,6 +611,7 @@ export default function Loans({
     });
     setShowAddForm(false);
     setEditingItem(null);
+    loadRecentLoanNames().catch(console.error);
   };
 
   const handleEdit = (loan) => {
@@ -518,7 +635,7 @@ export default function Loans({
   const handlePayment = async (loanId) => {
     const loan = loans.find((l) => l.id === loanId);
     if (!loan) {
-      alert('Loan not found');
+      showToast.error('Loan not found');
       return;
     }
 
@@ -534,13 +651,13 @@ export default function Loans({
     }
 
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
-      alert('Please enter a valid payment amount');
+      showToast.error('Please enter a valid payment amount');
       return;
     }
 
     const paymentDate = paymentForm.date;
     if (!paymentDate) {
-      alert('Please select a payment date');
+      showToast.error('Please select a payment date');
       return;
     }
 
@@ -554,8 +671,7 @@ export default function Loans({
       }
     }
 
-    try {
-      // Capture original loan state BEFORE any modifications for undo
+    const result = await executeAction(`pay-loan-${loanId}`, async () => {
       const originalLoan = { ...loan };
 
       const updatedLoan = {
@@ -610,7 +726,7 @@ export default function Loans({
       let paymentMethod = 'cash';
       let paymentMethodId = null;
       let paymentMethodName = 'Cash';
-      let sourceName = 'Cash';
+      let sourceName = 'cash'; // lowercase for description
       const previousCash = availableCash;
       let newCash = availableCash - paymentAmount;
 
@@ -627,7 +743,6 @@ export default function Loans({
         return;
       }
 
-      // Deep copy fund snapshot to preserve nested objects like linked_to and linked_items
       const fundSnapshot = JSON.parse(JSON.stringify(fund));
       
 
@@ -703,7 +818,6 @@ export default function Loans({
         ? { ...fundSnapshot, source_account_name: adjustmentInfo.accountName }
         : fundSnapshot;
 
-      // Track if fund was deleted so undo knows to restore it
       const wasFundDeleted = !fund.recurring && !fund.is_lumpsum && (currentAmount - paymentAmount) <= 0.0001;
 
       recordAffectedFund(snapshotFund, paymentAmount, {
@@ -715,7 +829,6 @@ export default function Loans({
       paymentMethodName = fund.name;
       sourceName = fund.name;
 
-      // Bank accounts are updated separately - just sync total
       await onUpdateCash(null, { syncOnly: true });
     } else if (sourceType === 'bank_account') {
       const account = bankAccounts.find((acc) => String(acc.id) === String(sourceId));
@@ -751,7 +864,6 @@ export default function Loans({
         await onUpdateCash(newCash);
       }
     } else if (sourceType === 'credit_card') {
-      // ✅ Pay the loan using a credit card (this ADDS to the card balance)
       const card = creditCards?.find((c) => String(c.id) === String(sourceId));
       if (!card) {
         alert('Selected credit card was not found.');
@@ -767,7 +879,6 @@ export default function Loans({
       paymentMethodName = card.name;
       sourceName = card.name;
  
-      // Paying with a credit card does not change cash immediately
       newCash = previousCash;
       await onUpdateCash(newCash);
     } else if (sourceType === 'cash_in_hand') {
@@ -787,7 +898,7 @@ export default function Loans({
       paymentMethod = 'cash_in_hand';
       paymentMethodId = null;
       paymentMethodName = 'Cash in Hand';
-      sourceName = 'Cash in Hand';
+      sourceName = 'cash in hand'; // lowercase for description
       
       newCash = previousCash;
       await onUpdateCash(newCash);
@@ -795,7 +906,7 @@ export default function Loans({
       paymentMethod = 'cash';
       paymentMethodId = null;
       paymentMethodName = 'Cash';
-      sourceName = 'Cash';
+      sourceName = 'cash'; // lowercase for description
       newCash = previousCash - paymentAmount;
       await onUpdateCash(newCash);
     }
@@ -810,21 +921,18 @@ export default function Loans({
         payment_method: paymentMethod,
         payment_method_id: paymentMethodId,
         payment_method_name: paymentMethodName,
-        card_id: sourceType === 'credit_card' ? paymentMethodId : null,
-        subtype: sourceType === 'credit_card' ? 'loan_via_credit_card' : null,
-        description: `Payment for loan ${loan.name}${sourceName ? ` from ${sourceName}` : ''}`,
+        description: `Payment for '${loan.name}' from ${sourceName}`,
         created_at: new Date().toISOString(),
         status: 'active',
         undone_at: null
       };
       const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
 
-      // ✅ Ensure snapshots always carry ID for undo safety
       if (!originalLoan.id) originalLoan.id = loanId;
       if (!updatedLoan.id) updatedLoan.id = loanId;
       const snapshot = {
-        entity: { ...originalLoan, id: loanId }, // Use original loan state for undo, guarantee id
-        updatedLoan: { ...updatedLoan, id: loanId }, // Guarantee id for undo safety
+        entity: { ...originalLoan, id: loanId },
+        updatedLoan: { ...updatedLoan, id: loanId },
         paymentAmount,
         date: paymentDate,
         previousCash,
@@ -854,7 +962,6 @@ export default function Loans({
         snapshot
       );
 
-      // Save payment context (non-blocking)
       saveLoanPaymentContext(loanId, {
         paymentSource: sourceType,
         paymentSourceId: sourceId,
@@ -864,28 +971,53 @@ export default function Loans({
       await onUpdate();
       setPayingLoan(null);
       resetPaymentFormState();
-    } catch (error) {
-      console.error('Error processing loan payment:', error);
-      alert('Failed to process payment. Please try again.');
+      
+      return {
+        loanId,
+        loanName: loan.name,
+        amount: paymentAmount,
+        sourceName
+      };
+    });
+    
+    if (result.success) {
+      showToast.success(
+        `Payment of ${formatCurrency(result.data.amount)} processed for ${result.data.loanName}`
+      );
+    } else {
+      showToast.error(`Payment failed: ${result.error.message}`);
     }
   };
 
-
   const handleDelete = async (id) => {
-    if (window.confirm('Delete this loan?')) {
+    if (!window.confirm('Delete this loan?')) {
+      return;
+    }
+    
+    const loan = loans.find(l => l.id === id);
+    
+    const result = await executeAction(`delete-loan-${id}`, async () => {
       await dbOperation('loans', 'delete', id, { skipActivityLog: true });
-      const loan = loans.find(l => l.id === id);
+      
       if (loan) {
         await logActivity(
           'delete',
           'loan',
           loan.id,
           loan.name,
-          `Deleted loan '${loan.name}' - Principal ${formatCurrency(loan.principal)} • Balance ${formatCurrency(loan.balance)} • Payment ${formatCurrency(loan.payment_amount)} ${loan.frequency}`,
+          `Deleted loan '${loan.name}' - Principal ${formatCurrency(loan.principal)} • Balance ${formatCurrency(loan.balance)} • Payment ${formatCurrency(loan.payment_amount)} ${formatFrequency(loan.frequency)}`,
           loan
         );
       }
+      
       await onUpdate();
+      return { loanName: loan?.name || 'Loan' };
+    });
+    
+    if (result.success) {
+      showToast.success(`${result.data.loanName} deleted successfully`);
+    } else {
+      showToast.error(`Failed to delete loan: ${result.error.message}`);
     }
   };
 
@@ -925,15 +1057,50 @@ export default function Loans({
 
       {showAddForm && (
         <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
-          <SmartInput
-            type="loan"
-            value={formData.name}
-            onChange={(value) => setFormData({ ...formData, name: value })}
-            label="Loan Name *"
-            placeholder="e.g., Car Loan, Student Loan"
-            darkMode={darkMode}
-            required={true}
-          />
+          
+          {recentLoanNames.length > 0 && !editingItem && (
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Recent Loans
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {recentLoanNames.map(loanTemplate => (
+                  <button
+                    key={loanTemplate.loan_name}
+                    type="button"
+                    onClick={() => handleSelectLoanName(loanTemplate)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      formData.name === loanTemplate.loan_name
+                        ? 'bg-blue-600 text-white'
+                        : darkMode 
+                          ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                    }`}
+                  >
+                    {loanTemplate.loan_name}
+                    {loanTemplate.usage_count > 10 && ' ⭐'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {recentLoanNames.length > 0 ? 'Or type new loan name *' : 'Loan Name *'}
+            </label>
+            <input
+              ref={loanNameInputRef}
+              type="text"
+              value={formData.name}
+              onChange={(e) => handleLoanNameChange(e.target.value)}
+              onBlur={handleLoanNameBlur}
+              placeholder="e.g., Car Loan, Student Loan"
+              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              required
+              autoFocus={!editingItem && recentLoanNames.length === 0}
+            />
+          </div>
           <input
             type="number"
             placeholder="Principal *"
@@ -1024,22 +1191,30 @@ export default function Loans({
               )}
             </div>
           )}
-          <input
-            type="date"
-            value={formData.nextPaymentDate}
-            onChange={(e) => setFormData({ ...formData, nextPaymentDate: e.target.value })}
-            className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-          />
+          <div>
+            <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Next Payment Date *</label>
+            <input
+              type="date"
+              value={formData.nextPaymentDate}
+              onChange={(e) => setFormData({ ...formData, nextPaymentDate: e.target.value })}
+              className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+            />
+          </div>
           <div className="flex gap-2">
-            <button onClick={handleAdd} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium">
-              {editingItem ? 'Update Loan' : 'Add Loan'}
-            </button>
-            <button
+            <ActionButton
+              onClick={handleAdd}
+              processing={isActionProcessing(editingItem ? `edit-loan-${editingItem.id}` : 'add-loan')}
+              variant="primary"
+              processingText={editingItem ? 'Updating Loan...' : 'Adding Loan...'}
+              idleText={editingItem ? 'Update Loan' : 'Add Loan'}
+              fullWidth
+            />
+            <ActionButton
               onClick={resetForm}
-              className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
-            >
-              Cancel
-            </button>
+              variant="secondary"
+              idleText="Cancel"
+              fullWidth
+            />
           </div>
         </div>
       )}
@@ -1074,9 +1249,14 @@ export default function Loans({
                   <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
                     of {formatCurrency(loan.principal)} ({((loan.balance / loan.principal) * 100).toFixed(1)}% remaining)
                   </div>
+                  {loan.payment_amount > 0 && (
+                    <div className={`text-sm font-medium mt-1 ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
+                      💰 Payment: {formatCurrency(loan.payment_amount)}
+                    </div>
+                  )}
                   {loan.frequency && (
                     <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
-                      <span className="capitalize">Payments: {loan.frequency}</span>
+                      <span>Frequency: {formatFrequency(loan.frequency)}</span>
                       {loan.recurring_duration_type && (
                         <span className="ml-2">
                           {loan.recurring_duration_type === 'until_date' && loan.recurring_until_date && (
@@ -1132,6 +1312,14 @@ export default function Loans({
                   </div>
                 </div>
               )}
+              
+              {/* Recent Transactions */}
+              <RecentTransactions
+                darkMode={darkMode}
+                entityType="loan"
+                entityId={loan.id}
+                entityName={loan.name}
+              />
 
               {payingLoan === loan.id ? (
                 (() => {
@@ -1222,26 +1410,34 @@ export default function Loans({
                       </div>
 
                       <div className="flex gap-2">
-                        <button onClick={() => handlePayment(loan.id)} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium">
-                          Confirm Payment
-                        </button>
-                        <button
+                        <ActionButton
+                          onClick={() => handlePayment(loan.id)}
+                          processing={isActionProcessing(`pay-loan-${loan.id}`)}
+                          variant="success"
+                          processingText="Processing Payment..."
+                          idleText="Confirm Payment"
+                          fullWidth
+                        />
+                        <ActionButton
                           onClick={() => {
                             setPayingLoan(null);
                             resetPaymentFormState();
                           }}
-                          className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
-                        >
-                          Cancel
-                        </button>
+                          variant="secondary"
+                          idleText="Cancel"
+                          fullWidth
+                        />
                       </div>
                     </div>
                   );
                 })()
               ) : (
-                <button onClick={() => openPaymentForm(loan)} className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium">
-                  Make Payment
-                </button>
+                <ActionButton
+                  onClick={() => openPaymentForm(loan)}
+                  variant="primary"
+                  idleText="Make Payment"
+                  fullWidth
+                />
               )}
             </div>
           ))

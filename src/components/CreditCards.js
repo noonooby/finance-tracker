@@ -1,11 +1,17 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, Edit2, X, CreditCard, ShoppingBag, ListFilter, Star } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId, calculateTotalBankBalance } from '../utils/helpers';
+import { formatFrequency } from '../utils/sentenceCase';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import AddTransaction from './AddTransaction';
 import { logActivity } from '../utils/activityLogger';
 import SmartInput from './SmartInput';
+import { upsertKnownEntity } from '../utils/knownEntities';
 import { processOverdueCreditCards } from '../utils/autoPay';
+import RecentTransactions from './shared/RecentTransactions';
+import useAsyncAction from '../hooks/useAsyncAction';
+import ActionButton from './shared/ActionButton';
+import { showToast } from '../utils/toast';
 import {
   getUserPreferences,
   togglePinnedCreditCard
@@ -39,7 +45,7 @@ export default function CreditCards({
     name: '',
     balance: '',
     creditLimit: '',
-    dueDate: '',
+    dueDate: new Date().toISOString().split('T')[0],
     statementDay: '',
     interestRate: '',
     alertDays: alertSettings.defaultDays || 7,
@@ -62,10 +68,34 @@ export default function CreditCards({
   const [processingResults, setProcessingResults] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [pinnedCards, setPinnedCards] = useState([]);
+  const [recentCardNames, setRecentCardNames] = useState([]);
+  const cardNameInputRef = useRef(null);
   
-  // Load pinned cards
+  // Async action hook for handling all async operations
+  const { executeAction, isProcessing: isActionProcessing } = useAsyncAction();
+  
+  // Load pinned cards and recent card names
   useEffect(() => {
     loadPinnedCards();
+    loadRecentCardNames();
+  }, []);
+  
+  const loadRecentCardNames = async () => {
+    try {
+      const { fetchSuggestions } = await import('../utils/knownEntities');
+      const recent = await fetchSuggestions('card', '', 5);
+      setRecentCardNames(recent);
+    } catch (error) {
+      console.error('Error loading recent card names:', error);
+    }
+  };
+  
+  const handleSelectCardName = useCallback((cardEntity) => {
+    setFormData(prev => ({ ...prev, name: cardEntity.name }));
+    setTimeout(() => {
+      const balanceInput = document.querySelector('input[placeholder="Current Balance *"]');
+      if (balanceInput) balanceInput.focus();
+    }, 50);
   }, []);
   
   const loadPinnedCards = async () => {
@@ -288,24 +318,28 @@ export default function CreditCards({
 
   const handleAdd = async () => {
     if (!formData.name || !formData.balance) {
-      alert('Please fill in required fields: Name and Balance');
+      showToast.error('Please fill in required fields: Name and Balance');
       return;
     }
 
     if (!formData.isGiftCard && !formData.dueDate) {
-      alert('Credit cards require a Due Date');
+      showToast.error('Credit cards require a Due Date');
       return;
     }
 
     if (formData.isGiftCard && !formData.purchaseAmount) {
-      alert('Gift cards require an Original Value');
+      showToast.error('Gift cards require an Original Value');
       return;
     }
 
     if (formData.isGiftCard && formData.hasExpiry && !formData.expiryDate) {
-      alert('Please specify the expiry date or uncheck "has expiry"');
+      showToast.error('Please specify the expiry date or uncheck "has expiry"');
       return;
     }
+    
+    const actionId = editingItem ? `edit-card-${editingItem.id}` : 'add-card';
+    
+    const result = await executeAction(actionId, async () => {
 
     const newCard = {
       id: editingItem?.id || generateId(),
@@ -527,9 +561,31 @@ export default function CreditCards({
       }
     }
 
+    // Track card name in known entities (non-blocking)
+    if (newCard.name) {
+      upsertKnownEntity('card', newCard.name).catch(err => 
+        console.warn('Failed to track card name:', err)
+      );
+    }
+
     await onUpdate();
     resetForm();
-  };
+    
+    return { 
+      cardName: savedCard?.name || newCard.name, 
+      isNew: !editingItem,
+      isGiftCard: formData.isGiftCard 
+    };
+  });
+  
+  if (result.success) {
+    const cardType = result.data.isGiftCard ? 'Gift card' : 'Credit card';
+    const action = result.data.isNew ? 'added' : 'updated';
+    showToast.success(`${cardType} '${result.data.cardName}' ${action} successfully`);
+  } else {
+    showToast.error(`Failed to save card: ${result.error.message}`);
+  }
+};
 
   const handleProcessDueCardPayments = async () => {
     if (isProcessing) return;
@@ -569,7 +625,7 @@ export default function CreditCards({
       name: '', 
       balance: '', 
       creditLimit: '', 
-      dueDate: '', 
+      dueDate: new Date().toISOString().split('T')[0], 
       statementDay: '', 
       interestRate: '', 
       alertDays: alertSettings.defaultDays || 7,
@@ -582,6 +638,7 @@ export default function CreditCards({
     });
     setShowAddForm(false);
     setEditingItem(null);
+    loadRecentCardNames().catch(console.error);
   };
 
   const handleEdit = (card) => {
@@ -606,13 +663,13 @@ export default function CreditCards({
 
   const handlePayment = async (cardId) => {
     if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) {
-      alert('Please enter a valid payment amount');
+      showToast.error('Please enter a valid payment amount');
       return;
     }
 
     const card = creditCards.find(c => c.id === cardId);
     if (!card) {
-      alert('Card not found');
+      showToast.error('Card not found');
       return;
     }
 
@@ -626,11 +683,11 @@ export default function CreditCards({
     const paymentDate = paymentForm.date;
 
     if (!paymentDate) {
-      alert('Please select a payment date');
+      showToast.error('Please select a payment date');
       return;
     }
 
-    try {
+    const result = await executeAction(`pay-card-${cardId}`, async () => {
       // Capture original card state BEFORE modifications
       const originalCard = { ...card };
       
@@ -665,7 +722,7 @@ export default function CreditCards({
       let paymentMethod = 'cash';
       let paymentMethodId = null;
       let paymentMethodName = 'Cash';
-      let sourceName = 'Cash';
+      let sourceName = 'cash'; // lowercase for description
       const previousCash = availableCash;
       let newCash = availableCash - paymentAmount;
 
@@ -824,7 +881,7 @@ export default function CreditCards({
         paymentMethod = 'cash_in_hand';
         paymentMethodId = null;
         paymentMethodName = 'Cash in Hand';
-        sourceName = 'Cash in Hand';
+        sourceName = 'cash in hand'; // lowercase for description
         
         // No change to total available cash calculation
         newCash = previousCash;
@@ -835,7 +892,7 @@ export default function CreditCards({
         paymentMethod = 'cash';
         paymentMethodId = null;
         paymentMethodName = 'Cash';
-        sourceName = 'Cash';
+        sourceName = 'cash'; // lowercase for description
         newCash = previousCash - paymentAmount;
         await onUpdateCash(newCash);
       }
@@ -851,7 +908,7 @@ export default function CreditCards({
         payment_method: paymentMethod,
         payment_method_id: paymentMethodId,
         payment_method_name: paymentMethodName,
-        description: `Payment for card ${card.name}${sourceName ? ` from ${sourceName}` : ''}`,
+        description: `Payment for '${card.name}' from ${sourceName}`,
         created_at: new Date().toISOString(),
         status: 'active',
         undone_at: null
@@ -903,15 +960,32 @@ export default function CreditCards({
       await onUpdate();
       setPayingCard(null);
       resetPaymentFormState();
-    } catch (error) {
-      console.error('Error processing card payment:', error);
-      alert('Failed to process payment. Please try again.');
+      
+      return { 
+        cardId, 
+        cardName: card.name, 
+        amount: paymentAmount, 
+        sourceName 
+      };
+    });
+    
+    if (result.success) {
+      showToast.success(
+        `Payment of ${formatCurrency(result.data.amount)} processed for ${result.data.cardName}`
+      );
+    } else {
+      showToast.error(`Payment failed: ${result.error.message}`);
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Delete this credit card?')) {
-      const card = creditCards.find(c => c.id === id);
+    if (!window.confirm('Delete this credit card?')) {
+      return;
+    }
+    
+    const card = creditCards.find(c => c.id === id);
+    
+    const result = await executeAction(`delete-card-${id}`, async () => {
       await logActivity(
         'delete',
         'card',
@@ -922,6 +996,13 @@ export default function CreditCards({
       );
       await dbOperation('creditCards', 'delete', id, { skipActivityLog: true });
       await onUpdate();
+      return { cardName: card.name };
+    });
+    
+    if (result.success) {
+      showToast.success(`${result.data.cardName} deleted successfully`);
+    } else {
+      showToast.error(`Failed to delete card: ${result.error.message}`);
     }
   };
 
@@ -987,15 +1068,51 @@ export default function CreditCards({
 
       {showAddForm && (
         <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
-          <SmartInput
-            type="card"
-            value={formData.name}
-            onChange={(value) => setFormData({ ...formData, name: value })}
-            label="Card Name *"
-            placeholder="e.g., Rogers Mastercard"
-            darkMode={darkMode}
-            required={true}
-          />
+          
+          {/* Quick-Select Buttons for Recent Card Names */}
+          {recentCardNames.length > 0 && !editingItem && (
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Recent Cards
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {recentCardNames.map(cardEntity => (
+                  <button
+                    key={cardEntity.id}
+                    type="button"
+                    onClick={() => handleSelectCardName(cardEntity)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      formData.name === cardEntity.name
+                        ? 'bg-blue-600 text-white'
+                        : darkMode 
+                          ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                    }`}
+                  >
+                    {cardEntity.name}
+                    {cardEntity.usage_count > 10 && ' ⭐'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Card Name Input */}
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {recentCardNames.length > 0 ? 'Or type new card name *' : 'Card Name *'}
+            </label>
+            <input
+              ref={cardNameInputRef}
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., Rogers Mastercard"
+              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              required
+              autoFocus={!editingItem && recentCardNames.length === 0}
+            />
+          </div>
           {/* Card Type Toggle */}
           <div>
             <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -1179,15 +1296,20 @@ export default function CreditCards({
             </>
           )}
           <div className="flex gap-2">
-            <button onClick={handleAdd} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium">
-              {editingItem ? 'Update Card' : 'Add Card'}
-            </button>
-            <button
+            <ActionButton
+              onClick={handleAdd}
+              processing={isActionProcessing(editingItem ? `edit-card-${editingItem.id}` : 'add-card')}
+              variant="primary"
+              processingText={editingItem ? 'Updating Card...' : 'Adding Card...'}
+              idleText={editingItem ? 'Update Card' : 'Add Card'}
+              fullWidth
+            />
+            <ActionButton
               onClick={resetForm}
-              className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
-            >
-              Cancel
-            </button>
+              variant="secondary"
+              idleText="Cancel"
+              fullWidth
+            />
           </div>
         </div>
       )}
@@ -1315,6 +1437,14 @@ export default function CreditCards({
                   </div>
                 </div>
               )}
+              
+              {/* Recent Transactions */}
+              <RecentTransactions
+                darkMode={darkMode}
+                entityType="card"
+                entityId={card.id}
+                entityName={card.name}
+              />
 
 {payingCard === card.id ? (
                 <div className="space-y-3">
@@ -1415,21 +1545,23 @@ export default function CreditCards({
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 pt-2">
-                    <button 
-                      onClick={() => handlePayment(card.id)} 
-                      className="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700"
-                    >
-                      Confirm Payment
-                    </button>
-                    <button
+                    <ActionButton
+                      onClick={() => handlePayment(card.id)}
+                      processing={isActionProcessing(`pay-card-${card.id}`)}
+                      variant="success"
+                      processingText="Processing Payment..."
+                      idleText="Confirm Payment"
+                      fullWidth
+                    />
+                    <ActionButton
                       onClick={() => {
                         setPayingCard(null);
                         resetPaymentFormState();
                       }}
-                      className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} py-2 rounded-lg font-medium`}
-                    >
-                      Cancel
-                    </button>
+                      variant="secondary"
+                      idleText="Cancel"
+                      fullWidth
+                    />
                   </div>
                 </div>
               ) : (

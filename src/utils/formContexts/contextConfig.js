@@ -49,6 +49,24 @@ export const CONTEXT_CONFIGS = {
       paymentSourceId: { type: 'UUID', dbColumn: 'payment_source_id', nullable: true },
       amountMode: { type: 'TEXT', dbColumn: 'amount_mode', required: true, default: 'full_payment' }
     }
+  },
+  
+  loanCreation: {
+    tableName: 'loan_creation_contexts',
+    triggerField: 'loan_name',
+    displayName: 'Loan Template',
+    contextFields: {
+      principal: { type: 'NUMERIC', required: true },
+      interestRate: { type: 'NUMERIC', dbColumn: 'interest_rate', nullable: true },
+      paymentAmount: { type: 'NUMERIC', dbColumn: 'payment_amount', required: true },
+      frequency: { type: 'TEXT', required: true, default: 'monthly' }
+    },
+    formMapping: {
+      principal: 'principal',
+      interest_rate: 'interestRate',
+      payment_amount: 'paymentAmount',
+      frequency: 'frequency'
+    }
   }
 };
 

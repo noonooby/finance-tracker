@@ -1,8 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Edit2, X, Calendar, Copy, ListFilter } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId, getPrimaryAccountFromArray } from '../utils/helpers';
+import { formatFrequency } from '../utils/sentenceCase';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
+import useAsyncAction from '../hooks/useAsyncAction';
+import ActionButton from './shared/ActionButton';
+import { showToast } from '../utils/toast';
 
 export default function ReservedFunds({
   darkMode,
@@ -56,6 +60,9 @@ export default function ReservedFunds({
   };
 
   const fundRefs = useRef({});
+  
+  // Async action hook for handling all async operations
+  const { executeAction, isProcessing: isActionProcessing } = useAsyncAction();
 
   const adjustBankAccountForFund = async (fund, amount) => {
     if (!fund?.source_account_id || !amount || amount <= 0) return;
@@ -86,28 +93,32 @@ export default function ReservedFunds({
 
   const handleAdd = async () => {
     if (!formData.name || !formData.amount || !formData.dueDate) {
-      alert('Please fill in required fields: Name, Amount, and Due Date');
+      showToast.error('Please fill in required fields: Name, Amount, and Due Date');
       return;
     }
 
     if (formData.recurring) {
       if (formData.recurringDurationType === 'until_date' && !formData.recurringUntilDate) {
-        alert('Please specify the end date for this recurring fund');
+        showToast.error('Please specify the end date for this recurring fund');
         return;
       }
       if (
         formData.recurringDurationType === 'occurrences' &&
         (!formData.recurringOccurrences || parseInt(formData.recurringOccurrences, 10) < 1)
       ) {
-        alert('Please specify the number of times this fund will recur');
+        showToast.error('Please specify the number of times this fund will recur');
         return;
       }
     }
 
     if (formData.isLumpsum && formData.linkedItems.length === 0) {
-      alert('Lumpsum must be linked to at least one loan/card');
+      showToast.error('Lumpsum must be linked to at least one loan/card');
       return;
     }
+    
+    const actionId = editingItem ? `edit-fund-${editingItem.id}` : 'add-fund';
+    
+    const result = await executeAction(actionId, async () => {
     
     const fundPayload = {
       name: formData.name,
@@ -135,7 +146,7 @@ export default function ReservedFunds({
     const savedFund = await dbOperation('reservedFunds', 'put', fundPayload, { skipActivityLog: true });
     if (!editingItem) {
       // Build detailed description for ADD
-      let description = `Added reserved fund '${savedFund.name}' - Amount ${formatCurrency(savedFund.amount)} • Due ${formatDate(savedFund.due_date)} • Frequency ${savedFund.frequency || 'N/A'}`;
+      let description = `Added reserved fund '${savedFund.name}' - Amount ${formatCurrency(savedFund.amount)} • Due ${formatDate(savedFund.due_date)} • Frequency ${formatFrequency(savedFund.frequency) || 'N/A'}`;
       if (savedFund.recurring) {
         description += ` • Recurring`;
       }
@@ -197,7 +208,20 @@ export default function ReservedFunds({
     }
     await onUpdate();
     resetForm();
-  };
+    
+    return {
+      fundName: savedFund.name,
+      isNew: !editingItem
+    };
+  });
+  
+  if (result.success) {
+    const action = result.data.isNew ? 'added' : 'updated';
+    showToast.success(`Reserved fund '${result.data.fundName}' ${action} successfully`);
+  } else {
+    showToast.error(`Failed to save fund: ${result.error.message}`);
+  }
+};
 
   const handleUseTemplate = (fund) => {
     const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
@@ -261,7 +285,9 @@ export default function ReservedFunds({
   const handleMarkPaid = async (fundId) => {
     const fund = reservedFunds.find(f => resolveFundId(f) === fundId);
     if (!fund) return;
-    const normalizedFund = { ...fund, id: fundId };
+    
+    const result = await executeAction(`mark-paid-${fundId}`, async () => {
+      const normalizedFund = { ...fund, id: fundId };
     
     const transaction = {
       type: 'reserved_fund_paid',
@@ -322,14 +348,34 @@ export default function ReservedFunds({
     }
     
     await onUpdate();
-  };
+    
+    return {
+      fundName: fund.name,
+      amount: fund.amount,
+      isRecurring: fund.recurring
+    };
+  });
+  
+  if (result.success) {
+    showToast.success(
+      `Reserved fund '${result.data.fundName}' marked as paid (${formatCurrency(result.data.amount)})`
+    );
+  } else {
+    showToast.error(`Failed to mark as paid: ${result.error.message}`);
+  }
+};
 
   const handleDelete = async (id) => {
-    if (window.confirm('Delete this reserved fund?')) {
-      const fund = reservedFunds.find(f => resolveFundId(f) === id);
-      if (!fund) return;
+    if (!window.confirm('Delete this reserved fund?')) {
+      return;
+    }
+    
+    const fund = reservedFunds.find(f => resolveFundId(f) === id);
+    if (!fund) return;
+    
+    const result = await executeAction(`delete-fund-${id}`, async () => {
       // Build detailed description for DELETE
-      let description = `Deleted reserved fund '${fund.name}' - Amount ${formatCurrency(fund.amount)} • Due ${formatDate(fund.due_date)} • Frequency ${fund.frequency || 'N/A'}`;
+      let description = `Deleted reserved fund '${fund.name}' - Amount ${formatCurrency(fund.amount)} • Due ${formatDate(fund.due_date)} • Frequency ${formatFrequency(fund.frequency) || 'N/A'}`;
       if (fund.recurring) {
         description += ` • Recurring`;
       }
@@ -347,6 +393,14 @@ export default function ReservedFunds({
       );
       await dbOperation('reservedFunds', 'delete', id, { skipActivityLog: true });
       await onUpdate();
+      
+      return { fundName: fund.name };
+    });
+    
+    if (result.success) {
+      showToast.success(`${result.data.fundName} deleted successfully`);
+    } else {
+      showToast.error(`Failed to delete fund: ${result.error.message}`);
     }
   };
 
@@ -615,15 +669,20 @@ export default function ReservedFunds({
           )}
 
           <div className="flex gap-2">
-            <button onClick={handleAdd} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium">
-              {editingItem ? 'Update Fund' : 'Add Fund'}
-            </button>
-            <button
+            <ActionButton
+              onClick={handleAdd}
+              processing={isActionProcessing(editingItem ? `edit-fund-${editingItem.id}` : 'add-fund')}
+              variant="primary"
+              processingText={editingItem ? 'Updating Fund...' : 'Adding Fund...'}
+              idleText={editingItem ? 'Update Fund' : 'Add Fund'}
+              fullWidth
+            />
+            <ActionButton
               onClick={resetForm}
-              className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
-            >
-              Cancel
-            </button>
+              variant="secondary"
+              idleText="Cancel"
+              fullWidth
+            />
           </div>
         </div>
       )}
@@ -665,7 +724,7 @@ export default function ReservedFunds({
                   )}
                   {(fund.recurring || fund.recurring_duration_type) && (
                     <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
-                      <span className="capitalize">Recurring: {fund.frequency}</span>
+                      <span>Recurring: {formatFrequency(fund.frequency)}</span>
                       {fund.recurring_duration_type && (
                         <span className="ml-2">
                           {fund.recurring_duration_type === 'until_date' && fund.recurring_until_date && (
@@ -733,12 +792,14 @@ export default function ReservedFunds({
               </div>
 
               {!fund.linked_to && !fund.is_lumpsum && (
-                <button
+                <ActionButton
                   onClick={() => handleMarkPaid(resolvedId)}
-                  className="w-full bg-green-600 text-white py-2 rounded-lg font-medium"
-                >
-                  Mark as Paid
-                </button>
+                  processing={isActionProcessing(`mark-paid-${resolvedId}`)}
+                  variant="success"
+                  processingText="Marking Paid..."
+                  idleText="Mark as Paid"
+                  fullWidth
+                />
               )}
             </div>
           );

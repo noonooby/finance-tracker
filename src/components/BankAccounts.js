@@ -20,6 +20,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle, ListFilter, Wallet, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { formatCurrency, generateId, validateBankAccountData, getAccountTypeIcon, formatDate } from '../utils/helpers';
+import RecentTransactions from './shared/RecentTransactions';
+import useAsyncAction from '../hooks/useAsyncAction';
+import ActionButton from './shared/ActionButton';
+import { showToast } from '../utils/toast';
 import {
   upsertBankAccount,
   deleteBankAccount,
@@ -65,6 +69,9 @@ export default function BankAccounts({
   const [showTransferForm, setShowTransferForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pinnedAccounts, setPinnedAccounts] = useState([]);
+  
+  // Async action hook for handling all async operations
+  const { executeAction, isProcessing: isActionProcessing } = useAsyncAction();
   
   // Cash operations modal state
   const [showCashModal, setShowCashModal] = useState(false);
@@ -224,7 +231,7 @@ export default function BankAccounts({
     });
 
     if (errors.length > 0) {
-      alert(errors.join('\n'));
+      showToast.error(errors.join('\n'));
       return;
     }
     
@@ -270,8 +277,10 @@ export default function BankAccounts({
     }
 
     setSaving(true);
+    
+    const actionId = editingItem ? `edit-account-${editingItem.id}` : 'add-account';
 
-    try {
+    const result = await executeAction(actionId, async () => {
       const accountId = editingItem?.id || generateId();
       const balance = parseFloat(formData.balance) || 0;
 
@@ -381,89 +390,108 @@ export default function BankAccounts({
       resetForm();
 
       console.log('✅ Bank account saved successfully');
-    } catch (error) {
-      console.error('❌ Error saving bank account:', error);
-      alert(`Failed to save bank account: ${error.message}`);
-    } finally {
+      
       setSaving(false);
-    }
-  };
+      
+      return {
+        accountName: savedAccount.name,
+        isNew: !editingItem
+      };
+    });
+    
+    if (result.success) {
+    const action = result.data.isNew ? 'added' : 'updated';
+    showToast.success(`Bank account '${result.data.accountName}' ${action} successfully`);
+  } else {
+    showToast.error(`Failed to save account: ${result.error.message}`);
+  }
+};
   
   /**
    * Handle cash operations (withdraw/deposit)
    */
   const handleCashOperation = async () => {
     if (!cashFormData.accountId || !cashFormData.amount) {
-      alert('Please select an account and enter an amount');
+      showToast.error('Please select an account and enter an amount');
       return;
     }
     
     const amount = parseFloat(cashFormData.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      alert('Please enter a valid amount');
+      showToast.error('Please enter a valid amount');
       return;
     }
     
     setProcessingCash(true);
     
-    try {
-      let result;
+    const actionId = `cash-${cashOperation}-${cashFormData.accountId}`;
+    
+    const actionResult = await executeAction(actionId, async () => {
+      let opResult;
       
       if (cashOperation === 'withdraw') {
-        result = await withdrawCashFromBank(cashFormData.accountId, amount);
+        opResult = await withdrawCashFromBank(cashFormData.accountId, amount);
         
         await logActivity(
           'cash_withdrawal',
           'bank_account',
-          result.accountId,
-          result.accountName,
-          `Withdrew ${formatCurrency(result.amount)} from '${result.accountName}' to cash in hand`,
+          opResult.accountId,
+          opResult.accountName,
+          `Withdrew ${formatCurrency(opResult.amount)} from '${opResult.accountName}' to cash in hand`,
           {
-            accountId: result.accountId,
-            accountName: result.accountName,
-            amount: result.amount,
-            previousBankBalance: result.previousBankBalance,
-            newBankBalance: result.newBankBalance,
-            previousCashInHand: result.previousCashInHand,
-            newCashInHand: result.newCashInHand,
-            transactionId: result.transactionId
+            accountId: opResult.accountId,
+            accountName: opResult.accountName,
+            amount: opResult.amount,
+            previousBankBalance: opResult.previousBankBalance,
+            newBankBalance: opResult.newBankBalance,
+            previousCashInHand: opResult.previousCashInHand,
+            newCashInHand: opResult.newCashInHand,
+            transactionId: opResult.transactionId
           }
         );
-        
-        alert(`Successfully withdrew ${formatCurrency(amount)} from ${result.accountName} to cash in hand`);
       } else {
-        result = await depositCashToBank(cashFormData.accountId, amount);
+        opResult = await depositCashToBank(cashFormData.accountId, amount);
         
         await logActivity(
           'cash_deposit',
           'bank_account',
-          result.accountId,
-          result.accountName,
-          `Deposited ${formatCurrency(result.amount)} from cash in hand to '${result.accountName}'`,
+          opResult.accountId,
+          opResult.accountName,
+          `Deposited ${formatCurrency(opResult.amount)} from cash in hand to '${opResult.accountName}'`,
           {
-            accountId: result.accountId,
-            accountName: result.accountName,
-            amount: result.amount,
-            previousBankBalance: result.previousBankBalance,
-            newBankBalance: result.newBankBalance,
-            previousCashInHand: result.previousCashInHand,
-            newCashInHand: result.newCashInHand,
-            transactionId: result.transactionId
+            accountId: opResult.accountId,
+            accountName: opResult.accountName,
+            amount: opResult.amount,
+            previousBankBalance: opResult.previousBankBalance,
+            newBankBalance: opResult.newBankBalance,
+            previousCashInHand: opResult.previousCashInHand,
+            newCashInHand: opResult.newCashInHand,
+            transactionId: opResult.transactionId
           }
         );
-        
-        alert(`Successfully deposited ${formatCurrency(amount)} from cash in hand to ${result.accountName}`);
       }
       
       if (onReloadAll) await onReloadAll();
       
       setCashFormData({ accountId: '', amount: '' });
       setShowCashModal(false);
-    } catch (error) {
-      console.error('Cash operation failed:', error);
-      alert(error.message || 'Cash operation failed');
-    } finally {
-      setProcessingCash(false);
+      
+      return {
+        operation: cashOperation,
+        accountName: opResult.accountName,
+        amount: opResult.amount
+      };
+    });
+    
+    setProcessingCash(false);
+    
+    if (actionResult.success) {
+      const operationText = actionResult.data.operation === 'withdraw' ? 'withdrawn from' : 'deposited to';
+      showToast.success(
+        `${formatCurrency(actionResult.data.amount)} ${operationText} ${actionResult.data.accountName}`
+      );
+    } else {
+      showToast.error(`Cash operation failed: ${actionResult.error.message}`);
     }
   };
 
@@ -484,15 +512,15 @@ export default function BankAccounts({
 
     // SAFETY CHECK: Don't allow deleting primary account
     if (account.is_primary) {
-      alert('Cannot delete the primary account.\n\nTo reduce the balance: Click the Edit button and change the balance to $0.\nTo delete this account: First set another account as primary, then delete this one.');
+      showToast.error('Cannot delete the primary account. Set another account as primary first, then delete this one.');
       return;
     }
 
     if (!window.confirm(`Delete bank account "${account.name}"?\n\nThis action cannot be undone. Any reserved funds or income linked to this account will be unlinked.`)) {
       return;
     }
-
-    try {
+    
+    const result = await executeAction(`delete-account-${accountId}`, async () => {
       console.log('🗑️ Deleting bank account:', account.name);
 
       // Build detailed description for DELETE
@@ -515,9 +543,14 @@ export default function BankAccounts({
       await onUpdate();
 
       console.log('✅ Bank account deleted successfully');
-    } catch (error) {
-      console.error('❌ Error deleting bank account:', error);
-      alert(`Failed to delete bank account: ${error.message}`);
+      
+      return { accountName: account.name };
+    });
+    
+    if (result.success) {
+      showToast.success(`${result.data.accountName} deleted successfully`);
+    } else {
+      showToast.error(`Failed to delete account: ${result.error.message}`);
     }
   };
 
@@ -575,19 +608,19 @@ export default function BankAccounts({
 
     // Validate transfer data
     if (!transferData.fromAccount || !transferData.toAccount) {
-      alert('Please select both source and destination accounts');
+      showToast.error('Please select both source and destination accounts');
       return;
     }
 
     if (transferData.fromAccount === transferData.toAccount) {
-      alert('Cannot transfer to the same account');
+      showToast.error('Cannot transfer to the same account');
       return;
     }
 
     const rawAmount = parseFloat(transferData.amount);
     const amount = Math.round(rawAmount * 100) / 100;
     if (!Number.isFinite(amount) || amount <= 0) {
-      alert('Please enter a valid transfer amount');
+      showToast.error('Please enter a valid transfer amount');
       return;
     }
 
@@ -599,7 +632,7 @@ export default function BankAccounts({
     );
 
     if (!sourceAccount || !destinationAccount) {
-      alert('Unable to load selected accounts. Please refresh and try again.');
+      showToast.error('Unable to load selected accounts. Please refresh and try again.');
       return;
     }
 
@@ -607,19 +640,18 @@ export default function BankAccounts({
     const destinationBalance = Number(destinationAccount.balance) || 0;
 
     if (sourceBalance < amount) {
-      alert(
-        `Insufficient funds in ${sourceAccount.name}. `
-        + `Available: ${formatCurrency(sourceBalance)}, Requested: ${formatCurrency(amount)}`
+      showToast.error(
+        `Insufficient funds in ${sourceAccount.name}. Available: ${formatCurrency(sourceBalance)}`
       );
       return;
     }
 
     setSaving(true);
+    
+    const result = await executeAction('transfer-accounts', async () => {
+    console.log('💸 Processing transfer:', transferData);
 
-    try {
-      console.log('💸 Processing transfer:', transferData);
-
-      const result = await transferBetweenAccounts(
+    const transferResult = await transferBetweenAccounts(
         transferData.fromAccount,
         transferData.toAccount,
         amount,
@@ -630,28 +662,28 @@ export default function BankAccounts({
       const transferDate = new Date().toISOString().split('T')[0];
 
       // Build detailed description for TRANSFER
-      const description = `Transferred ${formatCurrency(result.amount)} from '${result.fromAccount}' to '${result.toAccount}' on ${formatDate(transferDate)}${transferData.description !== 'Account Transfer' ? ` - Note: ${transferData.description}` : ''}`;
+      const description = `Transferred ${formatCurrency(transferResult.amount)} from '${transferResult.fromAccount}' to '${transferResult.toAccount}' on ${formatDate(transferDate)}${transferData.description !== 'Account Transfer' ? ` - Note: ${transferData.description}` : ''}`;
 
       // Log activity
       await logActivity(
         'transfer',
         'bank_account',
-        result.fromAccountId || transferData.fromAccount,
-        result.fromAccount,
+        transferResult.fromAccountId || transferData.fromAccount,
+        transferResult.fromAccount,
         description,
         {
-          fromAccount: result.fromAccountId || transferData.fromAccount,
-          toAccount: result.toAccountId || transferData.toAccount,
-          fromAccountName: result.fromAccount,
-          toAccountName: result.toAccount,
-          amount: result.amount,
+          fromAccount: transferResult.fromAccountId || transferData.fromAccount,
+          toAccount: transferResult.toAccountId || transferData.toAccount,
+          fromAccountName: transferResult.fromAccount,
+          toAccountName: transferResult.toAccount,
+          amount: transferResult.amount,
           description: transferData.description,
           date: transferDate,
-          transactionId: result.transactionId,
+          transactionId: transferResult.transactionId,
           fromPreviousBalance: sourceBalance,
           toPreviousBalance: destinationBalance,
-          fromNewBalance: result.fromBalance,
-          toNewBalance: result.toBalance
+          fromNewBalance: transferResult.fromBalance,
+          toNewBalance: transferResult.toBalance
         }
       );
 
@@ -667,12 +699,22 @@ export default function BankAccounts({
       setShowTransferForm(false);
 
       console.log('✅ Transfer completed successfully');
-      alert(`Successfully transferred ${formatCurrency(amount)} from ${result.fromAccount} to ${result.toAccount}`);
-    } catch (error) {
-      console.error('❌ Transfer failed:', error);
-      alert(`Transfer failed: ${error.message}`);
-    } finally {
-      setSaving(false);
+      
+      return {
+        amount: transferResult.amount,
+        fromAccount: transferResult.fromAccount,
+        toAccount: transferResult.toAccount
+      };
+    });
+    
+    setSaving(false);
+    
+    if (result.success) {
+      showToast.success(
+        `${formatCurrency(result.data.amount)} transferred from ${result.data.fromAccount} to ${result.data.toAccount}`
+      );
+    } else {
+      showToast.error(`Transfer failed: ${result.error.message}`);
     }
   };
 
@@ -812,14 +854,15 @@ export default function BankAccounts({
           </div>
 
           <div className="flex gap-2 pt-2">
-            <button
+            <ActionButton
               onClick={handleTransfer}
-              disabled={saving}
-              className="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50"
-            >
-              {saving ? 'Processing...' : 'Transfer Money'}
-            </button>
-            <button
+              processing={isActionProcessing('transfer-accounts')}
+              variant="success"
+              processingText="Transferring..."
+              idleText="Transfer Money"
+              fullWidth
+            />
+            <ActionButton
               onClick={() => {
                 setTransferData({
                   fromAccount: '',
@@ -829,10 +872,10 @@ export default function BankAccounts({
                 });
                 setShowTransferForm(false);
               }}
-              className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
-            >
-              Cancel
-            </button>
+              variant="secondary"
+              idleText="Cancel"
+              fullWidth
+            />
           </div>
         </div>
       )}
@@ -934,22 +977,23 @@ export default function BankAccounts({
           })()}
           
           <div className="flex gap-2 pt-2">
-            <button
+            <ActionButton
               onClick={handleCashOperation}
-              disabled={processingCash}
-              className="flex-1 bg-purple-600 text-white py-2 rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50"
-            >
-              {processingCash ? 'Processing...' : cashOperation === 'withdraw' ? 'Withdraw Cash' : 'Deposit Cash'}
-            </button>
-            <button
+              processing={isActionProcessing(`cash-${cashOperation}-${cashFormData.accountId}`)}
+              variant="warning"
+              processingText={cashOperation === 'withdraw' ? 'Withdrawing...' : 'Depositing...'}
+              idleText={cashOperation === 'withdraw' ? 'Withdraw Cash' : 'Deposit Cash'}
+              fullWidth
+            />
+            <ActionButton
               onClick={() => {
                 setCashFormData({ accountId: '', amount: '' });
                 setShowCashModal(false);
               }}
-              className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
-            >
-              Cancel
-            </button>
+              variant="secondary"
+              idleText="Cancel"
+              fullWidth
+            />
           </div>
         </div>
       )}
@@ -1065,19 +1109,20 @@ export default function BankAccounts({
           </div>
 
           <div className="flex gap-2">
-            <button
+            <ActionButton
               onClick={handleAdd}
-              disabled={saving}
-              className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : editingItem ? 'Update Account' : 'Add Account'}
-            </button>
-            <button
+              processing={isActionProcessing(editingItem ? `edit-account-${editingItem.id}` : 'add-account')}
+              variant="primary"
+              processingText={editingItem ? 'Updating Account...' : 'Adding Account...'}
+              idleText={editingItem ? 'Update Account' : 'Add Account'}
+              fullWidth
+            />
+            <ActionButton
               onClick={resetForm}
-              className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
-            >
-              Cancel
-            </button>
+              variant="secondary"
+              idleText="Cancel"
+              fullWidth
+            />
           </div>
         </div>
       )}
@@ -1191,11 +1236,19 @@ export default function BankAccounts({
                 </div>
 
                 {/* Account Type Badge */}
-                <div className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${
+                <div className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded mb-3 ${
                   darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
                 }`}>
                   {account.account_type.charAt(0).toUpperCase() + account.account_type.slice(1)} Account
                 </div>
+                
+                {/* Recent Transactions */}
+                <RecentTransactions
+                  darkMode={darkMode}
+                  entityType="bank_account"
+                  entityId={account.id}
+                  entityName={account.name}
+                />
               </div>
             );
           })
