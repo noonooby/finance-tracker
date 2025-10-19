@@ -17,8 +17,6 @@ import {
 import {
   getCardPaymentContext,
   saveCardPaymentContext,
-  getGiftCardPurchaseContext,
-  saveGiftCardPurchaseContext,
   getRecentGiftCardNames,
   getLastUsedGiftCardContext,
   applyGiftCardPurchaseContext
@@ -76,14 +74,6 @@ export default function CreditCards({
   const [pinnedCards, setPinnedCards] = useState([]);
   const [recentCardNames, setRecentCardNames] = useState([]);
   const [recentGiftCards, setRecentGiftCards] = useState([]);
-  const [showAddBalanceModal, setShowAddBalanceModal] = useState(false);
-  const [addingBalanceToCard, setAddingBalanceToCard] = useState(null);
-  const [addBalanceForm, setAddBalanceForm] = useState({
-    amount: '',
-    date: new Date().toISOString().split('T')[0],
-    paymentSource: 'cash_in_hand',
-    paymentSourceId: null
-  });
   const cardNameInputRef = useRef(null);
   const giftCardNameInputRef = useRef(null);
   

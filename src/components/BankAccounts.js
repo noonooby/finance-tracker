@@ -18,7 +18,8 @@
 // ============================================
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle, ListFilter, Wallet, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle, ListFilter, Wallet, ArrowDownToLine, ArrowUpFromLine, PiggyBank, TrendingUp, Banknote } from 'lucide-react';
+import * as Icons from 'lucide-react';
 import { formatCurrency, generateId, validateBankAccountData, getAccountTypeIcon, formatDate } from '../utils/helpers';
 import RecentTransactions from './shared/RecentTransactions';
 import useAsyncAction from '../hooks/useAsyncAction';
@@ -39,11 +40,8 @@ import {
   togglePinnedBankAccount
 } from '../utils/userPreferencesManager';
 import {
-  getTransferContext,
   saveTransferContext,
-  getRecentTransferDescriptions,
-  getLastUsedTransferContext,
-  applyTransferContext
+  getRecentTransferDescriptions
 } from '../utils/formContexts';
 
 /**
@@ -1043,8 +1041,14 @@ export default function BankAccounts({
               <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <div className={`text-xs font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preview:</div>
                 <div className={`text-sm space-y-1 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                  <div>💵 Cash in Hand: {formatCurrency(currentCash)} → {formatCurrency(newCashInHand)}</div>
-                  <div>🏦 {selectedAccount.name}: {formatCurrency(currentBankBalance)} → {formatCurrency(newBankBalance)}</div>
+                  <div className="flex items-center gap-2">
+                    <Wallet size={14} className="text-gray-500" />
+                    Cash in Hand: {formatCurrency(currentCash)} → {formatCurrency(newCashInHand)}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Building2 size={14} className="text-gray-500" />
+                    {selectedAccount.name}: {formatCurrency(currentBankBalance)} → {formatCurrency(newBankBalance)}
+                  </div>
                 </div>
               </div>
             );
@@ -1113,10 +1117,10 @@ export default function BankAccounts({
                 onChange={(e) => setFormData({ ...formData, account_type: e.target.value })}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
               >
-                <option value="checking">🏦 Checking</option>
-                <option value="savings">💰 Savings</option>
-                <option value="investment">📈 Investment</option>
-                <option value="cash">💵 Cash</option>
+                <option value="checking">Checking</option>
+                <option value="savings">Savings</option>
+                <option value="investment">Investment</option>
+                <option value="cash">Cash</option>
               </select>
             </div>
           </div>
@@ -1226,7 +1230,11 @@ export default function BankAccounts({
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-2xl">{getAccountTypeIcon(account.account_type)}</span>
+                      {(() => {
+                        const iconName = getAccountTypeIcon(account.account_type);
+                        const IconComponent = Icons[iconName] || Icons.Building2;
+                        return <IconComponent size={20} className="text-gray-500" />;
+                      })()}
                       <h3 className="font-bold text-lg">{account.name}</h3>
                       {account.is_primary && (
                         <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">

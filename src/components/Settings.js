@@ -15,9 +15,7 @@ import {
   X, 
   TrendingUp, 
   Grid,
-  Lightbulb,
-  Building2,
-  CreditCard as CreditCardIcon
+  Lightbulb
 } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { deleteAllUserData } from '../utils/db';

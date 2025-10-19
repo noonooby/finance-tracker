@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Check, X, Save, Star, Package } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, X, Save, Star } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { fetchCategories, addCategory, updateCategory, deleteCategory, seedDefaultCategories } from '../utils/categories';
 import IconPicker from './IconPicker';

@@ -103,24 +103,6 @@ export const CONTEXT_CONFIGS = {
       payment_source: 'paymentSource',
       payment_source_id: 'paymentSourceId'
     }
-  },
-  
-  giftCardPurchase: {
-    tableName: 'gift_card_purchase_contexts',
-    triggerField: 'card_name',
-    displayName: 'Gift Card Purchase',
-    contextFields: {
-      originalValue: { type: 'NUMERIC', dbColumn: 'original_value', required: true },
-      purchaseAmount: { type: 'NUMERIC', dbColumn: 'purchase_amount', required: true },
-      paymentSource: { type: 'TEXT', dbColumn: 'payment_source', required: true },
-      paymentSourceId: { type: 'TEXT', dbColumn: 'payment_source_id', nullable: true }
-    },
-    formMapping: {
-      original_value: 'originalValue',
-      purchase_amount: 'purchaseAmount',
-      payment_source: 'paymentSource',
-      payment_source_id: 'paymentSourceId'
-    }
   }
 };
 

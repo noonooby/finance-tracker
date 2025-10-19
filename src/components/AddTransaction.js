@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Wallet, Building2, CreditCard as CreditCardIcon, Gift, TrendingUp, Clock, FolderOpen } from 'lucide-react';
-import * as Icons from 'lucide-react';
+import { X, Wallet, Building2, CreditCard as CreditCardIcon, TrendingUp } from 'lucide-react';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import { formatCurrency } from '../utils/helpers';
@@ -97,7 +96,7 @@ export default function AddTransaction({
     } catch (error) {
       console.error('❌ Error loading expense contexts:', error);
     }
-  }, [formData.type, preselectedCard]);
+  }, [formData.type, formData.description, preselectedCard]);
 
   useEffect(() => {
     loadExpenseContexts();
@@ -184,7 +183,7 @@ export default function AddTransaction({
       const parsed = recentPMs
         .map(pm => {
           if (pm === 'cash_in_hand') {
-            return { type: 'cash_in_hand', id: null, name: 'Cash in Hand', icon: 'Wallet' };
+            return { type: 'cash_in_hand', id: null, name: 'Cash in Hand' };
           } else if (pm.startsWith('credit_card:')) {
             const id = pm.replace('credit_card:', '');
             const card = creditCards?.find(c => c.id === id);
@@ -192,8 +191,7 @@ export default function AddTransaction({
               return { 
                 type: 'credit_card', 
                 id: card.id, 
-                name: card.name, 
-                icon: card.is_gift_card ? 'Gift' : 'CreditCard' 
+                name: card.name
               };
             }
           } else if (pm.startsWith('bank_account:')) {
@@ -203,8 +201,7 @@ export default function AddTransaction({
               return { 
                 type: 'bank_account', 
                 id: account.id, 
-                name: account.name, 
-                icon: 'Building2',
+                name: account.name,
                 balance: account.balance,
                 isPrimary: account.is_primary
               };
@@ -893,25 +890,19 @@ export default function AddTransaction({
                 <option value="">Select category</option>
                 {recentCategories.length > 0 && (
                   <optgroup label="Recent">
-                    {recentCategories.map(cat => {
-                      const IconComponent = Icons[cat.icon] || Icons.Package;
-                      return (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      );
-                    })}
-                  </optgroup>
-                )}
-                <optgroup label="All Categories">
-                  {categories.filter(c => !c.is_income).map(cat => {
-                    const IconComponent = Icons[cat.icon] || Icons.Package;
-                    return (
+                    {recentCategories.map(cat => (
                       <option key={cat.id} value={cat.id}>
                         {cat.name}
                       </option>
-                    );
-                  })}
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="All Categories">
+                  {categories.filter(c => !c.is_income).map(cat => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
                 </optgroup>
               </select>
             </div>
@@ -1063,19 +1054,16 @@ export default function AddTransaction({
               >
                 {recentPaymentMethods.length > 0 && (
                   <optgroup label="Recent">
-                    {recentPaymentMethods.map(pm => {
-                      const IconComponent = Icons[pm.icon] || Icons.Wallet;
-                      return (
-                        <option 
-                          key={pm.id || 'cash_in_hand'} 
-                          value={pm.type === 'cash_in_hand' ? 'cash_in_hand' : `${pm.type}:${pm.id}`}
-                        >
-                          {pm.name}
-                          {pm.type === 'bank_account' && pm.balance !== undefined && ` (${pm.balance.toFixed(2)} available)`}
-                          {pm.isPrimary && ' ★'}
-                        </option>
-                      );
-                    })}
+                    {recentPaymentMethods.map(pm => (
+                      <option 
+                        key={pm.id || 'cash_in_hand'} 
+                        value={pm.type === 'cash_in_hand' ? 'cash_in_hand' : `${pm.type}:${pm.id}`}
+                      >
+                        {pm.name}
+                        {pm.type === 'bank_account' && pm.balance !== undefined && ` ($${pm.balance.toFixed(2)} available)`}
+                        {pm.isPrimary && ' ★'}
+                      </option>
+                    ))}
                   </optgroup>
                 )}
                 
@@ -1124,7 +1112,7 @@ export default function AddTransaction({
                 <option value="">Select {formData.paymentMethod === 'credit_card' ? 'credit card' : 'loan'}</option>
                 {formData.paymentMethod === 'credit_card' && creditCards && creditCards.map(card => (
                   <option key={card.id} value={card.id}>
-                    {card.name} {card.is_gift_card ? `(${card.balance.toFixed(2)} balance)` : `(${card.balance.toFixed(2)} owed)`}
+                    {card.name} {card.is_gift_card ? `($${card.balance.toFixed(2)} balance)` : `($${card.balance.toFixed(2)} owed)`}
                   </option>
                 ))}
                 {formData.paymentMethod === 'loan' && loans && loans.map(loan => (

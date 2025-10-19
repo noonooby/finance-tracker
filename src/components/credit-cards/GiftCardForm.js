@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { Gift } from 'lucide-react';
 import { formatCurrency } from '../../utils/helpers';
 
