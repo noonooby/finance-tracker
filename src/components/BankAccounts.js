@@ -18,7 +18,7 @@
 // ============================================
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle, ListFilter, Wallet, ArrowDownToLine, ArrowUpFromLine, PiggyBank, TrendingUp, Banknote } from 'lucide-react';
+import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle, ListFilter, Wallet, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { formatCurrency, generateId, validateBankAccountData, getAccountTypeIcon, formatDate } from '../utils/helpers';
 import RecentTransactions from './shared/RecentTransactions';
