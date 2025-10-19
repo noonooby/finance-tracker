@@ -87,9 +87,9 @@ export function MainLayout() {
   };
 
   return (
-    <div className={`min-h-screen pb-20 ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div className={`h-screen flex flex-col overflow-hidden ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Header */}
-      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b p-4 sticky top-0 z-10`}>
+      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b p-4 flex-shrink-0 z-10`}>
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">Finance Tracker</h1>
@@ -134,15 +134,16 @@ export function MainLayout() {
       </div>
 
       {/* Main Content - Rendered by Routes */}
-      <div className="p-4">
+      <div className="flex-1 overflow-y-auto p-4 pb-20">
         <Outlet />
       </div>
 
       {/* Floating Add Button */}
       <button
         onClick={openAddTransaction}
-        className="fixed bottom-24 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center z-20"
+        className="fixed bottom-20 right-4 md:bottom-24 md:right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center z-20 flex-shrink-0"
         title="Add Transaction"
+        style={{ touchAction: 'manipulation' }}
       >
         <Plus size={28} />
       </button>

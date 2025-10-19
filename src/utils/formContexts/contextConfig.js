@@ -21,7 +21,7 @@ export const CONTEXT_CONFIGS = {
     displayName: 'Expense Description',
     contextFields: {
       categoryId: { type: 'UUID', dbColumn: 'category_id', nullable: true },
-      paymentMethod: { type: 'TEXT', required: true },
+      paymentMethod: { type: 'TEXT', dbColumn: 'payment_method', required: true },
       paymentMethodId: { type: 'UUID', dbColumn: 'payment_method_id', nullable: true }
     },
     formMapping: {
@@ -66,6 +66,60 @@ export const CONTEXT_CONFIGS = {
       interest_rate: 'interestRate',
       payment_amount: 'paymentAmount',
       frequency: 'frequency'
+    }
+  },
+  
+  transfer: {
+    tableName: 'transfer_description_contexts',
+    triggerField: 'description',
+    displayName: 'Transfer Description',
+    contextFields: {
+      fromAccountId: { type: 'UUID', dbColumn: 'from_account_id', nullable: true },
+      toAccountId: { type: 'UUID', dbColumn: 'to_account_id', nullable: true },
+      fromAccountName: { type: 'TEXT', dbColumn: 'from_account_name', nullable: true },
+      toAccountName: { type: 'TEXT', dbColumn: 'to_account_name', nullable: true }
+    },
+    formMapping: {
+      from_account_id: 'fromAccountId',
+      to_account_id: 'toAccountId',
+      from_account_name: 'fromAccountName',
+      to_account_name: 'toAccountName'
+    }
+  },
+  
+  giftCardPurchase: {
+    tableName: 'gift_card_purchase_contexts',
+    triggerField: 'card_name',
+    displayName: 'Gift Card Purchase',
+    contextFields: {
+      originalValue: { type: 'NUMERIC', dbColumn: 'original_value', required: true },
+      purchaseAmount: { type: 'NUMERIC', dbColumn: 'purchase_amount', required: true },
+      paymentSource: { type: 'TEXT', dbColumn: 'payment_source', required: true },
+      paymentSourceId: { type: 'TEXT', dbColumn: 'payment_source_id', nullable: true }
+    },
+    formMapping: {
+      original_value: 'originalValue',
+      purchase_amount: 'purchaseAmount',
+      payment_source: 'paymentSource',
+      payment_source_id: 'paymentSourceId'
+    }
+  },
+  
+  giftCardPurchase: {
+    tableName: 'gift_card_purchase_contexts',
+    triggerField: 'card_name',
+    displayName: 'Gift Card Purchase',
+    contextFields: {
+      originalValue: { type: 'NUMERIC', dbColumn: 'original_value', required: true },
+      purchaseAmount: { type: 'NUMERIC', dbColumn: 'purchase_amount', required: true },
+      paymentSource: { type: 'TEXT', dbColumn: 'payment_source', required: true },
+      paymentSourceId: { type: 'TEXT', dbColumn: 'payment_source_id', nullable: true }
+    },
+    formMapping: {
+      original_value: 'originalValue',
+      purchase_amount: 'purchaseAmount',
+      payment_source: 'paymentSource',
+      payment_source_id: 'paymentSourceId'
     }
   }
 };

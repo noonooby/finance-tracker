@@ -1,5 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Undo2, Activity, CreditCard, TrendingUp, Calendar, DollarSign, Wallet, Building2, Settings as SettingsIcon, Eye, EyeOff, SlidersHorizontal } from 'lucide-react';
+import { 
+  Undo2, 
+  Activity, 
+  CreditCard, 
+  TrendingUp, 
+  Calendar, 
+  DollarSign, 
+  Wallet, 
+  Building2, 
+  Settings as SettingsIcon, 
+  Eye, 
+  EyeOff, 
+  SlidersHorizontal 
+} from 'lucide-react';
 import { supabase } from '../utils/supabase';
 import { undoActivity } from '../utils/activityLogger';
 import { getSetting, setSetting } from '../utils/settingsManager';
@@ -566,8 +579,9 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
         </div>
 
         {!showAllActivities && viewOnlyCount > 0 && (
-          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            ⚙️ Hiding {viewOnlyCount} settings change{viewOnlyCount !== 1 ? 's' : ''} (toggle above to show)
+          <p className={`text-xs flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <SettingsIcon size={12} />
+            Hiding {viewOnlyCount} settings change{viewOnlyCount !== 1 ? 's' : ''} (toggle above to show)
           </p>
         )}
       </div>

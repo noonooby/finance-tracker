@@ -38,6 +38,13 @@ import {
   getUserPreferences,
   togglePinnedBankAccount
 } from '../utils/userPreferencesManager';
+import {
+  getTransferContext,
+  saveTransferContext,
+  getRecentTransferDescriptions,
+  getLastUsedTransferContext,
+  applyTransferContext
+} from '../utils/formContexts';
 
 /**
  * BankAccounts Component
@@ -100,6 +107,7 @@ export default function BankAccounts({
     description: 'Account Transfer',
     date: new Date().toISOString().split('T')[0]
   });
+  const [recentTransfers, setRecentTransfers] = useState([]);
 
   // Refs for scrolling to focused account
   const accountRefs = useRef({});
@@ -107,7 +115,17 @@ export default function BankAccounts({
   // Load pinned accounts
   useEffect(() => {
     loadPinnedAccounts();
+    loadRecentTransfers();
   }, []);
+  
+  const loadRecentTransfers = async () => {
+    try {
+      const recent = await getRecentTransferDescriptions(5);
+      setRecentTransfers(recent);
+    } catch (error) {
+      console.error('Error loading recent transfers:', error);
+    }
+  };
   
   const loadPinnedAccounts = async () => {
     try {
@@ -698,6 +716,16 @@ export default function BankAccounts({
 
       console.log('✅ Transfer completed successfully');
       
+      // Save transfer context
+      if (transferData.description) {
+        saveTransferContext(transferData.description, {
+          fromAccountId: transferData.fromAccount,
+          toAccountId: transferData.toAccount,
+          fromAccountName: transferResult.fromAccount,
+          toAccountName: transferResult.toAccount
+        }).catch(err => console.warn('Failed to save transfer context:', err));
+      }
+      
       return {
         amount: transferResult.amount,
         fromAccount: transferResult.fromAccount,
@@ -785,6 +813,41 @@ export default function BankAccounts({
             <ArrowRightLeft size={18} />
             Transfer Between Accounts
           </h3>
+          
+          {/* Recent Transfer Quick-Select */}
+          {recentTransfers.length > 0 && (
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Recent Transfers
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {recentTransfers.map(transfer => (
+                  <button
+                    key={transfer.id}
+                    type="button"
+                    onClick={() => {
+                      setTransferData(prev => ({
+                        ...prev,
+                        description: transfer.description,
+                        fromAccount: transfer.from_account_id || prev.fromAccount,
+                        toAccount: transfer.to_account_id || prev.toAccount
+                      }));
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      transferData.description === transfer.description
+                        ? 'bg-blue-600 text-white'
+                        : darkMode 
+                          ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                    }`}
+                  >
+                    {transfer.description}
+                    {transfer.usage_count > 10 && ' ⭐'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

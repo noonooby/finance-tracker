@@ -38,3 +38,21 @@ export {
   deleteLoanCreationContext,
   applyLoanCreationContext
 } from './loanCreationContexts';
+
+export {
+  getTransferContext,
+  saveTransferContext,
+  getRecentTransferDescriptions,
+  getLastUsedTransferContext,
+  deleteTransferContext,
+  applyTransferContext
+} from './transferContexts';
+
+export {
+  getGiftCardPurchaseContext,
+  saveGiftCardPurchaseContext,
+  getRecentGiftCardNames,
+  getLastUsedGiftCardContext,
+  deleteGiftCardPurchaseContext,
+  applyGiftCardPurchaseContext
+} from './giftCardPurchaseContexts';

@@ -52,18 +52,18 @@ export const predictNextDate = (lastDate, frequency) => {
 };
 
 export const DEFAULT_CATEGORIES = [
-  { id: 'groceries', name: 'Groceries', color: '#10b981', icon: '🛒', is_income: false },
-  { id: 'utilities', name: 'Utilities', color: '#f59e0b', icon: '💡', is_income: false },
-  { id: 'transportation', name: 'Transportation', color: '#3b82f6', icon: '🚗', is_income: false },
-  { id: 'entertainment', name: 'Entertainment', color: '#8b5cf6', icon: '🎮', is_income: false },
-  { id: 'healthcare', name: 'Healthcare', color: '#ef4444', icon: '🏥', is_income: false },
-  { id: 'dining', name: 'Dining', color: '#ec4899', icon: '🍽️', is_income: false },
-  { id: 'shopping', name: 'Shopping', color: '#06b6d4', icon: '🛍️', is_income: false },
-  { id: 'other', name: 'Other', color: '#6b7280', icon: '📦', is_income: false },
-  { id: 'salary', name: 'Salary', color: '#10b981', icon: '💰', is_income: true },
-  { id: 'freelance', name: 'Freelance', color: '#8b5cf6', icon: '💼', is_income: true },
-  { id: 'investment', name: 'Investment', color: '#f59e0b', icon: '📈', is_income: true },
-  { id: 'other_income', name: 'Other Income', color: '#6b7280', icon: '💵', is_income: true }
+  { id: 'groceries', name: 'Groceries', color: '#10b981', icon: 'ShoppingCart', is_income: false },
+  { id: 'utilities', name: 'Utilities', color: '#f59e0b', icon: 'Lightbulb', is_income: false },
+  { id: 'transportation', name: 'Transportation', color: '#3b82f6', icon: 'Car', is_income: false },
+  { id: 'entertainment', name: 'Entertainment', color: '#8b5cf6', icon: 'Gamepad2', is_income: false },
+  { id: 'healthcare', name: 'Healthcare', color: '#ef4444', icon: 'Heart', is_income: false },
+  { id: 'dining', name: 'Dining', color: '#ec4899', icon: 'Utensils', is_income: false },
+  { id: 'shopping', name: 'Shopping', color: '#06b6d4', icon: 'ShoppingBag', is_income: false },
+  { id: 'other', name: 'Other', color: '#6b7280', icon: 'Package', is_income: false },
+  { id: 'salary', name: 'Salary', color: '#10b981', icon: 'DollarSign', is_income: true },
+  { id: 'freelance', name: 'Freelance', color: '#8b5cf6', icon: 'Briefcase', is_income: true },
+  { id: 'investment', name: 'Investment', color: '#f59e0b', icon: 'TrendingUp', is_income: true },
+  { id: 'other_income', name: 'Other Income', color: '#6b7280', icon: 'Banknote', is_income: true }
 ];
 
 // ============================================
@@ -321,21 +321,21 @@ export function getAccountTypeDisplay(accountType) {
 }
 
 /**
- * Get account type icon emoji
+ * Get account type icon name (Lucide icon)
  * Visual indicator for different account types
  *
  * @param {string} accountType - Account type code
- * @returns {string} Emoji icon
+ * @returns {string} Lucide icon name
  */
 export function getAccountTypeIcon(accountType) {
   const icons = {
-    'checking': '🏦',
-    'savings': '💰',
-    'investment': '📈',
-    'cash': '💵'
+    'checking': 'Building2',
+    'savings': 'PiggyBank',
+    'investment': 'TrendingUp',
+    'cash': 'Banknote'
   };
 
-  return icons[accountType] || '🏦';
+  return icons[accountType] || 'Building2';
 }
 
 /**

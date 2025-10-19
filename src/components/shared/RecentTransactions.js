@@ -53,11 +53,12 @@ export default function RecentTransactions({
   const loadPreferences = async () => {
     try {
       const prefs = await getUserPreferences();
-      const settingsKey = `recent_transactions_${entityType}`;
+      const recentTxnSettings = prefs.recent_transactions_settings || {};
+      const entitySettings = recentTxnSettings[entityType];
       
-      if (prefs[settingsKey]) {
-        setIsCollapsed(prefs[settingsKey].collapsed ?? true);
-        setDisplayCount(prefs[settingsKey].display_count ?? 5);
+      if (entitySettings) {
+        setIsCollapsed(entitySettings.collapsed ?? true);
+        setDisplayCount(entitySettings.display_count ?? 5);
       }
     } catch (error) {
       console.error('Error loading recent transactions preferences:', error);

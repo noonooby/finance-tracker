@@ -1,5 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, FileText, Settings, Save, Star, Trash2, Copy, FolderOpen } from 'lucide-react';
+import { 
+  BarChart3, 
+  FileText, 
+  Settings, 
+  Save, 
+  Star, 
+  Trash2, 
+  Copy, 
+  FolderOpen,
+  Calendar,
+  Tag,
+  CreditCard as CreditCardIcon,
+  DollarSign,
+  TrendingUp
+} from 'lucide-react';
 import { dbOperation, getAllBankAccounts } from '../utils/db';
 import MonthlySummary from './reports/templates/MonthlySummary';
 import CategoryAnalysis from './reports/templates/CategoryAnalysis';
@@ -168,12 +182,12 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
 
   const getTemplateIcon = (type) => {
     switch (type) {
-      case 'monthly': return '📅';
-      case 'category': return '🏷️';
-      case 'payment': return '💳';
-      case 'cashflow': return '💰';
-      case 'annual': return '📊';
-      default: return '📄';
+      case 'monthly': return Calendar;
+      case 'category': return Tag;
+      case 'payment': return CreditCardIcon;
+      case 'cashflow': return DollarSign;
+      case 'annual': return TrendingUp;
+      default: return FileText;
     }
   };
 
@@ -281,7 +295,10 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-xl">{getTemplateIcon(template.template_type)}</span>
+                        {(() => {
+                          const IconComponent = getTemplateIcon(template.template_type);
+                          return <IconComponent size={18} className="text-gray-500" />;
+                        })()}
                         <div>
                           <h4 className="font-semibold text-sm">{template.name}</h4>
                           <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -347,8 +364,12 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
           <div className="space-y-4">
             {Object.entries(templatesByType).map(([type, templates]) => (
               <div key={type}>
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  {getTemplateIcon(type)} {getTemplateLabel(type)}
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                  {(() => {
+                    const IconComponent = getTemplateIcon(type);
+                    return <IconComponent size={16} className="text-gray-500" />;
+                  })()}
+                  {getTemplateLabel(type)}
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {templates.map(template => (
@@ -487,9 +508,12 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
               }`}>
                 <div className="text-sm">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-lg">{getTemplateIcon(activeTemplate)}</span>
-                    <span className="font-semibold">{getTemplateLabel(activeTemplate)}</span>
-                  </div>
+                  {(() => {
+                    const IconComponent = getTemplateIcon(activeTemplate);
+                      return <IconComponent size={18} className="text-gray-500" />;
+                  })()}
+                  <span className="font-semibold">{getTemplateLabel(activeTemplate)}</span>
+                </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     This template will save your current report type
                   </p>
@@ -581,7 +605,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
                 }`}
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">📅</span>
+                  <Calendar size={20} />
                   <h3 className="font-semibold">Monthly Summary</h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -600,7 +624,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
                 }`}
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">🏷️</span>
+                  <Tag size={20} />
                   <h3 className="font-semibold">Category Analysis</h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -619,7 +643,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
                 }`}
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">💳</span>
+                  <CreditCardIcon size={20} />
                   <h3 className="font-semibold">Payment Methods</h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -638,7 +662,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
                 }`}
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">💰</span>
+                  <DollarSign size={20} />
                   <h3 className="font-semibold">Cashflow Analysis</h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -657,7 +681,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
                 }`}
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">📊</span>
+                  <TrendingUp size={20} />
                   <h3 className="font-semibold">Annual Review</h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">

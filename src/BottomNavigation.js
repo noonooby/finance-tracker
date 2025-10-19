@@ -47,10 +47,11 @@ export default function BottomNavigation({ darkMode }) {
   };
 
   return (
-    <div 
+    <nav 
       className={`fixed bottom-0 left-0 right-0 ${
         darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      } border-t px-1 py-2 flex justify-around z-30 overflow-x-auto`}
+      } border-t px-1 py-2 flex justify-around z-30 overflow-x-auto flex-shrink-0`}
+      style={{ touchAction: 'manipulation' }}
     >
       {navItems.map((item) => {
         const Icon = item.icon;
@@ -75,6 +76,6 @@ export default function BottomNavigation({ darkMode }) {
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }

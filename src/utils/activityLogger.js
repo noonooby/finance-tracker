@@ -219,6 +219,73 @@ export const undoActivity = async (activity, onUpdate) => {
               });
             }
           }
+          
+          // For gift cards: When undoing deletion, reactivate the purchase transaction
+          // (The refund already happened during deletion, so we don't refund again)
+          if (entity_type === 'card' && snapshot.is_gift_card) {
+            try {
+              // Find the purchase transaction and reactivate it
+              const allTransactions = await dbOperation('transactions', 'getAll');
+              const purchaseTransaction = allTransactions.find(t => 
+                t.description === `Gift Card Purchase: ${snapshot.name}` &&
+                t.type === 'expense' &&
+                t.status === 'undone'
+              );
+              
+              if (purchaseTransaction) {
+                console.log('🔄 Reactivating gift card purchase transaction:', purchaseTransaction.id);
+                
+                // Reactivate the transaction
+                await dbOperation('transactions', 'put', {
+                  ...purchaseTransaction,
+                  status: 'active',
+                  undone_at: null
+                }, { skipActivityLog: true });
+                
+                // Reverse the refund that happened during deletion
+                const amount = Number(purchaseTransaction.amount) || 0;
+                const paymentMethod = purchaseTransaction.payment_method;
+                const paymentMethodId = purchaseTransaction.payment_method_id;
+                
+                if (paymentMethod === 'cash_in_hand') {
+                  const { getCashInHand, updateCashInHand } = await import('./db');
+                  const currentCash = await getCashInHand();
+                  await updateCashInHand(currentCash - amount);
+                  console.log('✅ Deducted', amount, 'from cash in hand');
+                  
+                } else if (paymentMethod === 'bank_account' && paymentMethodId) {
+                  const { getBankAccount, updateBankAccountBalance } = await import('./db');
+                  const bankAccount = await getBankAccount(paymentMethodId);
+                  if (bankAccount) {
+                    const currentBalance = Number(bankAccount.balance) || 0;
+                    await updateBankAccountBalance(paymentMethodId, currentBalance - amount);
+                    console.log('✅ Deducted', amount, 'from bank account', bankAccount.name);
+                  }
+                  
+                } else if (paymentMethod === 'credit_card' && paymentMethodId) {
+                  const paymentCard = await dbOperation('creditCards', 'get', paymentMethodId);
+                  if (paymentCard) {
+                    const currentBalance = Number(paymentCard.balance) || 0;
+                    // Gift card: subtract balance. Credit card: add balance (charge it again)
+                    const newBalance = paymentCard.is_gift_card
+                      ? Math.max(0, currentBalance - amount)
+                      : currentBalance + amount;
+                      
+                    await dbOperation('creditCards', 'put', {
+                      ...paymentCard,
+                      balance: newBalance
+                    }, { skipActivityLog: true });
+                    console.log('✅ Charged', amount, 'to card', paymentCard.name);
+                  }
+                }
+                
+                console.log('✅ Gift card purchase transaction reactivated and payment re-applied');
+              }
+            } catch (error) {
+              console.error('⚠️ Error reactivating gift card purchase transaction:', error);
+              // Don't fail the undo if transaction reactivation fails
+            }
+          }
         }
         break;
 

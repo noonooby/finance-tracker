@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Plus, Edit2, X, CreditCard, ShoppingBag, ListFilter, Star } from 'lucide-react';
+import { Plus, Edit2, X, CreditCard as CreditCardIcon, ShoppingBag, ListFilter, Star, Gift } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId, calculateTotalBankBalance } from '../utils/helpers';
 import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
 import AddTransaction from './AddTransaction';
@@ -16,8 +16,14 @@ import {
 } from '../utils/userPreferencesManager';
 import {
   getCardPaymentContext,
-  saveCardPaymentContext
+  saveCardPaymentContext,
+  getGiftCardPurchaseContext,
+  saveGiftCardPurchaseContext,
+  getRecentGiftCardNames,
+  getLastUsedGiftCardContext,
+  applyGiftCardPurchaseContext
 } from '../utils/formContexts';
+import { GiftCardForm, useGiftCardPurchase } from './credit-cards';
 
 export default function CreditCards({ 
   darkMode, 
@@ -49,8 +55,10 @@ export default function CreditCards({
     alertDays: alertSettings.defaultDays || 7,
     isGiftCard: false,
     purchaseDate: new Date().toISOString().split('T')[0],
-    purchaseAmount: '',
-    giftCardPaymentMethod: 'cash',
+    purchaseAmount: '', // Original card value
+    purchaseAmountPaid: '', // What you actually paid for it
+    giftCardPaymentMethod: 'cash_in_hand',
+    giftCardPaymentMethodId: null,
     hasExpiry: false,
     expiryDate: ''
   });
@@ -67,16 +75,36 @@ export default function CreditCards({
   const [isProcessing, setIsProcessing] = useState(false);
   const [pinnedCards, setPinnedCards] = useState([]);
   const [recentCardNames, setRecentCardNames] = useState([]);
+  const [recentGiftCards, setRecentGiftCards] = useState([]);
+  const [showAddBalanceModal, setShowAddBalanceModal] = useState(false);
+  const [addingBalanceToCard, setAddingBalanceToCard] = useState(null);
+  const [addBalanceForm, setAddBalanceForm] = useState({
+    amount: '',
+    date: new Date().toISOString().split('T')[0],
+    paymentSource: 'cash_in_hand',
+    paymentSourceId: null
+  });
   const cardNameInputRef = useRef(null);
+  const giftCardNameInputRef = useRef(null);
   
   // Async action hook for handling all async operations
   const { executeAction, isProcessing: isActionProcessing } = useAsyncAction();
+  
+  // Gift card purchase hook
+  const { createGiftCardPurchaseTransaction } = useGiftCardPurchase({
+    creditCards,
+    bankAccounts,
+    cashInHand,
+    onUpdateCashInHand,
+    onUpdateCash
+  });
   
   // Load pinned cards and recent card names
   useEffect(() => {
     loadPinnedCards();
     loadRecentCardNames();
-  }, []);
+    loadRecentGiftCards();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   
   const loadRecentCardNames = async () => {
     try {
@@ -88,12 +116,63 @@ export default function CreditCards({
     }
   };
   
+  const loadRecentGiftCards = async () => {
+    try {
+      const recent = await getRecentGiftCardNames(5);
+      setRecentGiftCards(recent);
+      
+      // Pre-fill last used gift card context if opening new gift card form
+      if (!editingItem && formData.isGiftCard) {
+        const lastContext = await getLastUsedGiftCardContext();
+        if (lastContext) {
+          const contextData = applyGiftCardPurchaseContext(lastContext);
+          setFormData(prev => ({
+            ...prev,
+            purchaseAmount: contextData.originalValue || '',
+            purchaseAmountPaid: contextData.purchaseAmount || contextData.originalValue || '',
+            giftCardPaymentMethod: contextData.paymentSource || 'cash_in_hand',
+            giftCardPaymentMethodId: contextData.paymentSourceId || null
+          }));
+          
+          setTimeout(() => {
+            if (giftCardNameInputRef.current) {
+              giftCardNameInputRef.current.select();
+              giftCardNameInputRef.current.focus();
+            }
+          }, 100);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading recent gift cards:', error);
+    }
+  };
+  
   const handleSelectCardName = useCallback((cardEntity) => {
     setFormData(prev => ({ ...prev, name: cardEntity.name }));
     setTimeout(() => {
       const balanceInput = document.querySelector('input[placeholder="Current Balance *"]');
       if (balanceInput) balanceInput.focus();
     }, 50);
+  }, []);
+  
+  const handleSelectGiftCard = useCallback(async (giftCardContext) => {
+    try {
+      const contextData = applyGiftCardPurchaseContext(giftCardContext);
+      setFormData(prev => ({
+        ...prev,
+        name: giftCardContext.card_name,
+        purchaseAmount: contextData.originalValue || '',
+        purchaseAmountPaid: contextData.purchaseAmount || contextData.originalValue || '',
+        giftCardPaymentMethod: contextData.paymentSource || 'cash_in_hand',
+        giftCardPaymentMethodId: contextData.paymentSourceId || null
+      }));
+      setTimeout(() => {
+        const balanceInput = document.querySelector('input[placeholder="Current Balance *"]');
+        if (balanceInput) balanceInput.focus();
+      }, 50);
+    } catch (error) {
+      console.error('Error applying gift card context:', error);
+    }
   }, []);
   
   const loadPinnedCards = async () => {
@@ -329,6 +408,11 @@ export default function CreditCards({
       showToast.error('Gift cards require an Original Value');
       return;
     }
+    
+    if (formData.isGiftCard && !formData.purchaseAmountPaid) {
+      showToast.error('Gift cards require a Purchase Amount Paid');
+      return;
+    }
 
     if (formData.isGiftCard && formData.hasExpiry && !formData.expiryDate) {
       showToast.error('Please specify the expiry date or uncheck "has expiry"');
@@ -446,116 +530,10 @@ export default function CreditCards({
 
     // If it's a new gift card (not editing), create purchase transaction
     if (formData.isGiftCard && !editingItem) {
-      try {
-        const purchaseAmount = parseFloat(formData.purchaseAmount) || 0;
-        const paymentMethod = formData.giftCardPaymentMethod;
-        
-        const transaction = {
-          id: crypto.randomUUID(),
-          type: 'expense',
-          amount: purchaseAmount,
-          date: formData.purchaseDate,
-          description: `Gift Card Purchase: ${formData.name}`,
-          status: 'active',
-          undone_at: null
-        };
-        
-        if (paymentMethod === 'cash') {
-          transaction.payment_method = 'cash';
-          transaction.payment_method_id = null;
-          transaction.payment_method_name = 'Cash';
-          
-          const newCash = availableCash - purchaseAmount;
-          await onUpdateCash(newCash);
-          
-        } else if (paymentMethod.startsWith('bank-')) {
-          const bankAccountId = paymentMethod.replace('bank-', '');
-          const paymentAccount = bankAccounts.find(a => a.id === bankAccountId);
-          
-          if (!paymentAccount) {
-            alert('Selected bank account not found');
-            return;
-          }
-          
-          if ((parseFloat(paymentAccount.balance) || 0) < purchaseAmount) {
-            alert(`Insufficient balance in ${paymentAccount.name}. Available: ${formatCurrency(paymentAccount.balance)}`);
-            return;
-          }
-          
-          transaction.payment_method = 'bank_account';
-          transaction.payment_method_id = bankAccountId;
-          transaction.payment_method_name = paymentAccount.name;
-          
-          // Deduct from bank account
-          await updateBankAccountBalance(bankAccountId, (parseFloat(paymentAccount.balance) || 0) - purchaseAmount);
-          
-        } else if (paymentMethod.startsWith('card-')) {
-          const cardIdToCharge = paymentMethod.replace('card-', '');
-          const paymentCard = creditCards.find(c => c.id === cardIdToCharge);
-          
-          if (!paymentCard) {
-            alert('Selected payment card not found');
-            return;
-          }
-          
-          transaction.payment_method = 'credit_card';
-          transaction.payment_method_id = cardIdToCharge;
-          transaction.payment_method_name = paymentCard.name;
-          transaction.card_id = cardIdToCharge;
-          
-          await dbOperation('creditCards', 'put', {
-            ...paymentCard,
-            balance: (parseFloat(paymentCard.balance) || 0) + purchaseAmount
-          }, { skipActivityLog: true });
-          
-        } else if (paymentMethod.startsWith('giftcard-')) {
-          const giftCardId = paymentMethod.replace('giftcard-', '');
-          const paymentGiftCard = creditCards.find(c => c.id === giftCardId);
-          
-          if (!paymentGiftCard) {
-            alert('Selected payment gift card not found');
-            return;
-          }
-          
-          if ((parseFloat(paymentGiftCard.balance) || 0) < purchaseAmount) {
-            alert(`Insufficient balance on ${paymentGiftCard.name}. Available: ${formatCurrency(paymentGiftCard.balance)}`);
-            return;
-          }
-          
-          transaction.payment_method = 'credit_card';
-          transaction.payment_method_id = giftCardId;
-          transaction.payment_method_name = paymentGiftCard.name;
-          transaction.card_id = giftCardId;
-          
-          await dbOperation('creditCards', 'put', {
-            ...paymentGiftCard,
-            balance: (parseFloat(paymentGiftCard.balance) || 0) - purchaseAmount
-          }, { skipActivityLog: true });
-        }
-        
-        const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
-
-        await logActivity(
-          'add',
-          'card',
-          savedCard?.id || newCard.id,
-          formData.name,
-          `Purchased gift card '${formData.name}' for ${formatCurrency(purchaseAmount)} using ${transaction.payment_method_name}`,
-          {
-            amount: purchaseAmount,
-            paymentMethod: transaction.payment_method_name,
-            paymentMethodId: transaction.payment_method_id,
-            paymentMethodType: transaction.payment_method,  // 'cash', 'bank_account', 'credit_card'
-            transactionId: savedTransaction?.id,
-            giftCardId: savedCard?.id || newCard.id,
-            isGiftCard: true
-          }
-        );
-
-        console.log('✅ Gift card purchase transaction created');
-      } catch (error) {
-        console.error('Error creating gift card purchase transaction:', error);
-        alert('Gift card added but transaction creation failed. Please add the expense manually.');
+      const result = await createGiftCardPurchaseTransaction(savedCard, formData);
+      if (!result) {
+        // Transaction failed, but card was saved - notify user
+        showToast.error('Gift card added but purchase transaction failed');
       }
     }
 
@@ -630,13 +608,16 @@ export default function CreditCards({
       isGiftCard: false,
       purchaseDate: new Date().toISOString().split('T')[0],
       purchaseAmount: '',
-      giftCardPaymentMethod: 'cash',
+      purchaseAmountPaid: '',
+      giftCardPaymentMethod: 'cash_in_hand',
+      giftCardPaymentMethodId: null,
       hasExpiry: false,
       expiryDate: ''
     });
     setShowAddForm(false);
     setEditingItem(null);
     loadRecentCardNames().catch(console.error);
+    loadRecentGiftCards().catch(console.error);
   };
 
   const handleEdit = (card) => {
@@ -651,7 +632,9 @@ export default function CreditCards({
       isGiftCard: card.is_gift_card || false,
       purchaseDate: card.purchase_date || new Date().toISOString().split('T')[0],
       purchaseAmount: card.purchase_amount?.toString() || '',
-      giftCardPaymentMethod: 'cash',
+      purchaseAmountPaid: card.purchase_amount?.toString() || '',
+      giftCardPaymentMethod: 'cash_in_hand',
+      giftCardPaymentMethodId: null,
       hasExpiry: card.has_expiry || false,
       expiryDate: card.expiry_date || ''
     });
@@ -977,28 +960,107 @@ export default function CreditCards({
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this credit card?')) {
+    const card = creditCards.find(c => c.id === id);
+    if (!card) return;
+    
+    const cardType = card.is_gift_card ? 'gift card' : 'credit card';
+    
+    if (!window.confirm(`Delete this ${cardType}?`)) {
       return;
     }
     
-    const card = creditCards.find(c => c.id === id);
-    
     const result = await executeAction(`delete-card-${id}`, async () => {
+      // For gift cards, find and refund the purchase transaction
+      let purchaseTransaction = null;
+      if (card.is_gift_card) {
+        try {
+          const allTransactions = await dbOperation('transactions', 'getAll');
+          purchaseTransaction = allTransactions.find(t => 
+            t.description === `Gift Card Purchase: ${card.name}` &&
+            t.type === 'expense' &&
+            t.status === 'active'
+          );
+          
+          if (purchaseTransaction) {
+            console.log('💰 Found purchase transaction to refund:', purchaseTransaction);
+            
+            // Refund based on payment method
+            const amount = Number(purchaseTransaction.amount) || 0;
+            const paymentMethod = purchaseTransaction.payment_method;
+            const paymentMethodId = purchaseTransaction.payment_method_id;
+            
+            if (paymentMethod === 'cash_in_hand') {
+              const { getCashInHand, updateCashInHand } = await import('../utils/db');
+              const currentCash = await getCashInHand();
+              await updateCashInHand(currentCash + amount);
+              console.log('✅ Refunded', amount, 'to cash in hand');
+              
+            } else if (paymentMethod === 'bank_account' && paymentMethodId) {
+              const { getBankAccount, updateBankAccountBalance } = await import('../utils/db');
+              const bankAccount = await getBankAccount(paymentMethodId);
+              if (bankAccount) {
+                const currentBalance = Number(bankAccount.balance) || 0;
+                await updateBankAccountBalance(paymentMethodId, currentBalance + amount);
+                await onUpdateCash(null, { syncOnly: true });
+                console.log('✅ Refunded', amount, 'to bank account', bankAccount.name);
+              }
+              
+            } else if (paymentMethod === 'credit_card' && paymentMethodId) {
+              const paymentCard = await dbOperation('creditCards', 'get', paymentMethodId);
+              if (paymentCard) {
+                const currentBalance = Number(paymentCard.balance) || 0;
+                // Gift card: add balance back. Credit card: reduce balance (reverse charge)
+                const newBalance = paymentCard.is_gift_card
+                  ? currentBalance + amount
+                  : Math.max(0, currentBalance - amount);
+                  
+                await dbOperation('creditCards', 'put', {
+                  ...paymentCard,
+                  balance: newBalance
+                }, { skipActivityLog: true });
+                console.log('✅ Refunded', amount, 'to card', paymentCard.name);
+              }
+            }
+            
+            // Mark purchase transaction as undone
+            await dbOperation('transactions', 'put', {
+              ...purchaseTransaction,
+              status: 'undone',
+              undone_at: new Date().toISOString()
+            }, { skipActivityLog: true });
+          }
+        } catch (error) {
+          console.error('⚠️ Error refunding gift card purchase:', error);
+          // Continue with deletion even if refund fails
+        }
+      }
+      
       await logActivity(
         'delete',
         'card',
         id,
         card.name,
-        `Deleted ${card.is_gift_card ? 'gift card' : 'credit card'} '${card.name}' - Balance ${formatCurrency(card.balance)}${!card.is_gift_card ? ` • Limit ${formatCurrency(card.credit_limit)} • Rate ${card.interest_rate || 0}% • Due ${card.due_date ? formatDate(card.due_date) : 'N/A'}` : ''}`,
+        `Deleted ${cardType} '${card.name}' - Balance ${formatCurrency(card.balance)}${!card.is_gift_card ? ` • Limit ${formatCurrency(card.credit_limit)} • Rate ${card.interest_rate || 0}% • Due ${card.due_date ? formatDate(card.due_date) : 'N/A'}` : ''}`,
         card
       );
       await dbOperation('creditCards', 'delete', id, { skipActivityLog: true });
       await onUpdate();
-      return { cardName: card.name };
+      
+      return { 
+        cardName: card.name,
+        refunded: purchaseTransaction ? Number(purchaseTransaction.amount) || 0 : 0,
+        refundMethod: purchaseTransaction?.payment_method_name || null
+      };
     });
     
     if (result.success) {
-      showToast.success(`${result.data.cardName} deleted successfully`);
+      if (result.data.refunded > 0) {
+        showToast.success(
+          `${result.data.cardName} deleted and ${formatCurrency(result.data.refunded)} refunded to ${result.data.refundMethod}`
+        );
+      } else {
+        showToast.success(`${result.data.cardName} deleted successfully`);
+      }
     } else {
       showToast.error(`Failed to delete card: ${result.error.message}`);
     }
@@ -1120,24 +1182,26 @@ export default function CreditCards({
               <button
                 type="button"
                 onClick={() => setFormData({ ...formData, isGiftCard: false })}
-                className={`flex-1 px-3 py-2 rounded-lg border-2 transition-colors ${
+                className={`flex-1 px-3 py-2 rounded-lg border-2 transition-colors font-medium flex items-center justify-center gap-2 ${
                   !formData.isGiftCard
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                    ? 'border-blue-600 bg-blue-600 text-white'
+                    : darkMode ? 'border-gray-600 hover:border-gray-500 text-gray-300' : 'border-gray-300 hover:border-gray-400 text-gray-700'
                 }`}
               >
-                💳 Credit Card
+                <CreditCardIcon size={18} />
+                Credit Card
               </button>
               <button
                 type="button"
                 onClick={() => setFormData({ ...formData, isGiftCard: true })}
-                className={`flex-1 px-3 py-2 rounded-lg border-2 transition-colors ${
+                className={`flex-1 px-3 py-2 rounded-lg border-2 transition-colors font-medium flex items-center justify-center gap-2 ${
                   formData.isGiftCard
-                    ? 'border-green-500 bg-green-50 text-green-700'
-                    : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                    ? 'border-green-600 bg-green-600 text-white'
+                    : darkMode ? 'border-gray-600 hover:border-gray-500 text-gray-300' : 'border-gray-300 hover:border-gray-400 text-gray-700'
                 }`}
               >
-                🎁 Gift Card
+                <Gift size={18} />
+                Gift Card
               </button>
             </div>
           </div>
@@ -1198,100 +1262,17 @@ export default function CreditCards({
             </>
           )}
           {formData.isGiftCard && (
-            <>
-              <input
-                type="number"
-                step="0.01"
-                placeholder="Original Gift Card Value *"
-                value={formData.purchaseAmount}
-                onChange={(e) => setFormData({ ...formData, purchaseAmount: e.target.value })}
-                className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-              />
-              
-              <div>
-                <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                  How are you paying for this gift card? *
-                </label>
-                <select
-                  value={formData.giftCardPaymentMethod}
-                  onChange={(e) => setFormData({ ...formData, giftCardPaymentMethod: e.target.value })}
-                  className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-                >
-                  <option value="cash">💵 Cash</option>
-                  
-                  {/* Bank Accounts */}
-                  {bankAccounts && bankAccounts.length > 0 && (
-                    <optgroup label="Bank Accounts">
-                      {bankAccounts.map(account => (
-                        <option key={account.id} value={`bank-${account.id}`}>
-                          🏦 {account.name} ({formatCurrency(account.balance)} available)
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  
-                  <optgroup label="Credit Cards">
-                    {creditCards.filter(card => !card.is_gift_card).map(card => (
-                      <option key={card.id} value={`card-${card.id}`}>
-                        💳 {card.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Gift Cards">
-                    {creditCards.filter(card => card.is_gift_card && card.balance > 0).map(card => (
-                      <option key={card.id} value={`giftcard-${card.id}`}>
-                        🎁 {card.name} ({formatCurrency(card.balance)} available)
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
-              </div>
-              
-              <div>
-                <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                  Purchase Date *
-                </label>
-                <input
-                  type="date"
-                  value={formData.purchaseDate}
-                  onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
-                  className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-                />
-              </div>
-              
-              <div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.hasExpiry}
-                    onChange={(e) => setFormData({ 
-                      ...formData, 
-                      hasExpiry: e.target.checked,
-                      expiryDate: e.target.checked ? formData.expiryDate : ''
-                    })}
-                    className="w-4 h-4"
-                  />
-                  <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    This gift card has an expiry date
-                  </span>
-                </label>
-              </div>
-              
-              {formData.hasExpiry && (
-                <div>
-                  <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    Expiry Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.expiryDate}
-                    onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-                    className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-                    min={new Date().toISOString().split('T')[0]}
-                  />
-                </div>
-              )}
-            </>
+            <GiftCardForm
+              darkMode={darkMode}
+              formData={formData}
+              onFormDataChange={setFormData}
+              bankAccounts={bankAccounts}
+              creditCards={creditCards}
+              recentGiftCards={recentGiftCards}
+              onSelectGiftCard={handleSelectGiftCard}
+              giftCardNameInputRef={giftCardNameInputRef}
+              editingItem={editingItem}
+            />
           )}
           <div className="flex gap-2">
             <ActionButton
@@ -1315,7 +1296,7 @@ export default function CreditCards({
       <div className="space-y-3">
         {creditCards.length === 0 ? (
           <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            <CreditCard size={48} className="mx-auto mb-3 opacity-30" />
+            <CreditCardIcon size={48} className="mx-auto mb-3 opacity-30" />
             <p>No credit cards added yet</p>
           </div>
         ) : (
@@ -1338,8 +1319,11 @@ export default function CreditCards({
                       <Star size={16} className="text-yellow-500 fill-current" title="Pinned" />
                     )}
                     {card.is_gift_card && (
-                      <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700 font-medium">
-                        🎁 Gift Card
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium flex items-center gap-1 ${
+                        darkMode ? 'bg-green-900/30 text-green-300 border border-green-700' : 'bg-green-100 text-green-700 border border-green-300'
+                      }`}>
+                        <Gift size={12} />
+                        Gift Card
                       </span>
                     )}
                   </div>

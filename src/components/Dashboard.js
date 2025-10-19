@@ -1,5 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, Settings as SettingsIcon, Eye, EyeOff, Wallet, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { 
+  AlertCircle, 
+  Settings as SettingsIcon, 
+  Eye, 
+  EyeOff, 
+  Wallet, 
+  ArrowDownToLine, 
+  ArrowUpFromLine,
+  DollarSign,
+  AlertTriangle,
+  Calendar,
+  TrendingUp,
+  CreditCard as CreditCardIcon,
+  Building2,
+  Activity,
+  Lightbulb
+} from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 import { withdrawCashFromBank, depositCashToBank } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
@@ -236,13 +252,13 @@ export default function Dashboard({
   };
 
   const availableWidgets = [
-    { id: 'cash_balance', label: 'Cash Balance', icon: '💵' },
-    { id: 'urgent_obligations', label: 'Urgent Obligations', icon: '⚠️' },
-    { id: 'upcoming_obligations', label: 'Upcoming Obligations', icon: '📅' },
-    { id: 'next_income', label: 'Next Income', icon: '💰' },
-    { id: 'debt_summary', label: 'Debt Summary', icon: '💳' },
-    { id: 'bank_accounts', label: 'Bank Accounts', icon: '🏦' },
-    { id: 'latest_updates', label: 'Latest Updates', icon: '📋' }
+    { id: 'cash_balance', label: 'Cash Balance', icon: DollarSign },
+    { id: 'urgent_obligations', label: 'Urgent Obligations', icon: AlertTriangle },
+    { id: 'upcoming_obligations', label: 'Upcoming Obligations', icon: Calendar },
+    { id: 'next_income', label: 'Next Income', icon: TrendingUp },
+    { id: 'debt_summary', label: 'Debt Summary', icon: CreditCardIcon },
+    { id: 'bank_accounts', label: 'Bank Accounts', icon: Building2 },
+    { id: 'latest_updates', label: 'Latest Updates', icon: Activity }
   ];
 
   return (
@@ -306,29 +322,33 @@ export default function Dashboard({
               <div>
                 <h4 className="font-semibold mb-3">Visible Widgets</h4>
                 <div className="space-y-2">
-                  {availableWidgets.map(widget => (
-                    <label key={widget.id} className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={isWidgetVisible(widget.id)}
-                        onChange={() => handleToggleWidget(widget.id)}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-xl">{widget.icon}</span>
-                      <span className="flex-1">{widget.label}</span>
-                      {isWidgetVisible(widget.id) ? (
-                        <Eye size={16} className="text-green-600" />
-                      ) : (
-                        <EyeOff size={16} className="text-gray-400" />
-                      )}
-                    </label>
-                  ))}
+                  {availableWidgets.map(widget => {
+                    const IconComponent = widget.icon;
+                    return (
+                      <label key={widget.id} className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={isWidgetVisible(widget.id)}
+                          onChange={() => handleToggleWidget(widget.id)}
+                          className="w-4 h-4"
+                        />
+                        <IconComponent size={18} className="text-gray-500" />
+                        <span className="flex-1">{widget.label}</span>
+                        {isWidgetVisible(widget.id) ? (
+                          <Eye size={16} className="text-green-600" />
+                        ) : (
+                          <EyeOff size={16} className="text-gray-400" />
+                        )}
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
               
               <div className={`p-3 rounded-lg ${darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'} border`}>
-                <p className="text-sm">
-                  💡 <strong>Tip:</strong> Your dashboard preferences are saved automatically and will sync across all your devices.
+                <p className="text-sm flex items-center gap-2">
+                  <Lightbulb size={16} className="text-blue-600" />
+                  <span><strong>Tip:</strong> Your dashboard preferences are saved automatically and will sync across all your devices.</span>
                 </p>
               </div>
             </div>
@@ -560,9 +580,15 @@ export default function Dashboard({
                   <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                     <div className={`text-xs font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preview:</div>
                     <div className={`text-sm space-y-1 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                      <div>💵 Cash in Hand: {formatCurrency(currentCash)} → {formatCurrency(newCashInHand)}</div>
-                      <div>🏦 {selectedAccount.name}: {formatCurrency(currentBankBalance)} → {formatCurrency(newBankBalance)}</div>
+                    <div className="flex items-center gap-2">
+                      <Wallet size={14} />
+                        Cash in Hand: {formatCurrency(currentCash)} → {formatCurrency(newCashInHand)}
                     </div>
+                    <div className="flex items-center gap-2">
+                      <Building2 size={14} />
+                      {selectedAccount.name}: {formatCurrency(currentBankBalance)} → {formatCurrency(newBankBalance)}
+                    </div>
+                  </div>
                   </div>
                 );
               })()}

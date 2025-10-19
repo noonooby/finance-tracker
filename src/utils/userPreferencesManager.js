@@ -69,6 +69,9 @@ function getDefaultPreferences() {
     pinned_loans: [],
     pinned_bank_accounts: [],
     
+    // Recent transactions settings (JSONB)
+    recent_transactions_settings: {},
+    
     // Activity feed preferences
     activity_show_edits: true,
     activity_show_deletions: true,
@@ -442,12 +445,21 @@ export async function getDashboardConfig() {
 
 /**
  * Update recent transactions display settings for entity type
+ * Stores settings in JSONB column: recent_transactions_settings
  */
 export async function updateRecentTransactionsSettings(entityType, settings) {
   try {
-    const settingsKey = `recent_transactions_${entityType}`;
+    const prefs = await getUserPreferences();
+    const currentSettings = prefs.recent_transactions_settings || {};
+    
+    // Update settings for this entity type
+    const updatedSettings = {
+      ...currentSettings,
+      [entityType]: settings
+    };
+    
     return await updateUserPreferences({
-      [settingsKey]: settings
+      recent_transactions_settings: updatedSettings
     });
   } catch (error) {
     console.error('Error updating recent transactions settings:', error);

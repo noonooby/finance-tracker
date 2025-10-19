@@ -1,8 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Settings as SettingsIcon, AlertCircle, Trash2, Database, Wallet, Edit2,
-  Palette, Bell, DollarSign, ChevronDown, ChevronUp, Target, X, TrendingUp, Grid
+  Settings as SettingsIcon, 
+  AlertCircle, 
+  Trash2, 
+  Database, 
+  Wallet, 
+  Edit2,
+  Palette, 
+  Bell, 
+  DollarSign, 
+  ChevronDown, 
+  ChevronUp, 
+  Target, 
+  X, 
+  TrendingUp, 
+  Grid,
+  Lightbulb,
+  Building2,
+  CreditCard as CreditCardIcon
 } from 'lucide-react';
+import * as Icons from 'lucide-react';
 import { deleteAllUserData } from '../utils/db';
 import CategoryManager from './CategoryManager';
 import BudgetHistory from './BudgetHistory';
@@ -880,9 +897,9 @@ export default function Settings({
                 onChange={(e) => updateSetting('defaultPaymentMethod', e.target.value)}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
               >
-                <option value="cash_in_hand">💵 Cash in Hand</option>
-                <option value="bank_account">🏦 Bank Account</option>
-                <option value="credit_card">💳 Credit Card</option>
+                <option value="cash_in_hand">Cash in Hand</option>
+                <option value="bank_account">Bank Account</option>
+                <option value="credit_card">Credit Card</option>
               </select>
             </div>
 
@@ -1328,7 +1345,11 @@ export default function Settings({
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-2xl">{category.icon}</span>
+                          {(() => {
+                            const iconName = category.icon || 'Package';
+                            const IconComponent = Icons[iconName] || Icons.Package;
+                            return <IconComponent size={20} className="text-gray-500" />;
+                          })()}
                           <div>
                             <div className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                               {category.name}
@@ -1381,8 +1402,9 @@ export default function Settings({
             )}
 
             <div className={`${darkMode ? 'bg-blue-900/20 border-blue-700' : 'bg-blue-50 border-blue-200'} border rounded-lg p-3 mt-4`}>
-              <p className={`text-xs ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>
-                💡 <strong>Tip:</strong> Category budgets are tracked automatically! View your spending trends and history in the "Budget History" section above.
+              <p className={`text-xs flex items-center gap-2 ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>
+                <Lightbulb size={14} className="flex-shrink-0" />
+                <span><strong>Tip:</strong> Category budgets are tracked automatically! View your spending trends and history in the "Budget History" section above.</span>
               </p>
             </div>
           </div>

@@ -79,7 +79,7 @@ export const addCategory = async (categoryData) => {
         user_id: user.id,
         name: categoryData.name,
         color: categoryData.color || '#6b7280',
-        icon: categoryData.icon || '📦',
+        icon: categoryData.icon || 'Package',
         is_income: categoryData.is_income || false,
         is_system: false,
         parent_id: categoryData.parent_id || null,
@@ -188,7 +188,7 @@ export const seedDefaultCategories = async () => {
       user_id: user.id,
       name: cat.name,
       color: cat.color,
-      icon: cat.icon || '📦',
+      icon: cat.icon || 'Package',
       is_income: cat.is_income || false,
       is_system: false,
       created_at: new Date().toISOString()

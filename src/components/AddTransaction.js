@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X } from 'lucide-react';
+import { X, Wallet, Building2, CreditCard as CreditCardIcon, Gift, TrendingUp, Clock, FolderOpen } from 'lucide-react';
+import * as Icons from 'lucide-react';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import { formatCurrency } from '../utils/helpers';
+import { showToast } from '../utils/toast';
 import {
   addRecentTransaction,
   addRecentCategory,
@@ -65,13 +67,19 @@ export default function AddTransaction({
   const loadExpenseContexts = useCallback(async () => {
     try {
       if (formData.type === 'expense') {
+        console.log('🔍 Loading expense contexts...');
         const recent = await getRecentExpenseDescriptions(5);
+        console.log('📊 Recent expenses found:', recent?.length || 0, recent);
         setRecentExpenses(recent);
         
-        // Pre-fill last used expense context
+        // Pre-fill last used expense context only if no preselected card
         const lastContext = await getLastUsedExpenseContext();
-        if (lastContext && !formData.description) {
+        console.log('🎯 Last context:', lastContext);
+        console.log('💳 Preselected card:', preselectedCard ? preselectedCard.name : 'none');
+        
+        if (lastContext && !formData.description && !preselectedCard) {
           const contextData = applyExpenseContext(lastContext);
+          console.log('✅ Applying last context:', contextData);
           setFormData(prev => ({
             ...prev,
             description: lastContext.description,
@@ -87,9 +95,9 @@ export default function AddTransaction({
         }
       }
     } catch (error) {
-      console.error('Error loading expense contexts:', error);
+      console.error('❌ Error loading expense contexts:', error);
     }
-  }, [formData.type, formData.description]);
+  }, [formData.type, preselectedCard]);
 
   useEffect(() => {
     loadExpenseContexts();
@@ -99,11 +107,22 @@ export default function AddTransaction({
   const handleSelectExpense = useCallback(async (expenseContext) => {
     try {
       const contextData = applyExpenseContext(expenseContext);
-      setFormData(prev => ({
-        ...prev,
-        description: expenseContext.description,
-        ...contextData
-      }));
+      
+      // If card is preselected, only apply category (not payment method)
+      if (preselectedCard) {
+        setFormData(prev => ({
+          ...prev,
+          description: expenseContext.description,
+          categoryId: contextData.categoryId || prev.categoryId
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          description: expenseContext.description,
+          ...contextData
+        }));
+      }
+      
       setTimeout(() => {
         const amountInput = document.querySelector('input[type="number"][step="0.01"]');
         if (amountInput) amountInput.focus();
@@ -111,7 +130,7 @@ export default function AddTransaction({
     } catch (error) {
       console.error('Error applying expense context:', error);
     }
-  }, []);
+  }, [preselectedCard]);
 
   // Handle description change
   const handleDescriptionChange = (value) => {
@@ -125,13 +144,23 @@ export default function AddTransaction({
       const context = await getExpenseContext(formData.description);
       if (context) {
         const contextData = applyExpenseContext(context);
-        setFormData(prev => ({ ...prev, ...contextData }));
+        
+        // If card is preselected, only apply category (not payment method)
+        if (preselectedCard) {
+          setFormData(prev => ({ 
+            ...prev, 
+            categoryId: contextData.categoryId || prev.categoryId 
+          }));
+        } else {
+          setFormData(prev => ({ ...prev, ...contextData }));
+        }
+        
         console.log('✅ Applied expense context for:', formData.description);
       }
     } catch (error) {
       console.error('Error loading expense context:', error);
     }
-  }, [formData.description, formData.type]);
+  }, [formData.description, formData.type, preselectedCard]);
   
   const loadRecentCategories = async () => {
     try {
@@ -155,7 +184,7 @@ export default function AddTransaction({
       const parsed = recentPMs
         .map(pm => {
           if (pm === 'cash_in_hand') {
-            return { type: 'cash_in_hand', id: null, name: 'Cash in Hand', icon: '💵' };
+            return { type: 'cash_in_hand', id: null, name: 'Cash in Hand', icon: 'Wallet' };
           } else if (pm.startsWith('credit_card:')) {
             const id = pm.replace('credit_card:', '');
             const card = creditCards?.find(c => c.id === id);
@@ -164,7 +193,7 @@ export default function AddTransaction({
                 type: 'credit_card', 
                 id: card.id, 
                 name: card.name, 
-                icon: card.is_gift_card ? '🎁' : '💳' 
+                icon: card.is_gift_card ? 'Gift' : 'CreditCard' 
               };
             }
           } else if (pm.startsWith('bank_account:')) {
@@ -175,7 +204,7 @@ export default function AddTransaction({
                 type: 'bank_account', 
                 id: account.id, 
                 name: account.name, 
-                icon: '🏦',
+                icon: 'Building2',
                 balance: account.balance,
                 isPrimary: account.is_primary
               };
@@ -223,7 +252,7 @@ export default function AddTransaction({
       const amount = parseFloat(formData.amount);
       
       if (isNaN(amount) || amount <= 0) {
-        alert('Please enter a valid amount');
+        showToast.error('Please enter a valid amount');
         setSaving(false);
         return;
       }
@@ -257,17 +286,21 @@ export default function AddTransaction({
         if (formData.paymentMethod === 'credit_card') {
           const card = creditCards.find(c => c.id === formData.paymentMethodId);
           if (!card) {
-            alert('Please select a credit card');
+            showToast.error('Please select a credit card');
             setSaving(false);
             return;
           }
 
           const previousCardBalance = card.balance;
-          const newCardBalance = card.balance + amount;
+          
+          // Gift cards: SUBTRACT (spend). Credit cards: ADD (charge)
+          const newCardBalance = card.is_gift_card 
+            ? card.balance - amount  // Gift card spending reduces balance
+            : card.balance + amount; // Credit card charging increases balance
 
           await dbOperation('creditCards', 'put', {
             ...card,
-            balance: newCardBalance
+            balance: Math.max(0, newCardBalance)
           }, { skipActivityLog: true });
 
           transaction.card_id = card.id;
@@ -286,14 +319,15 @@ export default function AddTransaction({
               description: formData.description,
               cardId: card.id,
               previousBalance: previousCardBalance,
-              paymentMethodName: card.name
+              paymentMethodName: card.name,
+              isGiftCard: card.is_gift_card
             }
           };
 
         } else if (formData.paymentMethod === 'bank_account') {
           const account = bankAccounts.find(a => a.id === formData.paymentMethodId);
           if (!account) {
-            alert('Please select a bank account');
+            showToast.error('Please select a bank account');
             setSaving(false);
             return;
           }
@@ -303,7 +337,7 @@ export default function AddTransaction({
           
           if (newBalance < 0) {
             if (!account.allows_overdraft) {
-              alert(
+              showToast.error(
                 `Insufficient funds in '${account.name}'.\n` +
                 `Available: ${formatCurrency(currentBalance)}\n` +
                 `Required: ${formatCurrency(amount)}\n\n` +
@@ -315,7 +349,7 @@ export default function AddTransaction({
             
             const overdraftAmount = Math.abs(newBalance);
             if (overdraftAmount > (account.overdraft_limit || 0)) {
-              alert(
+              showToast.error(
                 `Insufficient funds in '${account.name}'.\n` +
                 `This would exceed your overdraft limit.\n\n` +
                 `Available: ${formatCurrency(currentBalance)}\n` +
@@ -365,7 +399,7 @@ export default function AddTransaction({
         } else if (formData.paymentMethod === 'cash_in_hand') {
           const currentCash = cashInHand || 0;
           if (amount > currentCash) {
-            alert(
+            showToast.error(
               `Insufficient cash in hand.\n` +
               `Available: ${formatCurrency(currentCash)}\n` +
               `Required: ${formatCurrency(amount)}`
@@ -455,7 +489,7 @@ export default function AddTransaction({
         } else {
           const account = bankAccounts?.find(a => a.id === formData.incomeAccountId);
           if (!account) {
-            alert('Please select a bank account');
+            showToast.error('Please select a bank account');
             setSaving(false);
             return;
           }
@@ -497,7 +531,7 @@ export default function AddTransaction({
         if (formData.paymentMethod === 'credit_card') {
           const card = creditCards.find(c => c.id === formData.paymentMethodId);
           if (!card) {
-            alert('Please select a credit card');
+            showToast.error('Please select a credit card');
             setSaving(false);
             return;
           }
@@ -516,7 +550,7 @@ export default function AddTransaction({
           if (paymentSource === 'cash_in_hand') {
             const currentCash = cashInHand || 0;
             if (amount > currentCash) {
-              alert(`Insufficient cash in hand. Available: ${formatCurrency(currentCash)}`);
+              showToast.error(`Insufficient cash in hand. Available: ${formatCurrency(currentCash)}`);
               setSaving(false);
               return;
             }
@@ -858,20 +892,26 @@ export default function AddTransaction({
               >
                 <option value="">Select category</option>
                 {recentCategories.length > 0 && (
-                  <optgroup label="⏱️ Recent">
-                    {recentCategories.map(cat => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.icon} {cat.name}
-                      </option>
-                    ))}
+                  <optgroup label="Recent">
+                    {recentCategories.map(cat => {
+                      const IconComponent = Icons[cat.icon] || Icons.Package;
+                      return (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      );
+                    })}
                   </optgroup>
                 )}
-                <optgroup label="📂 All Categories">
-                  {categories.filter(c => !c.is_income).map(cat => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.icon} {cat.name}
-                    </option>
-                  ))}
+                <optgroup label="All Categories">
+                  {categories.filter(c => !c.is_income).map(cat => {
+                    const IconComponent = Icons[cat.icon] || Icons.Package;
+                    return (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    );
+                  })}
                 </optgroup>
               </select>
             </div>
@@ -885,24 +925,26 @@ export default function AddTransaction({
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, paymentMethod: 'credit_card', paymentMethodId: null })}
-                  className={`p-3 rounded-lg border-2 transition-colors ${
+                  className={`p-3 rounded-lg border-2 transition-colors flex items-center justify-center gap-2 ${
                     formData.paymentMethod === 'credit_card'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/20'
                       : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
                   }`}
                 >
-                  💳 Credit Card
+                  <CreditCardIcon size={18} />
+                  Credit Card
                 </button>
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, paymentMethod: 'loan', paymentMethodId: null })}
-                  className={`p-3 rounded-lg border-2 transition-colors ${
+                  className={`p-3 rounded-lg border-2 transition-colors flex items-center justify-center gap-2 ${
                     formData.paymentMethod === 'loan'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/20'
                       : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
                   }`}
                 >
-                  📈 Loan
+                  <TrendingUp size={18} />
+                  Loan
                 </button>
               </div>
             </div>
@@ -925,9 +967,9 @@ export default function AddTransaction({
                 }}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
               >
-                <option value="cash_in_hand">💵 Cash in Hand ({formatCurrency(cashInHand || 0)})</option>
+                <option value="cash_in_hand">Cash in Hand ({formatCurrency(cashInHand || 0)})</option>
                 {bankAccounts && bankAccounts.length > 0 && (
-                  <optgroup label="🏦 Bank Accounts">
+                  <optgroup label="Bank Accounts">
                     {bankAccounts.map(account => (
                       <option key={account.id} value={`bank_account:${account.id}`}>
                         {account.name} ({formatCurrency(account.balance)})
@@ -936,7 +978,7 @@ export default function AddTransaction({
                   </optgroup>
                 )}
                 {reservedFunds && reservedFunds.filter(f => f.amount > 0).length > 0 && (
-                  <optgroup label="📅 Reserved Funds">
+                  <optgroup label="Reserved Funds">
                     {reservedFunds.filter(f => f.amount > 0).map(fund => (
                       <option key={fund.id} value={`reserved_fund:${fund.id}`}>
                         {fund.name} ({formatCurrency(fund.amount)})
@@ -964,7 +1006,8 @@ export default function AddTransaction({
                     onChange={(e) => setFormData({ ...formData, incomeDestination: e.target.value })}
                     className="w-4 h-4"
                   />
-                  <span className="text-sm">🏦 Deposit to Bank Account</span>
+                  <Building2 size={16} className="text-gray-500" />
+                  <span className="text-sm">Deposit to Bank Account</span>
                 </label>
                 
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -976,7 +1019,8 @@ export default function AddTransaction({
                     onChange={(e) => setFormData({ ...formData, incomeDestination: e.target.value })}
                     className="w-4 h-4"
                   />
-                  <span className="text-sm">💵 Keep as Cash in Hand</span>
+                  <Wallet size={16} className="text-gray-500" />
+                  <span className="text-sm">Keep as Cash in Hand</span>
                 </label>
               </div>
               
@@ -1018,44 +1062,47 @@ export default function AddTransaction({
                 required
               >
                 {recentPaymentMethods.length > 0 && (
-                  <optgroup label="⏱️ Recent">
-                    {recentPaymentMethods.map(pm => (
-                      <option 
-                        key={pm.id || 'cash_in_hand'} 
-                        value={pm.type === 'cash_in_hand' ? 'cash_in_hand' : `${pm.type}:${pm.id}`}
-                      >
-                        {pm.icon} {pm.name}
-                        {pm.type === 'bank_account' && pm.balance !== undefined && ` ($${pm.balance.toFixed(2)} available)`}
-                        {pm.isPrimary && ' ⭐'}
-                      </option>
-                    ))}
+                  <optgroup label="Recent">
+                    {recentPaymentMethods.map(pm => {
+                      const IconComponent = Icons[pm.icon] || Icons.Wallet;
+                      return (
+                        <option 
+                          key={pm.id || 'cash_in_hand'} 
+                          value={pm.type === 'cash_in_hand' ? 'cash_in_hand' : `${pm.type}:${pm.id}`}
+                        >
+                          {pm.name}
+                          {pm.type === 'bank_account' && pm.balance !== undefined && ` (${pm.balance.toFixed(2)} available)`}
+                          {pm.isPrimary && ' ★'}
+                        </option>
+                      );
+                    })}
                   </optgroup>
                 )}
                 
-                <optgroup label="💵 Cash & Bank Accounts">
-                  <option value="cash_in_hand">💵 Cash in Hand (${(cashInHand || 0).toFixed(2)} available)</option>
+                <optgroup label="Cash & Bank Accounts">
+                  <option value="cash_in_hand">Cash in Hand (${(cashInHand || 0).toFixed(2)} available)</option>
                   {bankAccounts && bankAccounts.length > 0 && bankAccounts.map(account => (
                     <option key={account.id} value={`bank_account:${account.id}`}>
-                      🏦 {account.name} (${account.balance.toFixed(2)} available){account.is_primary ? ' ⭐' : ''}
+                      {account.name} (${account.balance.toFixed(2)} available){account.is_primary ? ' ★' : ''}
                     </option>
                   ))}
                 </optgroup>
                 
                 {creditCards && creditCards.filter(c => !c.is_gift_card).length > 0 && (
-                  <optgroup label="💳 Credit Cards">
+                  <optgroup label="Credit Cards">
                     {creditCards.filter(c => !c.is_gift_card).map(card => (
                       <option key={card.id} value={`credit_card:${card.id}`}>
-                        💳 {card.name}
+                        {card.name}
                       </option>
                     ))}
                   </optgroup>
                 )}
                 
                 {creditCards && creditCards.filter(c => c.is_gift_card && c.balance > 0).length > 0 && (
-                  <optgroup label="🎁 Gift Cards">
+                  <optgroup label="Gift Cards">
                     {creditCards.filter(c => c.is_gift_card && c.balance > 0).map(card => (
                       <option key={card.id} value={`credit_card:${card.id}`}>
-                        🎁 {card.name} (${card.balance.toFixed(2)} available)
+                        {card.name} (${card.balance.toFixed(2)} available)
                       </option>
                     ))}
                   </optgroup>
@@ -1077,12 +1124,12 @@ export default function AddTransaction({
                 <option value="">Select {formData.paymentMethod === 'credit_card' ? 'credit card' : 'loan'}</option>
                 {formData.paymentMethod === 'credit_card' && creditCards && creditCards.map(card => (
                   <option key={card.id} value={card.id}>
-                    {card.is_gift_card ? '🎁' : '💳'} {card.name} {card.is_gift_card ? `($${card.balance.toFixed(2)} balance)` : `($${card.balance.toFixed(2)} owed)`}
+                    {card.name} {card.is_gift_card ? `(${card.balance.toFixed(2)} balance)` : `(${card.balance.toFixed(2)} owed)`}
                   </option>
                 ))}
                 {formData.paymentMethod === 'loan' && loans && loans.map(loan => (
                   <option key={loan.id} value={loan.id}>
-                    📈 {loan.name} (${loan.balance.toFixed(2)} remaining)
+                    {loan.name} (${loan.balance.toFixed(2)} remaining)
                   </option>
                 ))}
               </select>

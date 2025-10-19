@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingDown, Download, FileSpreadsheet, ChevronDown, ChevronUp } from 'lucide-react';
+import * as Icons from 'lucide-react';
 import SummaryCard from '../widgets/SummaryCard';
 import CategoryPieChart from '../charts/CategoryPieChart';
 import ComparisonBarChart from '../charts/ComparisonBarChart';
@@ -204,7 +205,7 @@ export default function CategoryAnalysis({
           {categoryData.length > 0 ? (
             <ComparisonBarChart
               data={categoryData.slice(0, 5).map(cat => ({
-                name: `${cat.icon} ${cat.name}`,
+                name: cat.name,
                 amount: cat.total
               }))}
               darkMode={darkMode}
@@ -246,7 +247,11 @@ export default function CategoryAnalysis({
                 }`}
               >
                 <div className="flex items-center gap-3 flex-1">
-                  <span className="text-2xl">{cat.icon}</span>
+                  {(() => {
+                    const iconName = cat.icon || 'Package';
+                    const IconComponent = Icons[iconName] || Icons.Package;
+                    return <IconComponent size={20} className="text-gray-500" />;
+                  })()}
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <h4 className="font-semibold">{cat.name}</h4>
@@ -273,7 +278,7 @@ export default function CategoryAnalysis({
               {expandedCategories[cat.id] && (
                 <div className={`border-t ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'} p-4`}>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                              <table className="w-full text-sm">
                       <thead>
                         <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}>
                           <th className="text-left py-2 px-3">Date</th>
@@ -342,8 +347,12 @@ export default function CategoryAnalysis({
               {categoryData.map((cat, index) => (
                 <tr key={cat.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <td className="py-3 px-4 font-semibold">#{index + 1}</td>
-                  <td className="py-3 px-4">
-                    <span className="mr-2">{cat.icon}</span>
+                  <td className="py-3 px-4 flex items-center gap-2">
+                    {(() => {
+                      const iconName = cat.icon || 'Package';
+                      const IconComponent = Icons[iconName] || Icons.Package;
+                      return <IconComponent size={16} className="text-gray-500" />;
+                    })()}
                     {cat.name}
                   </td>
                   <td className="text-right py-3 px-4">{cat.count}</td>

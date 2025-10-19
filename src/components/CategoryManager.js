@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Check, X, Save, Star } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, X, Save, Star, Package } from 'lucide-react';
+import * as Icons from 'lucide-react';
 import { fetchCategories, addCategory, updateCategory, deleteCategory, seedDefaultCategories } from '../utils/categories';
 import IconPicker from './IconPicker';
 import {
@@ -23,7 +24,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
   const [formData, setFormData] = useState({
     name: '',
     color: '#6b7280',
-    icon: '📦',
+    icon: 'Package',
     is_income: false
   });
 
@@ -104,7 +105,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       setFormData({
         name: '',
         color: '#6b7280',
-        icon: '📦',
+        icon: 'Package',
         is_income: false
       });
       setShowAddForm(false);
@@ -121,7 +122,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
     setFormData({
       name: category.name,
       color: category.color,
-      icon: category.icon || '📦',
+      icon: category.icon || 'Package',
       is_income: category.is_income
     });
   };
@@ -163,7 +164,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
     setFormData({
       name: '',
       color: '#6b7280',
-      icon: '📦',
+      icon: 'Package',
       is_income: false
     });
   };
@@ -366,7 +367,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                   setFormData({
                     name: '',
                     color: '#6b7280',
-                    icon: '📦',
+                    icon: 'Package',
                     is_income: false
                   });
                 }}
@@ -473,7 +474,11 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                   /* View Mode */
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl">{category.icon || '📦'}</span>
+                      {(() => {
+                        const iconName = category.icon || 'Package';
+                        const IconComponent = Icons[iconName] || Icons.Package;
+                        return <IconComponent size={20} className="text-gray-500" />;
+                      })()}
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-semibold">{category.name}</span>
