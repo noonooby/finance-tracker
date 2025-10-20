@@ -227,7 +227,7 @@ export default function ReservedFunds({
     const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
     setFormData({
       name: fund.name,
-      amount: fund.original_amount?.toString() || fund.amount.toString(),
+      amount: fund.original_amount ? (parseFloat(fund.original_amount)).toFixed(2) : (parseFloat(fund.amount) || 0).toFixed(2),
       dueDate: predictNextDate(fund.due_date, fund.frequency || 'monthly'),
       recurring: fund.recurring || false,
       frequency: fund.frequency || 'monthly',
@@ -266,7 +266,7 @@ export default function ReservedFunds({
     const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
     setFormData({
       name: fund.name,
-      amount: fund.amount.toString(),
+      amount: (parseFloat(fund.amount) || 0).toFixed(2),
       dueDate: fund.due_date,
       recurring: fund.recurring || false,
       frequency: fund.frequency || 'monthly',
@@ -449,9 +449,9 @@ export default function ReservedFunds({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-4">
         <div>
-          <h2 className="text-xl font-bold">Reserved Funds</h2>
+          <h2 className="text-xl md:text-2xl font-bold">Reserved Funds</h2>
           <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Reserved: {formatCurrency(totalReserved)}</p>
         </div>
         <button
@@ -462,7 +462,7 @@ export default function ReservedFunds({
               setShowAddForm(true);
             }
           }}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg"
+          className="flex items-center gap-1 sm:gap-2 bg-blue-600 text-white px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg"
         >
           <Plus size={20} />
           {showAddForm ? 'Cancel' : 'Add Fund'}
@@ -687,7 +687,7 @@ export default function ReservedFunds({
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {reservedFunds.length === 0 ? (
           <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             <Calendar size={48} className="mx-auto mb-3 opacity-30" />
@@ -706,8 +706,8 @@ export default function ReservedFunds({
                   }}
                   className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${isHighlighted ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
                 >
-                <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-2 sm:gap-4 mb-3">
+                <div className="flex-1 w-full sm:w-auto">
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold">{fund.name}</h3>
                     {fund.is_lumpsum && (
@@ -716,7 +716,7 @@ export default function ReservedFunds({
                       </span>
                     )}
                   </div>
-                  <div className="text-xl font-bold text-purple-600 mt-1">{formatCurrency(fund.amount)}</div>
+                  <div className="text-xl sm:text-2xl font-bold text-purple-600 mt-1">{formatCurrency(fund.amount)}</div>
                   {fund.is_lumpsum && fund.original_amount && fund.amount < fund.original_amount && (
                     <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
                       Original: {formatCurrency(fund.original_amount)}
@@ -749,32 +749,32 @@ export default function ReservedFunds({
                     </div>
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1 sm:gap-2 self-start">
                   <button
                     onClick={() => handleUseTemplate(fund)}
-                    className={`p-2 ${darkMode ? 'text-green-400 hover:bg-gray-700' : 'text-green-600 hover:bg-green-50'} rounded`}
+                    className={`p-1.5 sm:p-2 min-h-[44px] sm:min-h-0 ${darkMode ? 'text-green-400 hover:bg-gray-700' : 'text-green-600 hover:bg-green-50'} rounded`}
                     title="Use as template"
                   >
-                    <Copy size={18} />
+                    <Copy size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
                   <button
                     onClick={() => onNavigateToTransactions && onNavigateToTransactions({ reservedFund: resolvedId })}
-                    className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
+                    className={`p-1.5 sm:p-2 min-h-[44px] sm:min-h-0 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
                     title="View transactions"
                   >
-                    <ListFilter size={18} />
+                    <ListFilter size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
                   <button
                     onClick={() => handleEdit(fund)}
-                    className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}
+                    className={`p-1.5 sm:p-2 min-h-[44px] sm:min-h-0 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}
                   >
-                    <Edit2 size={18} />
+                    <Edit2 size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
                   <button
                     onClick={() => handleDelete(resolvedId)}
-                    className={`p-2 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded`}
+                    className={`p-1.5 sm:p-2 min-h-[44px] sm:min-h-0 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded`}
                   >
-                    <X size={18} />
+                    <X size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
                 </div>
               </div>

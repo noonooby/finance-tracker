@@ -653,9 +653,9 @@ export default function Settings({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <SettingsIcon size={24} />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
+        <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+          <SettingsIcon size={20} className="sm:w-6 sm:h-6" />
           Settings
         </h2>
         
@@ -670,7 +670,7 @@ export default function Settings({
               handleExpandAll();
             }
           }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+          className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg border transition-colors ${
             darkMode
               ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
               : 'border-gray-300 text-gray-700 hover:bg-gray-50'

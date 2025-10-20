@@ -71,6 +71,7 @@ const DashboardRoute = React.memo(() => {
     latestActivities,
     loadAllData,
     updateCashInHand,
+    handleUpdateCash,
   } = useFinanceData();
   
   const {
@@ -86,6 +87,42 @@ const DashboardRoute = React.memo(() => {
   // Use custom hooks for business logic
   const upcomingObligations = useUpcomingObligations(creditCards, loans, reservedFunds, alertSettings);
   const nextIncome = useNextIncome(income);
+
+  // Handle process due payments from Dashboard
+  const handleProcessDuePayments = async () => {
+    try {
+      const { processOverdueLoans } = await import('../utils/autoPay');
+      const { showToast } = await import('../utils/toast');
+      
+      const results = await processOverdueLoans(
+        loans,
+        reservedFunds,
+        displayAvailableCash,
+        handleUpdateCash,
+        creditCards,
+        bankAccounts,
+        cashInHand,
+        updateCashInHand
+      );
+      
+      await loadAllData();
+      
+      const processedCount = results.processed.length;
+      const failedCount = results.failed.length;
+      
+      if (processedCount > 0) {
+        showToast.success(`Processed ${processedCount} loan payment(s)`);
+      } else if (failedCount > 0) {
+        showToast.error(`Failed to process ${failedCount} loan(s)`);
+      } else {
+        showToast.info('No overdue loans found');
+      }
+    } catch (error) {
+      console.error('Error processing due payments:', error);
+      const { showToast } = await import('../utils/toast');
+      showToast.error('Error processing payments');
+    }
+  };
 
   return (
     <Dashboard
@@ -109,6 +146,7 @@ const DashboardRoute = React.memo(() => {
       onToggleCashDisplay={toggleCashDisplay}
       onReloadAll={loadAllData}
       latestActivities={latestActivities}
+      onProcessDuePayments={handleProcessDuePayments}
     />
   );
 });

@@ -425,6 +425,7 @@ export default function CreditCards({
       is_gift_card: formData.isGiftCard || false,
       purchase_date: formData.isGiftCard ? (formData.purchaseDate || null) : null,
       purchase_amount: formData.isGiftCard ? (parseFloat(formData.purchaseAmount) || 0) : 0,
+      purchase_amount_paid: formData.isGiftCard ? (parseFloat(formData.purchaseAmountPaid) || 0) : 0,
       has_expiry: formData.isGiftCard ? (formData.hasExpiry || false) : false,
       expiry_date: formData.isGiftCard && formData.hasExpiry ? (formData.expiryDate || null) : null,
       created_at: editingItem?.created_at || new Date().toISOString()
@@ -610,19 +611,19 @@ export default function CreditCards({
     loadRecentGiftCards().catch(console.error);
   };
 
-  const handleEdit = (card) => {
+  const handleEdit = async (card) => {
     setFormData({
       name: card.name,
-      balance: card.balance.toString(),
-      creditLimit: card.credit_limit?.toString() || '',
+      balance: (parseFloat(card.balance) || 0).toFixed(2),
+      creditLimit: card.credit_limit ? (parseFloat(card.credit_limit)).toFixed(2) : '',
       dueDate: card.due_date || '',
       statementDay: card.statement_day?.toString() || '',
-      interestRate: card.interest_rate?.toString() || '',
+      interestRate: card.interest_rate ? (parseFloat(card.interest_rate)).toFixed(2) : '',
       alertDays: card.alert_days?.toString() || (alertSettings.defaultDays || 7).toString(),
       isGiftCard: card.is_gift_card || false,
       purchaseDate: card.purchase_date || new Date().toISOString().split('T')[0],
-      purchaseAmount: card.purchase_amount?.toString() || '',
-      purchaseAmountPaid: card.purchase_amount?.toString() || '',
+      purchaseAmount: card.purchase_amount ? (parseFloat(card.purchase_amount)).toFixed(2) : '',
+      purchaseAmountPaid: card.purchase_amount_paid ? (parseFloat(card.purchase_amount_paid)).toFixed(2) : card.purchase_amount ? (parseFloat(card.purchase_amount)).toFixed(2) : '',
       giftCardPaymentMethod: 'cash_in_hand',
       giftCardPaymentMethodId: null,
       hasExpiry: card.has_expiry || false,
@@ -1078,13 +1079,13 @@ export default function CreditCards({
         />
       )}
 
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">Credit Cards</h2>
+      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-4">
+        <h2 className="text-xl md:text-2xl font-bold">Credit Cards</h2>
         <div className="flex gap-2">
           <button
             onClick={handleProcessDueCardPayments}
             disabled={isProcessing}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
+            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base ${
               isProcessing
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-green-600 hover:bg-green-700'
@@ -1101,7 +1102,7 @@ export default function CreditCards({
                 setShowAddForm(true);
               }
             }}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg"
+            className="flex items-center gap-1 sm:gap-2 bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base"
           >
             <Plus size={20} />
             {showAddForm ? 'Cancel' : 'Add Card'}
@@ -1283,7 +1284,7 @@ export default function CreditCards({
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
         {creditCards.length === 0 ? (
           <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             <CreditCardIcon size={48} className="mx-auto mb-3 opacity-30" />
@@ -1304,7 +1305,7 @@ export default function CreditCards({
               <div className="flex justify-between items-start mb-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-bold text-lg">{card.name}</h3>
+                    <h3 className="font-bold text-base sm:text-lg">{card.name}</h3>
                     {pinnedCards.includes(card.id) && (
                       <Star size={16} className="text-yellow-500 fill-current" title="Pinned" />
                     )}
@@ -1318,7 +1319,7 @@ export default function CreditCards({
                     )}
                   </div>
                   <div
-                    className={`text-2xl font-bold mt-1 ${
+                    className={`text-xl sm:text-2xl font-bold mt-1 ${
                       card.balance < 0
                         ? 'text-green-600'        // overpaid → green
                         : card.balance === 0
@@ -1362,36 +1363,36 @@ export default function CreditCards({
                     )
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1 sm:gap-2">
                   <button
                     onClick={() => handleTogglePin(card.id)}
-                    className={`p-2 rounded ${
+                    className={`p-1.5 sm:p-2 rounded min-h-[44px] sm:min-h-0 flex items-center justify-center ${
                       pinnedCards.includes(card.id)
                         ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
                         : darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-400 hover:bg-gray-100'
                     }`}
                     title={pinnedCards.includes(card.id) ? 'Unpin card' : 'Pin card'}
                   >
-                    <Star size={18} className={pinnedCards.includes(card.id) ? 'fill-current' : ''} />
+                    <Star size={16} className={`sm:w-[18px] sm:h-[18px] ${pinnedCards.includes(card.id) ? 'fill-current' : ''}`} />
                   </button>
                   <button
                     onClick={() => onNavigateToTransactions && onNavigateToTransactions({ creditCard: card.id })}
                     className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
                     title="View transactions"
                   >
-                    <ListFilter size={18} />
+                    <ListFilter size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
                   <button
                     onClick={() => handleEdit(card)}
                     className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}
                   >
-                    <Edit2 size={18} />
+                    <Edit2 size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
                   <button
                     onClick={() => handleDelete(card.id)}
                     className={`p-2 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded`}
                   >
-                    <X size={18} />
+                    <X size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
                 </div>
               </div>
@@ -1537,7 +1538,7 @@ export default function CreditCards({
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     onClick={() => handleAddExpense(card)}
                     className="flex items-center justify-center gap-2 bg-orange-600 text-white py-2 rounded-lg font-medium"

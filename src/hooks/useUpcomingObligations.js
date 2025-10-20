@@ -31,7 +31,7 @@ export function useUpcomingObligations(creditCards, loans, reservedFunds, alertS
           amount: card.balance,
           dueDate: card.due_date,
           days,
-          urgent: days <= warningDays && days >= 0,
+          urgent: days <= warningDays || days < 0, // Include overdue (days < 0)
           id: normalizeId(card.id)
         });
       }
@@ -47,7 +47,8 @@ export function useUpcomingObligations(creditCards, loans, reservedFunds, alertS
           amount: loan.payment_amount,
           dueDate: loan.next_payment_date,
           days,
-          urgent: days <= warningDays && days >= 0,
+          urgent: days <= warningDays || days < 0, // Include overdue (days < 0)
+          hasAutoPayment: !!(loan.connected_payment_source), // Track auto-payment status
           id: normalizeId(loan.id)
         });
       }
@@ -63,14 +64,14 @@ export function useUpcomingObligations(creditCards, loans, reservedFunds, alertS
         amount: fund.amount,
         dueDate: fund.due_date,
         days,
-        urgent: days <= warningDays && days >= 0,
+        urgent: days <= warningDays || days < 0, // Include overdue (days < 0)
         id: normalizeId(fund.id)
       });
     });
     
-    // Filter and sort
+    // Filter and sort - include overdue items
     return obligations
-      .filter(obligation => obligation.days >= 0 && (obligation.urgent || obligation.days <= upcomingWindow))
+      .filter(obligation => obligation.urgent || (obligation.days >= 0 && obligation.days <= upcomingWindow))
       .sort((a, b) => a.days - b.days);
   }, [creditCards, loans, reservedFunds, alertSettings]);
 }

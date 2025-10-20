@@ -560,10 +560,10 @@ export default function TransactionHistory({
       )}
 
       {/* Header with Actions */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Transactions</h2>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
+        <h2 className="text-xl md:text-2xl font-bold">Transactions</h2>
         
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <QuickFiltersDropdown
             darkMode={darkMode}
             quickFilters={quickFilters}
@@ -572,7 +572,7 @@ export default function TransactionHistory({
           
           <button
             onClick={() => setShowFiltersPanel(!showFiltersPanel)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg ${
               showFiltersPanel
                 ? 'bg-blue-600 text-white'
                 : darkMode
@@ -593,7 +593,7 @@ export default function TransactionHistory({
           
           <button
             onClick={() => setShowSaveDialog(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+            className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-green-600 text-white rounded-lg hover:bg-green-700"
           >
             <Save size={18} />
             Save Filter

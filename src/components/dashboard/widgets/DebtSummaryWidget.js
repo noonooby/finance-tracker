@@ -15,7 +15,7 @@ export default function DebtSummaryWidget({
   onNavigate
 }) {
   return (
-    <div className={`grid grid-cols-2 ${compactMode ? 'gap-1.5' : 'gap-4'}`}>
+    <div className={`grid grid-cols-1 sm:grid-cols-2 ${compactMode ? 'gap-1.5' : 'gap-4'}`}>
       <button
         type="button"
         onClick={() => onNavigate('cards')}

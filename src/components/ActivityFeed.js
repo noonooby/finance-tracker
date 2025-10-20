@@ -436,24 +436,24 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <Activity size={24} />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4 mb-4">
+        <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+          <Activity size={20} className="sm:w-6 sm:h-6" />
           Recent Activity
         </h2>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <span className="text-sm text-gray-500">
             {filteredActivities.length} of {activities.length} activities
           </span>
           <button
             onClick={() => setShowPreferences(!showPreferences)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+            className={`flex items-center gap-1 sm:gap-2 px-3 py-2 text-sm sm:text-base rounded-lg transition-colors ${
               showPreferences
                 ? darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'
                 : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
-            <SlidersHorizontal size={18} />
+            <SlidersHorizontal size={16} className="sm:w-[18px] sm:h-[18px]" />
             {showPreferences ? 'Hide' : 'Preferences'}
           </button>
         </div>
@@ -462,8 +462,8 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       {/* Preferences Panel */}
       {showPreferences && (
         <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-4 space-y-4`}>
-          <h3 className="font-semibold flex items-center gap-2">
-            <SlidersHorizontal size={18} />
+          <h3 className="text-base sm:text-lg font-semibold flex items-center gap-2">
+            <SlidersHorizontal size={16} className="sm:w-[18px] sm:h-[18px]" />
             Activity Feed Preferences
           </h3>
           

@@ -224,21 +224,21 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <BarChart3 size={32} className="text-blue-600" />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <BarChart3 size={24} className="sm:w-8 sm:h-8 text-blue-600" />
           <div>
-            <h1 className="text-3xl font-bold">Reports</h1>
+            <h1 className="text-2xl md:text-3xl font-bold">Reports</h1>
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Analyze your financial data with customizable reports
             </p>
           </div>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setShowTemplatesPanel(!showTemplatesPanel)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg font-medium transition-colors ${
               showTemplatesPanel
                 ? 'bg-blue-600 text-white'
                 : darkMode
@@ -259,7 +259,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
           
           <button
             onClick={() => setShowSaveDialog(true)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg font-medium transition-colors ${
               darkMode
                 ? 'bg-green-600 hover:bg-green-700 text-white'
                 : 'bg-green-600 hover:bg-green-700 text-white'

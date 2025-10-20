@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Plus, DollarSign, Edit2, X, ListFilter, AlertCircle } from 'lucide-react';
+import { Plus, DollarSign, Edit2, X, ListFilter, AlertCircle, Zap, CheckCircle } from 'lucide-react';
 import { formatCurrency, formatDate, predictNextDate, getDaysUntil, generateId, getPrimaryAccountFromArray } from '../utils/helpers';
 import { formatFrequency } from '../utils/sentenceCase';
 import { dbOperation } from '../utils/db';
@@ -41,14 +41,17 @@ export default function Income({
     recurringUntilDate: '',
     recurringOccurrences: '',
     depositTarget: 'bank',
-    depositAccountId: ''
+    depositAccountId: '',
+    autoDeposit: true
   });
   const [recentSources, setRecentSources] = useState([]);
   const sourceInputRef = useRef(null);
   const incomeRefs = useRef({});
   const [predictionCount, setPredictionCount] = useState(8);
+  const [checkingDueIncome, setCheckingDueIncome] = useState(false);
+  const [showDepositConfirmation, setShowDepositConfirmation] = useState(false);
+  const [pendingDeposits, setPendingDeposits] = useState([]);
   
-  // Async action hook for handling all async operations
   const { executeAction, isProcessing: isActionProcessing } = useAsyncAction();
 
   const normalizeId = (value) => {
@@ -61,7 +64,6 @@ export default function Income({
     return String(value);
   };
 
-  // Load income contexts on mount
   const loadIncomeContexts = useCallback(async () => {
     try {
       const recent = await getRecentIncomeSources(5);
@@ -94,7 +96,6 @@ export default function Income({
     loadIncomeContexts();
   }, [loadIncomeContexts]);
 
-  // Handle quick-select button click
   const handleSelectSource = useCallback(async (sourceContext) => {
     try {
       const contextData = applyIncomeContext(sourceContext);
@@ -112,12 +113,10 @@ export default function Income({
     }
   }, []);
 
-  // Handle source input change
   const handleSourceChange = (value) => {
     setFormData(prev => ({ ...prev, source: value }));
   };
 
-  // Load context when user leaves source field
   const handleSourceBlur = useCallback(async () => {
     if (!formData.source?.trim()) return;
     try {
@@ -185,14 +184,14 @@ export default function Income({
           ? parseInt(formData.recurringOccurrences, 10) || null
           : null,
       recurring_occurrences_completed: editingItem?.recurring_occurrences_completed || 0,
-      deposit_account_id: formData.depositTarget === 'bank' ? (formData.depositAccountId || null) : null
+      deposit_account_id: formData.depositTarget === 'bank' ? (formData.depositAccountId || null) : null,
+      auto_deposit: formData.frequency !== 'onetime' ? formData.autoDeposit : false
     };
     
     const savedIncome = await dbOperation('income', 'put', incomeEntry, { skipActivityLog: true });
     const incomeId = savedIncome?.id || editingItem?.id;
     
     if (isEditing) {
-      // Build detailed description for EDIT
       const oldSource = editingItem.source || '';
       const newSource = savedIncome?.source || incomeEntry.source || '';
       const oldAmount = parseFloat(editingItem.amount) || 0;
@@ -203,7 +202,6 @@ export default function Income({
       const oldDepositAccount = editingItem.deposit_account_id || null;
       const newDepositAccount = savedIncome?.deposit_account_id || incomeEntry.deposit_account_id || null;
       
-      // Get account names for display
       const oldAccountName = oldDepositAccount 
         ? bankAccounts.find(a => a.id === oldDepositAccount)?.name || 'Unknown Account'
         : 'None';
@@ -228,7 +226,6 @@ export default function Income({
         details += `Deposit account ${oldAccountName} → ${newAccountName} • `;
       }
       
-      // Remove trailing bullet
       details = details.replace(/ • $/, '');
 
       const description = details
@@ -263,32 +260,27 @@ export default function Income({
       };
       const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
       
-      // Handle cash vs bank deposit
       let newCash = availableCash + newAmount;
       if (formData.reservedAmount && parseFloat(formData.reservedAmount) > 0) {
         newCash -= parseFloat(formData.reservedAmount);
       }
       
       if (formData.depositTarget === 'cash_in_hand') {
-        // Add to cash in hand
         const currentCashInHand = cashInHand || 0;
         const updatedCashInHand = currentCashInHand + newAmount;
         if (onUpdateCashInHand) await onUpdateCashInHand(updatedCashInHand);
       } else {
-        // Add to bank account
         await onUpdateCash(newCash, {
           accountId: formData.depositAccountId || undefined
         });
       }
 
-      // Get deposit destination for activity description
       const depositDestination = formData.depositTarget === 'cash_in_hand'
         ? 'cash in hand'
         : (formData.depositAccountId
             ? bankAccounts.find(a => a.id === formData.depositAccountId)?.name || null
             : null);
 
-      // Build detailed description for ADD
       let description = `Added income '${formData.source}' - Amount ${formatCurrency(newAmount)} • Frequency ${formatFrequency(formData.frequency)} • Date ${formatDate(formData.date)}`;
       if (depositDestination) {
         description += formData.depositTarget === 'cash_in_hand'
@@ -317,7 +309,6 @@ export default function Income({
         }
       );
 
-      // Save context for future use (non-blocking)
       if (formData.source) {
         saveIncomeSourceContext(formData.source, {
           depositTarget: formData.depositTarget,
@@ -349,7 +340,7 @@ export default function Income({
     const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
     setFormData({
       source: inc.source,
-      amount: inc.amount.toString(),
+      amount: (parseFloat(inc.amount) || 0).toFixed(2),
       date: inc.date,
       frequency: inc.frequency,
       reservedAmount: '',
@@ -357,7 +348,8 @@ export default function Income({
       recurringUntilDate: inc.recurring_until_date || '',
       recurringOccurrences: inc.recurring_occurrences_total?.toString() || '',
       depositTarget: inc.deposit_account_id ? 'bank' : 'cash_in_hand',
-      depositAccountId: inc.deposit_account_id || primaryAccount?.id || ''
+      depositAccountId: inc.deposit_account_id || primaryAccount?.id || '',
+      autoDeposit: inc.auto_deposit !== false
     });
     setEditingItem(inc);
     setShowAddForm(true);
@@ -390,12 +382,10 @@ export default function Income({
         undone_at: null
       }));
 
-      // Get deposit account name for activity description
       const depositAccountName = inc.deposit_account_id
         ? bankAccounts.find(a => a.id === inc.deposit_account_id)?.name || null
         : null;
 
-      // Build detailed description for DELETE
       let description = `Deleted income '${inc.source}' - Amount ${formatCurrency(inc.amount)} • Frequency ${formatFrequency(inc.frequency) || 'One Time'}`;
       if (depositAccountName) {
         description += ` • Was deposited to ${depositAccountName}`;
@@ -453,7 +443,8 @@ export default function Income({
       recurringUntilDate: '',
       recurringOccurrences: '',
       depositTarget: 'bank',
-      depositAccountId: primaryAccount?.id || ''
+      depositAccountId: primaryAccount?.id || '',
+      autoDeposit: true
     });
     setShowAddForm(false);
     setEditingItem(null);
@@ -466,6 +457,9 @@ export default function Income({
         const results = await autoDepositDueIncome(income, availableCash, onUpdateCash);
         if (results.deposited.length > 0) {
           console.log('🎉 Auto-deposited income:', results.deposited);
+          const sources = results.deposited.map(d => d.source).join(', ');
+          showToast.success(`Auto-deposited income from: ${sources}`);
+          
           if (onUpdate) {
             await onUpdate();
           }
@@ -479,6 +473,59 @@ export default function Income({
       checkAndDepositIncome();
     }
   }, [income.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const getPendingDeposits = () => {
+    return income.filter(inc => {
+      if (!inc.frequency || inc.frequency === 'onetime') return false;
+      if (inc.auto_deposit === false) return false;
+      
+      const nextDate = predictNextDate(inc.date, inc.frequency);
+      const daysUntil = getDaysUntil(nextDate);
+      
+      return daysUntil === 0;
+    });
+  };
+
+  const handleCheckDueIncome = async () => {
+    const pending = getPendingDeposits();
+    
+    if (pending.length === 0) {
+      showToast.info('No income is due for auto-deposit today');
+      return;
+    }
+    
+    setPendingDeposits(pending);
+    setShowDepositConfirmation(true);
+  };
+
+  const handleConfirmDeposit = async () => {
+    setCheckingDueIncome(true);
+    setShowDepositConfirmation(false);
+    
+    try {
+      const results = await autoDepositDueIncome(income, availableCash, onUpdateCash);
+      
+      if (results.deposited.length > 0) {
+        const totalAmount = results.deposited.reduce((sum, d) => sum + d.amount, 0);
+        const sources = results.deposited.map(d => d.source).join(', ');
+        showToast.success(
+          `Successfully deposited ${formatCurrency(totalAmount)} from: ${sources}`
+        );
+        
+        if (onUpdate) {
+          await onUpdate();
+        }
+      } else {
+        showToast.info('No income was deposited');
+      }
+    } catch (error) {
+      console.error('Error checking due income:', error);
+      showToast.error(`Failed to deposit income: ${error.message}`);
+    } finally {
+      setCheckingDueIncome(false);
+      setPendingDeposits([]);
+    }
+  };
 
   const getPredictedIncome = () => {
     if (income.length === 0) return [];
@@ -524,7 +571,8 @@ export default function Income({
             frequency: inc.frequency,
             days: daysUntil,
             sortDate: new Date(currentDate).getTime(),
-            incomeId: inc.id
+            incomeId: inc.id,
+            autoDeposit: inc.auto_deposit !== false
           });
         }
       }
@@ -536,30 +584,113 @@ export default function Income({
   };
 
   const predictedIncome = getPredictedIncome();
+  const pendingTodayCount = getPendingDeposits().length;
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">Income</h2>
-        <button
-          onClick={() => {
-            if (showAddForm) {
-              resetForm();
-            } else {
-              setShowAddForm(true);
-            }
-          }}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg"
-        >
-          <Plus size={20} />
-          {showAddForm ? 'Cancel' : 'Log Income'}
-        </button>
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-4">
+        <h2 className="text-xl md:text-2xl font-bold">Income</h2>
+        <div className="flex gap-2">
+          <button
+            onClick={handleCheckDueIncome}
+            disabled={checkingDueIncome}
+            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg font-medium ${
+              checkingDueIncome
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700'
+            } text-white relative`}
+            title="Check for income due today and deposit automatically"
+          >
+            <Zap size={20} />
+            {checkingDueIncome ? 'Checking...' : 'Check Due Income'}
+            {pendingTodayCount > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
+                {pendingTodayCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => {
+              if (showAddForm) {
+                resetForm();
+              } else {
+                setShowAddForm(true);
+              }
+            }}
+            className="flex items-center gap-1 sm:gap-2 bg-blue-600 text-white px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg"
+          >
+            <Plus size={20} />
+            {showAddForm ? 'Cancel' : 'Log Income'}
+          </button>
+        </div>
       </div>
 
+      {/* Deposit Confirmation Modal */}
+      {showDepositConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowDepositConfirmation(false)}>
+          <div 
+            className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-green-100 dark:bg-green-900/20 rounded-full">
+                <DollarSign size={24} className="text-green-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold">Auto-Deposit Due Income</h3>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {pendingDeposits.length} income source{pendingDeposits.length !== 1 ? 's' : ''} due today
+                </p>
+              </div>
+            </div>
+            
+            <div className="space-y-2 mb-6">
+              {pendingDeposits.map(inc => (
+                <div key={inc.id} className={`p-3 rounded-lg border ${darkMode ? 'border-gray-700 bg-gray-700/50' : 'border-gray-200 bg-gray-50'}`}>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="font-semibold">{inc.source}</div>
+                      <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {formatFrequency(inc.frequency)}
+                      </div>
+                    </div>
+                    <div className="text-lg font-bold text-green-600">
+                      {formatCurrency(inc.amount)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className={`p-3 rounded-lg mb-4 ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
+              <p className={`text-sm ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>
+                Total to deposit: <strong>{formatCurrency(pendingDeposits.reduce((sum, inc) => sum + (parseFloat(inc.amount) || 0), 0))}</strong>
+              </p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDepositConfirmation(false)}
+                className={`flex-1 px-4 py-2 rounded-lg font-medium ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'}`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeposit}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
+              >
+                Confirm Deposit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Form */}
       {showAddForm && (
         <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
           
-          {/* Quick-Select Buttons */}
           {recentSources.length > 0 && !editingItem && (
             <div>
               <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -587,7 +718,6 @@ export default function Income({
             </div>
           )}
           
-          {/* Source Input */}
           <div>
             <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               {recentSources.length > 0 ? 'Or type new source *' : 'Source *'}
@@ -614,7 +744,6 @@ export default function Income({
             className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
           />
           
-          {/* Deposit Destination */}
           <div>
             <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               Where is this money going? *
@@ -644,7 +773,6 @@ export default function Income({
                 <span className="text-sm">Keep as Cash in Hand</span>
               </label>
               
-              {/* Warning for cash in hand */}
               {formData.depositTarget === 'cash_in_hand' && (
                 <div className={`flex items-start gap-2 p-2 rounded ${darkMode ? 'bg-yellow-900/20 border border-yellow-800' : 'bg-yellow-50 border border-yellow-200'}`}>
                   <AlertCircle size={14} className="text-yellow-600 mt-0.5 flex-shrink-0" />
@@ -656,7 +784,6 @@ export default function Income({
             </div>
           </div>
           
-          {/* Bank Account Selection (conditional) */}
           {formData.depositTarget === 'bank' && bankAccounts && bankAccounts.length > 0 && (
             <div>
               <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -758,6 +885,26 @@ export default function Income({
                   )}
                 </div>
               )}
+              
+              {/* Auto-Deposit Toggle */}
+              <div className={`border ${darkMode ? 'border-gray-700' : 'border-gray-200'} rounded-lg p-3`}>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.autoDeposit}
+                    onChange={(e) => setFormData({ ...formData, autoDeposit: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <div className="flex-1">
+                    <div className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Enable Auto-Deposit
+                    </div>
+                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1`}>
+                      Automatically deposit this income when it becomes due
+                    </div>
+                  </div>
+                </label>
+              </div>
             </>
           )}
           {!editingItem && (
@@ -789,6 +936,28 @@ export default function Income({
         </div>
       )}
 
+      {/* Pending Deposits Alert */}
+      {pendingTodayCount > 0 && (
+        <div className={`${darkMode ? 'bg-green-900/20 border-green-700' : 'bg-green-50 border-green-200'} border rounded-lg p-4`}>
+          <div className={`flex items-center gap-2 ${darkMode ? 'text-green-200' : 'text-green-800'} font-semibold mb-2`}>
+            <CheckCircle size={20} />
+            <span>Pending Auto-Deposits Today</span>
+          </div>
+          <div className="space-y-2">
+            {getPendingDeposits().map(inc => (
+              <div key={inc.id} className={`flex justify-between items-center text-sm ${darkMode ? 'text-green-100' : 'text-green-900'}`}>
+                <div className="font-medium">{inc.source}</div>
+                <div className="font-semibold">{formatCurrency(inc.amount)}</div>
+              </div>
+            ))}
+          </div>
+          <p className={`text-xs ${darkMode ? 'text-green-300' : 'text-green-700'} mt-2`}>
+            Click "Check Due Income" to review and deposit these amounts
+          </p>
+        </div>
+      )}
+
+      {/* Predicted Income */}
       {predictedIncome.length > 0 && (
         <div className={`${darkMode ? 'bg-blue-900 border-blue-700' : 'bg-blue-50 border-blue-200'} border rounded-lg p-4`}>
           <div className="flex justify-between items-center mb-3">
@@ -820,8 +989,15 @@ export default function Income({
           <div className="space-y-2">
             {predictedIncome.map((pred, idx) => (
               <div key={idx} className={`flex justify-between items-center text-sm ${darkMode ? 'text-blue-100' : 'text-blue-900'}`}>
-                <div>
-                  <div className="font-medium">{pred.source}</div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{pred.source}</span>
+                    {pred.days === 0 && pred.autoDeposit && (
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${darkMode ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-700'}`}>
+                        Auto-deposits today
+                      </span>
+                    )}
+                  </div>
                   <div className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
                     {formatDate(pred.date)} • {formatFrequency(pred.frequency)}
                   </div>
@@ -838,7 +1014,8 @@ export default function Income({
         </div>
       )}
 
-      <div className="space-y-3">
+      {/* Income Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {income.length === 0 ? (
           <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             <DollarSign size={48} className="mx-auto mb-3 opacity-30" />
@@ -857,8 +1034,15 @@ export default function Income({
               className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${isHighlighted ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
             >
               <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="font-bold">{inc.source}</h3>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold">{inc.source}</h3>
+                    {inc.frequency !== 'onetime' && inc.auto_deposit !== false && (
+                      <span className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700'}`}>
+                        Auto-Deposit
+                      </span>
+                    )}
+                  </div>
                   <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                     <span>{formatFrequency(inc.frequency)}</span>
                     {inc.frequency !== 'onetime' && inc.recurring_duration_type && (
@@ -886,25 +1070,25 @@ export default function Income({
                   <div className="text-right">
                     <div className="text-2xl font-bold text-green-600">{formatCurrency(inc.amount)}</div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1 sm:gap-2">
                     <button
                       onClick={() => onNavigateToTransactions && onNavigateToTransactions({ incomeSource: inc.id })}
-                      className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
+                      className={`p-1.5 sm:p-2 min-h-[44px] sm:min-h-0 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
                       title="View transactions"
                     >
-                      <ListFilter size={18} />
+                      <ListFilter size={16} className="sm:w-[18px] sm:h-[18px]" />
                     </button>
                     <button
                       onClick={() => handleEdit(inc)}
-                      className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}
+                      className={`p-1.5 sm:p-2 min-h-[44px] sm:min-h-0 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}
                     >
-                      <Edit2 size={18} />
+                      <Edit2 size={16} className="sm:w-[18px] sm:h-[18px]" />
                     </button>
                     <button
                       onClick={() => handleDelete(inc.id)}
-                      className={`p-2 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded`}
+                      className={`p-1.5 sm:p-2 min-h-[44px] sm:min-h-0 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded`}
                     >
-                      <X size={18} />
+                      <X size={16} className="sm:w-[18px] sm:h-[18px]" />
                     </button>
                   </div>
                 </div>

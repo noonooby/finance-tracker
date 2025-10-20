@@ -755,9 +755,9 @@ export default function BankAccounts({
   return (
     <div className="space-y-4">
       {/* Header with Total Balance */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-4">
         <div>
-          <h2 className="text-xl font-bold flex items-center gap-2">
+          <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2">
             <Building2 size={24} />
             Bank Accounts
           </h2>
@@ -768,7 +768,7 @@ export default function BankAccounts({
         <div className="flex gap-2">
           <button
             onClick={() => setShowCashModal(!showCashModal)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
+            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base ${
               showCashModal
                 ? darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'
                 : 'bg-purple-600 text-white hover:bg-purple-700'
@@ -796,7 +796,7 @@ export default function BankAccounts({
                 setShowAddForm(true);
               }
             }}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-1 sm:gap-2 bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 text-sm sm:text-base"
           >
             <Plus size={20} />
             {showAddForm ? 'Cancel' : 'Add Account'}
@@ -1206,7 +1206,7 @@ export default function BankAccounts({
       )}
 
       {/* Accounts List */}
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {sortedAccounts.length === 0 ? (
           <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             <Building2 size={48} className="mx-auto mb-3 opacity-30" />
@@ -1235,7 +1235,7 @@ export default function BankAccounts({
                         const IconComponent = Icons[iconName] || Icons.Building2;
                         return <IconComponent size={20} className="text-gray-500" />;
                       })()}
-                      <h3 className="font-bold text-lg">{account.name}</h3>
+                      <h3 className="font-bold text-base sm:text-lg">{account.name}</h3>
                       {account.is_primary && (
                         <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">
                           <Star size={12} fill="currentColor" />
@@ -1246,7 +1246,7 @@ export default function BankAccounts({
                         <Star size={16} className="text-yellow-500 fill-current" title="Pinned" />
                       )}
                     </div>
-                    <div className={`text-2xl font-bold mt-1 ${
+                    <div className={`text-xl sm:text-2xl font-bold mt-1 ${
                       (Number(account.balance) || 0) < 0
                         ? 'text-red-600'  // Overdraft
                         : 'text-blue-600'  // Positive
@@ -1269,26 +1269,26 @@ export default function BankAccounts({
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1 sm:gap-2">
                     {!account.is_primary && (
                       <>
                         <button
                           onClick={() => handleTogglePin(account.id)}
-                          className={`p-2 rounded ${
+                          className={`p-1.5 sm:p-2 rounded min-h-[44px] sm:min-h-0 flex items-center justify-center ${
                             isPinned
                               ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
                               : darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-400 hover:bg-gray-100'
                           }`}
                           title={isPinned ? 'Unpin account' : 'Pin account'}
                         >
-                          <Star size={18} className={isPinned ? 'fill-current' : ''} />
+                          <Star size={16} className={`sm:w-[18px] sm:h-[18px] ${isPinned ? 'fill-current' : ''}`} />
                         </button>
                         <button
                           onClick={() => handleSetPrimary(account)}
                           className={`p-2 rounded ${darkMode ? 'text-yellow-400 hover:bg-gray-700' : 'text-yellow-600 hover:bg-yellow-50'}`}
                           title="Set as primary account"
                         >
-                          <Star size={18} />
+                          <Star size={16} className="sm:w-[18px] sm:h-[18px]" />
                         </button>
                       </>
                     )}
@@ -1297,14 +1297,14 @@ export default function BankAccounts({
                       className={`p-2 rounded ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'}`}
                       title="View transactions"
                     >
-                      <ListFilter size={18} />
+                      <ListFilter size={16} className="sm:w-[18px] sm:h-[18px]" />
                     </button>
                     <button
                       onClick={() => handleEdit(account)}
                       className={`p-2 rounded ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'}`}
                       title="Edit account"
                     >
-                      <Edit2 size={18} />
+                      <Edit2 size={16} className="sm:w-[18px] sm:h-[18px]" />
                     </button>
                     <button
                       onClick={() => handleDelete(account.id)}
@@ -1312,7 +1312,7 @@ export default function BankAccounts({
                       title="Delete account"
                       disabled={account.is_primary}
                     >
-                      <X size={18} />
+                      <X size={16} className="sm:w-[18px] sm:h-[18px]" />
                     </button>
                   </div>
                 </div>

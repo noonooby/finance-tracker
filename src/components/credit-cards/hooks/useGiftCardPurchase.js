@@ -58,6 +58,8 @@ export function useGiftCardPurchase({
       };
       
       // Handle different payment sources
+      let sourceBalanceDetails = null;
+      
       if (paymentMethodRaw === 'cash_in_hand') {
         transaction.payment_method = 'cash_in_hand';
         transaction.payment_method_id = null;
@@ -71,6 +73,12 @@ export function useGiftCardPurchase({
         const newCash = currentCash - purchaseAmountPaid;
         if (onUpdateCashInHand) await onUpdateCashInHand(newCash);
         
+        sourceBalanceDetails = {
+          sourceName: 'Cash in Hand',
+          previousBalance: currentCash,
+          newBalance: newCash
+        };
+        
       } else if (paymentMethodRaw.startsWith('bank_account:')) {
         const bankAccountId = paymentMethodRaw.replace('bank_account:', '');
         const paymentAccount = bankAccounts.find(a => a.id === bankAccountId);
@@ -80,7 +88,8 @@ export function useGiftCardPurchase({
           return null;
         }
         
-        if ((parseFloat(paymentAccount.balance) || 0) < purchaseAmountPaid) {
+        const previousBalance = parseFloat(paymentAccount.balance) || 0;
+        if (previousBalance < purchaseAmountPaid) {
           showToast.error(`Insufficient balance in ${paymentAccount.name}. Available: ${formatCurrency(paymentAccount.balance)}`);
           return null;
         }
@@ -89,8 +98,15 @@ export function useGiftCardPurchase({
         transaction.payment_method_id = bankAccountId;
         transaction.payment_method_name = paymentAccount.name;
         
-        await updateBankAccountBalance(bankAccountId, (parseFloat(paymentAccount.balance) || 0) - purchaseAmountPaid);
+        const newBalance = previousBalance - purchaseAmountPaid;
+        await updateBankAccountBalance(bankAccountId, newBalance);
         await onUpdateCash(null, { syncOnly: true });
+        
+        sourceBalanceDetails = {
+          sourceName: paymentAccount.name,
+          previousBalance,
+          newBalance
+        };
         
       } else if (paymentMethodRaw.startsWith('credit_card:')) {
         const cardIdToCharge = paymentMethodRaw.replace('credit_card:', '');
@@ -101,8 +117,10 @@ export function useGiftCardPurchase({
           return null;
         }
         
+        const previousBalance = parseFloat(paymentCard.balance) || 0;
+        
         // If it's a gift card, check sufficient balance
-        if (paymentCard.is_gift_card && (parseFloat(paymentCard.balance) || 0) < purchaseAmountPaid) {
+        if (paymentCard.is_gift_card && previousBalance < purchaseAmountPaid) {
           showToast.error(`Insufficient balance on ${paymentCard.name}. Available: ${formatCurrency(paymentCard.balance)}`);
           return null;
         }
@@ -114,13 +132,20 @@ export function useGiftCardPurchase({
         
         // Gift cards: SUBTRACT. Credit cards: ADD
         const newBalance = paymentCard.is_gift_card
-          ? (parseFloat(paymentCard.balance) || 0) - purchaseAmountPaid
-          : (parseFloat(paymentCard.balance) || 0) + purchaseAmountPaid;
+          ? previousBalance - purchaseAmountPaid
+          : previousBalance + purchaseAmountPaid;
         
         await dbOperation('creditCards', 'put', {
           ...paymentCard,
           balance: Math.max(0, newBalance)
         }, { skipActivityLog: true });
+        
+        sourceBalanceDetails = {
+          sourceName: paymentCard.name,
+          previousBalance,
+          newBalance,
+          isGiftCard: paymentCard.is_gift_card
+        };
       } else {
         // Fallback: Invalid payment method
         console.error('Invalid payment method:', paymentMethodRaw);
@@ -138,20 +163,26 @@ export function useGiftCardPurchase({
       // Save transaction to database
       const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
 
-      // Log activity
+      // Log activity with enhanced description including source balance changes
+      const originalValue = parseFloat(formData.purchaseAmount) || 0;
+      const balanceDetails = sourceBalanceDetails 
+        ? ` - ${sourceBalanceDetails.sourceName} ${formatCurrency(sourceBalanceDetails.previousBalance)} → ${formatCurrency(sourceBalanceDetails.newBalance)}`
+        : '';
+      
       await logActivity(
         'add',
         'card',
         savedCard?.id,
         formData.name,
-        `Purchased gift card '${formData.name}' for ${formatCurrency(purchaseAmountPaid)} using ${transaction.payment_method_name}`,
+        `Purchased gift card '${formData.name}' for ${formatCurrency(purchaseAmountPaid)} using ${transaction.payment_method_name}${balanceDetails}`,
         {
           amount: purchaseAmountPaid,
-          originalValue: parseFloat(formData.purchaseAmount) || 0,
+          originalValue,
           currentBalance: parseFloat(formData.balance) || 0,
           paymentMethod: transaction.payment_method_name,
           paymentMethodId: transaction.payment_method_id,
           paymentMethodType: transaction.payment_method,
+          sourceBalanceDetails,
           transactionId: savedTransaction?.id,
           giftCardId: savedCard?.id,
           isGiftCard: true

@@ -130,6 +130,11 @@ export default function RecentTransactions({
   };
 
   const getTransactionColor = (txn) => {
+    // Special case: Loan payment from credit card
+    if (txn.type === 'payment' && txn.loan_id && txn.card_id && entityType === 'card') {
+      return 'text-red-600'; // Charge to card (increases debt)
+    }
+    
     // Payment transactions reduce balance (green/negative)
     if (txn.type === 'payment') {
       return 'text-green-600';
@@ -148,6 +153,11 @@ export default function RecentTransactions({
   };
 
   const getTransactionSign = (txn) => {
+    // Special case: Loan payment from credit card
+    if (txn.type === 'payment' && txn.loan_id && txn.card_id && entityType === 'card') {
+      return '+'; // Charge to card (increases balance)
+    }
+    
     // Payment transactions reduce balance
     if (txn.type === 'payment') {
       return '-';
