@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Plus, Edit2, X, TrendingUp, ListFilter, Star } from 'lucide-react';
-import { formatCurrency, formatDate, getDaysUntil, predictNextDate, generateId } from '../utils/helpers';
+import { formatCurrency, formatDate, getDaysUntil, generateId } from '../utils/helpers';
 import { formatFrequency } from '../utils/sentenceCase';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';

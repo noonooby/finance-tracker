@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react';
 import { dbOperation, updateBankAccountBalance } from '../../../utils/db';
 import { logActivity } from '../../../utils/activityLogger';
 import { formatCurrency, predictNextDate } from '../../../utils/helpers';
-import { showToast } from '../../../utils/toast';
 import { saveLoanPaymentContext } from '../../../utils/formContexts';
 
 /**
@@ -535,9 +534,6 @@ export const useLoanPayment = ({
     }
   }, [
     loans,
-    reservedFunds,
-    bankAccounts,
-    creditCards,
     availableCash,
     cashInHand,
     onUpdateCash,
