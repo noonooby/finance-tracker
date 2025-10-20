@@ -87,7 +87,7 @@ export function MainLayout() {
   };
 
   return (
-    <div className={`h-screen flex flex-col overflow-hidden ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div className={`h-screen flex flex-col ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Header */}
       <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b p-4 flex-shrink-0 z-10`}>
         <div className="flex justify-between items-center">
@@ -133,9 +133,14 @@ export function MainLayout() {
         </div>
       </div>
 
-      {/* Main Content - Rendered by Routes */}
-      <div className="flex-1 overflow-y-auto p-4 pb-20">
-        <Outlet />
+      {/* Main Content Area - Uses CSS Grid for proper spacing */}
+      <div className="flex-1 min-h-0 relative">
+        {/* Scrollable Content */}
+        <div className="absolute inset-0 overflow-y-auto p-4">
+          <div className="pb-[calc(env(safe-area-inset-bottom)+5rem)]">
+            <Outlet />
+          </div>
+        </div>
       </div>
 
       {/* Floating Add Button */}
