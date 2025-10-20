@@ -133,20 +133,20 @@ export function MainLayout() {
         </div>
       </div>
 
-      {/* Main Content Area - Uses CSS Grid for proper spacing */}
+      {/* Main Content Area - Proper spacing for bottom nav */}
       <div className="flex-1 min-h-0 relative">
         {/* Scrollable Content */}
-        <div className="absolute inset-0 overflow-y-auto p-4">
-          <div className="pb-[calc(env(safe-area-inset-bottom)+5rem)]">
+        <div className="absolute inset-0 overflow-y-auto">
+          <div className="p-4 pb-32">
             <Outlet />
           </div>
         </div>
       </div>
 
-      {/* Floating Add Button */}
+      {/* Floating Add Button - Position above bottom nav */}
       <button
         onClick={openAddTransaction}
-        className="fixed bottom-20 right-4 md:bottom-24 md:right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center z-20 flex-shrink-0"
+        className="fixed bottom-24 right-4 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center z-20 flex-shrink-0"
         title="Add Transaction"
         style={{ touchAction: 'manipulation' }}
       >

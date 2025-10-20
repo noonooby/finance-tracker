@@ -671,6 +671,7 @@ export default function CreditCards({
         ...card,
         balance: cardBalance - paymentAmount,
         last_payment_date: paymentDate,
+        last_payment_amount: paymentAmount,
         last_auto_payment_date: todayIso
       };
 
@@ -1338,6 +1339,11 @@ export default function CreditCards({
                           Original: {formatCurrency(card.purchase_amount)} • {((card.balance / card.purchase_amount) * 100).toFixed(0)}% remaining
                         </div>
                       )}
+                      {card.purchase_date && card.purchase_amount_paid > 0 && (
+                        <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
+                          Bought on: {formatDate(card.purchase_date)} for {formatCurrency(card.purchase_amount_paid)}
+                        </div>
+                      )}
                       {card.has_expiry && card.expiry_date && (
                         <div className={`text-xs mt-1 font-medium ${
                           getDaysUntil(card.expiry_date) < 0 
@@ -1407,6 +1413,19 @@ export default function CreditCards({
                         {getDaysUntil(card.due_date) === 0 ? 'Due Today!' : `${getDaysUntil(card.due_date)} days`}
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Last Payment Info */}
+              {!card.is_gift_card && card.last_payment_date && card.last_payment_amount && card.last_payment_amount > 0 && (
+                <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Last Paid:</span>
+                  <div className="text-right">
+                    <div className="font-medium">{formatCurrency(card.last_payment_amount)}</div>
+                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      on {formatDate(card.last_payment_date)}
+                    </div>
                   </div>
                 </div>
               )}
