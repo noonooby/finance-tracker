@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Minus, X } from 'lucide-react';
+import { Plus, Minus } from 'lucide-react';
 import { formatCurrency } from '../../utils/helpers';
 import ActionButton from '../shared/ActionButton';
 
