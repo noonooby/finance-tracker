@@ -11,9 +11,9 @@ export default function CategoryPieChart({ data, darkMode }) {
     );
   }
 
-  // Prepare data for pie chart
+  // Prepare data for pie chart - names already clean from groupByCategory
   const chartData = data.map(cat => ({
-    name: cat.name,
+    name: cat.name, // Already cleaned of emojis
     value: cat.total,
     color: cat.color,
     icon: cat.icon
@@ -34,29 +34,32 @@ export default function CategoryPieChart({ data, darkMode }) {
   };
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <PieChart>
-        <Pie
-          data={chartData}
-          cx="50%"
-          cy="50%"
-          labelLine={false}
-          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-          outerRadius={100}
-          fill="#8884d8"
-          dataKey="value"
-        >
-          {chartData.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={entry.color} />
-          ))}
-        </Pie>
-        <Tooltip content={<CustomTooltip />} />
-        <Legend 
-          verticalAlign="bottom" 
-          height={36}
-          formatter={(value, entry) => `${entry.payload.icon} ${value}`}
-        />
-      </PieChart>
-    </ResponsiveContainer>
+    <div style={{ width: '100%', height: '350px', padding: '10px' }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+          <Pie
+            data={chartData}
+            cx="50%"
+            cy="45%"
+            labelLine={false}
+            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+            outerRadius={90}
+            fill="#8884d8"
+            dataKey="value"
+          >
+            {chartData.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} />
+            ))}
+          </Pie>
+          <Tooltip content={<CustomTooltip />} />
+          <Legend 
+            verticalAlign="bottom" 
+            height={40}
+            wrapperStyle={{ paddingTop: '10px' }}
+            formatter={(value, entry) => `${entry.payload.icon} ${value}`}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

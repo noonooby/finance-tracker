@@ -15,6 +15,11 @@ import { AppRoutes } from './routes';
 // Toast Container
 import ToastContainer from './components/shared/ToastContainer';
 
+// Modal Optimizations
+import './styles/modal-optimizations.css';
+import './styles/ultra-compact-modal.css';
+import './styles/mobile-safe-layout.css';
+
 /**
  * App Initializer - Loads data when authenticated
  */

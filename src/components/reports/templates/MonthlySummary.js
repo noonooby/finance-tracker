@@ -250,7 +250,6 @@ export default function MonthlySummary({
                 {categoryData.slice(0, 10).map((cat, index) => (
                   <tr key={cat.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                     <td className="py-3 px-4">
-                      <span className="mr-2">{cat.icon}</span>
                       {cat.name}
                     </td>
                     <td className="text-right py-3 px-4">{cat.count}</td>
@@ -289,7 +288,9 @@ export default function MonthlySummary({
                 </tr>
               </thead>
               <tbody>
-                {paymentMethodData.map((method, index) => (
+                {paymentMethodData
+                  .filter(method => method.method !== 'cash') // Hide legacy cash
+                  .map((method, index) => (
                   <tr key={index} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                     <td className="py-3 px-4">{method.name}</td>
                     <td className="text-right py-3 px-4">{method.count}</td>

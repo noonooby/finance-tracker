@@ -21,7 +21,7 @@ import {
   getLastUsedGiftCardContext,
   applyGiftCardPurchaseContext
 } from '../utils/formContexts';
-import { GiftCardForm, useGiftCardPurchase } from './credit-cards';
+import { GiftCardForm, GiftCardOperations, useGiftCardPurchase } from './credit-cards';
 
 export default function CreditCards({ 
   darkMode, 
@@ -76,6 +76,8 @@ export default function CreditCards({
   const [recentGiftCards, setRecentGiftCards] = useState([]);
   const cardNameInputRef = useRef(null);
   const giftCardNameInputRef = useRef(null);
+  const [activeGiftCardOp, setActiveGiftCardOp] = useState(null); // For gift card operations modal
+  const [giftCardOpProcessing, setGiftCardOpProcessing] = useState(false);
   
   // Async action hook for handling all async operations
   const { executeAction, isProcessing: isActionProcessing } = useAsyncAction();
@@ -951,6 +953,163 @@ export default function CreditCards({
     }
   };
 
+  // Gift Card: Add Balance Handler
+  const handleAddBalance = async (formData) => {
+    setGiftCardOpProcessing(true);
+    
+    try {
+      const card = activeGiftCardOp;
+      const amount = parseFloat(formData.amount);
+      const currentBalance = parseFloat(card.balance) || 0;
+      const newBalance = currentBalance + amount;
+      
+      // Update gift card balance
+      await dbOperation('creditCards', 'put', {
+        ...card,
+        balance: newBalance
+      }, { skipActivityLog: true });
+      
+      // Parse payment source
+      const [sourceType, sourceId] = formData.paymentSource.includes(':')
+        ? formData.paymentSource.split(':')
+        : [formData.paymentSource, null];
+      
+      // Handle payment from source
+      if (sourceType === 'credit_card') {
+        const paymentCard = creditCards.find(c => c.id === sourceId);
+        if (paymentCard) {
+          await dbOperation('creditCards', 'put', {
+            ...paymentCard,
+            balance: (parseFloat(paymentCard.balance) || 0) + amount
+          }, { skipActivityLog: true });
+        }
+      } else if (sourceType === 'bank_account') {
+        await updateBankAccountBalance(sourceId, 
+          (parseFloat(bankAccounts.find(a => a.id === sourceId)?.balance) || 0) - amount
+        );
+      } else if (sourceType === 'cash_in_hand') {
+        await onUpdateCashInHand((cashInHand || 0) - amount);
+      }
+      
+      // Create expense transaction
+      const transaction = {
+        type: 'expense',
+        amount,
+        date: formData.date,
+        description: `Gift Card Reload: ${card.name}`,
+        notes: formData.notes || `Added ${formatCurrency(amount)} to ${card.name}`,
+        category_id: formData.category,
+        payment_method: sourceType,
+        payment_method_id: sourceId,
+        card_id: card.id,
+        status: 'active',
+        undone_at: null
+      };
+      
+      const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+      
+      // Log activity
+      await logActivity(
+        'gift_card_reload',
+        'card',
+        card.id,
+        card.name,
+        `Added ${formatCurrency(amount)} to gift card '${card.name}' - Balance ${formatCurrency(currentBalance)} → ${formatCurrency(newBalance)}`,
+        {
+          card: { ...card, id: card.id, name: card.name },
+          amount,
+          previousBalance: currentBalance,
+          newBalance,
+          source: sourceType,
+          sourceId,
+          transactionId: savedTransaction?.id,
+          date: formData.date,
+          category: formData.category
+        }
+      );
+      
+      await onUpdate();
+      setActiveGiftCardOp(null);
+      showToast.success(`Added ${formatCurrency(amount)} to ${card.name}`);
+      
+    } catch (error) {
+      console.error('Error adding balance:', error);
+      showToast.error(`Failed to add balance: ${error.message}`);
+    } finally {
+      setGiftCardOpProcessing(false);
+    }
+  };
+
+  // Gift Card: Use Balance Handler  
+  const handleUseBalance = async (formData) => {
+    setGiftCardOpProcessing(true);
+    
+    try {
+      const card = activeGiftCardOp;
+      const amount = parseFloat(formData.amount);
+      const currentBalance = parseFloat(card.balance) || 0;
+      
+      if (amount > currentBalance) {
+        showToast.error(`Insufficient balance. Available: ${formatCurrency(currentBalance)}`);
+        setGiftCardOpProcessing(false);
+        return;
+      }
+      
+      const newBalance = Math.max(0, currentBalance - amount);
+      
+      // Update gift card balance
+      await dbOperation('creditCards', 'put', {
+        ...card,
+        balance: newBalance
+      }, { skipActivityLog: true });
+      
+      // Create expense transaction with actual category
+      const transaction = {
+        type: 'expense',
+        amount,
+        date: formData.date,
+        description: formData.notes || `Purchased with ${card.name}`,
+        notes: formData.notes,
+        category_id: formData.category,
+        payment_method: 'credit_card',
+        payment_method_id: card.id,
+        card_id: card.id,
+        status: 'active',
+        undone_at: null
+      };
+      
+      const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+      
+      // Log activity
+      await logActivity(
+        'gift_card_usage',
+        'card',
+        card.id,
+        card.name,
+        `Used ${formatCurrency(amount)} from gift card '${card.name}' - Balance ${formatCurrency(currentBalance)} → ${formatCurrency(newBalance)}`,
+        {
+          card: { ...card, id: card.id, name: card.name },
+          amount,
+          previousBalance: currentBalance,
+          newBalance,
+          category: formData.category,
+          transactionId: savedTransaction?.id,
+          date: formData.date
+        }
+      );
+      
+      await onUpdate();
+      setActiveGiftCardOp(null);
+      showToast.success(`Used ${formatCurrency(amount)} from ${card.name}`);
+      
+    } catch (error) {
+      console.error('Error using balance:', error);
+      showToast.error(`Failed to record usage: ${error.message}`);
+    } finally {
+      setGiftCardOpProcessing(false);
+    }
+  };
+
   const handleDelete = async (id) => {
     const card = creditCards.find(c => c.id === id);
     if (!card) return;
@@ -1077,6 +1236,21 @@ export default function CreditCards({
           bankAccounts={bankAccounts}
           preselectedCard={selectedCard}
           preselectedType="expense"
+        />
+      )}
+
+      {/* Gift Card Operations Modal */}
+      {activeGiftCardOp && (
+        <GiftCardOperations
+          darkMode={darkMode}
+          giftCard={activeGiftCardOp}
+          creditCards={creditCards}
+          bankAccounts={bankAccounts}
+          categories={categories}
+          onAddBalance={handleAddBalance}
+          onUseBalance={handleUseBalance}
+          onClose={() => setActiveGiftCardOp(null)}
+          processing={giftCardOpProcessing}
         />
       )}
 
@@ -1556,6 +1730,13 @@ export default function CreditCards({
                     />
                   </div>
                 </div>
+              ) : card.is_gift_card ? (
+                <button
+                  onClick={() => setActiveGiftCardOp(card)}
+                  className="bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 w-full"
+                >
+                  Manage Balance
+                </button>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button

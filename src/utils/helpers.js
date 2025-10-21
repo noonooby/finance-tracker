@@ -379,7 +379,7 @@ export function validateBankAccountData(accountData) {
  * @param {Array} bankAccounts - Array of bank account objects
  * @returns {Array} Sorted array (does not mutate original)
  */
-export function sortBankAccounts(bankAccounts) {
+export const sortBankAccounts = (bankAccounts) => {
   if (!bankAccounts || !Array.isArray(bankAccounts)) return [];
 
   return [...bankAccounts].sort((a, b) => {
@@ -390,6 +390,46 @@ export function sortBankAccounts(bankAccounts) {
     // Then sort by creation date (oldest first)
     return new Date(a.created_at) - new Date(b.created_at);
   });
+};
+
+/**
+ * Parse smart input that supports math expressions
+ * Examples: "25+10", "100/4", "10*5", "50-5"
+ * Returns null if invalid
+ *
+ * @param {string} input - User input string
+ * @returns {number|null} Calculated value or null if invalid
+ */
+export function parseSmartInput(input) {
+  if (!input || typeof input !== 'string') return null;
+  
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  
+  try {
+    // Check if it's a simple number first
+    const simpleNumber = parseFloat(trimmed);
+    if (!isNaN(simpleNumber) && trimmed === simpleNumber.toString()) {
+      return simpleNumber;
+    }
+    
+    // Check if it contains only numbers, operators, parentheses, and decimal points
+    if (!/^[0-9+\-*/().\s]+$/.test(trimmed)) {
+      return null;
+    }
+    
+    // Evaluate the expression safely
+    // eslint-disable-next-line no-new-func
+    const result = Function('"use strict"; return (' + trimmed + ')')();
+    
+    if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+      return result;
+    }
+    
+    return null;
+  } catch (error) {
+    return null;
+  }
 }
 
 // ============================================

@@ -98,15 +98,29 @@ export default function PaymentMethodAnalysis({
     );
   }
 
-  // Prepare chart data
-  const chartData = paymentMethodData.map(method => ({
-    name: method.name,
-    value: method.total,
-    color: method.method === 'cash_in_hand' ? '#10B981' : 
-           method.method === 'bank_account' ? '#3B82F6' :
-           method.method === 'credit_card' ? '#F59E0B' :
-           method.method === 'loan' ? '#EF4444' : '#6B7280'
-  }));
+  // Prepare chart data with icons
+  const getPaymentMethodIcon = (method) => {
+    switch(method) {
+      case 'cash_in_hand': return '💵';
+      case 'bank_account': return '🏦';
+      case 'credit_card': return '💳';
+      case 'loan': return '📊';
+      case 'reserved_fund': return '🎯';
+      case 'transfer': return '↔️';
+      default: return '📝';
+    }
+  };
+
+  const chartData = paymentMethodData
+    .filter(method => method.method !== 'cash') // Exclude legacy cash
+    .map(method => ({
+      name: `${getPaymentMethodIcon(method.method)} ${method.name}`,
+      value: method.total,
+      color: method.method === 'cash_in_hand' ? '#10B981' : 
+             method.method === 'bank_account' ? '#3B82F6' :
+             method.method === 'credit_card' ? '#F59E0B' :
+             method.method === 'loan' ? '#EF4444' : '#6B7280'
+    }));
 
   const totalAmount = summary.totalIncome + summary.totalExpenses + summary.totalPayments;
 
@@ -252,7 +266,9 @@ export default function PaymentMethodAnalysis({
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
         <h3 className="text-lg font-semibold mb-4">Detailed Payment Method Breakdown</h3>
         <div className="space-y-4">
-          {paymentMethodData.map((method, index) => (
+          {paymentMethodData
+            .filter(method => method.method !== 'cash') // Exclude legacy cash
+            .map((method, index) => (
             <div key={method.method} className={`border ${darkMode ? 'border-gray-700' : 'border-gray-200'} rounded-lg overflow-hidden`}>
               {/* Method Header */}
               <div
@@ -364,7 +380,9 @@ export default function PaymentMethodAnalysis({
               </tr>
             </thead>
             <tbody>
-              {paymentMethodData.map((method, index) => (
+              {paymentMethodData
+                .filter(method => method.method !== 'cash') // Exclude legacy cash
+                .map((method, index) => (
                 <tr key={method.method} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <td className="py-3 px-4 font-semibold">#{index + 1}</td>
                   <td className="py-3 px-4">{method.name}</td>

@@ -119,6 +119,42 @@ export const calculateSummary = (transactions) => {
 };
 
 /**
+ * Remove emojis and clean up category names intelligently
+ */
+const removeEmojis = (text) => {
+  if (!text) return text;
+  
+  // Remove all emojis
+  let cleaned = text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+  
+  // Clean up multiple spaces
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  
+  // Fix known bad patterns
+  const fixes = {
+    'Coffee Coffee': 'Coffee',
+    'Pizza Food Delivery': 'Food Delivery',
+    'Car Transportation': 'Transportation',
+    'ShoppingCart Groceries': 'Groceries',
+    'Package Other': 'Other',
+    'Flame Foo': 'Food'
+  };
+  
+  // Apply fixes
+  if (fixes[cleaned]) {
+    return fixes[cleaned];
+  }
+  
+  // Generic duplicate word removal (first word = last word)
+  const words = cleaned.split(/\s+/);
+  if (words.length === 2 && words[0].toLowerCase() === words[1].toLowerCase()) {
+    return words[0];
+  }
+  
+  return cleaned;
+};
+
+/**
  * Group transactions by category
  */
 export const groupByCategory = (transactions, categories) => {
@@ -128,9 +164,10 @@ export const groupByCategory = (transactions, categories) => {
     if (t.type === 'expense' && t.category_id) {
       if (!grouped[t.category_id]) {
         const category = categories.find(c => c.id === t.category_id);
+        const rawName = t.category_name || category?.name || 'Unknown';
         grouped[t.category_id] = {
           id: t.category_id,
-          name: t.category_name || category?.name || 'Unknown',
+          name: removeEmojis(rawName), // Clean name without emojis
           icon: category?.icon || '📦',
           color: category?.color || '#6B7280',
           total: 0,
@@ -149,24 +186,28 @@ export const groupByCategory = (transactions, categories) => {
 
 /**
  * Group transactions by payment method
+ * Only counts expenses and payments (not income)
  */
 export const groupByPaymentMethod = (transactions) => {
   const grouped = {};
 
   transactions.forEach(t => {
-    const method = t.payment_method || 'unknown';
-    if (!grouped[method]) {
-      grouped[method] = {
-        method,
-        name: getPaymentMethodName(method),
-        total: 0,
-        count: 0,
-        transactions: []
-      };
+    // Only include expenses and payments, NOT income
+    if (t.type !== 'income') {
+      const method = t.payment_method || 'unknown';
+      if (!grouped[method]) {
+        grouped[method] = {
+          method,
+          name: getPaymentMethodName(method),
+          total: 0,
+          count: 0,
+          transactions: []
+        };
+      }
+      grouped[method].total += Number(t.amount) || 0;
+      grouped[method].count += 1;
+      grouped[method].transactions.push(t);
     }
-    grouped[method].total += Number(t.amount) || 0;
-    grouped[method].count += 1;
-    grouped[method].transactions.push(t);
   });
 
   return Object.values(grouped).sort((a, b) => b.total - a.total);
@@ -177,10 +218,9 @@ export const groupByPaymentMethod = (transactions) => {
  */
 const getPaymentMethodName = (method) => {
   const names = {
-    cash_in_hand: '💵 Cash in Hand',
-    bank_account: '🏦 Bank Account',
-    cash: 'Cash (Legacy)',
-    credit_card: '💳 Credit Card',
+    cash_in_hand: 'Cash in Hand',
+    bank_account: 'Bank Account',
+    credit_card: 'Credit Card',
     loan: 'Loan',
     reserved_fund: 'Reserved Fund',
     transfer: 'Transfer',

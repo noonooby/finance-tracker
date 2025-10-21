@@ -648,6 +648,86 @@ export const undoActivity = async (activity, onUpdate) => {
         }
         break;
       
+      case 'gift_card_reload':
+        // Undo gift card reload - reverse: deduct from card, refund payment source
+        if (snapshot && snapshot.card) {
+          try {
+            const card = await dbOperation('creditCards', 'get', snapshot.card.id);
+            if (card) {
+              // Restore previous gift card balance
+              const amount = Number(snapshot.amount) || 0;
+              const previousBalance = Number(snapshot.previousBalance) || 0;
+              await dbOperation('creditCards', 'put', {
+                ...card,
+                balance: previousBalance
+              }, { skipActivityLog: true });
+              console.log('✅ Gift card balance restored');
+              
+              // Refund payment source
+              const sourceType = snapshot.source;
+              const sourceId = snapshot.sourceId;
+              
+              if (sourceType === 'credit_card' && sourceId) {
+                const paymentCard = await dbOperation('creditCards', 'get', sourceId);
+                if (paymentCard) {
+                  await dbOperation('creditCards', 'put', {
+                    ...paymentCard,
+                    balance: (parseFloat(paymentCard.balance) || 0) - amount
+                  }, { skipActivityLog: true });
+                  console.log('✅ Refunded to payment card');
+                }
+              } else if (sourceType === 'bank_account' && sourceId) {
+                const { getBankAccount, updateBankAccountBalance } = await import('./db');
+                const bankAccount = await getBankAccount(sourceId);
+                if (bankAccount) {
+                  await updateBankAccountBalance(sourceId, 
+                    (parseFloat(bankAccount.balance) || 0) + amount
+                  );
+                  console.log('✅ Refunded to bank account');
+                }
+              } else if (sourceType === 'cash_in_hand') {
+                const { getCashInHand, updateCashInHand } = await import('./db');
+                const currentCash = await getCashInHand();
+                await updateCashInHand(currentCash + amount);
+                console.log('✅ Refunded to cash in hand');
+              }
+              
+              // Mark transaction as undone
+              if (snapshot.transactionId) {
+                await markTransactionUndone(snapshot.transactionId);
+              }
+            }
+          } catch (error) {
+            console.error('Error undoing gift card reload:', error);
+          }
+        }
+        break;
+        
+      case 'gift_card_usage':
+        // Undo gift card usage - restore balance to card
+        if (snapshot && snapshot.card) {
+          try {
+            const card = await dbOperation('creditCards', 'get', snapshot.card.id);
+            if (card) {
+              // Restore previous gift card balance
+              const previousBalance = Number(snapshot.previousBalance) || 0;
+              await dbOperation('creditCards', 'put', {
+                ...card,
+                balance: previousBalance
+              }, { skipActivityLog: true });
+              console.log('✅ Gift card balance restored after undoing usage');
+              
+              // Mark transaction as undone
+              if (snapshot.transactionId) {
+                await markTransactionUndone(snapshot.transactionId);
+              }
+            }
+          } catch (error) {
+            console.error('Error undoing gift card usage:', error);
+          }
+        }
+        break;
+
       case 'edit_setting':
       case 'set_budget':
       case 'delete_budget':

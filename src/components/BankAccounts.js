@@ -761,9 +761,18 @@ export default function BankAccounts({
             <Building2 size={24} />
             Bank Accounts
           </h2>
-          <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Total Balance: <span className="font-semibold">{formatCurrency(totalBalance)}</span>
-          </p>
+          <div className={`text-sm mt-1 space-y-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <div>
+              Total Balance: <span className="font-semibold">{formatCurrency(totalBalance)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Wallet size={14} />
+              Cash in Hand: <span className="font-semibold text-green-600">{formatCurrency(cashInHand || 0)}</span>
+            </div>
+            <div className="font-bold text-blue-600">
+              Combined Total: {formatCurrency(totalBalance + (cashInHand || 0))}
+            </div>
+          </div>
         </div>
         <div className="flex gap-2">
           <button
@@ -1205,8 +1214,100 @@ export default function BankAccounts({
         </div>
       )}
 
-      {/* Accounts List */}
+      {/* Accounts List + Cash in Hand */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Cash in Hand Card - Always first */}
+        <div className={`${darkMode ? 'bg-gradient-to-br from-green-900/20 to-green-800/10 border-green-700' : 'bg-gradient-to-br from-green-50 to-green-100 border-green-200'} rounded-lg border-2 p-4`}>
+          <div className="flex justify-between items-start mb-3">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <Wallet size={20} className="text-green-600" />
+                <h3 className="font-bold text-base sm:text-lg">Cash in Hand</h3>
+                <span className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-green-900/40 text-green-300' : 'bg-green-200 text-green-800'}`}>
+                  Physical Cash
+                </span>
+              </div>
+              <div className="text-xl sm:text-2xl font-bold mt-1 text-green-600">
+                {formatCurrency(cashInHand || 0)}
+              </div>
+              <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1`}>
+                Money outside bank accounts
+              </div>
+            </div>
+            <div className="flex gap-1 sm:gap-2">
+              <button
+                onClick={() => {
+                  setCashFormData({ accountId: '', amount: '' });
+                  setShowCashModal(true);
+                }}
+                className={`p-2 rounded ${darkMode ? 'text-green-400 hover:bg-gray-700' : 'text-green-600 hover:bg-green-50'}`}
+                title="Withdraw or Deposit cash"
+              >
+                <ArrowRightLeft size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </button>
+              <button
+                onClick={async () => {
+                  const newAmount = prompt(`Enter new cash in hand amount:`, (cashInHand || 0).toString());
+                  if (newAmount === null) return;
+                  
+                  const amount = parseFloat(newAmount);
+                  if (isNaN(amount) || amount < 0) {
+                    showToast.error('Please enter a valid amount');
+                    return;
+                  }
+                  
+                  const oldAmount = cashInHand || 0;
+                  await onUpdateCashInHand(amount);
+                  
+                  await logActivity(
+                    'edit_setting',
+                    'cash_in_hand',
+                    'cash-in-hand',
+                    'Cash in Hand',
+                    `Updated cash in hand from ${formatCurrency(oldAmount)} to ${formatCurrency(amount)}`,
+                    {
+                      settingKey: 'cashInHand',
+                      previousValue: oldAmount,
+                      newValue: amount
+                    }
+                  );
+                  
+                  showToast.success('Cash in hand updated');
+                }}
+                className={`p-2 rounded ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'}`}
+                title="Edit cash amount"
+              >
+                <Edit2 size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </button>
+            </div>
+          </div>
+          
+          {/* Quick actions for cash */}
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <button
+              onClick={() => {
+                setCashOperation('withdraw');
+                setShowCashModal(true);
+              }}
+              className={`flex items-center justify-center gap-2 py-2 rounded-lg font-medium text-sm ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+            >
+              <ArrowDownToLine size={16} />
+              Withdraw
+            </button>
+            <button
+              onClick={() => {
+                setCashOperation('deposit');
+                setShowCashModal(true);
+              }}
+              className={`flex items-center justify-center gap-2 py-2 rounded-lg font-medium text-sm ${darkMode ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+            >
+              <ArrowUpFromLine size={16} />
+              Deposit
+            </button>
+          </div>
+        </div>
+        
+        {/* Bank Accounts */}
         {sortedAccounts.length === 0 ? (
           <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             <Building2 size={48} className="mx-auto mb-3 opacity-30" />

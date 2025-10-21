@@ -1,12 +1,30 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Activity } from 'lucide-react';
 import { formatCurrency } from '../../../utils/reportHelpers';
 
 export default function TrendLineChart({ data, darkMode, dataKeys = [] }) {
   if (!data || data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-500">
-        No data available
+      <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+        <Activity size={48} className="mb-3 opacity-30" />
+        <p className="text-lg font-medium">No data available</p>
+        <p className="text-sm">Add more transactions to see trends</p>
+      </div>
+    );
+  }
+  
+  // Check if all data points have zero values
+  const hasNonZeroData = data.some(point => 
+    dataKeys.some(key => Number(point[key.key]) !== 0)
+  );
+  
+  if (!hasNonZeroData) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+        <Activity size={48} className="mb-3 opacity-30" />
+        <p className="text-lg font-medium">No activity in this period</p>
+        <p className="text-sm">Try adjusting your date range or filters</p>
       </div>
     );
   }

@@ -1,0 +1,117 @@
+/* Mobile Modal Optimizations - Import this in App.js */
+
+/* Fix bottom navigation overlap on ALL modals */
+@media (max-width: 768px) {
+  /* Outer modal wrapper - leave space for bottom nav */
+  div[class*="fixed inset-0"] {
+    padding-bottom: 80px !important;
+  }
+  
+  /* Modal content container */
+  div[class*="rounded-lg"][class*="max-w"] {
+    max-height: calc(100vh - 120px) !important;
+  }
+  
+  /* Add safe area padding for iOS */
+  @supports (padding: max(0px)) {
+    div[class*="fixed inset-0"] {
+      padding-bottom: max(80px, env(safe-area-inset-bottom)) !important;
+    }
+  }
+}
+
+/* Compact form spacing for better UX */
+form[class*="space-y-4"] {
+  gap: 0.75rem; /* Reduce from 1rem */
+}
+
+form[class*="space-y-4"] > * + * {
+  margin-top: 0.75rem !important;
+}
+
+/* Smaller labels to save space */
+label[class*="text-sm"] {
+  font-size: 0.75rem !important; /* 12px instead of 14px */
+  margin-bottom: 0.375rem !important; /* 6px instead of 8px */
+}
+
+/* Compact inputs */
+input[class*="py-2"],
+select[class*="py-2"],
+textarea[class*="py-2"] {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
+/* Smaller text in inputs */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 14px !important;
+  }
+}
+
+/* Compact buttons */
+button[class*="py-3"] {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
+/* Reduce textarea height */
+textarea[rows="3"] {
+  min-height: 60px !important;
+}
+
+/* Make quick-select buttons smaller */
+button[class*="px-3 py-1.5"] {
+  padding: 0.375rem 0.625rem !important;
+  font-size: 0.75rem !important;
+}
+
+/* Grid improvements for mobile */
+@media (min-width: 400px) and (max-width: 640px) {
+  /* Amount + Date side by side */
+  .amount-date-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+}
+
+/* Smooth scrolling */
+div[class*="overflow-y-auto"] {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Minimal scrollbar */
+div[class*="overflow-y-auto"]::-webkit-scrollbar {
+  width: 3px;
+}
+
+div[class*="overflow-y-auto"]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+div[class*="overflow-y-auto"]::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 2px;
+}
+
+/* Modal header/footer sticky positioning */
+div[class*="sticky top-0"] {
+  z-index: 10;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Reduce padding on mobile */
+@media (max-width: 640px) {
+  div[class*="p-4"] {
+    padding: 0.75rem !important;
+  }
+  
+  div[class*="space-y-4"] {
+    gap: 0.625rem !important;
+  }
+}

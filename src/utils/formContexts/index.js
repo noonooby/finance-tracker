@@ -56,3 +56,11 @@ export {
   deleteGiftCardPurchaseContext,
   applyGiftCardPurchaseContext
 } from './giftCardPurchaseContexts';
+
+export {
+  saveGiftCardAddBalanceContext,
+  getGiftCardAddBalanceContext,
+  saveGiftCardUseBalanceContext,
+  getGiftCardUseBalanceContext,
+  getRecentGiftCardAmounts
+} from './giftCardOperationsContexts';

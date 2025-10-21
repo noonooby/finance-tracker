@@ -1,0 +1,200 @@
+/* MODERN MOBILE-SAFE LAYOUT - Industry Standard Solution */
+
+/* 
+ * PROBLEM: Bottom navigation overlaps content on mobile
+ * ROOT CAUSE: Using 100vh includes browser UI that may be hidden
+ * SOLUTION: Use dynamic viewport units + safe-area-inset
+ */
+
+/* ============================================
+ * MAIN PAGE CONTENT - Safe from bottom nav
+ * ============================================ */
+
+/* All main page content should have bottom padding for mobile nav */
+main,
+div[class*="container"],
+div[class*="space-y-"] {
+  /* Add safe padding for mobile bottom nav */
+  padding-bottom: max(
+    env(safe-area-inset-bottom, 0px),  /* iOS notch */
+    80px                                /* Your bottom nav bar */
+  );
+}
+
+/* On mobile, ensure content doesn't go behind nav */
+@media (max-width: 768px) {
+  /* Main content area */
+  body {
+    padding-bottom: env(safe-area-inset-bottom, 80px);
+  }
+  
+  /* Grid layouts need extra bottom space */
+  div[class*="grid"] {
+    padding-bottom: 20px;
+  }
+}
+
+/* ============================================
+ * MODALS - Safe from bottom nav
+ * ============================================ */
+
+/* Modal overlay - use dynamic viewport height */
+div.fixed.inset-0.bg-black.bg-opacity-50 {
+  /* Use small viewport height (excludes browser UI) */
+  height: 100svh;
+  height: 100dvh; /* Fallback to dynamic */
+  
+  /* Safe padding */
+  padding: 8px;
+  padding-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    20px  /* Desktop default */
+  );
+}
+
+@media (max-width: 768px) {
+  div.fixed.inset-0.bg-black.bg-opacity-50 {
+    /* Extra space for mobile bottom nav */
+    padding-bottom: max(
+      calc(env(safe-area-inset-bottom, 0px) + 80px),
+      100px
+    );
+  }
+}
+
+/* Modal content - dynamic height */
+div.fixed.inset-0.bg-black.bg-opacity-50 > div[class*="rounded-lg"] {
+  /* Use calc with dynamic viewport */
+  max-height: calc(100dvh - 100px);
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 768px) {
+  div.fixed.inset-0.bg-black.bg-opacity-50 > div[class*="rounded-lg"] {
+    /* Account for bottom nav + safe area */
+    max-height: calc(100dvh - max(
+      calc(env(safe-area-inset-bottom, 0px) + 100px),
+      140px
+    ));
+  }
+}
+
+/* ============================================
+ * BOTTOM NAVIGATION - Always visible
+ * ============================================ */
+
+/* Your bottom nav should use fixed positioning with safe area */
+nav[class*="fixed bottom-0"],
+div[class*="fixed bottom-0"] {
+  /* Stick to bottom with safe area */
+  bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  
+  /* Ensure it's above everything */
+  z-index: 50;
+}
+
+/* ============================================
+ * SCROLLABLE CONTENT - Safe scrolling
+ * ============================================ */
+
+/* Any scrollable container on main page */
+div[class*="overflow-y-auto"]:not(.modal-scroll) {
+  /* Account for bottom nav */
+  padding-bottom: max(
+    calc(env(safe-area-inset-bottom, 0px) + 80px),
+    100px
+  );
+}
+
+/* Modal scrollable areas */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="overflow-y-auto"] {
+  /* Just safe area, modal padding handles nav */
+  padding-bottom: env(safe-area-inset-bottom, 20px);
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* ============================================
+ * BUTTONS AT BOTTOM - Always visible
+ * ============================================ */
+
+/* Sticky button containers (like in cards) */
+div[class*="grid"][class*="gap-2"]:has(button) {
+  /* Add spacing for mobile nav */
+  margin-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    20px
+  );
+}
+
+@media (max-width: 768px) {
+  /* Buttons in cards need extra bottom margin */
+  div[class*="rounded-lg"] > div:has(button):last-child {
+    margin-bottom: 80px; /* Clear bottom nav */
+  }
+}
+
+/* ============================================
+ * UTILITY CLASSES
+ * ============================================ */
+
+/* Add this class to any element that should respect safe areas */
+.safe-bottom {
+  padding-bottom: max(
+    calc(env(safe-area-inset-bottom, 0px) + 80px),
+    100px
+  ) !important;
+}
+
+/* For modals specifically */
+.modal-safe {
+  padding-bottom: max(
+    calc(env(safe-area-inset-bottom, 0px) + 20px),
+    30px
+  ) !important;
+}
+
+/* ============================================
+ * VIEWPORT META TAG (Add to index.html)
+ * ============================================ */
+
+/*
+  Make sure your index.html has:
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  
+  The 'viewport-fit=cover' is CRITICAL for env() variables to work!
+*/
+
+/* ============================================
+ * TESTING HELPER
+ * ============================================ */
+
+/* Add this class to body to visualize safe areas */
+body.debug-safe-areas::before {
+  content: '';
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-bottom, 0px);
+  background: rgba(255, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+body.debug-safe-areas::after {
+  content: 'Safe Area: ' attr(data-safe-area);
+  position: fixed;
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  font-size: 10px;
+  border-radius: 4px;
+  z-index: 9999;
+}

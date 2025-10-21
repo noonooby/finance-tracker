@@ -1,0 +1,220 @@
+/* ULTRA-COMPACT MODAL DESIGN - Maximum space efficiency */
+/* Applied to ALL screen sizes for consistent, efficient data entry */
+/* ONLY APPLIES TO MODALS - NOT TO MAIN PAGE CONTENT */
+
+/* Target ONLY modal overlays and their children */
+div.fixed.inset-0.bg-black.bg-opacity-50 {
+  padding: 8px 8px 20px 8px !important;
+}
+
+@media (max-width: 768px) {
+  div.fixed.inset-0.bg-black.bg-opacity-50 {
+    padding: 8px 8px 90px 8px !important;
+  }
+}
+
+/* Modal content - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 > div[class*="rounded-lg"][class*="max-w"] {
+  max-height: calc(100vh - 40px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+@media (max-width: 768px) {
+  div.fixed.inset-0.bg-black.bg-opacity-50 > div[class*="rounded-lg"][class*="max-w"] {
+    max-height: calc(100vh - 110px) !important;
+  }
+}
+
+/* Modal header - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="sticky"][class*="top-0"] {
+  padding: 8px 12px !important;
+  min-height: unset !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="sticky"][class*="top-0"] h2 {
+  font-size: 16px !important;
+  line-height: 20px !important;
+  font-weight: 600 !important;
+}
+
+/* Form container - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 form[class*="space-y"] {
+  padding: 10px !important;
+  gap: 0 !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 form[class*="space-y"] > * + * {
+  margin-top: 8px !important;
+}
+
+/* Labels - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 label {
+  font-size: 11px !important;
+  margin-bottom: 3px !important;
+  font-weight: 600 !important;
+  line-height: 14px !important;
+  display: block !important;
+}
+
+/* Inputs - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 input[type="text"],
+div.fixed.inset-0.bg-black.bg-opacity-50 input[type="number"],
+div.fixed.inset-0.bg-black.bg-opacity-50 input[type="date"],
+div.fixed.inset-0.bg-black.bg-opacity-50 select,
+div.fixed.inset-0.bg-black.bg-opacity-50 textarea {
+  padding: 6px 10px !important;
+  font-size: 14px !important;
+  line-height: 20px !important;
+}
+
+/* Textarea - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 textarea {
+  min-height: 50px !important;
+  max-height: 70px !important;
+  resize: vertical !important;
+}
+
+/* Type selector buttons - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="grid-cols-3"] > button {
+  padding: 8px 6px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+
+/* Quick-select buttons - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 button[class*="px-3"][class*="py-1.5"],
+div.fixed.inset-0.bg-black.bg-opacity-50 button[class*="rounded-lg"][class*="text-sm"] {
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  line-height: 16px !important;
+  font-weight: 500 !important;
+}
+
+/* Payment type toggle - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="grid-cols-2"] > button[class*="p-3"] {
+  padding: 8px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="grid-cols-2"] > button svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* Radio buttons - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 label[class*="flex items-center"] {
+  padding: 3px 0 !important;
+  font-size: 13px !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 label[class*="flex items-center"] svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 label[class*="flex items-center"] input[type="radio"] {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* Bottom buttons - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="flex gap-2"][class*="pt-"] {
+  padding-top: 10px !important;
+  gap: 8px !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="flex gap-2"][class*="pt-"] button {
+  padding: 8px 14px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+/* Remove spacing - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="mb-4"],
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="mb-2"] {
+  margin-bottom: 0 !important;
+}
+
+/* Compact recent buttons - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="flex gap-2 flex-wrap"] {
+  gap: 5px !important;
+  margin-top: 5px !important;
+}
+
+/* Space-y overrides - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="space-y-2"] > * + * {
+  margin-top: 6px !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="space-y-3"] > * + * {
+  margin-top: 8px !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="space-y-4"] > * + * {
+  margin-top: 8px !important;
+}
+
+/* Padding - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="p-4"] {
+  padding: 10px !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="px-4"] {
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="py-4"] {
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+}
+
+/* Icons - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 button svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* Close button */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="sticky"][class*="top-0"] button svg {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+/* Scrollbar - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="overflow-y-auto"]::-webkit-scrollbar {
+  width: 3px !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="overflow-y-auto"]::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="overflow-y-auto"]::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4) !important;
+  border-radius: 2px !important;
+}
+
+/* Smooth scrolling - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="overflow-y-auto"] {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Select options - ONLY in modals */
+div.fixed.inset-0.bg-black.bg-opacity-50 optgroup {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+div.fixed.inset-0.bg-black.bg-opacity-50 option {
+  font-size: 13px !important;
+  padding: 4px !important;
+}
