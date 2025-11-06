@@ -6,11 +6,9 @@ import { saveLoanPaymentContext } from '../../../utils/formContexts';
 
 /**
  * Payment Validation Hook
- * Validates payment amount and source availability
  */
 const usePaymentValidation = () => {
   const validatePayment = useCallback((loan, paymentAmount, sourceType, sourceId, sourceData) => {
-    // Validate amount
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
       return { valid: false, error: 'Please enter a valid payment amount' };
     }
@@ -20,21 +18,11 @@ const usePaymentValidation = () => {
       return { 
         valid: false, 
         error: `Payment amount (${formatCurrency(paymentAmount)}) exceeds balance (${formatCurrency(loanBalance)})`,
-        warning: true // Indicates this is a warning, not a hard error
+        warning: true
       };
     }
 
-    // Validate source availability
-    if (sourceType === 'reserved_fund') {
-      const fund = sourceData;
-      const currentAmount = parseFloat(fund?.amount) || 0;
-      if (paymentAmount > currentAmount) {
-        return { 
-          valid: false, 
-          error: `Insufficient funds in ${fund?.name}. Available: ${formatCurrency(currentAmount)}` 
-        };
-      }
-    } else if (sourceType === 'bank_account') {
+    if (sourceType === 'bank_account') {
       const account = sourceData;
       const currentBalance = parseFloat(account?.balance) || 0;
       if (paymentAmount > currentBalance) {
@@ -61,96 +49,8 @@ const usePaymentValidation = () => {
 
 /**
  * Payment Source Handler Hook
- * Processes payment from different source types
  */
 const usePaymentSourceHandler = () => {
-  const resolveFundId = (fund) => {
-    if (!fund) return null;
-    if (fund.id !== undefined && fund.id !== null) return String(fund.id);
-    if (fund.fund_id !== undefined && fund.fund_id !== null) return String(fund.fund_id);
-    return null;
-  };
-
-  const processReservedFundPayment = useCallback(async (fund, paymentAmount, paymentDate) => {
-    const currentAmount = parseFloat(fund.amount) || 0;
-    const fundSnapshot = JSON.parse(JSON.stringify(fund));
-    let wasFundDeleted = false;
-
-    if (fund.recurring) {
-      const updatedFund = {
-        ...fund,
-        amount: Math.max(0, currentAmount - paymentAmount),
-        last_paid_date: paymentDate
-      };
-
-      let continueFund = true;
-      const nextFundDue = predictNextDate(fund.due_date, fund.frequency || 'monthly');
-
-      if (fund.recurring_duration_type === 'occurrences') {
-        const completed = (fund.recurring_occurrences_completed || 0) + 1;
-        updatedFund.recurring_occurrences_completed = completed;
-        const total = fund.recurring_occurrences_total || 0;
-        if (total && completed >= total) continueFund = false;
-      }
-
-      if (fund.recurring_duration_type === 'until_date' && fund.recurring_until_date) {
-        const fundEndDate = new Date(fund.recurring_until_date);
-        const nextFundDate = new Date(nextFundDue);
-        if (nextFundDate > fundEndDate) continueFund = false;
-      }
-
-      if (continueFund) {
-        updatedFund.due_date = nextFundDue;
-      } else {
-        updatedFund.recurring = false;
-        updatedFund.due_date = fund.recurring_until_date || fund.due_date;
-      }
-
-      await dbOperation('reservedFunds', 'put', updatedFund, { skipActivityLog: true });
-    } else if (fund.is_lumpsum) {
-      const updatedAmount = Math.max(0, currentAmount - paymentAmount);
-      const updatedFund = {
-        ...fund,
-        amount: updatedAmount,
-        last_paid_date: paymentDate
-      };
-
-      if (fund.recurring_duration_type === 'occurrences') {
-        const completed = (fund.recurring_occurrences_completed || 0) + 1;
-        updatedFund.recurring_occurrences_completed = completed;
-        const total = fund.recurring_occurrences_total || 0;
-        if (total && completed >= total) updatedFund.recurring = false;
-      }
-
-      await dbOperation('reservedFunds', 'put', updatedFund, { skipActivityLog: true });
-    } else {
-      const remaining = currentAmount - paymentAmount;
-      if (remaining <= 0.0001) {
-        await dbOperation('reservedFunds', 'delete', resolveFundId(fund), { skipActivityLog: true });
-        wasFundDeleted = true;
-      } else {
-        const updatedFund = {
-          ...fund,
-          amount: remaining,
-          last_paid_date: paymentDate
-        };
-        await dbOperation('reservedFunds', 'put', updatedFund, { skipActivityLog: true });
-      }
-    }
-
-    return {
-      paymentMethod: 'reserved_fund',
-      paymentMethodId: resolveFundId(fund),
-      paymentMethodName: fund.name,
-      sourceName: fund.name,
-      affectedFunds: [{
-        fund: fundSnapshot,
-        amountUsed: paymentAmount,
-        wasDeleted: wasFundDeleted
-      }]
-    };
-  }, []);
-
   const processBankAccountPayment = useCallback(async (account, paymentAmount, paymentDate) => {
     const currentBalance = parseFloat(account.balance) || 0;
     const updatedBalance = Math.max(0, currentBalance - paymentAmount);
@@ -223,7 +123,6 @@ const usePaymentSourceHandler = () => {
   }, []);
 
   return {
-    processReservedFundPayment,
     processBankAccountPayment,
     processCreditCardPayment,
     processCashInHandPayment,
@@ -233,14 +132,13 @@ const usePaymentSourceHandler = () => {
 
 /**
  * Transaction Creator Hook
- * Creates transaction records for payments
  */
 const useTransactionCreator = () => {
   const createPaymentTransaction = useCallback(async (loan, paymentAmount, paymentDate, paymentResult, categoryId) => {
     const transaction = {
       type: 'payment',
       loan_id: loan.id,
-      card_id: paymentResult.cardEffect ? paymentResult.cardEffect.cardId : null, // ← Link to credit card if used
+      card_id: paymentResult.cardEffect ? paymentResult.cardEffect.cardId : null,
       amount: paymentAmount,
       date: paymentDate,
       category_id: categoryId || 'loan_payment',
@@ -263,7 +161,6 @@ const useTransactionCreator = () => {
 
 /**
  * Payment Activity Logger Hook
- * Logs payment activities with complete snapshots
  */
 const usePaymentActivity = () => {
   const logPaymentActivity = useCallback(async (
@@ -290,10 +187,8 @@ const usePaymentActivity = () => {
         name: paymentResult.sourceName
       },
       paymentMethodName: paymentResult.paymentMethodName,
-      affectedFund: paymentResult.affectedFunds?.[0]?.fund || null,
-      affectedFunds: paymentResult.affectedFunds || [],
       bankAdjustments: paymentResult.bankAdjustments || [],
-      cardEffect: paymentResult.cardEffect || null,
+      cardEffect: paymentResult.cashEffect || null,
       cashEffect: paymentResult.cashEffect || null,
       transactionId,
       isManualPayment: true
@@ -317,11 +212,9 @@ const usePaymentActivity = () => {
 
 /**
  * Main Loan Payment Hook
- * Orchestrates the complete loan payment flow
  */
 export const useLoanPayment = ({
   loans,
-  reservedFunds,
   bankAccounts,
   creditCards,
   availableCash,
@@ -334,7 +227,6 @@ export const useLoanPayment = ({
   
   const { validatePayment } = usePaymentValidation();
   const {
-    processReservedFundPayment,
     processBankAccountPayment,
     processCreditCardPayment,
     processCashInHandPayment,
@@ -342,18 +234,6 @@ export const useLoanPayment = ({
   } = usePaymentSourceHandler();
   const { createPaymentTransaction } = useTransactionCreator();
   const { logPaymentActivity } = usePaymentActivity();
-
-  const resolveFundId = (fund) => {
-    if (!fund) return null;
-    if (fund.id !== undefined && fund.id !== null) return String(fund.id);
-    if (fund.fund_id !== undefined && fund.fund_id !== null) return String(fund.fund_id);
-    return null;
-  };
-
-  const findReservedFundById = useCallback((fundId) => {
-    if (!fundId) return null;
-    return reservedFunds.find((fund) => resolveFundId(fund) === String(fundId)) || null;
-  }, [reservedFunds]);
 
   const findBankAccountById = useCallback((accountId) => {
     if (!accountId) return null;
@@ -365,9 +245,6 @@ export const useLoanPayment = ({
     return creditCards?.find((card) => String(card.id) === String(cardId)) || null;
   }, [creditCards]);
 
-  /**
-   * Process a loan payment
-   */
   const processPayment = useCallback(async ({
     loanId,
     paymentAmount,
@@ -386,17 +263,12 @@ export const useLoanPayment = ({
         throw new Error('Loan not found');
       }
 
-      // Parse source
       const [sourceType, sourceId] = sourceValue.includes(':') 
         ? sourceValue.split(':') 
         : [sourceValue, null];
 
-      // Get source data
       let sourceData = null;
-      if (sourceType === 'reserved_fund') {
-        sourceData = findReservedFundById(sourceId);
-        if (!sourceData) throw new Error('Reserved fund not found');
-      } else if (sourceType === 'bank_account') {
+      if (sourceType === 'bank_account') {
         sourceData = findBankAccountById(sourceId);
         if (!sourceData) throw new Error('Bank account not found');
       } else if (sourceType === 'credit_card') {
@@ -406,7 +278,6 @@ export const useLoanPayment = ({
         sourceData = cashInHand;
       }
 
-      // Validate payment
       const validation = validatePayment(loan, paymentAmount, sourceType, sourceId, sourceData);
       if (!validation.valid) {
         if (validation.warning) {
@@ -420,12 +291,10 @@ export const useLoanPayment = ({
         }
       }
 
-      // Capture original state
       const originalLoan = { ...loan };
       const loanBalance = parseFloat(loan.balance) || 0;
       const previousCash = availableCash;
 
-      // Update loan
       const updatedLoan = {
         ...loan,
         balance: Math.max(0, loanBalance - paymentAmount),
@@ -433,7 +302,6 @@ export const useLoanPayment = ({
         last_auto_payment_date: new Date().toISOString().split('T')[0]
       };
 
-      // Handle recurring schedule
       let shouldContinue = true;
       const nextDate = predictNextDate(paymentDate, loan.frequency);
 
@@ -452,17 +320,12 @@ export const useLoanPayment = ({
 
       updatedLoan.next_payment_date = shouldContinue ? nextDate : null;
 
-      // Save updated loan
       await dbOperation('loans', 'put', updatedLoan, { skipActivityLog: true });
 
-      // Process payment from source
       let paymentResult;
       let newCash = previousCash;
 
-      if (sourceType === 'reserved_fund') {
-        paymentResult = await processReservedFundPayment(sourceData, paymentAmount, paymentDate);
-        await onUpdateCash(null, { syncOnly: true });
-      } else if (sourceType === 'bank_account') {
+      if (sourceType === 'bank_account') {
         paymentResult = await processBankAccountPayment(sourceData, paymentAmount, paymentDate);
         if (hasMigratedToBankAccounts) {
           await onUpdateCash(null, { syncOnly: true });
@@ -483,7 +346,6 @@ export const useLoanPayment = ({
         newCash = previousCash - paymentAmount;
       }
 
-      // Create transaction
       const transaction = await createPaymentTransaction(
         loan,
         paymentAmount,
@@ -492,7 +354,6 @@ export const useLoanPayment = ({
         categoryId
       );
 
-      // Log activity
       await logPaymentActivity(
         loan,
         originalLoan,
@@ -505,7 +366,6 @@ export const useLoanPayment = ({
         newCash
       );
 
-      // Save payment context
       saveLoanPaymentContext(loanId, {
         paymentSource: sourceType,
         paymentSourceId: sourceId,
@@ -541,14 +401,12 @@ export const useLoanPayment = ({
     hasMigratedToBankAccounts,
     processing,
     validatePayment,
-    processReservedFundPayment,
     processBankAccountPayment,
     processCreditCardPayment,
     processCashInHandPayment,
     processCashPayment,
     createPaymentTransaction,
     logPaymentActivity,
-    findReservedFundById,
     findBankAccountById,
     findCreditCardById
   ]);

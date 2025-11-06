@@ -9,8 +9,6 @@ import { Wallet } from 'lucide-react';
 export default function CashBalanceWidget({
   darkMode,
   availableCash,
-  totalReserved,
-  trueAvailable,
   cashInHand,
   bankAccounts,
   showCashInDashboard,
@@ -36,19 +34,10 @@ export default function CashBalanceWidget({
       
       {showCashInDashboard && (
         <div className={`${compactMode ? 'text-[10px]' : 'text-sm'} opacity-90 ${compactMode ? 'mt-0.5 space-y-0' : 'mt-2 space-y-1'}`}>
-          <div>💵 Cash in Hand: {formatCurrency(cashInHand || 0)}</div>
-          <div>🏦 Bank Accounts: {formatCurrency(calculateTotalBankBalance(bankAccounts || []))}</div>
+          <div className="flex items-center gap-1">💵 Cash in Hand: {formatCurrency(cashInHand || 0)}</div>
+          <div className="flex items-center gap-1">🏦 Bank Accounts: {formatCurrency(calculateTotalBankBalance(bankAccounts || []))}</div>
         </div>
       )}
-      
-      <div className={`${compactMode ? 'text-[10px]' : 'text-sm'} opacity-90 ${compactMode ? 'mt-0.5' : 'mt-2'}`}>
-        Reserved: {formatCurrency(totalReserved)}
-      </div>
-      <div className={`${compactMode ? 'mt-0.5 pt-0.5' : 'mt-3 pt-3'} ${darkMode ? 'border-blue-800' : 'border-blue-500'} border-t`}>
-        <div className={`${compactMode ? 'text-xs' : 'text-lg'} font-semibold`}>
-          True Available: {formatCurrency(trueAvailable)}
-        </div>
-      </div>
     </div>
   );
 }

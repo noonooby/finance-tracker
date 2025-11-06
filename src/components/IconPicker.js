@@ -59,11 +59,10 @@ const COMMON_ICONS = [
   { name: 'Flame', label: 'Gas' },
   { name: 'Wifi', label: 'Internet' },
   { name: 'Smartphone', label: 'Phone' },
-  { name: 'Tv', label: 'TV' },
+  { name: 'Monitor', label: 'TV' },
   
   // Tech & Electronics
   { name: 'Laptop', label: 'Laptop' },
-  { name: 'Monitor', label: 'Monitor' },
   { name: 'Tablet', label: 'Tablet' },
   { name: 'Watch', label: 'Watch' },
   { name: 'Camera', label: 'Camera' },
@@ -113,7 +112,6 @@ const COMMON_ICONS = [
   { name: 'Clock', label: 'Time' },
   { name: 'MapPin', label: 'Location' },
   { name: 'Globe', label: 'Travel' },
-  { name: 'Plane', label: 'Vacation' },
   { name: 'Umbrella', label: 'Weather' },
   { name: 'Star', label: 'Favorite' },
   { name: 'Target', label: 'Goal' },

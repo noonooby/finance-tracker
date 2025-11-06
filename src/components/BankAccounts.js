@@ -21,6 +21,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Edit2, X, Building2, ArrowRightLeft, Star, AlertCircle, ListFilter, Wallet, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { formatCurrency, generateId, validateBankAccountData, getAccountTypeIcon, formatDate } from '../utils/helpers';
+import { formatFrequency } from '../utils/sentenceCase';
 import RecentTransactions from './shared/RecentTransactions';
 import useAsyncAction from '../hooks/useAsyncAction';
 import ActionButton from './shared/ActionButton';
@@ -57,6 +58,8 @@ import {
 export default function BankAccounts({
   darkMode,
   bankAccounts,
+  loans,
+  creditCards,
   onUpdate,
   focusTarget,
   onClearFocus,
@@ -85,6 +88,17 @@ export default function BankAccounts({
     accountId: '',
     amount: ''
   });
+  
+  // Collapsed institutions state
+  const [collapsedInstitutions, setCollapsedInstitutions] = useState([]);
+  
+  const toggleInstitution = (institution) => {
+    setCollapsedInstitutions(prev => 
+      prev.includes(institution)
+        ? prev.filter(i => i !== institution)
+        : [...prev, institution]
+    );
+  };
 
   // Form data for add/edit
   const [formData, setFormData] = useState({
@@ -96,6 +110,9 @@ export default function BankAccounts({
     allows_overdraft: false,
     overdraft_limit: ''
   });
+  
+  const [recentAccountNames, setRecentAccountNames] = useState([]);
+  const accountNameInputRef = useRef(null);
 
   // Transfer form data
   const [transferData, setTransferData] = useState({
@@ -110,10 +127,11 @@ export default function BankAccounts({
   // Refs for scrolling to focused account
   const accountRefs = useRef({});
 
-  // Load pinned accounts
+  // Load pinned accounts and recent names
   useEffect(() => {
     loadPinnedAccounts();
     loadRecentTransfers();
+    loadRecentAccountNames();
   }, []);
   
   const loadRecentTransfers = async () => {
@@ -123,6 +141,24 @@ export default function BankAccounts({
     } catch (error) {
       console.error('Error loading recent transfers:', error);
     }
+  };
+  
+  const loadRecentAccountNames = async () => {
+    try {
+      const { fetchSuggestions } = await import('../utils/knownEntities');
+      const recent = await fetchSuggestions('bank_account', '', 5);
+      setRecentAccountNames(recent);
+    } catch (error) {
+      console.error('Error loading recent account names:', error);
+    }
+  };
+  
+  const handleSelectAccountName = (accountEntity) => {
+    setFormData(prev => ({ ...prev, name: accountEntity.name }));
+    setTimeout(() => {
+      const balanceInput = document.querySelector('input[placeholder="0.00"]');
+      if (balanceInput) balanceInput.focus();
+    }, 50);
   };
   
   const loadPinnedAccounts = async () => {
@@ -143,20 +179,55 @@ export default function BankAccounts({
     }
   };
   
-  // Sort accounts: primary first, then pinned, then others
-  const sortedAccounts = [...bankAccounts].sort((a, b) => {
-    // Primary always first
-    if (a.is_primary && !b.is_primary) return -1;
-    if (!a.is_primary && b.is_primary) return 1;
+  // Get linked entities for an account
+  const getLinkedEntities = (accountId) => {
+    const linkedLoans = (loans || []).filter(loan => 
+      loan.connected_payment_source === 'bank_account' && 
+      String(loan.connected_payment_source_id) === String(accountId)
+    );
     
-    // Then pinned accounts
-    const aIsPinned = pinnedAccounts.includes(a.id);
-    const bIsPinned = pinnedAccounts.includes(b.id);
-    if (aIsPinned && !bIsPinned) return -1;
-    if (!aIsPinned && bIsPinned) return 1;
+    const linkedCards = (creditCards || []).filter(card => 
+      card.connected_payment_source === 'bank_account' && 
+      String(card.connected_payment_source_id) === String(accountId)
+    );
     
-    return 0;
-  });
+    return { linkedLoans, linkedCards };
+  };
+  
+  // Group accounts by institution
+  const groupedAccounts = React.useMemo(() => {
+    const groups = {};
+    
+    bankAccounts.forEach(account => {
+      const institution = account.institution?.trim() || 'Other Accounts';
+      if (!groups[institution]) {
+        groups[institution] = [];
+      }
+      groups[institution].push(account);
+    });
+    
+    // Sort accounts within each institution: primary first, then pinned, then others
+    Object.keys(groups).forEach(institution => {
+      groups[institution].sort((a, b) => {
+        if (a.is_primary && !b.is_primary) return -1;
+        if (!a.is_primary && b.is_primary) return 1;
+        
+        const aIsPinned = pinnedAccounts.includes(a.id);
+        const bIsPinned = pinnedAccounts.includes(b.id);
+        if (aIsPinned && !bIsPinned) return -1;
+        if (!aIsPinned && bIsPinned) return 1;
+        
+        return 0;
+      });
+    });
+    
+    return groups;
+  }, [bankAccounts, pinnedAccounts]);
+  
+  // Calculate total per institution
+  const getInstitutionTotal = (accounts) => {
+    return accounts.reduce((sum, acc) => sum + (parseFloat(acc.balance) || 0), 0);
+  };
 
   // ============================================
   // FOCUS HANDLING (for navigation from Dashboard)
@@ -206,6 +277,7 @@ export default function BankAccounts({
     });
     setShowAddForm(false);
     setEditingItem(null);
+    loadRecentAccountNames().catch(console.error);
   };
 
   /**
@@ -398,6 +470,14 @@ export default function BankAccounts({
           savedAccount.name,
           description,
           savedAccount
+        );
+      }
+
+      // Track account name in known entities (non-blocking)
+      if (accountPayload.name) {
+        const { upsertKnownEntity } = await import('../utils/knownEntities');
+        upsertKnownEntity('bank_account', accountPayload.name).catch(err => 
+          console.warn('Failed to track account name:', err)
         );
       }
 
@@ -867,7 +947,7 @@ export default function BankAccounts({
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
               >
                 <option value="">Select account</option>
-                {sortedAccounts.map(account => (
+                {bankAccounts.map(account => (
                   <option key={account.id} value={account.id}>
                     {account.name} - {formatCurrency(account.balance)}
                   </option>
@@ -885,7 +965,7 @@ export default function BankAccounts({
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
               >
                 <option value="">Select account</option>
-                {sortedAccounts.map(account => (
+                {bankAccounts.map(account => (
                   <option key={account.id} value={account.id}>
                     {account.name} - {formatCurrency(account.balance)}
                   </option>
@@ -1009,7 +1089,7 @@ export default function BankAccounts({
               className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
             >
               <option value="">Choose account</option>
-              {sortedAccounts.map(account => (
+              {bankAccounts.map(account => (
                 <option key={account.id} value={account.id}>
                   {account.name} - {formatCurrency(account.balance)}
                 </option>
@@ -1085,22 +1165,55 @@ export default function BankAccounts({
         </div>
       )}
 
-      {/* Add/Edit Form */}
-      {showAddForm && (
+      {/* Add Form - Only for new accounts */}
+      {showAddForm && !editingItem && (
         <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
           <h3 className="font-semibold">
             {editingItem ? 'Edit Bank Account' : 'Add Bank Account'}
           </h3>
 
-          <SmartInput
-            type="bank_account"
-            value={formData.name}
-            onChange={(value) => setFormData({ ...formData, name: value })}
-            label="Account Name *"
-            placeholder="e.g., Tangerine Checking"
-            darkMode={darkMode}
-            required={true}
-          />
+          {recentAccountNames.length > 0 && !editingItem && (
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Recent Accounts
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {recentAccountNames.map(accountEntity => (
+                  <button
+                    key={accountEntity.id}
+                    type="button"
+                    onClick={() => handleSelectAccountName(accountEntity)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      formData.name === accountEntity.name
+                        ? 'bg-blue-600 text-white'
+                        : darkMode 
+                          ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                    }`}
+                  >
+                    {accountEntity.name}
+                    {accountEntity.usage_count > 10 && ' ⭐'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {recentAccountNames.length > 0 ? 'Or type new account name *' : 'Account Name *'}
+            </label>
+            <input
+              ref={accountNameInputRef}
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., Tangerine Checking"
+              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              required
+              autoFocus={!editingItem && recentAccountNames.length === 0}
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1215,8 +1328,9 @@ export default function BankAccounts({
       )}
 
       {/* Accounts List + Cash in Hand */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="space-y-6">
         {/* Cash in Hand Card - Always first */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <div className={`${darkMode ? 'bg-gradient-to-br from-green-900/20 to-green-800/10 border-green-700' : 'bg-gradient-to-br from-green-50 to-green-100 border-green-200'} rounded-lg border-2 p-4`}>
           <div className="flex justify-between items-start mb-3">
             <div className="flex-1">
@@ -1289,7 +1403,7 @@ export default function BankAccounts({
                 setCashOperation('withdraw');
                 setShowCashModal(true);
               }}
-              className={`flex items-center justify-center gap-2 py-2 rounded-lg font-medium text-sm ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+              className="flex items-center justify-center gap-2 py-2 rounded-lg font-medium text-sm bg-orange-600 hover:bg-orange-700 text-white"
             >
               <ArrowDownToLine size={16} />
               Withdraw
@@ -1299,26 +1413,52 @@ export default function BankAccounts({
                 setCashOperation('deposit');
                 setShowCashModal(true);
               }}
-              className={`flex items-center justify-center gap-2 py-2 rounded-lg font-medium text-sm ${darkMode ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+              className="flex items-center justify-center gap-2 py-2 rounded-lg font-medium text-sm bg-green-600 hover:bg-green-700 text-white"
             >
               <ArrowUpFromLine size={16} />
               Deposit
             </button>
           </div>
         </div>
+        </div>
         
-        {/* Bank Accounts */}
-        {sortedAccounts.length === 0 ? (
+        {/* Bank Accounts Grouped by Institution */}
+        {Object.keys(groupedAccounts).length === 0 ? (
           <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             <Building2 size={48} className="mx-auto mb-3 opacity-30" />
             <p>No bank accounts added yet</p>
             <p className="text-sm mt-2">Add your first account to get started</p>
           </div>
         ) : (
-          sortedAccounts.map(account => {
+          Object.entries(groupedAccounts).map(([institution, accounts]) => (
+            <div key={institution} className="space-y-3">
+              {/* Institution Header */}
+              <button
+                onClick={() => toggleInstitution(institution)}
+                className={`w-full flex items-center justify-between px-4 py-2 rounded-lg transition-colors ${darkMode ? 'bg-gray-700/50 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Building2 size={20} className="text-gray-500" />
+                  <h3 className="font-bold text-lg">{institution}</h3>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-sm font-semibold">
+                    {accounts.length} account{accounts.length !== 1 ? 's' : ''} • Total: {formatCurrency(getInstitutionTotal(accounts))}
+                  </div>
+                  <span className={`transform transition-transform ${collapsedInstitutions.includes(institution) ? 'rotate-180' : ''}`}>
+                    ▼
+                  </span>
+                </div>
+              </button>
+              
+              {/* Accounts in this institution */}
+              {!collapsedInstitutions.includes(institution) && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {accounts.map(account => {
             const accountKey = String(normalizeId(account.id));
             const isHighlighted = focusTarget?.type === 'bank_account' && normalizeId(focusTarget.id) === normalizeId(account.id);
             const isPinned = pinnedAccounts.includes(account.id);
+            const isEditing = editingItem?.id === account.id;
 
             return (
               <div
@@ -1326,8 +1466,145 @@ export default function BankAccounts({
                 ref={(el) => {
                   if (el) accountRefs.current[accountKey] = el;
                 }}
-                className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${isHighlighted ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
+                className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${
+                  isEditing
+                    ? 'ring-2 ring-blue-500 shadow-lg'
+                    : isHighlighted 
+                    ? 'ring-2 ring-offset-2 ring-blue-500' 
+                    : ''
+                } ${editingItem && !isEditing ? 'opacity-60' : ''}`}
               >
+                {isEditing ? (
+                  /* EDIT MODE - Inline Form */
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-lg mb-3">Edit Bank Account</h3>
+                    
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Account Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder="e.g., Tangerine Checking"
+                        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                          Balance *
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.balance}
+                          onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                        />
+                      </div>
+
+                      <div>
+                        <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                          Account Type *
+                        </label>
+                        <select
+                          value={formData.account_type}
+                          onChange={(e) => setFormData({ ...formData, account_type: e.target.value })}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                        >
+                          <option value="checking">Checking</option>
+                          <option value="savings">Savings</option>
+                          <option value="investment">Investment</option>
+                          <option value="cash">Cash</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                        Institution (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g., Chase, Bank of America"
+                        value={formData.institution}
+                        onChange={(e) => setFormData({ ...formData, institution: e.target.value })}
+                        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                      />
+                    </div>
+
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={formData.is_primary}
+                        onChange={(e) => setFormData({ ...formData, is_primary: e.target.checked })}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Set as primary account</span>
+                    </label>
+                    
+                    <div className={`pt-3 mt-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                      <h4 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Overdraft Settings</h4>
+                      
+                      <label className="flex items-center gap-2 mb-3">
+                        <input
+                          type="checkbox"
+                          checked={formData.allows_overdraft}
+                          onChange={(e) => setFormData({ 
+                            ...formData, 
+                            allows_overdraft: e.target.checked,
+                            overdraft_limit: e.target.checked ? formData.overdraft_limit : ''
+                          })}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm">Allow overdraft</span>
+                      </label>
+                      
+                      {formData.allows_overdraft && (
+                        <div>
+                          <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                            Overdraft Limit *
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="e.g., 500.00"
+                            value={formData.overdraft_limit}
+                            onChange={(e) => setFormData({ ...formData, overdraft_limit: e.target.value })}
+                            className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <ActionButton
+                        onClick={handleAdd}
+                        processing={isActionProcessing(`edit-account-${account.id}`)}
+                        variant="primary"
+                        processingText="Updating..."
+                        idleText="Update Account"
+                        fullWidth
+                      />
+                      <ActionButton
+                        onClick={() => {
+                          setEditingItem(null);
+                          resetForm();
+                        }}
+                        variant="secondary"
+                        idleText="Cancel"
+                        fullWidth
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* DISPLAY MODE - Account Info */
+                  <>
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -1369,6 +1646,30 @@ export default function BankAccounts({
                         {account.institution}
                       </div>
                     )}
+                    
+                    {/* Show connected loans/cards (Auto-pays) */}
+                    {(() => {
+                      const { linkedLoans, linkedCards } = getLinkedEntities(account.id);
+                      const hasLinked = linkedLoans.length > 0 || linkedCards.length > 0;
+                      
+                      if (!hasLinked) return null;
+                      
+                      return (
+                        <div className={`text-xs mt-2 p-2 rounded ${darkMode ? 'bg-blue-900/20 text-blue-300 border border-blue-800' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+                          <div className="font-semibold mb-1">🔗 Auto-pays:</div>
+                          {linkedLoans.map(loan => (
+                            <div key={loan.id} className="ml-2">
+                              • Loan: {loan.name} ({formatCurrency(loan.payment_amount || 0)}/{formatFrequency(loan.frequency)})
+                            </div>
+                          ))}
+                          {linkedCards.map(card => (
+                            <div key={card.id} className="ml-2">
+                              • Card: {card.name}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="flex gap-1 sm:gap-2">
                     {!account.is_primary && (
@@ -1432,14 +1733,20 @@ export default function BankAccounts({
                   entityId={account.id}
                   entityName={account.name}
                 />
-              </div>
+              </>
+              )}
+            </div>
             );
-          })
+          })}
+              </div>
+              )}
+            </div>
+          ))
         )}
       </div>
 
       {/* Help Text */}
-      {sortedAccounts.length > 0 && (
+      {bankAccounts.length > 0 && (
         <div className={`flex items-start gap-2 p-3 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
           <AlertCircle size={16} className={darkMode ? 'text-blue-400 mt-0.5' : 'text-blue-600 mt-0.5'} />
           <p className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-800'}`}>

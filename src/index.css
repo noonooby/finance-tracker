@@ -43,8 +43,7 @@ input, textarea, select, button {
   html { font-size: 14px; }
   h1 { font-size: 1.5rem !important; }
   h2 { font-size: 1.25rem !important; }
-  .p-4 { padding: 0.75rem !important; }
-  .p-6 { padding: 1rem !important; }
+  /* Remove hard-coded padding overrides - let density system handle it */
 }
 
 button, .btn {

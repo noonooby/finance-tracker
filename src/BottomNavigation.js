@@ -29,7 +29,6 @@ export default function BottomNavigation({ darkMode }) {
     { id: 'dashboard', path: '/', icon: Home, label: 'Home' },
     { id: 'cards', path: '/cards', icon: CreditCard, label: 'Cards' },
     { id: 'loans', path: '/loans', icon: TrendingUp, label: 'Loans' },
-    { id: 'reserved', path: '/reserved', icon: Calendar, label: 'Reserved' },
     { id: 'bank-accounts', path: '/bank-accounts', icon: Building2, label: 'Banks' },
     { id: 'income', path: '/income', icon: DollarSign, label: 'Income' },
     { id: 'activity', path: '/activity', icon: Activity, label: 'Activity' },

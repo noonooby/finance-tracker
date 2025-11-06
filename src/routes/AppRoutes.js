@@ -17,7 +17,7 @@ const Dashboard = lazy(() => import('../components/Dashboard'));
 const ActivityFeed = lazy(() => import('../components/ActivityFeed'));
 const CreditCards = lazy(() => import('../components/CreditCards'));
 const Loans = lazy(() => import('../components/Loans'));
-const ReservedFunds = lazy(() => import('../components/ReservedFunds'));
+
 const Income = lazy(() => import('../components/Income'));
 const TransactionHistory = lazy(() => import('../components/TransactionHistory'));
 const BankAccounts = lazy(() => import('../components/BankAccounts'));
@@ -59,13 +59,10 @@ const DashboardRoute = React.memo(() => {
   const {
     creditCards,
     loans,
-    reservedFunds,
     income,
     bankAccounts,
     cashInHand,
     displayAvailableCash,
-    totalReserved,
-    trueAvailable,
     totalCreditCardDebt,
     totalLoanDebt,
     latestActivities,
@@ -85,24 +82,20 @@ const DashboardRoute = React.memo(() => {
   const { handleNavigate } = useUI();
 
   // Use custom hooks for business logic
-  const upcomingObligations = useUpcomingObligations(creditCards, loans, reservedFunds, alertSettings);
+  const upcomingObligations = useUpcomingObligations(creditCards, loans, [], alertSettings);
   const nextIncome = useNextIncome(income);
 
   // Handle process due payments from Dashboard
   const handleProcessDuePayments = async () => {
     try {
-      const { processOverdueLoans } = await import('../utils/autoPay');
+      const { processOverdueLoanPayments, processOverdueCreditCardPayments } = await import('../utils/schedules');
       const { showToast } = await import('../utils/toast');
       
-      const results = await processOverdueLoans(
+      const results = await processOverdueLoanPayments(
         loans,
-        reservedFunds,
-        displayAvailableCash,
-        handleUpdateCash,
         creditCards,
         bankAccounts,
-        cashInHand,
-        updateCashInHand
+        cashInHand
       );
       
       await loadAllData();
@@ -128,8 +121,6 @@ const DashboardRoute = React.memo(() => {
     <Dashboard
       darkMode={darkMode}
       availableCash={displayAvailableCash}
-      totalReserved={totalReserved}
-      trueAvailable={trueAvailable}
       upcomingObligations={upcomingObligations}
       nextIncome={nextIncome}
       totalCreditCardDebt={totalCreditCardDebt}
@@ -191,23 +182,7 @@ const LoansRoute = React.memo(() => {
   );
 });
 
-const ReservedFundsRoute = React.memo(() => {
-  const { darkMode, alertSettings } = useTheme();
-  const financeData = useFinanceData();
-  const { focusTarget, clearFocusTarget, navigateToTransactionHistory } = useUI();
-  
-  return (
-    <ReservedFunds
-      darkMode={darkMode}
-      alertSettings={alertSettings}
-      {...financeData}
-      focusTarget={focusTarget}
-      onClearFocus={clearFocusTarget}
-      onNavigateToTransactions={navigateToTransactionHistory}
-      onUpdate={financeData.loadAllData}
-    />
-  );
-});
+
 
 const IncomeRoute = React.memo(() => {
   const { darkMode } = useTheme();
@@ -236,7 +211,10 @@ const BankAccountsRoute = React.memo(() => {
   return (
     <BankAccounts
       darkMode={darkMode}
-      {...financeData}
+      bankAccounts={financeData.bankAccounts}
+      loans={financeData.loans}
+      creditCards={financeData.creditCards}
+      cashInHand={financeData.cashInHand}
       focusTarget={focusTarget}
       onClearFocus={clearFocusTarget}
       onNavigateToTransactions={navigateToTransactionHistory}
@@ -291,13 +269,15 @@ const ReportsRoute = React.memo(() => {
 });
 
 const SettingsRoute = React.memo(() => {
-  const { darkMode } = useTheme();
+  const { darkMode, displayDensity, setDisplayDensity } = useTheme();
   const { loadAllData, loadCategories, cashInHand, updateCashInHand, categories } = useFinanceData();
   const { showCashInDashboard, toggleCashDisplay } = useTheme();
   
   return (
     <Settings
       darkMode={darkMode}
+      displayDensity={displayDensity}
+      onDisplayDensityChange={setDisplayDensity}
       onUpdate={loadAllData}
       onReloadCategories={loadCategories}
       cashInHand={cashInHand}
@@ -345,11 +325,7 @@ export function AppRoutes() {
             <LoansRoute />
           </Suspense>
         } />
-        <Route path="/reserved" element={
-          <Suspense fallback={<LoadingFallback />}>
-            <ReservedFundsRoute />
-          </Suspense>
-        } />
+
         <Route path="/income" element={
           <Suspense fallback={<LoadingFallback />}>
             <IncomeRoute />

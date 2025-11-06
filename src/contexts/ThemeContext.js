@@ -1,11 +1,13 @@
 import React, { createContext, useState, useCallback, useEffect } from 'react';
 import { dbOperation } from '../utils/db';
+import { getUserPreferences, setDisplayDensity as saveDisplayDensity } from '../utils/userPreferencesManager';
 
 export const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
   const [darkMode, setDarkMode] = useState(false);
   const [showCashInDashboard, setShowCashInDashboard] = useState(false);
+  const [displayDensity, setDisplayDensityState] = useState('comfortable');
   const [alertSettings, setAlertSettings] = useState({ 
     defaultDays: 7, 
     upcomingDays: 30 
@@ -29,6 +31,19 @@ export function ThemeProvider({ children }) {
           defaultDays: alertValue.defaultDays ?? alertValue.alertDays ?? 7,
           upcomingDays: alertValue.upcomingDays ?? 30
         });
+        
+        // Load display density from user preferences (safely handle missing column)
+        try {
+          const prefs = await getUserPreferences();
+          const density = prefs.display_density || 'comfortable';
+          setDisplayDensityState(density);
+          applyDensityToDOM(density);
+        } catch (densityError) {
+          // Column might not exist yet - use default
+          console.log('Display density column not yet migrated, using default');
+          setDisplayDensityState('comfortable');
+          applyDensityToDOM('comfortable');
+        }
       } catch (error) {
         console.error('Error loading theme settings:', error);
       }
@@ -57,13 +72,43 @@ export function ThemeProvider({ children }) {
     setShowCashInDashboard(show);
   }, []);
 
+  // Apply density to DOM
+  const applyDensityToDOM = (density) => {
+    const root = document.documentElement;
+    if (density === 'auto') {
+      root.removeAttribute('data-density');
+    } else {
+      root.setAttribute('data-density', density);
+    }
+  };
+
+  const setDisplayDensity = useCallback(async (density) => {
+    try {
+      await saveDisplayDensity(density);
+      setDisplayDensityState(density);
+      applyDensityToDOM(density);
+    } catch (error) {
+      console.error('Error setting display density:', error);
+      // If column doesn't exist yet, still apply to DOM for immediate UX
+      if (error.message?.includes('display_density') || error.code === 'PGRST204') {
+        console.log('Display density column not yet migrated - applying locally only');
+        setDisplayDensityState(density);
+        applyDensityToDOM(density);
+      } else {
+        throw error;
+      }
+    }
+  }, []);
+
   const value = {
     darkMode,
     showCashInDashboard,
+    displayDensity,
     alertSettings,
     toggleDarkMode,
     updateAlertSettings,
     toggleCashDisplay,
+    setDisplayDensity,
     setDarkMode,
     setShowCashInDashboard,
     setAlertSettings,

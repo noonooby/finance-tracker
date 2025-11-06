@@ -4,7 +4,6 @@ import { logActivity } from './activityLogger';
 const TABLE_MAP = {
   creditCards: 'credit_cards',
   loans: 'loans',
-  reservedFunds: 'reserved_funds',
   income: 'income',
   transactions: 'transactions',
   categories: 'categories',
@@ -14,7 +13,6 @@ const TABLE_MAP = {
 const ENTITY_TYPE_MAP = {
   creditCards: 'card',
   loans: 'loan',
-  reservedFunds: 'fund',
   income: 'income',
   transactions: 'transaction'
 };
@@ -314,7 +312,6 @@ export const deleteAllUserData = async () => {
     'activities',
     'transactions',
     'budgets',
-    'reserved_funds',
     'income',
     'credit_cards',
     'loans',

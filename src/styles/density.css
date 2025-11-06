@@ -1,0 +1,220 @@
+/* Density Mode System - Three-tier spacing and sizing */
+
+/* Default: Comfortable Mode */
+:root {
+  /* Spacing */
+  --density-card-padding: 1rem;           /* 16px */
+  --density-section-gap: 1.5rem;          /* 24px */
+  --density-item-gap: 1rem;               /* 16px */
+  --density-inline-gap: 0.75rem;          /* 12px */
+  --density-element-padding: 0.75rem;     /* 12px */
+  
+  /* Typography */
+  --density-text-base: 1rem;              /* 16px */
+  --density-text-sm: 0.875rem;            /* 14px */
+  --density-text-xs: 0.75rem;             /* 12px */
+  --density-line-height: 1.6;
+  
+  /* Component Sizing */
+  --density-input-height: 2.75rem;        /* 44px */
+  --density-button-height: 2.75rem;       /* 44px */
+  --density-icon-size: 1.25rem;           /* 20px */
+  --density-avatar-size: 2.5rem;          /* 40px */
+  
+  /* List Items */
+  --density-list-item-height: 3rem;       /* 48px */
+  --density-list-gap: 0.75rem;            /* 12px */
+}
+
+/* Cozy Mode - ~25% space reduction */
+[data-density="cozy"] {
+  /* Spacing */
+  --density-card-padding: 0.625rem;       /* 10px */
+  --density-section-gap: 0.875rem;        /* 14px */
+  --density-item-gap: 0.625rem;           /* 10px */
+  --density-inline-gap: 0.5rem;           /* 8px */
+  --density-element-padding: 0.5rem;      /* 8px */
+  
+  /* Typography */
+  --density-text-base: 0.875rem;          /* 14px */
+  --density-text-sm: 0.8125rem;           /* 13px */
+  --density-text-xs: 0.6875rem;           /* 11px */
+  --density-line-height: 1.45;
+  
+  /* Component Sizing */
+  --density-input-height: 2.375rem;       /* 38px */
+  --density-button-height: 2.375rem;      /* 38px */
+  --density-icon-size: 1.125rem;          /* 18px */
+  --density-avatar-size: 2rem;            /* 32px */
+  
+  /* List Items */
+  --density-list-item-height: 2.25rem;    /* 36px */
+  --density-list-gap: 0.5rem;             /* 8px */
+}
+
+/* Compact Mode - ~40% space reduction, truly minimal */
+[data-density="compact"] {
+  /* Spacing */
+  --density-card-padding: 0.375rem;       /* 6px - very tight */
+  --density-section-gap: 0.5rem;          /* 8px */
+  --density-item-gap: 0.375rem;           /* 6px */
+  --density-inline-gap: 0.25rem;          /* 4px */
+  --density-element-padding: 0.25rem;     /* 4px */
+  
+  /* Typography */
+  --density-text-base: 0.8125rem;         /* 13px */
+  --density-text-sm: 0.75rem;             /* 12px */
+  --density-text-xs: 0.6875rem;           /* 11px */
+  --density-line-height: 1.3;             /* Tighter line height */
+  
+  /* Component Sizing */
+  --density-input-height: 2.25rem;        /* 36px - maintain usability */
+  --density-button-height: 2.25rem;       /* 36px - maintain usability */
+  --density-icon-size: 0.875rem;          /* 14px - smaller icons */
+  --density-avatar-size: 1.5rem;          /* 24px */
+  
+  /* List Items */
+  --density-list-item-height: 2rem;       /* 32px - very compact */
+  --density-list-gap: 0.25rem;            /* 4px */
+}
+
+/* Utility Classes for Density-Aware Components */
+.density-card {
+  padding: var(--density-card-padding);
+}
+
+.density-section {
+  gap: var(--density-section-gap);
+}
+
+.density-items {
+  gap: var(--density-item-gap);
+}
+
+.density-inline {
+  gap: var(--density-inline-gap);
+}
+
+.density-element {
+  padding: var(--density-element-padding);
+}
+
+.density-text {
+  font-size: var(--density-text-base);
+  line-height: var(--density-line-height);
+}
+
+.density-text-sm {
+  font-size: var(--density-text-sm);
+}
+
+.density-text-xs {
+  font-size: var(--density-text-xs);
+}
+
+.density-list-item {
+  min-height: var(--density-list-item-height);
+}
+
+/* Responsive: Auto-density based on viewport */
+@media (max-width: 1024px) {
+  :root:not([data-density]) {
+    /* Auto-switch to cozy on tablets if no explicit density set */
+    --density-card-padding: 0.625rem;
+    --density-section-gap: 0.875rem;
+    --density-item-gap: 0.625rem;
+    --density-inline-gap: 0.5rem;
+    --density-element-padding: 0.5rem;
+    --density-text-base: 0.875rem;
+    --density-text-sm: 0.8125rem;
+    --density-text-xs: 0.6875rem;
+    --density-line-height: 1.45;
+  }
+}
+
+@media (max-width: 768px) {
+  :root:not([data-density]) {
+    /* Auto-switch to compact on mobile if no explicit density set */
+    --density-card-padding: 0.375rem;
+    --density-section-gap: 0.5rem;
+    --density-item-gap: 0.375rem;
+    --density-inline-gap: 0.25rem;
+    --density-element-padding: 0.25rem;
+    --density-text-base: 0.8125rem;
+    --density-text-sm: 0.75rem;
+    --density-text-xs: 0.6875rem;
+    --density-line-height: 1.3;
+  }
+}
+
+/* Maintain accessibility - touch targets stay ≥44px on mobile */
+@media (max-width: 768px) {
+  button, 
+  a[role="button"], 
+  input[type="button"],
+  input[type="submit"],
+  .btn,
+  .touch-target {
+    min-height: 2.75rem; /* 44px */
+    min-width: 2.75rem;
+  }
+}
+
+/* AGGRESSIVE OVERRIDES FOR COMPACT MODE */
+[data-density="compact"] {
+  /* Override common Tailwind padding classes */
+  .p-4 { padding: 0.375rem !important; }       /* 6px instead of 16px */
+  .p-6 { padding: 0.5rem !important; }         /* 8px instead of 24px */
+  .p-3 { padding: 0.25rem !important; }        /* 4px instead of 12px */
+  .px-4 { padding-left: 0.375rem !important; padding-right: 0.375rem !important; }
+  .py-4 { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
+  .px-6 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+  .py-6 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+  
+  /* Override gap classes */
+  .gap-4 { gap: 0.375rem !important; }         /* 6px instead of 16px */
+  .gap-6 { gap: 0.5rem !important; }           /* 8px instead of 24px */
+  .gap-3 { gap: 0.25rem !important; }          /* 4px instead of 12px */
+  .gap-2 { gap: 0.25rem !important; }          /* 4px */
+  
+  /* Override space-y classes */
+  .space-y-4 > * + * { margin-top: 0.375rem !important; }
+  .space-y-6 > * + * { margin-top: 0.5rem !important; }
+  .space-y-3 > * + * { margin-top: 0.25rem !important; }
+  .space-y-2 > * + * { margin-top: 0.25rem !important; }
+  
+  /* Override margin classes */
+  .mb-2 { margin-bottom: 0.25rem !important; }
+  .mb-3 { margin-bottom: 0.375rem !important; }
+  .mb-4 { margin-bottom: 0.5rem !important; }
+  .mt-2 { margin-top: 0.25rem !important; }
+  .mt-3 { margin-top: 0.375rem !important; }
+  .mt-4 { margin-top: 0.5rem !important; }
+  
+  /* Smaller text in common components */
+  .text-sm { font-size: 0.75rem !important; }  /* 12px */
+  .text-base { font-size: 0.8125rem !important; } /* 13px */
+  .text-lg { font-size: 0.875rem !important; }    /* 14px */
+  
+  /* Tighter line heights */
+  .leading-relaxed { line-height: 1.35 !important; }
+  .leading-normal { line-height: 1.3 !important; }
+}
+
+/* COZY MODE OVERRIDES */
+[data-density="cozy"] {
+  .p-4 { padding: 0.625rem !important; }       /* 10px */
+  .p-6 { padding: 0.75rem !important; }        /* 12px */
+  .px-4 { padding-left: 0.625rem !important; padding-right: 0.625rem !important; }
+  .py-4 { padding-top: 0.625rem !important; padding-bottom: 0.625rem !important; }
+  .px-6 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+  .py-6 { padding-top: 0.75rem !important; padding-bottom: 0.75rem !important; }
+  
+  .gap-4 { gap: 0.625rem !important; }         /* 10px */
+  .gap-6 { gap: 0.875rem !important; }         /* 14px */
+  .gap-3 { gap: 0.5rem !important; }           /* 8px */
+  
+  .space-y-4 > * + * { margin-top: 0.625rem !important; }
+  .space-y-6 > * + * { margin-top: 0.875rem !important; }
+  .space-y-3 > * + * { margin-top: 0.5rem !important; }
+}

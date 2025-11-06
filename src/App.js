@@ -20,6 +20,9 @@ import './styles/modal-optimizations.css';
 import './styles/ultra-compact-modal.css';
 import './styles/mobile-safe-layout.css';
 
+// Density System
+import './styles/density.css';
+
 /**
  * App Initializer - Loads data when authenticated
  */

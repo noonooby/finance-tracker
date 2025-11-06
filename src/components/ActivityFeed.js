@@ -326,6 +326,8 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       case 'edit_setting': return 'text-blue-600';
       case 'delete': return 'text-red-600';
       case 'payment': return 'text-purple-600';
+      case 'expense': return 'text-orange-600';
+      case 'gift_card_reload': return 'text-green-600';
       case 'cash_withdrawal': return 'text-orange-600';
       case 'cash_deposit': return 'text-teal-600';
       case 'set_budget': return 'text-green-600';
@@ -650,10 +652,10 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`font-semibold capitalize ${getActionColor(activity.action_type)}`}>
-                      {activity.action_type.replace('_', ' ')}
+                      {activity.action_type.replace(/_/g, ' ')}
                     </span>
                     <span className="text-sm text-gray-500 capitalize">
-                      {activity.entity_type.replace('_', ' ')}
+                      {activity.entity_type.replace(/_/g, ' ')}
                     </span>
                     {isSystemActivity(activity) && (
                       <span className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700'}`}>

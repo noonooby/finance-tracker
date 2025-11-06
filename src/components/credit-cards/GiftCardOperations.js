@@ -5,9 +5,13 @@ import ActionButton from '../shared/ActionButton';
 import {
   getGiftCardAddBalanceContext,
   saveGiftCardAddBalanceContext,
-  getGiftCardUseBalanceContext,
-  saveGiftCardUseBalanceContext,
   getRecentGiftCardAmounts
+} from '../../utils/formContexts';
+import {
+  getExpenseContext,
+  saveExpenseContext,
+  getRecentExpenseDescriptions,
+  applyExpenseContext
 } from '../../utils/formContexts';
 
 /**
@@ -28,6 +32,7 @@ export default function GiftCardOperations({
   const [operationType, setOperationType] = useState('add'); // 'add' or 'use'
   const [formData, setFormData] = useState({
     amount: '',
+    amountPaid: '', // Different from amount when bonus is applied
     date: new Date().toISOString().split('T')[0],
     paymentSource: 'cash_in_hand',
     paymentSourceId: null,
@@ -36,6 +41,7 @@ export default function GiftCardOperations({
   });
   const [smartInputValue, setSmartInputValue] = useState('');
   const [recentAmounts, setRecentAmounts] = useState([]);
+  const [recentExpenses, setRecentExpenses] = useState([]);
   const [contextLoaded, setContextLoaded] = useState(false);
 
   // Load context when modal opens or operation type changes
@@ -51,40 +57,51 @@ export default function GiftCardOperations({
       const amounts = await getRecentGiftCardAmounts(giftCard.id, 5);
       setRecentAmounts(amounts);
       
-      // Load appropriate context based on operation type
-      let savedContext = null;
       if (operationType === 'add') {
-        savedContext = await getGiftCardAddBalanceContext(giftCard.id);
-      } else {
-        savedContext = await getGiftCardUseBalanceContext(giftCard.id);
-      }
-      
-      if (savedContext) {
-        console.log('✅ Applying saved context:', savedContext);
+        // Load gift card add balance context
+        const savedContext = await getGiftCardAddBalanceContext(giftCard.id);
         
-        // Update form data
-        setFormData(prev => ({
-          ...prev,
-          ...savedContext,
-          date: new Date().toISOString().split('T')[0] // Always use today's date
-        }));
-        
-        // IMPORTANT: Set smart input with last used amount
-        if (savedContext.amount) {
-          const amountStr = typeof savedContext.amount === 'number' 
-            ? savedContext.amount.toFixed(2) 
-            : savedContext.amount.toString();
-          setSmartInputValue(amountStr);
+        if (savedContext) {
+          console.log('✅ Applying add balance context:', savedContext);
+          
+          setFormData(prev => ({
+            ...prev,
+            ...savedContext,
+            date: new Date().toISOString().split('T')[0]
+          }));
+          
+          if (savedContext.amount) {
+            const amountStr = typeof savedContext.amount === 'number' 
+              ? savedContext.amount.toFixed(2) 
+              : savedContext.amount.toString();
+            setSmartInputValue(amountStr);
+          }
+        } else {
+          // Reset for add balance
+          setFormData(prev => ({
+            ...prev,
+            amount: '',
+            amountPaid: '',
+            paymentSource: 'cash_in_hand',
+            paymentSourceId: null,
+            category: getDefaultCategory(),
+            notes: ''
+          }));
+          setSmartInputValue('');
         }
       } else {
-        // No saved context, reset fields
+        // Load recent expense descriptions for use balance
+        const recent = await getRecentExpenseDescriptions(5);
+        console.log('📊 Recent expenses found:', recent?.length || 0, recent);
+        setRecentExpenses(recent);
+        
+        // Reset form for use balance
         setFormData(prev => ({
           ...prev,
           amount: '',
-          paymentSource: 'cash_in_hand',
-          paymentSourceId: null,
+          amountPaid: '',
           category: getDefaultCategory(),
-          notes: ''
+          notes: '' // This becomes the expense description
         }));
         setSmartInputValue('');
       }
@@ -135,13 +152,31 @@ export default function GiftCardOperations({
       return;
     }
 
+    if (operationType === 'use' && !formData.notes?.trim()) {
+      alert('Please enter what you\'re buying (this creates a clear expense description)');
+      return;
+    }
+
     // Save context before submitting
     try {
       if (operationType === 'add') {
         await saveGiftCardAddBalanceContext(formData, giftCard);
-        await onAddBalance(formData);
+        // Map paymentSource to paymentMethod for the handler
+        const mappedData = {
+          ...formData,
+          paymentMethod: formData.paymentSource,
+          paymentMethodId: formData.paymentSourceId
+        };
+        await onAddBalance(mappedData);
       } else {
-        await saveGiftCardUseBalanceContext(formData, giftCard);
+        // Save expense context (same as AddTransaction flow)
+        if (formData.notes?.trim()) {
+          await saveExpenseContext(formData.notes.trim(), {
+            categoryId: formData.category,
+            paymentMethod: 'credit_card',
+            paymentMethodId: giftCard.id
+          });
+        }
         await onUseBalance(formData);
       }
     } catch (error) {
@@ -173,10 +208,50 @@ export default function GiftCardOperations({
       : 'cash_in_hand';
   };
 
+  // Handle expense context application (for Use Balance flow)
+  const handleExpenseDescriptionChange = (value) => {
+    setFormData({ ...formData, notes: value });
+  };
+
+  const handleExpenseDescriptionBlur = async () => {
+    if (!formData.notes?.trim() || operationType !== 'use') return;
+    try {
+      const context = await getExpenseContext(formData.notes.trim());
+      if (context) {
+        const contextData = applyExpenseContext(context);
+        setFormData(prev => ({ 
+          ...prev, 
+          category: contextData.categoryId || prev.category
+        }));
+        console.log('✅ Applied expense context for:', formData.notes);
+      }
+    } catch (error) {
+      console.error('Error loading expense context:', error);
+    }
+  };
+
+  const handleSelectExpense = async (expenseContext) => {
+    try {
+      const contextData = applyExpenseContext(expenseContext);
+      setFormData(prev => ({
+        ...prev,
+        notes: expenseContext.description,
+        category: contextData.categoryId || prev.category
+      }));
+      
+      setTimeout(() => {
+        const amountInput = document.querySelector('input[placeholder*="0.00"]');
+        if (amountInput) amountInput.focus();
+      }, 50);
+    } catch (error) {
+      console.error('Error applying expense context:', error);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
       <div 
-        className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full`}
+        className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full my-8 max-h-[calc(100vh-4rem)] overflow-y-auto`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -200,10 +275,10 @@ export default function GiftCardOperations({
           <button
             type="button"
             onClick={() => setOperationType('add')}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors font-medium ${
               operationType === 'add'
-                ? 'border-green-500 bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-200'
-                : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                ? 'border-green-600 bg-green-600 text-white'
+                : darkMode ? 'border-gray-600 hover:border-gray-500 text-gray-300' : 'border-gray-300 hover:border-gray-400 text-gray-700'
             }`}
           >
             <Plus size={18} />
@@ -212,10 +287,10 @@ export default function GiftCardOperations({
           <button
             type="button"
             onClick={() => setOperationType('use')}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors font-medium ${
               operationType === 'use'
-                ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-200'
-                : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                ? 'border-orange-600 bg-orange-600 text-white'
+                : darkMode ? 'border-gray-600 hover:border-gray-500 text-gray-300' : 'border-gray-300 hover:border-gray-400 text-gray-700'
             }`}
           >
             <Minus size={18} />
@@ -230,6 +305,55 @@ export default function GiftCardOperations({
           }`}>
             <TrendingUp size={14} />
             <span>Pre-filled with your last used values</span>
+          </div>
+        )}
+
+        {/* Recent Expenses Quick Select (Use Balance only) */}
+        {operationType === 'use' && recentExpenses.length > 0 && (
+          <div className="mb-4">
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Recent Expenses
+            </label>
+            <div className="flex gap-2 flex-wrap">
+              {recentExpenses.map(expense => (
+                <button
+                  key={expense.description}
+                  type="button"
+                  onClick={() => handleSelectExpense(expense)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    formData.notes === expense.description
+                      ? 'bg-blue-600 text-white'
+                      : darkMode 
+                        ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
+                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                  }`}
+                >
+                  {expense.description}
+                  {expense.usage_count > 10 && ' ⭐'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Description/Notes (Use Balance only) */}
+        {operationType === 'use' && (
+          <div className="mb-4">
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {recentExpenses.length > 0 ? 'Or type new expense *' : 'What are you buying? *'}
+            </label>
+            <input
+              type="text"
+              placeholder="e.g., Coffee, Gas, Lunch"
+              value={formData.notes}
+              onChange={(e) => handleExpenseDescriptionChange(e.target.value)}
+              onBlur={handleExpenseDescriptionBlur}
+              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              autoFocus={operationType === 'use' && recentExpenses.length === 0 && contextLoaded}
+            />
+            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              This becomes your expense description (like "Coffee" instead of "Purchased with Starbucks")
+            </p>
           </div>
         )}
 
@@ -286,6 +410,25 @@ export default function GiftCardOperations({
               </p>
             )}
           </div>
+
+          {/* Amount Paid (only for Add Balance) */}
+          {operationType === 'add' && (
+            <div>
+              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Amount Paid (optional)
+              </label>
+              <input
+                type="text"
+                placeholder="Same as amount added"
+                value={formData.amountPaid}
+                onChange={(e) => setFormData({ ...formData, amountPaid: e.target.value })}
+                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              />
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                For bonus scenarios: e.g., paid $50 but got $55 loaded
+              </p>
+            </div>
+          )}
 
           {/* Payment Source (only for Add Balance) */}
           {operationType === 'add' && (
@@ -358,19 +501,21 @@ export default function GiftCardOperations({
             />
           </div>
 
-          {/* Notes */}
-          <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Notes (optional)
-            </label>
-            <input
-              type="text"
-              placeholder={operationType === 'add' ? 'e.g., Birthday gift reload' : 'e.g., Morning coffee'}
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-            />
-          </div>
+          {/* Notes (Add Balance only) */}
+          {operationType === 'add' && (
+            <div>
+              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Notes (optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., Birthday gift reload"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              />
+            </div>
+          )}
 
           {/* Preview */}
           <div className={`p-3 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>

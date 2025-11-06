@@ -17,7 +17,6 @@ export function MainLayout() {
   const {
     creditCards,
     loans,
-    reservedFunds,
     income,
     categories,
     bankAccounts,
@@ -37,7 +36,6 @@ export function MainLayout() {
     const data = {
       creditCards,
       loans,
-      reservedFunds,
       income,
       categories,
       bankAccounts,
@@ -67,7 +65,6 @@ export function MainLayout() {
         
         for (const card of data.creditCards || []) await dbOperation('creditCards', 'put', card);
         for (const loan of data.loans || []) await dbOperation('loans', 'put', loan);
-        for (const fund of data.reservedFunds || []) await dbOperation('reservedFunds', 'put', fund);
         for (const inc of data.income || []) await dbOperation('income', 'put', inc);
         for (const cat of data.categories || []) await dbOperation('categories', 'put', cat);
         

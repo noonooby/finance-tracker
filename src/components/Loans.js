@@ -12,21 +12,20 @@ import ActionButton from './shared/ActionButton';
 import { showToast } from '../utils/toast';
 import { getUserPreferences, togglePinnedLoan } from '../utils/userPreferencesManager';
 import {
-  getLoanPaymentContext,
   getLoanCreationContext,
   saveLoanCreationContext,
   getRecentLoanNames as getRecentLoanTemplates,
   getLastUsedLoanContext,
   applyLoanCreationContext
 } from '../utils/formContexts';
-import { LoanForm, LoanPaymentForm, useLoanPayment } from './loans/index';
+import { LoanForm, useLoanPayment } from './loans/index';
+import AddTransaction from './AddTransaction';
 
 export default function Loans({
   darkMode,
   loans,
   categories,
   availableCash,
-  reservedFunds,
   alertSettings,
   onUpdate,
   onUpdateCash,
@@ -41,6 +40,8 @@ export default function Loans({
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [showPayment, setShowPayment] = useState(false);
+  const [paymentLoan, setPaymentLoan] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     principal: '',
@@ -57,27 +58,52 @@ export default function Loans({
     connectedPaymentSourceId: null
   });
   
-  const [paymentForm, setPaymentForm] = useState({ 
-    amount: '', 
-    amountMode: 'recommended',
-    date: new Date().toISOString().split('T')[0],
-    category: 'loan_payment',
-    source: ''
-  });
-  
   const [recentLoanNames, setRecentLoanNames] = useState([]);
   const loanNameInputRef = useRef(null);
-  const [payingLoan, setPayingLoan] = useState(null);
   const loanRefs = useRef({});
   const [processingResults, setProcessingResults] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [pinnedLoans, setPinnedLoans] = useState([]);
   
+  // Payment form state (not currently used in UI but needed for handlePayment function)
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '',
+    amountMode: 'recommended',
+    date: new Date().toISOString().split('T')[0],
+    category: 'other',
+    source: 'cash_in_hand'
+  });
+  
+  const resetPaymentFormState = () => {
+    setPaymentForm({
+      amount: '',
+      amountMode: 'recommended',
+      date: new Date().toISOString().split('T')[0],
+      category: 'other',
+      source: 'cash_in_hand'
+    });
+  };
+  
+  // Get recommended payment amount for a loan
+  const getRecommendedAmountForSource = (loan) => {
+    const loanBalance = Number(loan.balance);
+    const paymentAmount = Number(loan.payment_amount);
+    
+    // Return the regular payment amount, or balance if less
+    if (Number.isFinite(paymentAmount) && paymentAmount > 0) {
+      return Number.isFinite(loanBalance) && loanBalance < paymentAmount 
+        ? loanBalance 
+        : paymentAmount;
+    }
+    
+    // Fallback to balance if no payment amount set
+    return Number.isFinite(loanBalance) && loanBalance > 0 ? loanBalance : null;
+  };
+  
   const { executeAction, isProcessing: isActionProcessing } = useAsyncAction();
   
   const { processPayment, processing: paymentProcessing } = useLoanPayment({
     loans,
-    reservedFunds,
     bankAccounts,
     creditCards,
     availableCash,
@@ -86,12 +112,6 @@ export default function Loans({
     onUpdateCashInHand,
     hasMigratedToBankAccounts
   });
-  
-  const defaultLoanCategory = useMemo(() => {
-    if (!categories || categories.length === 0) return 'loan_payment';
-    const match = categories.find((cat) => cat.id === 'loan_payment');
-    return match?.id || categories[0].id;
-  }, [categories]);
 
   useEffect(() => {
     loadPinnedLoans();
@@ -205,180 +225,9 @@ export default function Loans({
     return 0;
   });
 
-  const resolveFundId = (fund) => {
-    if (!fund) return null;
-    if (fund.id !== undefined && fund.id !== null) return String(fund.id);
-    if (fund.fund_id !== undefined && fund.fund_id !== null) return String(fund.fund_id);
-    if (fund.uuid !== undefined && fund.uuid !== null) return String(fund.uuid);
-    return null;
-  };
-
-  const getLoanReservedFundOptions = (loan) => {
-    if (!loan) return [];
-    const options = [];
-    for (const fund of reservedFunds) {
-      const fundId = resolveFundId(fund);
-      if (!fundId) continue;
-
-      const isDirectLink =
-        fund.linked_to?.type === 'loan' &&
-        String(fund.linked_to?.id) === String(loan.id);
-
-      const isLumpsumLink =
-        fund.is_lumpsum &&
-        Array.isArray(fund.linked_items) &&
-        fund.linked_items.some((item) => item.type === 'loan' && String(item.id) === String(loan.id));
-
-      if (!isDirectLink && !isLumpsumLink) continue;
-
-      const remaining = parseFloat(fund.amount) || 0;
-      if (remaining <= 0) continue;
-
-      options.push({
-        value: `reserved_fund:${fundId}`,
-        label: `${fund.name} (${formatCurrency(remaining)})`
-      });
-    }
-    return options;
-  };
-  
-  const getPaymentSourceOptions = (loan) => {  
-    const options = [];
-    
-    options.push({
-      value: 'cash_in_hand',
-      label: `Cash in Hand (${formatCurrency(cashInHand || 0)})`
-    });
-    
-    if (bankAccounts && bankAccounts.length > 0) {
-      for (const account of bankAccounts) {
-        const balance = parseFloat(account.balance) || 0;
-        options.push({
-          value: `bank_account:${account.id}`,
-          label: `${account.name} (${formatCurrency(balance)})`
-        });
-      }
-    }
-    
-    const fundOptions = getLoanReservedFundOptions(loan);
-    if (fundOptions.length > 0) {
-      for (const option of fundOptions) {
-        options.push({
-          value: option.value,
-          label: `Reserved Fund: ${option.label}`
-        });
-      }
-    }
-     
-    if (creditCards && creditCards.length > 0) {
-      for (const card of creditCards) {
-        const balance = parseFloat(card.balance) || 0;
-        options.push({
-          value: `credit_card:${card.id}`,
-          label: `${card.name} (Bal: ${formatCurrency(balance)})`
-        });
-      }
-    }
-
-    return options;
-  };
-
-  const getRecommendedAmountForSource = (loan) => {
-    if (!loan) return null;
-    const paymentAmount = Number(loan.payment_amount);
-    const balanceAmount = Number(loan.balance);
-
-    if (Number.isFinite(paymentAmount) && paymentAmount > 0) {
-      return paymentAmount;
-    }
-
-    if (Number.isFinite(balanceAmount) && balanceAmount > 0) {
-      return balanceAmount;
-    }
-
-    return null;
-  };
-
-  const resetPaymentFormState = () => {
-    setPaymentForm({
-      amount: '',
-      amountMode: 'recommended',
-      date: new Date().toISOString().split('T')[0],
-      category: defaultLoanCategory,
-      source: ''
-    });
-  };
-
-  const loadLoanPaymentContext = useCallback(async (loan) => {
-    try {
-      const context = await getLoanPaymentContext(loan.id);
-      if (context) {
-        let sourceString = 'cash_in_hand';
-        if (context.payment_source === 'bank_account' && context.payment_source_id) {
-          sourceString = `bank_account:${context.payment_source_id}`;
-        } else if (context.payment_source === 'reserved_fund' && context.payment_source_id) {
-          sourceString = `reserved_fund:${context.payment_source_id}`;
-        } else if (context.payment_source === 'credit_card' && context.payment_source_id) {
-          sourceString = `credit_card:${context.payment_source_id}`;
-        } else if (context.payment_source === 'cash_in_hand') {
-          sourceString = 'cash_in_hand';
-        }
-        
-        const recommended = getRecommendedAmountForSource(loan);
-        const hasRecommended = Number.isFinite(recommended) && recommended > 0;
-        const useRecommended = context.amount_mode === 'full_payment' || context.amount_mode === 'recommended';
-        
-        return {
-          source: sourceString,
-          amountMode: useRecommended && hasRecommended ? 'recommended' : 'custom',
-          amount: useRecommended && hasRecommended ? recommended.toFixed(2) : ''
-        };
-      }
-      return null;
-    } catch (error) {
-      console.error('Error loading loan payment context:', error);
-      return null;
-    }
-  }, []);
-
-  const openPaymentForm = async (loan) => {
-    if (!loan) return;
-    
-    const savedContext = await loadLoanPaymentContext(loan);
-    
-    if (savedContext) {
-      setPaymentForm({
-        ...savedContext,
-        date: new Date().toISOString().split('T')[0],
-        category: defaultLoanCategory
-      });
-      console.log('✅ Applied payment context for loan:', loan.name);
-    } else {
-      const options = getPaymentSourceOptions(loan);
-      const defaultSource = options.length > 0 ? options[0].value : 'cash_in_hand';
-      const recommended = getRecommendedAmountForSource(loan);
-      const hasRecommended = Number.isFinite(recommended) && recommended > 0;
-      setPaymentForm({
-        amount: hasRecommended ? recommended.toFixed(2) : '',
-        amountMode: hasRecommended ? 'recommended' : 'custom',
-        date: new Date().toISOString().split('T')[0],
-        category: defaultLoanCategory,
-        source: defaultSource
-      });
-    }
-    
-    setPayingLoan(loan.id);
-  };
-
-  const handleSourceChange = (loan, newSource) => {
-    const recommended = getRecommendedAmountForSource(loan);
-    const hasRecommended = Number.isFinite(recommended) && recommended > 0;
-    setPaymentForm((prev) => ({
-      ...prev,
-      source: newSource,
-      amountMode: hasRecommended ? 'recommended' : 'custom',
-      amount: hasRecommended ? recommended.toFixed(2) : prev.amount
-    }));
+  const handleMakePayment = (loan) => {
+    setPaymentLoan(loan);
+    setShowPayment(true);
   };
 
   const normalizeId = (value) => {
@@ -529,7 +378,7 @@ export default function Loans({
       
       const results = await processOverdueLoans(
         loans,
-        reservedFunds,
+        [],
         availableCash,
         onUpdateCash,
         creditCards,
@@ -638,7 +487,7 @@ export default function Loans({
 
     if (result.success) {
       await onUpdate();
-      setPayingLoan(null);
+      setPaymentLoan(null);
       resetPaymentFormState();
       showToast.success(
         `Payment of ${formatCurrency(result.data.amount)} processed for ${result.data.loanName}`
@@ -720,14 +569,14 @@ export default function Loans({
                 <div key={i} className="text-xs">
                   ✅ {item.loan} - {formatCurrency(item.amount)} from {item.source}
                 </div>
-              ))}
+              ))}            
             </div>
           )}
         </div>
       )}
 
-      {/* Add/Edit Form */}
-      {showAddForm && (
+      {/* Add Form - Only for new loans */}
+      {showAddForm && !editingItem && (
         <LoanForm
           darkMode={darkMode}
           formData={formData}
@@ -743,7 +592,6 @@ export default function Loans({
           alertSettings={alertSettings}
           creditCards={creditCards}
           bankAccounts={bankAccounts}
-          reservedFunds={reservedFunds}
         />
       )}
 
@@ -755,7 +603,10 @@ export default function Loans({
             <p>No Loans Added Yet</p>
           </div>
         ) : (
-          sortedLoans.map(loan => (
+          sortedLoans.map(loan => {
+            const isEditing = editingItem?.id === loan.id;
+            
+            return (
             <div
               key={String(normalizeId(loan.id))}
               ref={(el) => {
@@ -763,11 +614,38 @@ export default function Loans({
                 if (el) loanRefs.current[key] = el;
               }}
               className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${
-                focusTarget?.type === 'loan' && normalizeId(focusTarget.id) === normalizeId(loan.id) 
+                isEditing
+                  ? 'ring-2 ring-blue-500 shadow-lg'
+                  : focusTarget?.type === 'loan' && normalizeId(focusTarget.id) === normalizeId(loan.id) 
                   ? 'ring-2 ring-offset-2 ring-blue-500' 
                   : ''
-              }`}
+              } ${editingItem && !isEditing ? 'opacity-60' : ''}`}
             >
+              {isEditing ? (
+                /* EDIT MODE - Inline Form */
+                <LoanForm
+                  darkMode={darkMode}
+                  formData={formData}
+                  setFormData={setFormData}
+                  editingItem={editingItem}
+                  recentLoanNames={recentLoanNames}
+                  handleSelectLoanName={handleSelectLoanName}
+                  handleLoanNameChange={handleLoanNameChange}
+                  handleLoanNameBlur={handleLoanNameBlur}
+                  handleAdd={handleAdd}
+                  resetForm={() => {
+                    setEditingItem(null);
+                    resetForm();
+                  }}
+                  isProcessing={isActionProcessing(`edit-loan-${loan.id}`)}
+                  alertSettings={alertSettings}
+                  creditCards={creditCards}
+                  bankAccounts={bankAccounts}
+                  inline={true}
+                />
+              ) : (
+                /* DISPLAY MODE - Loan Info */
+                <>
               {/* Loan Header */}
               <div className="flex justify-between items-start mb-3">
                 <div>
@@ -881,34 +759,42 @@ export default function Loans({
               />
 
               {/* Payment Form or Make Payment Button */}
-              {payingLoan === loan.id ? (
-                <LoanPaymentForm
-                  darkMode={darkMode}
-                  loan={loan}
-                  paymentForm={paymentForm}
-                  setPaymentForm={setPaymentForm}
-                  sourceOptions={getPaymentSourceOptions(loan)}
-                  onSourceChange={(newSource) => handleSourceChange(loan, newSource)}
-                  onSubmit={() => handlePayment(loan.id)}
-                  onCancel={() => {
-                    setPayingLoan(null);
-                    resetPaymentFormState();
-                  }}
-                  processing={paymentProcessing}
-                  categories={categories}
-                />
-              ) : (
-                <ActionButton
-                  onClick={() => openPaymentForm(loan)}
-                  variant="primary"
-                  idleText="Make Payment"
-                  fullWidth
-                />
-              )}
-            </div>
-          ))
+              <ActionButton
+                onClick={() => handleMakePayment(loan)}
+                variant="primary"
+                idleText="Make Payment"
+                fullWidth
+              />
+            </>
+            )}
+          </div>
+          );
+        })
         )}
       </div>
+
+      {/* Payment Transaction Modal */}
+      {showPayment && paymentLoan && (
+        <AddTransaction
+          darkMode={darkMode}
+          onClose={() => {
+            setShowPayment(false);
+            setPaymentLoan(null);
+          }}
+          onUpdate={onUpdate}
+          categories={categories}
+          creditCards={creditCards}
+          loans={loans}
+          availableCash={availableCash}
+          onUpdateCash={onUpdateCash}
+          bankAccounts={bankAccounts}
+          preselectedLoan={paymentLoan}
+          preselectedType="payment"
+          preselectedAmount={(paymentLoan.payment_amount || paymentLoan.balance).toString()}
+          cashInHand={cashInHand}
+          onUpdateCashInHand={onUpdateCashInHand}
+        />
+      )}
     </div>
   );
 }

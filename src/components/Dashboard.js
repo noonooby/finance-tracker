@@ -43,8 +43,6 @@ import AlertSettingsSection from './dashboard/AlertSettingsSection';
 export default function Dashboard({
   darkMode,
   availableCash,
-  totalReserved,
-  trueAvailable,
   upcomingObligations,
   nextIncome,
   totalCreditCardDebt,
@@ -388,8 +386,6 @@ export default function Dashboard({
         <CashBalanceWidget
           darkMode={darkMode}
           availableCash={availableCash}
-          totalReserved={totalReserved}
-          trueAvailable={trueAvailable}
           cashInHand={cashInHand}
           bankAccounts={bankAccounts}
           showCashInDashboard={showCashInDashboard}

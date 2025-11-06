@@ -15,8 +15,7 @@ export default function LoanForm({
   isProcessing,
   alertSettings,
   creditCards = [],
-  bankAccounts = [],
-  reservedFunds = []
+  bankAccounts = []
 }) {
   const loanNameInputRef = useRef(null);
 
@@ -26,12 +25,12 @@ export default function LoanForm({
       { value: '', label: 'None (Manual Payment)' }
     ];
 
-    // Add reserved funds
-    if (reservedFunds && reservedFunds.length > 0) {
-      reservedFunds.forEach(fund => {
+    // Add bank accounts (primary payment method)
+    if (bankAccounts && bankAccounts.length > 0) {
+      bankAccounts.forEach(account => {
         sources.push({
-          value: `reserved_fund:${fund.id}`,
-          label: `Reserved Fund: ${fund.name}`
+          value: `bank_account:${account.id}`,
+          label: `Bank Account: ${account.name}${account.is_primary ? ' (Primary)' : ''}`
         });
       });
     }
@@ -42,16 +41,6 @@ export default function LoanForm({
         sources.push({
           value: `credit_card:${card.id}`,
           label: `Credit Card: ${card.name}`
-        });
-      });
-    }
-
-    // Add bank accounts
-    if (bankAccounts && bankAccounts.length > 0) {
-      bankAccounts.forEach(account => {
-        sources.push({
-          value: `bank_account:${account.id}`,
-          label: `Bank Account: ${account.name}`
         });
       });
     }

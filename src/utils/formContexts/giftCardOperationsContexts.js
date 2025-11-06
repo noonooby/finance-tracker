@@ -2,60 +2,67 @@ import { BaseContextManager } from './BaseContextManager';
 
 /**
  * Gift Card Add Balance Context Manager
- * Learns and remembers: amount, payment source, category
+ * Uses gift_card_purchase_contexts table to remember purchase patterns
  */
 class GiftCardAddBalanceContextManager extends BaseContextManager {
   constructor() {
-    super('gift_card_add_balance', ['gift_card_id']);
+    super('gift_card_purchase_contexts', 'card_name');
   }
 
   extractContext(formData, giftCard) {
     return {
-      gift_card_id: giftCard.id,
-      gift_card_name: giftCard.name,
-      amount: Number(formData.amount) || 0,
+      card_name: giftCard.name,
+      original_value: Number(formData.amount) || 0,
+      purchase_amount: Number(formData.amount) || 0,
       payment_source: formData.paymentSource,
       payment_source_id: formData.paymentSourceId,
-      category_id: formData.category,
-      timestamp: new Date().toISOString()
+      metadata: {
+        category_id: formData.category,
+        timestamp: new Date().toISOString()
+      }
     };
   }
 
   applyContext(context) {
     return {
-      amount: context.amount || '',
+      amount: context.purchase_amount || '',
       paymentSource: context.payment_source || 'cash_in_hand',
       paymentSourceId: context.payment_source_id || null,
-      category: context.category_id || ''
+      category: context.metadata?.category_id || ''
     };
   }
 }
 
 /**
- * Gift Card Use Balance Context Manager
- * Learns and remembers: amount, category, notes pattern
+ * Gift Card Use Balance Context Manager  
+ * Uses expense_description_contexts to remember usage patterns
  */
 class GiftCardUseBalanceContextManager extends BaseContextManager {
   constructor() {
-    super('gift_card_use_balance', ['gift_card_id']);
+    super('expense_description_contexts', 'description');
   }
 
   extractContext(formData, giftCard) {
+    const description = `${giftCard.name} purchase`;
     return {
-      gift_card_id: giftCard.id,
-      gift_card_name: giftCard.name,
-      amount: Number(formData.amount) || 0,
+      description: description,
       category_id: formData.category,
-      notes: formData.notes || '',
-      timestamp: new Date().toISOString()
+      payment_method: 'credit_card',
+      payment_method_id: giftCard.id,
+      metadata: {
+        amount: Number(formData.amount) || 0,
+        notes: formData.notes || '',
+        is_gift_card_usage: true,
+        timestamp: new Date().toISOString()
+      }
     };
   }
 
   applyContext(context) {
     return {
-      amount: context.amount || '',
+      amount: context.metadata?.amount || '',
       category: context.category_id || '',
-      notes: context.notes || ''
+      notes: context.metadata?.notes || ''
     };
   }
 }
@@ -70,7 +77,7 @@ const useBalanceManager = new GiftCardUseBalanceContextManager();
 export async function saveGiftCardAddBalanceContext(formData, giftCard) {
   try {
     const context = addBalanceManager.extractContext(formData, giftCard);
-    await addBalanceManager.saveContext(context);
+    await addBalanceManager.saveContext(giftCard.name, context);
     console.log('✅ Gift card add balance context saved for', giftCard.name);
   } catch (error) {
     console.error('❌ Failed to save gift card add balance context:', error);
@@ -80,11 +87,11 @@ export async function saveGiftCardAddBalanceContext(formData, giftCard) {
 /**
  * Get gift card add balance context (last used for this card)
  */
-export async function getGiftCardAddBalanceContext(giftCardId) {
+export async function getGiftCardAddBalanceContext(giftCardName) {
   try {
-    const context = await addBalanceManager.getContext({ gift_card_id: giftCardId });
+    const context = await addBalanceManager.getContext(giftCardName);
     if (context) {
-      console.log('✅ Found gift card add balance context for card:', giftCardId);
+      console.log('✅ Found gift card add balance context for card:', giftCardName);
       return addBalanceManager.applyContext(context);
     }
     return null;
@@ -100,7 +107,8 @@ export async function getGiftCardAddBalanceContext(giftCardId) {
 export async function saveGiftCardUseBalanceContext(formData, giftCard) {
   try {
     const context = useBalanceManager.extractContext(formData, giftCard);
-    await useBalanceManager.saveContext(context);
+    const description = `${giftCard.name} purchase`;
+    await useBalanceManager.saveContext(description, context);
     console.log('✅ Gift card use balance context saved for', giftCard.name);
   } catch (error) {
     console.error('❌ Failed to save gift card use balance context:', error);
@@ -110,11 +118,12 @@ export async function saveGiftCardUseBalanceContext(formData, giftCard) {
 /**
  * Get gift card use balance context (last used for this card)
  */
-export async function getGiftCardUseBalanceContext(giftCardId) {
+export async function getGiftCardUseBalanceContext(giftCardName) {
   try {
-    const context = await useBalanceManager.getContext({ gift_card_id: giftCardId });
+    const description = `${giftCardName} purchase`;
+    const context = await useBalanceManager.getContext(description);
     if (context) {
-      console.log('✅ Found gift card use balance context for card:', giftCardId);
+      console.log('✅ Found gift card use balance context for card:', giftCardName);
       return useBalanceManager.applyContext(context);
     }
     return null;
@@ -127,14 +136,22 @@ export async function getGiftCardUseBalanceContext(giftCardId) {
 /**
  * Get recent amounts used for this gift card (for quick suggestions)
  */
-export async function getRecentGiftCardAmounts(giftCardId, limit = 5) {
+export async function getRecentGiftCardAmounts(giftCardName, limit = 5) {
   try {
-    const addContexts = await addBalanceManager.getAllContexts({ gift_card_id: giftCardId });
-    const useContexts = await useBalanceManager.getAllContexts({ gift_card_id: giftCardId });
+    const addContexts = await addBalanceManager.getRecentTriggers(limit);
+    const useContexts = await useBalanceManager.getRecentTriggers(limit);
     
     const allAmounts = [
-      ...addContexts.map(c => ({ amount: c.amount, timestamp: c.timestamp, type: 'add' })),
-      ...useContexts.map(c => ({ amount: c.amount, timestamp: c.timestamp, type: 'use' }))
+      ...addContexts.filter(c => c.card_name === giftCardName).map(c => ({ 
+        amount: c.purchase_amount, 
+        timestamp: c.last_used_at, 
+        type: 'add' 
+      })),
+      ...useContexts.filter(c => c.description.includes(giftCardName)).map(c => ({ 
+        amount: c.metadata?.amount || 0, 
+        timestamp: c.last_used_at, 
+        type: 'use' 
+      }))
     ];
     
     // Sort by timestamp, most recent first

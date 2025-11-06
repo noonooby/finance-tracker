@@ -45,6 +45,7 @@ function getDefaultPreferences() {
     // Dashboard customization
     dashboard_layout: 'grid',
     dashboard_compact_mode: false,
+    display_density: 'comfortable', // 'comfortable' | 'cozy' | 'compact'
     visible_dashboard_widgets: [
       'cash_balance',
       'upcoming_obligations',
@@ -206,9 +207,17 @@ export async function toggleDashboardSection(sectionId) {
  * Update collapsed Settings sections
  */
 export async function updateCollapsedSettingsSections(collapsedSections) {
-  return await updateUserPreferences({
-    collapsed_settings_sections: collapsedSections
-  });
+  try {
+    // Ensure collapsedSections is an array
+    const sections = Array.isArray(collapsedSections) ? collapsedSections : [];
+    return await updateUserPreferences({
+      collapsed_settings_sections: sections
+    });
+  } catch (error) {
+    console.error('Error updating collapsed settings sections:', error);
+    // Don't throw - let UI continue working
+    return null;
+  }
 }
 
 /**
@@ -217,7 +226,9 @@ export async function updateCollapsedSettingsSections(collapsedSections) {
 export async function toggleSettingsSection(sectionId) {
   try {
     const prefs = await getUserPreferences();
-    const collapsed = prefs.collapsed_settings_sections || [];
+    const collapsed = Array.isArray(prefs.collapsed_settings_sections) 
+      ? prefs.collapsed_settings_sections 
+      : [];
     
     const newCollapsed = collapsed.includes(sectionId)
       ? collapsed.filter(id => id !== sectionId)
@@ -226,7 +237,8 @@ export async function toggleSettingsSection(sectionId) {
     return await updateCollapsedSettingsSections(newCollapsed);
   } catch (error) {
     console.error('Error toggling settings section:', error);
-    throw error;
+    // Don't throw - let UI continue working
+    return null;
   }
 }
 
@@ -240,12 +252,56 @@ export async function updateDashboardLayout(layout) {
 }
 
 /**
- * Toggle dashboard compact mode
+ * Toggle dashboard compact mode (legacy)
  */
 export async function toggleCompactMode(enabled) {
   return await updateUserPreferences({
     dashboard_compact_mode: enabled
   });
+}
+
+/**
+ * Set display density mode
+ * @param {'comfortable' | 'cozy' | 'compact' | 'auto'} density
+ */
+export async function setDisplayDensity(density) {
+  try {
+    return await updateUserPreferences({
+      display_density: density
+    });
+  } catch (error) {
+    // If column doesn't exist, log warning but don't fail
+    if (error.message?.includes('display_density') || error.code === 'PGRST204') {
+      console.warn('Display density column not yet migrated. Run migration to persist this setting.');
+      // Return mock success for UX continuity
+      return { display_density: density };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get current display density (with auto-detection)
+ * @returns {'comfortable' | 'cozy' | 'compact'}
+ */
+export async function getDisplayDensity() {
+  try {
+    const prefs = await getUserPreferences();
+    const density = prefs.display_density || 'comfortable';
+    
+    // If auto, detect based on viewport
+    if (density === 'auto') {
+      const width = window.innerWidth;
+      if (width < 768) return 'compact';
+      if (width < 1024) return 'cozy';
+      return 'comfortable';
+    }
+    
+    return density;
+  } catch (error) {
+    console.error('Error getting display density:', error);
+    return 'comfortable';
+  }
 }
 
 /**

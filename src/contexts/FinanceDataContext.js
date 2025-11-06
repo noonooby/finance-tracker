@@ -1,16 +1,10 @@
 import React, { createContext, useState, useCallback } from 'react';
-import { dbOperation } from '../utils/db';
-import { DEFAULT_CATEGORIES } from '../utils/helpers';
-import { autoDepositDueIncome } from '../utils/autoPay';
-import { calculateTotalBankBalance } from '../utils/helpers';
-import {
-  getAllBankAccounts,
-  updateBankAccountBalance
+import { 
+  dbOperation,
+  getAllBankAccounts
 } from '../utils/db';
-import {
-  autoMigrateIfNeeded,
-  checkMigrationStatus
-} from '../utils/bankAccountsMigration';
+import { DEFAULT_CATEGORIES, calculateTotalBankBalance } from '../utils/helpers';
+import { processDueIncomeSchedules } from '../utils/schedules';
 import { supabase } from '../utils/supabase';
 
 export const FinanceDataContext = createContext(null);
@@ -19,7 +13,6 @@ export function FinanceDataProvider({ children }) {
   // Financial entity states
   const [creditCards, setCreditCards] = useState([]);
   const [loans, setLoans] = useState([]);
-  const [reservedFunds, setReservedFunds] = useState([]);
   const [income, setIncome] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
@@ -31,7 +24,6 @@ export function FinanceDataProvider({ children }) {
   
   // Loading states
   const [dataLoading, setDataLoading] = useState(false);
-  const [isMigrating, setIsMigrating] = useState(false);
   
   // Latest activities
   const [latestActivities, setLatestActivities] = useState([]);
@@ -57,33 +49,6 @@ export function FinanceDataProvider({ children }) {
       return [];
     }
   }, []);
-
-  // Check and migrate
-  const checkAndMigrate = useCallback(async () => {
-    try {
-      setIsMigrating(true);
-      console.log('🔄 Checking migration status...');
-
-      const migrationStatus = await checkMigrationStatus();
-
-      if (!migrationStatus) {
-        console.log('⚠️ User needs migration - starting auto-migration...');
-        const result = await autoMigrateIfNeeded();
-
-        if (result?.alreadyMigrated === false && result.primaryAccount) {
-          console.log('✅ Migration completed successfully');
-          console.log('   Balance migrated:', result.migratedBalance);
-          await loadBankAccounts();
-        }
-      } else {
-        console.log('✅ User already migrated to bank accounts');
-      }
-    } catch (error) {
-      console.error('❌ Migration check failed:', error);
-    } finally {
-      setIsMigrating(false);
-    }
-  }, [loadBankAccounts]);
 
   // Load categories
   const loadCategories = useCallback(async () => {
@@ -133,7 +98,7 @@ export function FinanceDataProvider({ children }) {
       setCashInHand(Number(cashInHandSetting?.value) || 0);
 
       const cashSetting = settings?.find(s => s.key === 'availableCash');
-      let cashValue = Number(cashSetting?.value) || 0;
+      const cashValue = Number(cashSetting?.value) || 0;
       setAvailableCash(cashValue);
 
       // PHASE 2: Load categories
@@ -142,12 +107,12 @@ export function FinanceDataProvider({ children }) {
 
       // PHASE 3: Load financial data in parallel
       console.log('📊 Phase 3: Loading financial data...');
-      const [cards, loansData, reserved, incomeDataRaw, transRaw] = await Promise.all([
+      const [cards, loansData, incomeDataRaw, transRaw, accounts] = await Promise.all([
         dbOperation('creditCards', 'getAll'),
         dbOperation('loans', 'getAll'),
-        dbOperation('reservedFunds', 'getAll'),
         dbOperation('income', 'getAll'),
-        dbOperation('transactions', 'getAll')
+        dbOperation('transactions', 'getAll'),
+        getAllBankAccounts()
       ]);
       
       let incomeData = incomeDataRaw || [];
@@ -155,35 +120,29 @@ export function FinanceDataProvider({ children }) {
       
       setCreditCards(cards || []);
       setLoans(loansData || []);
-      setReservedFunds(reserved || []);
+      setBankAccounts(accounts || []);
       
-      // PHASE 4: Process auto-deposit income if needed
-      if (incomeData.length > 0) {
-        console.log('📊 Phase 4: Processing auto-deposits...');
-        const autoResults = await autoDepositDueIncome(
-          incomeData,
-          cashValue,
-          async (newCash) => {
-            cashValue = newCash;
-            await dbOperation('settings', 'put', { key: 'availableCash', value: newCash });
-          }
-        );
-        
-        if (autoResults.deposited.length > 0) {
-          console.log('🎉 Auto-deposited income on app load:', autoResults.deposited);
-          incomeData = await dbOperation('income', 'getAll') || [];
-          transactionsData = await dbOperation('transactions', 'getAll') || [];
-        }
+      // Update cash from bank accounts
+      if (accounts && accounts.length > 0) {
+        const totalBalance = calculateTotalBankBalance(accounts);
+        setAvailableCash(totalBalance);
+      }
+      
+      // PHASE 4: Process due income schedules
+      console.log('📊 Phase 4: Processing due income schedules...');
+      const autoResults = await processDueIncomeSchedules();
+      
+      if (autoResults.deposited.length > 0) {
+        console.log('🎉 Auto-deposited income on app load:', autoResults.deposited);
+        // Reload all data after auto-deposits
+        incomeData = await dbOperation('income', 'getAll') || [];
+        transactionsData = await dbOperation('transactions', 'getAll') || [];
+        // Reload bank accounts to reflect deposits
+        await loadBankAccounts();
       }
       
       setIncome(incomeData);
       setTransactions(transactionsData);
-      setAvailableCash(cashValue);
-
-      // PHASE 5: Load bank accounts and check migration
-      console.log('📊 Phase 5: Loading bank accounts...');
-      await loadBankAccounts();
-      await checkAndMigrate();
 
       console.log('✅ All data loaded successfully!');
     } catch (error) {
@@ -191,7 +150,7 @@ export function FinanceDataProvider({ children }) {
     } finally {
       setDataLoading(false);
     }
-  }, [loadBankAccounts, checkAndMigrate, loadCategories]);
+  }, [loadBankAccounts, loadCategories]);
 
   // Full data reload
   const loadAllData = useCallback(async () => {
@@ -258,7 +217,23 @@ export function FinanceDataProvider({ children }) {
 
       const safeNextBalance = Math.max(0, nextBalance);
 
-      const updatedAccount = await updateBankAccountBalance(targetAccount.id, safeNextBalance);
+      // Update bank account balance
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: updatedAccount, error } = await supabase
+        .from('bank_accounts')
+        .update({
+          balance: safeNextBalance,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', targetAccount.id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      console.log('💰 Balance updated:', updatedAccount.name, '→', safeNextBalance);
 
       const updatedAccounts = accounts.map(acc =>
         String(acc.id) === String(updatedAccount.id) ? updatedAccount : acc
@@ -286,9 +261,7 @@ export function FinanceDataProvider({ children }) {
   }, []);
 
   // Calculated values
-  const totalReserved = reservedFunds.reduce((sum, fund) => sum + fund.amount, 0);
   const displayAvailableCash = calculateTotalBankBalance(bankAccounts) + cashInHand;
-  const trueAvailable = displayAvailableCash - totalReserved;
   const totalCreditCardDebt = creditCards.reduce((sum, card) => sum + card.balance, 0);
   const totalLoanDebt = loans.reduce((sum, loan) => sum + loan.balance, 0);
 
@@ -296,7 +269,6 @@ export function FinanceDataProvider({ children }) {
     // States
     creditCards,
     loans,
-    reservedFunds,
     income,
     transactions,
     categories,
@@ -304,13 +276,11 @@ export function FinanceDataProvider({ children }) {
     availableCash,
     cashInHand,
     dataLoading,
-    isMigrating,
     latestActivities,
     
     // Setters
     setCreditCards,
     setLoans,
-    setReservedFunds,
     setIncome,
     setTransactions,
     setCategories,
@@ -328,9 +298,7 @@ export function FinanceDataProvider({ children }) {
     updateCashInHand,
     
     // Calculated values
-    totalReserved,
     displayAvailableCash,
-    trueAvailable,
     totalCreditCardDebt,
     totalLoanDebt,
   };

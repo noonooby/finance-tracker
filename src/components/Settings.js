@@ -21,6 +21,7 @@ import * as Icons from 'lucide-react';
 import { deleteAllUserData } from '../utils/db';
 import CategoryManager from './CategoryManager';
 import BudgetHistory from './BudgetHistory';
+import BackupManager from './BackupManager';
 import { fetchAllKnownEntities, deleteKnownEntity } from '../utils/knownEntities';
 import { formatCurrency } from '../utils/helpers';
 import { getAllSettings, setSetting, setCategoryBudget, deleteCategoryBudget } from '../utils/settingsManager';
@@ -36,19 +37,15 @@ import {
 export default function Settings({ 
   darkMode, 
   onUpdate, 
-  onReloadCategories, 
-  cashInHand, 
-  showCashInDashboard, 
-  onUpdateCashInHand, 
-  onToggleCashDisplay,
-  categories: categoriesProp = []
+  onReloadCategories,
+  categories: categoriesProp = [],
+  displayDensity,
+  onDisplayDensityChange
 }) {
   const [deletingAll, setDeletingAll] = useState(false);
   const [knownEntities, setKnownEntities] = useState({});
   const [loadingEntities, setLoadingEntities] = useState(false);
   const [showEntities, setShowEntities] = useState(false);
-  const [editingCash, setEditingCash] = useState(false);
-  const [cashInput, setCashInput] = useState('');
   
   // Settings state
   const [settings, setSettings] = useState({});
@@ -71,7 +68,7 @@ export default function Settings({
     categoryBudgets: false,
     budgetHistory: false,
     suggestions: false,
-    cash: false,
+    backup: false,
     danger: false
   });
 
@@ -116,13 +113,15 @@ export default function Settings({
       
       // If this is first load (empty array), initialize with all sections collapsed
       if (collapsed.length === 0) {
-        // Set all sections to collapsed in database
+        // Set all sections to collapsed in database (non-blocking)
         const allSections = [
           'appearance', 'notifications', 'financial', 'automation',
           'transactionDefaults', 'categories', 'categoryBudgets', 
-          'budgetHistory', 'suggestions', 'cash', 'danger'
+          'budgetHistory', 'suggestions', 'backup', 'danger'
         ];
-        await updateCollapsedSettingsSections(allSections);
+        updateCollapsedSettingsSections(allSections).catch(err => {
+          console.warn('Failed to initialize collapsed sections:', err);
+        });
         // Keep UI collapsed (default state already set)
         return;
       }
@@ -138,7 +137,7 @@ export default function Settings({
         categoryBudgets: false,
         budgetHistory: false,
         suggestions: false,
-        cash: false,
+        backup: false,
         danger: false
       };
       
@@ -150,62 +149,72 @@ export default function Settings({
       setExpandedSections(newExpandedState);
     } catch (error) {
       console.error('Error loading Settings UI preferences:', error);
+      // Continue with default state (all collapsed)
     }
   };
 
   const toggleSection = async (section) => {
-    const newState = !expandedSections[section];
-    console.log(`🔄 Toggling ${section}: ${expandedSections[section]} → ${newState}`);
-    
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: newState
-    }));
-    
-    // Persist to database
     try {
-      await toggleSettingsSection(section);
-      console.log(`✅ Persisted ${section} to database`);
+      const newState = !expandedSections[section];
+      console.log(`🔄 Toggling ${section}: ${expandedSections[section]} → ${newState}`);
+      
+      // Update state immediately for responsive UI
+      setExpandedSections(prev => ({
+        ...prev,
+        [section]: newState
+      }));
+      
+      // Persist to database (non-blocking)
+      toggleSettingsSection(section).catch(err => {
+        console.warn('Failed to persist section state, continuing anyway:', err);
+      });
     } catch (error) {
-      console.error('Error persisting section state:', error);
+      console.error('Error toggling section:', error);
+      // Still update state even if persistence fails
+      setExpandedSections(prev => ({
+        ...prev,
+        [section]: !prev[section]
+      }));
     }
   };
   
   const handleCollapseAll = async () => {
-    const allSections = Object.keys(expandedSections);
-    
-    // Set all sections to collapsed
-    const newExpandedState = {};
-    allSections.forEach(section => {
-      newExpandedState[section] = false;
-    });
-    
-    setExpandedSections(newExpandedState);
-    
-    // Persist all sections as collapsed
     try {
-      await updateCollapsedSettingsSections(allSections);
-      console.log('✅ All sections collapsed');
+      const allSections = Object.keys(expandedSections);
+      
+      // Set all sections to collapsed immediately
+      const newExpandedState = {};
+      allSections.forEach(section => {
+        newExpandedState[section] = false;
+      });
+      
+      setExpandedSections(newExpandedState);
+      
+      // Persist (non-blocking)
+      updateCollapsedSettingsSections(allSections).catch(err => {
+        console.warn('Failed to persist collapse all, continuing anyway:', err);
+      });
     } catch (error) {
       console.error('Error collapsing all sections:', error);
     }
   };
   
   const handleExpandAll = async () => {
-    const allSections = Object.keys(expandedSections);
-    
-    // Set all sections to expanded
-    const newExpandedState = {};
-    allSections.forEach(section => {
-      newExpandedState[section] = true;
-    });
-    
-    setExpandedSections(newExpandedState);
-    
-    // Persist no sections as collapsed (empty array)
     try {
-      await updateCollapsedSettingsSections([]);
-      console.log('✅ All sections expanded');
+      const allSections = Object.keys(expandedSections);
+      
+      // Set all sections to expanded immediately
+      const newExpandedState = {};
+      allSections.forEach(section => {
+        newExpandedState[section] = true;
+      });
+      
+      setExpandedSections(newExpandedState);
+      
+      // Persist (non-blocking)
+      updateCollapsedSettingsSections([]).catch(err => {
+        console.warn('Failed to persist expand all, continuing anyway:', err);
+      });
     } catch (error) {
       console.error('Error expanding all sections:', error);
     }
@@ -565,71 +574,6 @@ export default function Settings({
       alert('Error deleting suggestion');
     }
   };
-  
-  const handleEditCash = () => {
-    setCashInput((cashInHand || 0).toString());
-    setEditingCash(true);
-  };
-  
-  const handleSaveCash = async () => {
-    const newAmount = parseFloat(cashInput);
-    if (isNaN(newAmount) || newAmount < 0) {
-      alert('Please enter a valid amount (0 or positive)');
-      return;
-    }
-    
-    try {
-      const oldAmount = cashInHand || 0;
-      
-      if (onUpdateCashInHand) {
-        await onUpdateCashInHand(newAmount);
-        
-        // Log activity with snapshot for undo (HIGH PRIORITY)
-        await logActivity(
-          'edit_setting',
-          'cash_in_hand',
-          'cash-in-hand',
-          'Cash in Hand',
-          `Updated cash in hand from ${formatCurrency(oldAmount)} to ${formatCurrency(newAmount)}`,
-          {
-            settingKey: 'cashInHand',
-            previousValue: oldAmount,
-            newValue: newAmount
-          }
-        );
-        
-        console.log('✅ Cash in hand updated');
-      }
-      setEditingCash(false);
-      setCashInput('');
-    } catch (error) {
-      console.error('Error updating cash in hand:', error);
-      alert('Error updating cash in hand');
-    }
-  };
-  
-  const handleCancelEditCash = () => {
-    setEditingCash(false);
-    setCashInput('');
-  };
-
-  const handleToggleCashDisplay = async (show) => {
-    if (onToggleCashDisplay) {
-      await onToggleCashDisplay(show);
-      
-      // Log as view-only activity (LOW PRIORITY)
-      await logActivity(
-        'setting_change',
-        'showCashInDashboard',
-        'setting-showCashInDashboard',
-        'Cash Display',
-        show ? 'Enabled cash breakdown on dashboard' : 'Disabled cash breakdown on dashboard',
-        null  // No snapshot = no undo
-      );
-      
-      console.log('✅ Cash display toggled');
-    }
-  };
 
   const SectionHeader = ({ title, icon: Icon, section }) => (
     <button
@@ -767,6 +711,26 @@ export default function Settings({
                 <option value="comma">1,234.56 (Comma for thousands)</option>
                 <option value="period">1.234,56 (Period for thousands)</option>
               </select>
+            </div>
+
+            {/* Display Density */}
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Display Density
+              </label>
+              <select
+                value={displayDensity || 'comfortable'}
+                onChange={(e) => onDisplayDensityChange && onDisplayDensityChange(e.target.value)}
+                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              >
+                <option value="comfortable">Comfortable - More spacing</option>
+                <option value="cozy">Cozy - Balanced spacing</option>
+                <option value="compact">Compact - Minimal spacing</option>
+                <option value="auto">Auto - Device-based</option>
+              </select>
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Control spacing throughout the app. Auto adjusts based on screen size.
+              </p>
             </div>
           </div>
         )}
@@ -1490,89 +1454,13 @@ export default function Settings({
         )}
       </div>
       
-      {/* Cash Management Section */}
+      {/* Backup & Data Management Section */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg overflow-hidden`}>
-        <button
-          onClick={() => toggleSection('cash')}
-          className={`w-full flex items-center justify-between p-4 rounded-lg transition-colors ${
-            darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <Wallet size={20} className={darkMode ? 'text-gray-300' : 'text-gray-700'} />
-            <h3 className="text-lg font-semibold">Cash Management</h3>
-          </div>
-          {expandedSections.cash ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-        </button>
+        <SectionHeader title="Backup & Data Management" icon={Database} section="backup" />
         
-        {expandedSections.cash && (
-          <div className="p-6 space-y-4 border-t border-gray-700">
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              Manage physical cash separate from bank accounts.
-            </p>
-            
-            {/* Cash in Hand Balance */}
-            <div className={`border ${darkMode ? 'border-gray-700' : 'border-gray-200'} rounded-lg p-4`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Cash in Hand</span>
-                {!editingCash && (
-                  <button
-                    onClick={handleEditCash}
-                    className={`p-1 rounded ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'}`}
-                    title="Edit cash in hand"
-                  >
-                    <Edit2 size={16} />
-                  </button>
-                )}
-              </div>
-              
-              {editingCash ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={cashInput}
-                    onChange={(e) => setCashInput(e.target.value)}
-                    className={`flex-1 px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-                    placeholder="0.00"
-                  />
-                  <button
-                    onClick={handleSaveCash}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={handleCancelEditCash}
-                    className={`px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'}`}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <div className="text-2xl font-bold text-green-600">
-                  {formatCurrency(cashInHand || 0)}
-                </div>
-              )}
-            </div>
-            
-            {/* Display Toggle */}
-            <div className={`border ${darkMode ? 'border-gray-700' : 'border-gray-200'} rounded-lg p-4`}>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showCashInDashboard || false}
-                  onChange={(e) => handleToggleCashDisplay(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <div className="flex-1">
-                  <div className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Show Cash in Hand on Dashboard</div>
-                  <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1`}>
-                    Display cash breakdown (cash in hand + bank accounts) on Dashboard
-                  </div>
-                </div>
-              </label>
-            </div>
+        {expandedSections.backup && (
+          <div className="p-6 border-t border-gray-700">
+            <BackupManager />
           </div>
         )}
       </div>

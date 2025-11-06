@@ -417,11 +417,60 @@ export default function TransactionHistory({
     if (transaction.type === 'income') {
       cashDelta -= amount;
     } else if (transaction.type === 'expense') {
-      if (transaction.payment_method === 'cash') {
-        cashDelta += amount;
-      } else if (transaction.payment_method === 'credit_card') {
-        const cardId = transaction.card_id || transaction.payment_method_id;
-        await updateCardBalance(cardId, -amount);
+      // Check if this is a gift card transaction
+      const cardId = transaction.card_id || transaction.payment_method_id;
+      let isGiftCardTransaction = false;
+      
+      if (cardId) {
+        const card = creditCards.find(c => c.id === cardId);
+        isGiftCardTransaction = card?.is_gift_card || false;
+      }
+      
+      if (isGiftCardTransaction) {
+        // Gift card reload: reduce gift card balance + refund payment source
+        await updateCardBalance(cardId, -amount); // Reduce gift card balance
+        
+        // Refund payment source
+        if (transaction.payment_method === 'bank_account' && transaction.payment_method_id) {
+          const { getBankAccount, updateBankAccountBalance } = await import('../utils/db');
+          const account = await getBankAccount(transaction.payment_method_id);
+          if (account) {
+            await updateBankAccountBalance(transaction.payment_method_id, 
+              (parseFloat(account.balance) || 0) + amount
+            );
+          }
+        } else if (transaction.payment_method === 'cash_in_hand') {
+          if (onUpdateCashInHand) {
+            const { getCashInHand } = await import('../utils/db');
+            const currentCash = await getCashInHand();
+            await onUpdateCashInHand(currentCash + amount);
+          }
+        } else if (transaction.payment_method === 'credit_card' && transaction.payment_method_id) {
+          // Refund to payment card (reverse the charge)
+          await updateCardBalance(transaction.payment_method_id, -amount);
+        }
+      } else {
+        // Regular expense (not gift card)
+        if (transaction.payment_method === 'cash') {
+          cashDelta += amount;
+        } else if (transaction.payment_method === 'cash_in_hand') {
+          if (onUpdateCashInHand) {
+            const { getCashInHand } = await import('../utils/db');
+            const currentCash = await getCashInHand();
+            await onUpdateCashInHand(currentCash + amount);
+          }
+        } else if (transaction.payment_method === 'bank_account' && transaction.payment_method_id) {
+          const { getBankAccount, updateBankAccountBalance } = await import('../utils/db');
+          const account = await getBankAccount(transaction.payment_method_id);
+          if (account) {
+            await updateBankAccountBalance(transaction.payment_method_id, 
+              (parseFloat(account.balance) || 0) + amount
+            );
+          }
+        } else if (transaction.payment_method === 'credit_card') {
+          const cardId = transaction.card_id || transaction.payment_method_id;
+          await updateCardBalance(cardId, -amount);
+        }
       }
     } else if (isPaymentType(transaction.type)) {
       const paymentSubtype = resolvePaymentSubtype(transaction);
@@ -469,7 +518,7 @@ export default function TransactionHistory({
       const newCash = currentCash + cashDelta;
       await onUpdateCash(newCash);
     }
-  }, [availableCash, creditCards, loans, onUpdateCash]);
+  }, [availableCash, creditCards, loans, onUpdateCash, onUpdateCashInHand]);
 
   /**
    * Handles transaction deletion

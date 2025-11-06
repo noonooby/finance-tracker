@@ -3,9 +3,10 @@ import { getDaysUntil } from '../utils/helpers';
 
 /**
  * Custom hook to calculate upcoming financial obligations
- * Returns sorted list of upcoming payments from credit cards, loans, and reserved funds
+ * Returns sorted list of upcoming payments from credit cards and loans
  */
 export function useUpcomingObligations(creditCards, loans, reservedFunds, alertSettings) {
+  // Note: reservedFunds parameter kept for backward compatibility but ignored
   return useMemo(() => {
     const normalizeId = (value) => {
       if (value === null || value === undefined) return null;
@@ -54,20 +55,7 @@ export function useUpcomingObligations(creditCards, loans, reservedFunds, alertS
       }
     });
     
-    // Add reserved fund obligations
-    reservedFunds.forEach(fund => {
-      if (!fund?.due_date) return;
-      const days = getDaysUntil(fund.due_date);
-      obligations.push({
-        type: 'reserved_fund',
-        name: fund.name,
-        amount: fund.amount,
-        dueDate: fund.due_date,
-        days,
-        urgent: days <= warningDays || days < 0, // Include overdue (days < 0)
-        id: normalizeId(fund.id)
-      });
-    });
+
     
     // Filter and sort - include overdue items
     return obligations

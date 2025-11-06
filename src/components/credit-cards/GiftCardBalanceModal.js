@@ -21,6 +21,7 @@ export default function GiftCardBalanceModal({
 }) {
   const [formData, setFormData] = useState({
     amount: '',
+    amountPaid: '', // Different from amount when bonus is applied
     date: new Date().toISOString().split('T')[0],
     paymentMethod: 'cash_in_hand',
     paymentMethodId: null,
@@ -118,10 +119,10 @@ export default function GiftCardBalanceModal({
             </div>
           </div>
 
-          {/* Amount */}
+          {/* Amount Added to Card */}
           <div>
             <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Amount *
+              Amount Added to Card *
             </label>
             <input
               type="number"
@@ -133,6 +134,26 @@ export default function GiftCardBalanceModal({
               autoFocus
             />
           </div>
+
+          {/* Amount Paid (optional, for bonus scenarios) */}
+          {isAddOperation && (
+            <div>
+              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Amount Paid (optional)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Same as amount added"
+                value={formData.amountPaid}
+                onChange={(e) => setFormData({ ...formData, amountPaid: e.target.value })}
+                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              />
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                For bonus scenarios: e.g., paid $50 but got $55 loaded
+              </p>
+            </div>
+          )}
 
           {/* Date */}
           <div>

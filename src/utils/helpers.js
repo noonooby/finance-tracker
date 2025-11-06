@@ -221,27 +221,7 @@ export function calculateTotalBankBalance(bankAccounts) {
   return total;
 }
 
-/**
- * Calculate true available cash (total bank balance minus reserved funds)
- * This is the new version of the "True Available" calculation
- *
- * FORMULA: Total Bank Balance - Total Reserved = True Available
- *
- * @param {Array} bankAccounts - Array of bank account objects
- * @param {Array} reservedFunds - Array of reserved fund objects
- * @returns {number} True available amount (can be negative if over-allocated)
- */
-export function calculateTrueAvailable(bankAccounts, reservedFunds) {
-  const totalBankBalance = calculateTotalBankBalance(bankAccounts);
 
-  const totalReserved = reservedFunds.reduce((sum, fund) => {
-    return sum + (parseFloat(fund.amount) || 0);
-  }, 0);
-
-  const trueAvailable = totalBankBalance - totalReserved;
-
-  return trueAvailable;
-}
 
 /**
  * Get account balance by ID
