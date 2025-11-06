@@ -61,5 +61,5 @@ export function useUpcomingObligations(creditCards, loans, reservedFunds, alertS
     return obligations
       .filter(obligation => obligation.urgent || (obligation.days >= 0 && obligation.days <= upcomingWindow))
       .sort((a, b) => a.days - b.days);
-  }, [creditCards, loans, reservedFunds, alertSettings]);
+  }, [creditCards, loans, alertSettings]);
 }

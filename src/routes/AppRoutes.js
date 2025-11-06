@@ -68,7 +68,6 @@ const DashboardRoute = React.memo(() => {
     latestActivities,
     loadAllData,
     updateCashInHand,
-    handleUpdateCash,
   } = useFinanceData();
   
   const {
@@ -88,7 +87,7 @@ const DashboardRoute = React.memo(() => {
   // Handle process due payments from Dashboard
   const handleProcessDuePayments = async () => {
     try {
-      const { processOverdueLoanPayments, processOverdueCreditCardPayments } = await import('../utils/schedules');
+      const { processOverdueLoanPayments } = await import('../utils/schedules');
       const { showToast } = await import('../utils/toast');
       
       const results = await processOverdueLoanPayments(

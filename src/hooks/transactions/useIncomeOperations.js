@@ -2,9 +2,8 @@ import { useCallback } from 'react';
 import { supabase } from '../../utils/supabase';
 import { dbOperation } from '../../utils/db';
 import { logActivity } from '../../utils/activityLogger';
-import { formatCurrency, formatDate, generateId, getPrimaryAccountFromArray } from '../../utils/helpers';
+import { formatCurrency, formatDate, generateId } from '../../utils/helpers';
 import { formatFrequency } from '../../utils/sentenceCase';
-import { showToast } from '../../utils/toast';
 import { saveIncomeSourceContext } from '../../utils/formContexts';
 
 /**

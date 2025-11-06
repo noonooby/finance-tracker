@@ -1,6 +1,6 @@
 import { supabase } from '../supabase';
 import { predictNextDate, formatCurrency } from '../helpers';
-import { dbOperation, getBankAccount, updateBankAccountBalance, getCashInHand, updateCashInHand } from '../db';
+import { dbOperation, updateBankAccountBalance, getCashInHand, updateCashInHand } from '../db';
 import { logActivity } from '../activityLogger';
 
 /**

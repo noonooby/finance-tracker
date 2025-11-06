@@ -4,7 +4,6 @@ import {
   Home,
   CreditCard,
   TrendingUp,
-  Calendar,
   Building2,
   DollarSign,
   Activity,
