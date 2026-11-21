@@ -3,7 +3,7 @@
  * Exports/imports all user data in a single JSON file
  */
 
-import { server } from '../server';
+import { server, api } from '../server';
 import { format } from 'date-fns';
 
 const BACKUP_VERSION = '1.0.0';
@@ -140,7 +140,7 @@ export async function importFullBackup(backupFile, options = {}) {
     
     // Clear existing data if requested
     if (clearExisting) {
-      await clearAllUserData(user.id);
+      await clearAllUserData();
     }
 
     // Import each table
@@ -171,9 +171,7 @@ export async function importFullBackup(backupFile, options = {}) {
 
         for (let i = 0; i < recordsToImport.length; i += batchSize) {
           const batch = recordsToImport.slice(i, i + batchSize);
-          const { error } = await server
-            .from(table)
-            .upsert(batch, { onConflict: 'id' });
+          const error = await api('/api/restore', { table, rows: batch }).then(() => null, (e) => e);
 
           if (error) {
             console.error(`Error importing batch to ${table}:`, error);
@@ -208,23 +206,9 @@ export async function importFullBackup(backupFile, options = {}) {
 /**
  * Clear all user data (used before import)
  */
-async function clearAllUserData(userId) {
-  const tablesToClear = [...TABLES_TO_BACKUP].reverse(); // Reverse order for FK constraints
-
-  for (const table of tablesToClear) {
-    try {
-      const { error } = await server
-        .from(table)
-        .delete()
-        .eq('user_id', userId);
-
-      if (error && error.code !== 'PGRST116') {
-        console.warn(`Error clearing ${table}:`, error);
-      }
-    } catch (err) {
-      console.warn(`Failed to clear ${table}:`, err);
-    }
-  }
+// Everything recorded on this sign-in is removed in one server step (as Settings, Delete all data).
+async function clearAllUserData() {
+  await api('/api/reset', { confirm: 'DELETE ALL MY DATA' });
 }
 
 /**

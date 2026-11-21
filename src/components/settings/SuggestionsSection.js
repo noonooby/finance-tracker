@@ -16,7 +16,7 @@ export default function SuggestionsSection({ darkMode, expanded, onToggle }) {
       setShown(true);
     } catch (error) {
       console.error('Error loading entities:', error);
-      showToast.error('Error loading suggestions. Please try again.');
+      showToast.error(`Could not load suggestions: ${error?.message || 'try again'}`);
     } finally {
       setLoading(false);
     }

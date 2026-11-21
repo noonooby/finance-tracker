@@ -16,7 +16,7 @@ export const useIncomeValidation = () => {
     }
     
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      errors.push('Please enter a valid amount');
+      errors.push('Enter a valid amount');
     }
     
     if (!formData.date) {
@@ -26,13 +26,13 @@ export const useIncomeValidation = () => {
     // Recurring income validation
     if (formData.frequency !== 'onetime') {
       if (formData.recurringDurationType === 'until_date' && !formData.recurringUntilDate) {
-        errors.push('Please specify the end date for recurring income');
+        errors.push('Specify the end date for recurring income');
       }
       
       if (formData.recurringDurationType === 'occurrences') {
         const occurrences = parseInt(formData.recurringOccurrences, 10);
         if (!formData.recurringOccurrences || occurrences < 1) {
-          errors.push('Please specify the number of times this income will occur');
+          errors.push('Specify the number of times this income will occur');
         }
       }
     }

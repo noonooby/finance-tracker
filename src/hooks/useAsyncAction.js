@@ -17,7 +17,7 @@ import { useState } from 'react';
  *   });
  *   
  *   if (result.success) {
- *     showToast.success('Saved successfully');
+ *     showToast.success('Saved');
  *   } else {
  *     showToast.error(result.error.message);
  *   }

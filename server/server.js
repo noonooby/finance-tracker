@@ -414,6 +414,7 @@ route('POST', '/api/push/subscribe', (req, b) => {
   const s = b.subscription || {};
   if (!/^https:\/\//.test(String(s.endpoint || '')) || !s.keys || !s.keys.p256dh || !s.keys.auth) fail(400, 'That browser did not give a usable subscription.');
   const id = 'push:' + crypto.createHash('sha256').update(String(s.endpoint)).digest('hex').slice(0, 32);
+  if (db.prepare("SELECT COUNT(*) n FROM rows WHERE tbl = 'push_subscriptions' AND user_id = ? AND id != ?").get(uid, id).n >= 10) fail(400, 'Reminders are on for 10 devices already. Turn them off on one first.');
   const row = { id, endpoint: String(s.endpoint).slice(0, 1000), keys: { p256dh: String(s.keys.p256dh).slice(0, 200), auth: String(s.keys.auth).slice(0, 100) },
     device: String(b.device || '').slice(0, 80), created_at: now() };
   tx(() => { db.prepare("DELETE FROM rows WHERE tbl = 'push_subscriptions' AND id = ?").run(id); db.prepare("INSERT INTO rows (tbl, id, user_id, data) VALUES ('push_subscriptions', ?, ?, ?)").run(id, uid, JSON.stringify({ ...row, user_id: uid })); });
@@ -472,6 +473,33 @@ route('POST', '/api/reset', (req, b) => {
   const uid = authUser(req).id;
   if (b.confirm !== 'DELETE ALL MY DATA') fail(400, 'Type the phrase to confirm.');
   return tx(() => ({ rows: Number(db.prepare('DELETE FROM rows WHERE user_id = ?').run(uid).changes), keys: Number(db.prepare('DELETE FROM money_keys WHERE user_id = ?').run(uid).changes) }));
+});
+// Restore rows from a backup file, as they were: ids, dates and each transaction's record of what it moved (_legs),
+// so undo still works afterwards. Balances come from the restored account rows; nothing is applied again.
+// A row id that belongs to someone else is refused. Only legs on this person's own balance tables are kept.
+route('POST', '/api/restore', (req, b) => {
+  const uid = authUser(req).id;
+  if (!TABLES.has(b.table) || SERVER_ONLY.has(b.table)) fail(400, 'That table cannot be restored');
+  if (!Array.isArray(b.rows) || b.rows.length > 1000) fail(400, 'Send up to 1000 rows at a time');
+  return tx(() => {
+    let n = 0;
+    for (const raw of b.rows) {
+      const legs = raw && raw._legs;
+      const v = clean(raw);
+      if (v.id == null) v.id = crypto.randomUUID();
+      if (b.table === 'transactions') {
+        checkSplits(v);
+        if (Array.isArray(legs)) v._legs = legs.filter((l) => l && MONEY_FIELDS[l.table] && Number.isFinite(Number(l.delta)))
+          .map((l) => ({ table: l.table, id: l.id, field: MONEY_FIELDS[l.table].includes(l.field) ? l.field : MONEY_FIELDS[l.table][0], delta: Number(l.delta) }));
+      }
+      const ex = db.prepare('SELECT user_id FROM rows WHERE tbl = ? AND id = ?').get(b.table, String(v.id));
+      if (ex && ex.user_id !== uid) fail(409, 'A row in the backup belongs to another account');
+      v.user_id = uid;
+      db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?) ON CONFLICT(tbl, id) DO UPDATE SET data = excluded.data').run(b.table, String(v.id), uid, JSON.stringify(v));
+      n++;
+    }
+    return { restored: n };
+  });
 });
 route('POST', '/api/transactions/:id/reverse', (req, b, [id]) => reverse(authUser(req).id, id, b));
 route('GET', '/api/config', () => ({ google: !!(G_ID && G_SECRET), dev: !!DEV_USER, ai: require('./keystore').isSet() }));

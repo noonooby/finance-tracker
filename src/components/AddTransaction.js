@@ -347,7 +347,7 @@ export default function AddTransaction({
     if (result?.success) {
       // Show success message based on transaction type
       if (formData.type === 'expense') {
-        showToast.success(`Expense '${result.description || formData.description}' logged successfully`);
+        showToast.success(`Expense '${result.description || formData.description}' logged`);
       } else if (formData.type === 'payment') {
         if (formData.paymentMethod === 'credit_card') {
           showToast.success(`Payment of ${formatCurrency(amount)} processed for ${result.cardName}`);

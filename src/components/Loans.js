@@ -213,19 +213,19 @@ export default function Loans({
 
   const handleAdd = async () => {
     if (!formData.name || !formData.principal || !formData.balance || !formData.paymentAmount || !formData.nextPaymentDate) {
-      showToast.error('Please fill in all required fields');
+      showToast.error('Fill in all required fields');
       return;
     }
 
     if (formData.recurringDurationType === 'until_date' && !formData.recurringUntilDate) {
-      showToast.error('Please specify the end date for this loan schedule');
+      showToast.error('Specify the end date for this loan schedule');
       return;
     }
     if (
       formData.recurringDurationType === 'occurrences' &&
       (!formData.recurringOccurrences || parseInt(formData.recurringOccurrences, 10) < 1)
     ) {
-      showToast.error('Please specify the number of payments for this loan schedule');
+      showToast.error('Specify the number of payments for this loan schedule');
       return;
     }
     
@@ -313,7 +313,7 @@ export default function Loans({
   
     if (result.success) {
       const action = result.data.isNew ? 'added' : 'updated';
-      showToast.success(`Loan '${result.data.loanName}' ${action} successfully`);
+      showToast.success(`Loan '${result.data.loanName}' ${action}`);
     } else {
       showToast.error(`Failed to save loan: ${result.error.message}`);
     }
@@ -434,7 +434,7 @@ export default function Loans({
     });
     
     if (result.success) {
-      showToast.success(`${result.data.loanName} deleted successfully`);
+      showToast.success(`${result.data.loanName} deleted`);
     } else {
       showToast.error(`Failed to delete loan: ${result.error.message}`);
     }

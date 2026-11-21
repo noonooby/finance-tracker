@@ -219,7 +219,7 @@ export default function useBankAccountActions({
 
     if (result.success) {
       const action = result.data.isNew ? 'added' : 'updated';
-      showToast.success(`Bank account '${result.data.accountName}' ${action} successfully`);
+      showToast.success(`Bank account '${result.data.accountName}' ${action}`);
     } else {
       showToast.error(`Failed to save account: ${result.error.message}`);
     }
@@ -247,7 +247,7 @@ export default function useBankAccountActions({
     });
 
     if (result.success) {
-      showToast.success(`${result.data.accountName} deleted successfully`);
+      showToast.success(`${result.data.accountName} deleted`);
     } else {
       showToast.error(`Failed to delete account: ${result.error.message}`);
     }
@@ -283,7 +283,7 @@ export default function useBankAccountActions({
     if (saving) return;
 
     if (!transferData.fromAccount || !transferData.toAccount) {
-      showToast.error('Please select both source and destination accounts');
+      showToast.error('Select both source and destination accounts');
       return;
     }
     if (transferData.fromAccount === transferData.toAccount) {
@@ -294,7 +294,7 @@ export default function useBankAccountActions({
     const rawAmount = parseFloat(transferData.amount);
     const amount = Math.round(rawAmount * 100) / 100;
     if (!Number.isFinite(amount) || amount <= 0) {
-      showToast.error('Please enter a valid transfer amount');
+      showToast.error('Enter a valid transfer amount');
       return;
     }
 

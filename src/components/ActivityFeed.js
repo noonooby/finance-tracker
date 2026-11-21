@@ -293,7 +293,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       await loadActivities();
     } catch (error) {
       console.error('Error undoing activity:', error);
-      showToast.error('Failed to undo action. Please try again.');
+      showToast.error(`Could not undo action: ${error?.message || 'try again'}`);
     } finally {
       setUndoingId(null);
     }

@@ -75,10 +75,10 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       await seedDefaultCategories();
       await loadCategories();
       if (onUpdate) onUpdate();
-      showToast.success('Default categories added successfully!');
+      showToast.success('Default categories added');
     } catch (error) {
       console.error('Error seeding categories:', error);
-      showToast.error('Error adding default categories. Please try again.');
+      showToast.error(`Could not add default categories: ${error?.message || 'try again'}`);
     } finally {
       setSaving(false);
     }
@@ -86,7 +86,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
 
   const handleAdd = async () => {
     if (!formData.name.trim()) {
-      showToast.error('Please enter a category name');
+      showToast.error('Enter a category name');
       return;
     }
 
@@ -112,7 +112,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       setShowAddForm(false);
     } catch (error) {
       console.error('Error adding category:', error);
-      showToast.error('Error adding category. Please try again.');
+      showToast.error(`Could not add category: ${error?.message || 'try again'}`);
     } finally {
       setSaving(false);
     }
@@ -130,7 +130,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
 
   const handleSaveEdit = async (categoryId) => {
     if (!formData.name.trim()) {
-      showToast.error('Please enter a category name');
+      showToast.error('Enter a category name');
       return;
     }
 
@@ -154,7 +154,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       });
     } catch (error) {
       console.error('Error updating category:', error);
-      showToast.error('Error updating category. Please try again.');
+      showToast.error(`Could not update category: ${error?.message || 'try again'}`);
     } finally {
       setSaving(false);
     }
@@ -182,7 +182,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error deleting category:', error);
-      showToast.error(error.message || 'Error deleting category. Please try again.');
+      showToast.error(error.message || 'Error deleting category. Try again.');
     } finally {
       setSaving(false);
     }

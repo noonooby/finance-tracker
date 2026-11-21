@@ -31,6 +31,8 @@ async function freshAccounts() {
 export async function processOverdueLoanPayments(loans, creditCards = [], bankAccounts = []) {
   const todayString = localDate();
   const results = { processed: [], failed: [], skipped: [] };
+  // Nothing due in the list just loaded: no need to read the balances again.
+  if (!(loans || []).some((l) => (l.connected_payment_source || l.on_card_id) && l.next_payment_date && String(l.next_payment_date).split('T')[0] <= todayString)) return results;
   const accounts = await freshAccounts();
 
   const ids = new Set((loans || []).map((l) => String(l.id)));

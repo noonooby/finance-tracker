@@ -70,12 +70,12 @@ export default function GiftCardBalanceModal({
 
   const handleSubmit = () => {
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      showToast.error('Please enter a valid amount');
+      showToast.error('Enter a valid amount');
       return;
     }
     
     if (operation === 'use' && !formData.category) {
-      showToast.error('Please select a category for this expense');
+      showToast.error('Select a category for this expense');
       return;
     }
 

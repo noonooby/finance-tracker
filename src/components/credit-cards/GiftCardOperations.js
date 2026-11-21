@@ -146,12 +146,12 @@ export default function GiftCardOperations({
 
   const handleSubmit = async () => {
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      showToast.error('Please enter a valid amount');
+      showToast.error('Enter a valid amount');
       return;
     }
 
     if (!formData.category) {
-      showToast.error('Please select a category');
+      showToast.error('Select a category');
       return;
     }
 
@@ -161,7 +161,7 @@ export default function GiftCardOperations({
     }
 
     if (operationType === 'use' && !formData.notes?.trim()) {
-      showToast.error('Please enter what you\'re buying');
+      showToast.error('Enter what you\'re buying');
       return;
     }
 

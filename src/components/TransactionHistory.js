@@ -269,7 +269,7 @@ export default function TransactionHistory({
     });
 
     if (!hasActiveFilters) {
-      setSaveError('Please set at least one filter before saving');
+      setSaveError('Set at least one filter before saving');
       return;
     }
 
@@ -290,7 +290,7 @@ export default function TransactionHistory({
       setSaveAsPin(false);
       setShowSaveDialog(false);
       
-      showToast.success(`Filter "${filterData.name}" saved successfully!`);
+      showToast.success(`Filter "${filterData.name}" saved`);
     } catch (error) {
       console.error('Error saving filter:', error);
       setSaveError(error.message || 'Failed to save filter');
@@ -327,7 +327,7 @@ export default function TransactionHistory({
       await deleteSavedFilter(filter.id);
       await loadSavedFilters();
       await loadQuickFilters();
-      showToast.success('Filter deleted successfully');
+      showToast.success('Filter deleted');
     } catch (error) {
       console.error('Error deleting filter:', error);
       showToast.error('Failed to delete filter');
@@ -338,7 +338,7 @@ export default function TransactionHistory({
     try {
       await duplicateFilter(filter.id);
       await loadSavedFilters();
-      showToast.success(`Filter duplicated successfully!`);
+      showToast.success(`Filter duplicated`);
     } catch (error) {
       console.error('Error duplicating filter:', error);
       showToast.error('Failed to duplicate filter');
@@ -403,7 +403,7 @@ export default function TransactionHistory({
       await loadTransactions();
     } catch (error) {
       console.error('Error deleting transaction:', error);
-      showToast.error('Error deleting transaction. Please try again.');
+      showToast.error(`Could not delete transaction: ${error?.message || 'try again'}`);
     }
   };
 

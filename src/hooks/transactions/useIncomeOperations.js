@@ -20,18 +20,18 @@ export const useIncomeOperations = () => {
     onUpdate
   }) => {
     if (!formData.source || !formData.amount || !formData.date) {
-      throw new Error('Please fill in required fields: Source, Amount, and Date');
+      throw new Error('Fill in required fields: Source, Amount, and Date');
     }
 
     if (formData.frequency !== 'onetime') {
       if (formData.recurringDurationType === 'until_date' && !formData.recurringUntilDate) {
-        throw new Error('Please specify the end date for recurring income');
+        throw new Error('Specify the end date for recurring income');
       }
       if (
         formData.recurringDurationType === 'occurrences' &&
         (!formData.recurringOccurrences || parseInt(formData.recurringOccurrences, 10) < 1)
       ) {
-        throw new Error('Please specify the number of times this income will occur');
+        throw new Error('Specify the number of times this income will occur');
       }
     }
 

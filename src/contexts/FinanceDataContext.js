@@ -189,7 +189,7 @@ export function FinanceDataProvider({ children }) {
 
     } catch (error) {
       // No connection: show the figures last saved on this device, read only, until the connection is back.
-      const offline = (typeof navigator !== 'undefined' && navigator.onLine === false) || /fetch|network|load failed/i.test(String(error?.message || ''));
+      const offline = (typeof navigator !== 'undefined' && navigator.onLine === false) || /fetch|network|load failed|no connection/i.test(String(error?.message || ''));
       const { data: { user } } = offline ? await server.auth.getUser() : { data: {} };
       const saved = user ? await getLocal(`figures:${user.id}`) : null;
       if (saved) {

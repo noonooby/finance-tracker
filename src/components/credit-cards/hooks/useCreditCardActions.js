@@ -241,7 +241,7 @@ export function useCreditCardActions({
     if (result.success) {
       const cardType = result.data.isGiftCard ? 'Gift card' : 'Credit card';
       const action = result.data.isNew ? 'added' : 'updated';
-      showToast.success(`${cardType} '${result.data.cardName}' ${action} successfully`);
+      showToast.success(`${cardType} '${result.data.cardName}' ${action}`);
     } else {
       showToast.error(`Failed to save card: ${result.error.message}`);
     }
@@ -274,7 +274,7 @@ export function useCreditCardActions({
       }
     } catch (error) {
       console.error('Error processing credit card payments:', error);
-      showToast.error('Error processing payments. Please try again.');
+      showToast.error(`Could not process payments: ${error?.message || 'try again'}`);
     } finally {
       setIsProcessing(false);
     }
@@ -448,7 +448,7 @@ export function useCreditCardActions({
           `${result.data.cardName} deleted and ${formatCurrency(result.data.refunded)} refunded to ${result.data.refundMethod}`
         );
       } else {
-        showToast.success(`${result.data.cardName} deleted successfully`);
+        showToast.success(`${result.data.cardName} deleted`);
       }
     } else {
       showToast.error(`Failed to delete card: ${result.error.message}`);

@@ -104,7 +104,7 @@ export default function Reports({ darkMode, categories }) {
       setSaveAsFavorite(false);
       setShowSaveDialog(false);
       
-      showToast.success(`Template "${templateData.name}" saved successfully!`);
+      showToast.success(`Template "${templateData.name}" saved`);
     } catch (error) {
       console.error('Error saving template:', error);
       setSaveError(error.message || 'Failed to save template');
@@ -144,7 +144,7 @@ export default function Reports({ darkMode, categories }) {
     try {
       await deleteReportTemplate(template.id);
       await loadSavedTemplates();
-      showToast.success('Template deleted successfully');
+      showToast.success('Template deleted');
     } catch (error) {
       console.error('Error deleting template:', error);
       showToast.error('Failed to delete template');
@@ -155,7 +155,7 @@ export default function Reports({ darkMode, categories }) {
     try {
       await duplicateReportTemplate(template.id);
       await loadSavedTemplates();
-      showToast.success(`Template duplicated successfully!`);
+      showToast.success(`Template duplicated`);
     } catch (error) {
       console.error('Error duplicating template:', error);
       showToast.error('Failed to duplicate template');
@@ -167,7 +167,7 @@ export default function Reports({ darkMode, categories }) {
       await exportToExcel(reportData);
     } catch (error) {
       console.error('Error exporting to Excel:', error);
-      showToast.error('Failed to export to Excel. Please try again.');
+      showToast.error(`Could not export to Excel: ${error?.message || 'try again'}`);
     }
   };
 
@@ -176,7 +176,7 @@ export default function Reports({ darkMode, categories }) {
       exportToCSV(reportData);
     } catch (error) {
       console.error('Error exporting to CSV:', error);
-      showToast.error('Failed to export to CSV. Please try again.');
+      showToast.error(`Could not export to CSV: ${error?.message || 'try again'}`);
     }
   };
 

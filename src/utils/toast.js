@@ -140,7 +140,7 @@ export const showToast = {
  *   saveData(),
  *   {
  *     loading: 'Saving...',
- *     success: 'Saved successfully!',
+ *     success: 'Saved',
  *     error: 'Failed to save',
  *   }
  * );

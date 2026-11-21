@@ -106,7 +106,7 @@ export default function CategorySelect({
       
     } catch (error) {
       console.error('Error creating category:', error);
-      showToast.error('Failed to create category. Please try again.');
+      showToast.error(`Could not create category: ${error?.message || 'try again'}`);
     } finally {
       setCreating(false);
     }

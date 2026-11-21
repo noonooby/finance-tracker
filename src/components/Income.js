@@ -130,7 +130,7 @@ export default function Income({
     if (result?.success) {
       const action = result.data.isNew ? 'created' : 'updated';
       const itemType = formData.frequency !== 'onetime' ? 'schedule' : 'income';
-      showToast.success(`Income ${itemType} from '${result.data.source}' ${action} successfully`);
+      showToast.success(`Income ${itemType} from '${result.data.source}' ${action}`);
       resetForm();
       await loadSchedules();
     } else if (result?.error) {
@@ -146,7 +146,7 @@ export default function Income({
     if (isSchedule) {
       try {
         await deleteIncomeSchedule(id);
-        showToast.success('Income schedule deleted successfully');
+        showToast.success('Income schedule deleted');
         await loadSchedules();
         if (onUpdate) await onUpdate();
       } catch (error) {
@@ -165,7 +165,7 @@ export default function Income({
       });
       
       if (result?.success) {
-        showToast.success(`Income from '${result.data.source}' deleted successfully`);
+        showToast.success(`Income from '${result.data.source}' deleted`);
       } else if (result?.error) {
         showToast.error(`Failed to delete income: ${result.error.message}`);
       }

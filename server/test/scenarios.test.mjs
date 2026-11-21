@@ -667,3 +667,26 @@ test('reminder encryption matches the Web Push standard example byte for byte (R
   const out = push.encrypt(sub, 'When I grow up, I want to be a watermelon', { salt: b('DGv6ra1nlYgDCS1FRnbzlw'), server: as }).toString('base64url');
   assert.equal(out, 'DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN');
 });
+
+test('a restored backup keeps each transaction undoable and refuses rows of another account', async () => {
+  const a = await accounts();
+  const res = await M.recordExpense({ amount: 12, source: `bank_account:${chq.id}`, date: '2026-11-21', description: 'Restore me' }, a);
+  const t = (await db.from('transactions').select('*').eq('id', res.transaction.id)).data[0];
+  const before = Number((await get('bank_accounts', chq.id)).balance);
+  // The data API strips _legs; the backup file is made from the server copy, which has them.
+  const { db: sdb } = require(path.join(root, 'server', 'server.js'));
+  const full = JSON.parse(sdb.prepare("SELECT data FROM rows WHERE tbl='transactions' AND id=?").get(String(t.id)).data);
+  assert.ok(full._legs.length);
+  await api('/api/restore', { table: 'transactions', rows: [{ ...full, description: 'Restored' }] });
+  await M.reverseTransaction(t.id);
+  assert.equal(Number((await get('bank_accounts', chq.id)).balance), Math.round((before + 12) * 100) / 100);
+  await assert.rejects(api('/api/restore', { table: 'balance_points', rows: [] }), /cannot be restored/);
+});
+
+test('a bill already recorded gets no reminder', () => {
+  const push = require(path.join(root, 'server', 'push.js'));
+  const bill = { id: 'b1', status: 'active', key: 'rogers', name: 'Rogers', amount: 85, frequency: 'monthly', next_date: '2026-11-21' };
+  const rows = (paid) => (t) => (t === 'bills' ? [bill] : t === 'transactions' && paid ? [{ type: 'expense', description: 'Rogers', amount: 85, date: '2026-11-20' }] : []);
+  assert.equal(push.dueFor(rows(false), '2026-11-21', '2026-11-23').length, 1);
+  assert.equal(push.dueFor(rows(true), '2026-11-21', '2026-11-23').length, 0);
+});

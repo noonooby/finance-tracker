@@ -13,11 +13,17 @@ const USER = 'finance_user';
 const cachedUser = () => { try { return JSON.parse(localStorage.getItem(USER) || 'null'); } catch { return null; } };
 
 export async function api(path, body, method = 'POST') {
-  const res = await fetch(path, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...(getToken() ? { Authorization: 'Bearer ' + getToken() } : {}) },
-    body: method === 'GET' ? undefined : JSON.stringify(body || {}),
-  });
+  let res;
+  try {
+    res = await fetch(path, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...(getToken() ? { Authorization: 'Bearer ' + getToken() } : {}) },
+      body: method === 'GET' ? undefined : JSON.stringify(body || {}),
+    });
+  } catch {
+    // No answer at all (no connection). status stays empty so callers can tell this from a refusal.
+    throw new Error('No connection. Nothing was changed; try again when you are online.');
+  }
   let out = {};
   try { out = await res.json(); } catch {}
   if (res.status === 401 && getToken()) { setToken(null); notify(null); }
@@ -104,7 +110,13 @@ export const auth = {
   async getSession() { return { data: { session: await loadSession() }, error: null }; },
   async getUser() { const s = await loadSession(); return { data: { user: s ? s.user : null }, error: null }; },
   onAuthStateChange(fn) { listeners.add(fn); return { data: { subscription: { unsubscribe: () => listeners.delete(fn) } } }; },
-  async signOut() { try { await api('/api/logout'); } catch {} setToken(null); notify(null); return { error: null }; },
+  async signOut() {
+    const u = current && current.user;
+    try { await api('/api/logout'); } catch {}
+    // The figures kept on this device for offline use go too, so the next person on it sees nothing.
+    if (u) await import('./localStore').then((m) => m.removeLocal(`figures:${u.id}`)).catch(() => {});
+    setToken(null); notify(null); return { error: null };
+  },
   signInWithGoogle() { window.location.href = '/auth/google'; },
   async devSignIn() { const { token } = await api('/api/dev-login'); setToken(token); current = undefined; notify(await loadSession()); },
   async config() { try { return await api('/api/config', null, 'GET'); } catch { return {}; } },

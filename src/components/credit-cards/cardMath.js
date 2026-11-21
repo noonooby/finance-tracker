@@ -67,13 +67,13 @@ export function formFromCard(card, defaultDays, bankAccounts) {
 
 // Returns an error message, or null when the form can be saved.
 export function validateCardForm(formData, isEditing = false) {
-  if (!formData.name || !formData.balance) return 'Please fill in required fields: Name and Balance';
+  if (!formData.name || !formData.balance) return 'Fill in required fields: Name and Balance';
   if (!formData.isGiftCard && !formData.dueDate) return 'Credit cards require a Due Date';
   if (formData.isGiftCard && !formData.purchaseAmount) return 'Gift cards require an Original Value';
   if (formData.isGiftCard && !formData.purchaseAmountPaid) return 'Gift cards require a Purchase Amount Paid';
   if (formData.isGiftCard && !isEditing && !formData.giftCardPaymentMethodId) return 'Choose how you paid for the gift card';
   if (formData.isGiftCard && formData.hasExpiry && !formData.expiryDate) {
-    return 'Please specify the expiry date or uncheck "has expiry"';
+    return 'Specify the expiry date or uncheck "has expiry"';
   }
   return null;
 }
