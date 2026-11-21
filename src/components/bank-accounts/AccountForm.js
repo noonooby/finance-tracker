@@ -1,4 +1,5 @@
 import React from 'react';
+import RateLookup from '../shared/RateLookup';
 import ActionButton from '../shared/ActionButton';
 import FrequentMark from './FrequentMark';
 import { inputClass, labelClass, strongLabelClass, chipClass } from './styles';
@@ -155,6 +156,12 @@ export default function AccountForm({
               </label>
             </div>
             <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Used to show what the overdraft costs when the balance goes below zero.</p>
+            <div className="mt-2">
+              <RateLookup kind="bank_account" name={[formData.institution, formData.name].filter(Boolean).join(' ')} onUse={(r) => set({
+                overdraft_rate: r.overdraft_rate != null ? String(r.overdraft_rate) : formData.overdraft_rate,
+                overdraft_monthly_fee: r.overdraft_monthly_fee != null ? String(r.overdraft_monthly_fee) : formData.overdraft_monthly_fee,
+                overdraft_use_fee: r.overdraft_use_fee != null ? String(r.overdraft_use_fee) : formData.overdraft_use_fee })} />
+            </div>
           </div>
         )}
       </div>

@@ -26,7 +26,9 @@ export function emptyCardForm(defaultDays) {
     promoRate: '',
     promoEnd: '',
     cashRate: '',
-    annualFee: ''
+    annualFee: '',
+    ratesSource: '',
+    ratesChecked: ''
   };
 }
 
@@ -55,7 +57,9 @@ export function formFromCard(card, defaultDays) {
     promoRate: card.promo_rate != null && card.promo_rate !== '' ? String(card.promo_rate) : '',
     promoEnd: card.promo_end || '',
     cashRate: card.cash_rate ? String(card.cash_rate) : '',
-    annualFee: card.annual_fee ? String(card.annual_fee) : ''
+    annualFee: card.annual_fee ? String(card.annual_fee) : '',
+    ratesSource: card.rates_source || '',
+    ratesChecked: card.rates_checked || ''
   };
 }
 
@@ -97,6 +101,8 @@ export function cardFromForm(formData, { id, createdAt, defaultDays }) {
     promo_end: gift ? null : (formData.promoEnd || null),
     cash_rate: gift ? 0 : (parseFloat(formData.cashRate) || 0),
     annual_fee: gift ? 0 : (parseFloat(formData.annualFee) || 0),
+    rates_source: gift ? null : (formData.ratesSource || null),
+    rates_checked: gift ? null : (formData.ratesChecked || null),
     created_at: createdAt || new Date().toISOString()
   };
 }

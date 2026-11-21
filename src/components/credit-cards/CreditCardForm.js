@@ -1,4 +1,5 @@
 import React from 'react';
+import RateLookup from '../shared/RateLookup';
 import { CreditCard as CreditCardIcon, Gift, Star } from 'lucide-react';
 import ActionButton from '../shared/ActionButton';
 import GiftCardForm from './GiftCardForm';
@@ -197,6 +198,13 @@ export default function CreditCardForm({
               </div>
             )}
           </div>
+
+          <RateLookup kind="credit_card" name={formData.name} onUse={(r) => setFormData({ ...formData,
+            interestRate: r.purchase_rate != null ? String(r.purchase_rate) : formData.interestRate,
+            cashRate: r.cash_rate != null ? String(r.cash_rate) : formData.cashRate,
+            annualFee: r.annual_fee != null ? String(r.annual_fee) : formData.annualFee,
+            ratesSource: r.source_url || '', ratesChecked: r.checked })} />
+          {formData.ratesChecked && <p className="text-xs text-muted">Rates from the issuer's public page, checked {formData.ratesChecked}.</p>}
 
           <div className="grid grid-cols-2 gap-2">
             <label className={smallLabel}>Minimum payment

@@ -483,3 +483,13 @@ test('statement: its lines, its closing balance, and app lines it does not show'
   // The statement's balance is not offered as today's balance.
   assert.equal(p.balances.length, 0);
 });
+
+test('rate lookup sends only the product name and returns a dated suggestion', async () => {
+  process.env.LOOKUP_STUB = JSON.stringify({ found: true, purchase_rate: 20.99, cash_rate: 22.99, annual_fee: 155.88, source_url: 'https://example.test/card' });
+  const r = await api('/api/lookup-rates', { kind: 'credit_card', name: 'Amex Cobalt' });
+  assert.deepEqual([r.found, r.purchase_rate, r.annual_fee, r.product], [true, 20.99, 155.88, 'Amex Cobalt']);
+  assert.match(r.checked, /^\d{4}-\d{2}-\d{2}$/);
+  await assert.rejects(api('/api/lookup-rates', { kind: 'credit_card', name: 'x' }), /product name/);
+  await assert.rejects(api('/api/lookup-rates', { kind: 'other', name: 'Amex Cobalt' }), /product name/);
+  delete process.env.LOOKUP_STUB;
+});

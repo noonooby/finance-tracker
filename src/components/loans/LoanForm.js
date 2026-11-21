@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import RateLookup from '../shared/RateLookup';
 import ActionButton from '../shared/ActionButton';
 import { localDate } from '../../utils/helpers';
 
@@ -197,6 +198,11 @@ export default function LoanForm({
           <input type="number" step="0.01" inputMode="decimal" value={formData.setupFee || ''} onChange={(e) => setFormData({ ...formData, setupFee: e.target.value })} placeholder="0.00" className={`mt-1 w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`} />
         </label>
       </div>
+      {formData.provider && (
+        <RateLookup kind="loan" name={formData.provider} onUse={(r) => setFormData({ ...formData,
+          interestRate: formData.interestRate || (r.rate_low != null && r.rate_low === r.rate_high ? String(r.rate_low) : formData.interestRate),
+          setupFee: formData.setupFee || (r.setup_fee != null ? String(r.setup_fee) : '') })} />
+      )}
       {(formData.loanType === 'plan' || formData.loanType === 'bnpl') && (
         <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
           Where it lives

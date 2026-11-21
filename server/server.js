@@ -357,6 +357,7 @@ route('GET', '/api/me', (req) => ({ user: authUser(req) }));
 route('POST', '/api/logout', (req) => { const t = (req.headers.authorization || '').replace('Bearer ', ''); db.prepare('DELETE FROM sessions WHERE token = ?').run(t); return { ok: true }; });
 route('POST', '/api/db', (req, b) => runQuery(authUser(req).id, b));
 route('POST', '/api/money', (req, b) => money(authUser(req).id, b));
+route('POST', '/api/lookup-rates', async (req, b) => { authUser(req); try { return await require('./rates').lookup(String(b.kind || ''), b.name); } catch (e) { if (e.status) fail(e.status, e.message); throw e; } });
 route('POST', '/api/snapshot', (req, b) => snapshot(authUser(req).id, b));
 // Open checks with the difference as it stands now (adding the missing lines closes them).
 route('GET', '/api/checks', (req) => {
