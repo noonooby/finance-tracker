@@ -130,7 +130,8 @@ function plan(reading, ctx, sourceId) {
     const acct = resolveAccount(all, a);
     if (!acct || a.balance == null || !Number.isFinite(Number(a.balance))) return null;
     const shown = Math.round(Math.abs(Number(a.balance)) * 100) / 100, has = Math.round(Number(acct.balance || 0) * 100) / 100;
-    return shown === has ? null : { account: { type: acct._type, id: acct.id, name: acct.name }, shown, current: has };
+    // Every balance the screenshot shows is offered as a snapshot; the server works out any difference after the lines are saved.
+    return { account: { type: acct._type, id: acct.id, name: acct.name }, shown, current: has, differs: shown !== has, snapshot_date: acct.snapshot_date || null };
   }).filter(Boolean);
   const unknown = (reading.accounts || []).filter(a => !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));

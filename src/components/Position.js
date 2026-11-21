@@ -5,6 +5,7 @@ import { server } from '../utils/server';
 import { position, monthEnd, STALE_DAYS } from '../utils/finance';
 import { formatCurrency, formatDate } from '../utils/helpers';
 import UpdateValue from './position/UpdateValue';
+import Checks from './position/Checks';
 
 const KIND = { bank: 'Bank', cash: 'Cash', card: 'Credit card', card_credit: 'Card credit', gift_card: 'Gift card', loan: 'Loan', mortgage: 'Mortgage', investment: 'Investment', asset: 'Property' };
 
@@ -81,6 +82,8 @@ export default function Position({ darkMode }) {
           {p.upToDate ? 'Every figure was updated in the last ' + STALE_DAYS + ' days.' : `${p.stale.length} figure${p.stale.length > 1 ? 's are' : ' is'} more than ${STALE_DAYS} days old or never updated. Tap Update next to each one.`}
         </div>
       </section>
+
+      <Checks darkMode={darkMode} data={d} onDone={d.loadAllData} />
 
       <section className={card}>
         <h2 className="font-semibold">To the end of the month ({formatDate(m.end)})</h2>

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../utils/server';
-import { recordExpense, recordIncome, recordRefund, recordAdjustment, recordTransfer, recordCardPayment } from '../utils/money';
+import { recordExpense, recordIncome, recordRefund, recordTransfer, recordCardPayment, recordSnapshot } from '../utils/money';
 import { server } from '../utils/server';
 import { formatCurrency, generateId } from '../utils/helpers';
 import { Camera, Image as ImageIcon } from 'lucide-react';
@@ -136,7 +136,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         }
         return r;
       }));
-      setFixes(p.balances.map((b) => ({ ...b, on: false })));
+      setFixes(p.balances.map((b) => ({ ...b, on: true })));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -168,7 +168,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
 
   const save = async () => {
     setSaving(true); setError('');
-    const result = { recorded: 0, posted: 0, repeated: 0, corrected: 0, created: [], failed: [] };
+    const result = { recorded: 0, posted: 0, repeated: 0, corrected: 0, created: [], gaps: [], failed: [] };
     const chosenRows = rows.filter((x) => x.on);
     const banks = [...bankAccounts], cards = [...creditCards];
     const realRef = {};
@@ -213,7 +213,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           const id = (realRef[String(r0.account.id)] || '').split(':')[1];
           if (id) key = 'shot:' + await sha32(`${id}|${r.key_rest}`);
         }
-        const common = { amount: Number(r.amount), date: r.date, description: r.merchant, key, extra: { pending: r.pending, from_screenshot: proposal.source_id } };
+        const common = { amount: Number(r.amount), date: r.date, description: r.merchant, key, extra: { pending: r.pending, from_screenshot: proposal.source_id, in_snapshot: true } };
         let res;
         if (r.kind === 'purchase') {
           const cat = categories.find((c) => String(c.id) === String(r.category_id));
@@ -230,14 +230,21 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         result.failed.push(`${label}: ${err.message}`);
       }
     }
-    // 3. Balance corrections the person ticked.
-    for (const f of fixes.filter((x) => x.on)) {
+    // 3. The balances on the screenshot, after the lines: each is a snapshot. The server compares it with the app;
+    // a difference the lines don't explain is corrected (undoable) when ticked, or left open on Where you stand.
+    const day = new Date().toLocaleDateString('en-CA');
+    const snaps = [
+      ...fixes.map((f) => ({ target: `${f.account.type}:${f.account.id}`, name: f.account.name, value: f.shown, apply: f.on })),
+      ...drafts.filter((d) => d.on && realRef[d.id]).map((d) => ({ target: realRef[d.id], name: d.name, value: Number(d.balance), apply: true })),
+    ];
+    for (const sn of snaps) {
       try {
-        await recordAdjustment({ target: `${f.account.type}:${f.account.id}`, newBalance: f.shown, current: f.current,
-          date: new Date().toLocaleDateString('en-CA'), description: 'Balance from screenshot' }, accounts);
-        result.corrected += 1;
+        const out = await recordSnapshot({ target: sn.target, value: sn.value, date: day, source: 'screenshot', apply: sn.apply });
+        const gap = Number(out.snapshot.gap) || 0;
+        if (out.snapshot.status === 'corrected') { result.corrected += 1; result.gaps.push(`${sn.name}: the lines did not explain ${formatCurrency(Math.abs(gap))}; corrected to ${formatCurrency(sn.value)} (undo from Activity)`); }
+        else if (out.snapshot.status === 'open') result.gaps.push(`${sn.name}: off by ${formatCurrency(Math.abs(gap))}; left open on Where you stand`);
       } catch (err) {
-        result.failed.push(`${f.account.name}: ${err.message}`);
+        result.failed.push(`${sn.name}: ${err.message}`);
       }
     }
     setDone(result);
@@ -246,9 +253,16 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     if (!result.failed.length) { setProposal(null); setImage(null); setDrafts([]); }
   };
 
-  const chosen = rows.filter((r) => r.on).length + fixes.filter((f) => f.on).length + drafts.filter((d) => d.on).length;
+  const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length;
   const draftNeeds = (d) => (!d.on ? null : !d.name.trim() ? 'Enter a name' : d.balance === '' || !Number.isFinite(Number(d.balance)) ? `Not on the screenshot: enter ${d.type === 'credit_card' ? 'what you owe on it' : 'its balance'} today` : null);
   const blocked = rows.filter((r) => r.on && missing(r)).length + drafts.filter(draftNeeds).length;
+  const snapDay = (v) => {
+    if (!v) return null;
+    const [t, id] = v.split(':');
+    const a = (t === 'bank_account' ? bankAccounts : t === 'credit_card' ? creditCards : []).find((x) => String(x.id) === id);
+    return a && a.snapshot_date;
+  };
+  const historyOnly = (r) => [r.target, r.from, r.to, r.card, r.source].map(snapDay).find((d) => d && r.date < d);
   const lineSummary = (r) => {
     if (r.kind === 'transfer') return `${nameOf(r.from)} to ${nameOf(r.to)}`;
     if (r.kind === 'card_payment') return `${nameOf(r.source)} pays ${nameOf(r.card)}`;
@@ -368,6 +382,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                         </div>
                         {r.action !== 'record' && r.action !== 'choose_account' && <div className={`text-xs ${muted}`}>{r.why || STATUS_TEXT[r.action]}</div>}
                         {need && <div className="text-xs text-amber-600">{need}</div>}
+                        {historyOnly(r) && <div className={`text-xs ${muted}`}>Before your snapshot of {historyOnly(r)}: kept as history, today's balance does not change</div>}
                       </div>
                       <div className="text-right">
                         <div className={r.kind === 'purchase' ? 'font-medium' : 'font-medium text-green-600'}>{formatCurrency(r.amount)}</div>
@@ -414,14 +429,17 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
 
           {fixes.length > 0 && (
             <section className="space-y-1">
-              <h3 className="font-semibold text-sm">Balances that differ from the app</h3>
+              <h3 className="font-semibold text-sm">Balances on the screenshot</h3>
               {fixes.map((f, i) => (
-                <label key={i} className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={f.on} onChange={(e) => setFixes((fs) => fs.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)))} />
-                  Set {f.account.name} to {formatCurrency(f.shown)} (the app shows {formatCurrency(f.current)})
-                </label>
+                <div key={i} className="text-sm">
+                  <div>{f.account.name}: {formatCurrency(f.shown)} today{f.differs ? ` (the app has ${formatCurrency(f.current)} before these lines)` : ', matches the app'}</div>
+                  <label className={`flex items-center gap-2 text-xs ${muted}`}>
+                    <input type="checkbox" checked={f.on} onChange={(e) => setFixes((fs) => fs.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)))} />
+                    If the lines don't explain it, correct it to the screenshot (you can undo it)
+                  </label>
+                </div>
               ))}
-              <p className={`text-xs ${muted}`}>Tick this only if the balance still differs after the lines are saved.</p>
+              <p className={`text-xs ${muted}`}>The balance is checked after the lines are saved. Anything that still doesn't add up is shown, never hidden. Unticked, the difference stays open on Where you stand.</p>
             </section>
           )}
           <button type="button" onClick={save} disabled={saving || !chosen || blocked > 0}
@@ -436,7 +454,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           {done.created.length > 0 && <div>Accounts added: {done.created.join(', ')}.</div>}
           Saved {done.recorded}. Pending lines marked as posted: {done.posted}.
           {done.repeated > 0 && ` Already saved from an earlier screenshot, skipped: ${done.repeated}.`}
-          {done.corrected > 0 && ` Balances corrected: ${done.corrected}.`}
+          {done.gaps.length > 0 && <ul className="mt-1 list-disc pl-5">{done.gaps.map((g) => <li key={g}>{g}</li>)}</ul>}
           {done.failed.length > 0 && (
             <ul className="mt-2 text-red-600 list-disc pl-5">{done.failed.map((f) => <li key={f}>{f}</li>)}</ul>
           )}

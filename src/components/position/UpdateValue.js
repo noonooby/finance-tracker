@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { recordAdjustment } from '../../utils/money';
+import { recordSnapshot } from '../../utils/money';
 import { localDate } from '../../utils/helpers';
 import { showToast } from '../../utils/toast';
 
@@ -18,7 +18,8 @@ export default function UpdateValue({ line, signed, accounts, onDone, darkMode }
     setBusy(true);
     try {
       const type = TARGET[line.kind];
-      await recordAdjustment({ target: type === 'cash_in_hand' ? 'cash_in_hand' : `${type}:${line.id}`, newBalance: Number(value), current: signed, date: localDate(), description: `${line.name} updated` }, accounts);
+      // Recorded as a snapshot: the difference is an undoable adjustment, and older lines added later stay history.
+      await recordSnapshot({ target: type === 'cash_in_hand' ? 'cash_in_hand' : `${type}:${line.id}`, value: Number(value), date: localDate(), source: 'you' });
       setOpen(false);
       await onDone();
     } catch (err) { showToast.error(err.message); } finally { setBusy(false); }

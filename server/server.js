@@ -22,13 +22,13 @@ CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 `);
 const SESSION_MS = 30 * 864e5;
 
-const TABLES = new Set(['activities', 'alert_history', 'bank_accounts', 'budget_tracking', 'categories', 'credit_card_payments', 'credit_cards',
+const TABLES = new Set(['snapshots', 'activities', 'alert_history', 'bank_accounts', 'budget_tracking', 'categories', 'credit_card_payments', 'credit_cards',
   'income', 'income_schedules', 'known_entities', 'loan_payments', 'loans', 'report_templates', 'saved_filters', 'scheduled_payments',
   'settings', 'transactions', 'user_preferences', 'uploads', 'investments', 'assets', 'balance_points']);
 // Tables whose balance /api/money may change, and the fields it may change.
 const MONEY_FIELDS = { bank_accounts: ['balance'], credit_cards: ['balance'], loans: ['balance'], investments: ['balance'], assets: ['balance'], settings: ['value'] };
 // Tables only the server writes.
-const SERVER_ONLY = new Set(['balance_points']);
+const SERVER_ONLY = new Set(['balance_points', 'snapshots']);
 // The user's calendar day (balances are dated by it). APP_TZ defaults to Toronto, like the Telegram bot.
 const APP_TZ = process.env.APP_TZ || 'America/Toronto';
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: APP_TZ });
@@ -214,13 +214,22 @@ function legTarget(uid, l) {
   if (!r) fail(404, 'That account no longer exists');
   return { r, field };
 }
-function applyLegs(uid, legs) {
+// A confirmed snapshot (the balance you saw on a given day) already includes every line dated before it.
+// Such a line is kept as history and does not move the balance again. A line on the snapshot's own day counts
+// only when it says it was part of that snapshot (in_snapshot); anything you add for today by hand still counts.
+const coveredBySnapshot = (r, line) => !!(line && isDay(line.date) && isDay(r.snapshot_date) && line.type !== 'adjustment'
+  && (line.date < r.snapshot_date || (line.date === r.snapshot_date && line.in_snapshot)));
+function applyLegs(uid, legs, line) {
   const done = [];
   for (const l of legs || []) {
     const d = cents(l.delta);
     if (!Number.isFinite(d)) fail(400, 'Amount is not a number');
     if (!d) continue;
     const { r, field } = legTarget(uid, l);
+    if (coveredBySnapshot(r, line)) {
+      done.push({ table: l.table, id: r.id, key: l.table === 'settings' ? r.key : undefined, field, delta: 0, history_only: fromCents(d), before: fromCents(cents(r[field])), after: fromCents(cents(r[field])) });
+      continue;
+    }
     const before = cents(r[field]);
     let delta = d, interest = 0;
     // A payment on a loan with interest: the interest for the period comes off first, worked out here from the balance
@@ -253,7 +262,8 @@ function money(uid, b) {
     }
     // replace: an edit undoes the old transaction in the same step, so a failed edit leaves the old one as it was
     const replaced = (b.replace || []).map(id => reverseInner(uid, String(id), { remove: true }));
-    const legs = applyLegs(uid, b.legs);
+    const line = ((b.rows || []).find(x => x.table === 'transactions') || {}).values;
+    const legs = applyLegs(uid, b.legs, line);
     const rows = (b.rows || []).map(({ table, values }) => {
       if (!TABLES.has(table)) fail(400, 'Unknown table');
       const v = insertRow(uid, table, values);
@@ -261,6 +271,8 @@ function money(uid, b) {
       if (table === 'transactions' && split) { v.interest_amount = split.interest; v.principal_amount = split.principal; }
       if (table === 'transactions' && legs.length) {
         v._legs = legs.map(({ table, id, key, field, delta }) => ({ table, id, key, field, delta }));
+        const hist = legs.filter(x => x.history_only != null);
+        if (hist.length) v.history_only = hist.map(x => ({ table: x.table, id: x.id, amount: x.history_only }));
         db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ?').run(JSON.stringify(v), table, String(v.id));
       }
       return v;
@@ -283,6 +295,44 @@ function reverseInner(uid, id, b = {}) {
 }
 const reverse = (uid, id, b) => tx(() => reverseInner(uid, id, b));
 
+// ---------- snapshots: the balance you saw, on a day ----------
+// body: { table, id | key, value, date?, source?, apply? }
+//  - records what the account showed and how far the app was from it (gap)
+//  - apply: the gap is recorded as an adjustment (undoable) so the balance equals what you saw, and the day becomes the
+//    account's snapshot date: older lines added later are history only and cannot move today's balance again
+//  - without apply, or for a day older than the account's snapshot, nothing changes; the gap stays open to be explained
+function snapshot(uid, b) {
+  return tx(() => {
+    const day = isDay(b.date) ? b.date : today();
+    const value = cents(b.value);
+    if (!Number.isFinite(value)) fail(400, 'Enter a number');
+    const { r, field } = legTarget(uid, { table: b.table, id: b.id, key: b.key });
+    const current = cents(r[field]);
+    const newer = isDay(r.snapshot_date) && r.snapshot_date > day;
+    const gap = value - current;
+    let adjustment = null, status = gap ? 'open' : 'ok';
+    if (!newer && b.apply && gap) {
+      const legs = applyLegs(uid, [{ table: b.table, id: r.id, key: b.key, delta: fromCents(gap), as_of: day }]);
+      const t = insertRow(uid, 'transactions', { type: 'adjustment', amount: Math.abs(fromCents(gap)), direction: gap > 0 ? 'up' : 'down', date: day,
+        description: `Balance from ${b.source || 'a snapshot'}`, status: 'active', payment_method: b.table === 'settings' ? 'cash_in_hand' : ({ bank_accounts: 'bank_account', credit_cards: 'credit_card', loans: 'loan', investments: 'investment', assets: 'asset' }[b.table]),
+        payment_method_id: b.table === 'settings' ? null : r.id, payment_method_name: r.name || 'Cash in hand' });
+      t._legs = legs.map(({ table, id, key, field, delta }) => ({ table, id, key, field, delta }));
+      db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ?').run(JSON.stringify(t), 'transactions', String(t.id));
+      adjustment = t; status = 'corrected';
+    }
+    if (!newer && (status === 'ok' || status === 'corrected')) {
+      const fresh = legTarget(uid, { table: b.table, id: b.id, key: b.key }).r;
+      const n = { ...fresh, snapshot_date: day, snapshot_value: fromCents(value) };
+      db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), b.table, String(r.id), uid);
+      stamp(uid, b.table, n, field, day);
+    }
+    const snap = insertRow(uid, 'snapshots', { account_table: b.table, account_id: b.table === 'settings' ? 'cash' : r.id, name: r.name || 'Cash in hand', date: day,
+      value: fromCents(value), app_value: fromCents(current), gap: fromCents(gap), status: newer ? 'older' : status, source: String(b.source || '').slice(0, 60),
+      adjustment_id: adjustment ? adjustment.id : null, created_at: now() });
+    return { snapshot: snap, adjustment };
+  });
+}
+
 // ---------- routes ----------
 const routes = [];
 const route = (method, pattern, fn) => routes.push({ method, re: new RegExp('^' + pattern.replace(/:\w+/g, '([\\w-]+)') + '$'), fn });
@@ -290,6 +340,21 @@ route('GET', '/api/me', (req) => ({ user: authUser(req) }));
 route('POST', '/api/logout', (req) => { const t = (req.headers.authorization || '').replace('Bearer ', ''); db.prepare('DELETE FROM sessions WHERE token = ?').run(t); return { ok: true }; });
 route('POST', '/api/db', (req, b) => runQuery(authUser(req).id, b));
 route('POST', '/api/money', (req, b) => money(authUser(req).id, b));
+route('POST', '/api/snapshot', (req, b) => snapshot(authUser(req).id, b));
+// Leave an open gap as it is, or correct it now (the balance moves by today's difference).
+route('POST', '/api/snapshots/:id/resolve', (req, b, [id]) => {
+  const uid = authUser(req).id;
+  const s = selectRows(uid, { table: 'snapshots', filters: [['id', 'eq', id]], limit: 1 })[0];
+  if (!s) fail(404, 'Not found');
+  if (s.status !== 'open') return { snapshot: s };
+  if (b.action === 'correct') {
+    const out = snapshot(uid, { table: s.account_table, id: s.account_id === 'cash' ? undefined : s.account_id, key: s.account_table === 'settings' ? 'cashInHand' : undefined, value: s.value, date: s.date, source: s.source || 'a snapshot', apply: true });
+    db.prepare("UPDATE rows SET data = json_set(data, '$.status', 'replaced') WHERE tbl = 'snapshots' AND id = ? AND user_id = ?").run(String(id), uid);
+    return out;
+  }
+  db.prepare("UPDATE rows SET data = json_set(data, '$.status', 'dismissed') WHERE tbl = 'snapshots' AND id = ? AND user_id = ?").run(String(id), uid);
+  return { ok: true };
+});
 route('POST', '/api/transactions/:id/reverse', (req, b, [id]) => reverse(authUser(req).id, id, b));
 route('GET', '/api/config', () => ({ google: !!(G_ID && G_SECRET), dev: !!DEV_USER, ai: require('./keystore').isSet() }));
 // The Gemini key: whether it is set and whether this user may set it. Never the key itself.

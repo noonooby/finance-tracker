@@ -39,6 +39,8 @@ const SECTIONS = [
       <p><Link to="/position">Where you stand</Link> adds up what you have (accounts, cash, investments, property, gift cards) and what you owe (cards, loans, the mortgage). The mortgage is counted, and also shown apart so you can see your other debt on its own.</p>
       <ul>
         <li>Each figure shows the day it was last updated. One older than 35 days is marked out of date. Tap <b>Update</b> and type today's figure; it is saved as a correction you can undo.</li>
+        <li><b>Snapshots.</b> A balance you give (Update, or a screenshot) is a fixed point for that day. Lines dated before it, found later on a statement or an older screenshot, are kept as history and don't change today's balance again.</li>
+        <li><b>Checks.</b> If a balance you saw differs from what the app's lines add up to, the difference is shown under Checks. It is either corrected (recorded as an adjustment you can undo) or left open until you add the missing lines. Nothing is changed silently.</li>
         <li>The month ahead takes what you can spend now, adds pay due before the month ends and takes off loan and card payments due by then.</li>
         <li>The line chart is your net worth on each day a figure changed.</li>
       </ul>

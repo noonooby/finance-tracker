@@ -366,3 +366,47 @@ test('screenshot draft: new card, salary, card payment, transfer, already record
   assert.equal(bank.lines[2].kind, 'purchase');
   assert.equal(bank.lines[2].category_guess, null);
 });
+
+test('snapshots: the balance you saw is fixed; older lines are history; gaps are shown, not hidden', async () => {
+  const T = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+  const ago = (n) => { const d = new Date(T + 'T12:00:00'); d.setDate(d.getDate() - n); return d.toLocaleDateString('en-CA'); };
+  const acct = await add('bank_accounts', { name: 'Snap chequing', balance: 1000 });
+  const src = `bank_account:${acct.id}`;
+  // Seen 900 today: the 100 difference becomes an adjustment and today is the snapshot day.
+  const s1 = await M.recordSnapshot({ target: src, value: 900, date: T, source: 'screenshot' });
+  assert.equal(s1.snapshot.gap, -100);
+  assert.equal(s1.snapshot.status, 'corrected');
+  let a = await get('bank_accounts', acct.id);
+  assert.deepEqual([a.balance, a.snapshot_date], [900, T]);
+  // A purchase from five days ago, found later on a statement: kept as history, today's balance stays as seen.
+  const old = await M.recordExpense({ amount: 50, source: src, date: ago(5), description: 'Old purchase' }, await accounts());
+  assert.equal((await get('bank_accounts', acct.id)).balance, 900);
+  assert.equal(old.transaction.history_only[0].amount, -50);
+  await M.reverseTransaction(old.transaction.id);
+  assert.equal((await get('bank_accounts', acct.id)).balance, 900);
+  // A purchase today added by hand still counts; one from today's screenshot does not.
+  await M.recordExpense({ amount: 20, source: src, date: T, description: 'Lunch' }, await accounts());
+  assert.equal((await get('bank_accounts', acct.id)).balance, 880);
+  await M.recordExpense({ amount: 7, source: src, date: T, description: 'Coffee', extra: { in_snapshot: true } }, await accounts());
+  assert.equal((await get('bank_accounts', acct.id)).balance, 880);
+  // Seen 870 without correcting: the balance stays, the 10 gap is open, the snapshot day does not move.
+  const s2 = await M.recordSnapshot({ target: src, value: 870, date: T, source: 'bank app', apply: false });
+  assert.deepEqual([s2.snapshot.status, s2.snapshot.gap], ['open', -10]);
+  assert.equal((await get('bank_accounts', acct.id)).balance, 880);
+  // The missing 10 is found and added: correcting now moves nothing more and closes the gap.
+  await M.recordExpense({ amount: 10, source: src, date: T, description: 'Parking' }, await accounts());
+  const r = await M.resolveSnapshot(s2.snapshot.id, 'correct');
+  assert.equal(r.snapshot.status, 'ok');
+  assert.equal((await get('bank_accounts', acct.id)).balance, 870);
+  // A balance from an older statement never changes today's figure.
+  const s3 = await M.recordSnapshot({ target: src, value: 1234, date: ago(40), source: 'statement' });
+  assert.equal(s3.snapshot.status, 'older');
+  assert.equal((await get('bank_accounts', acct.id)).balance, 870);
+  // Snapshots are kept by the server only.
+  const w = await db.from('snapshots').insert({ account_id: acct.id, value: 1 });
+  assert.ok(w.error);
+  // Cash works the same way.
+  const c = await M.recordSnapshot({ target: 'cash_in_hand', value: 75, date: T, source: 'counted' });
+  assert.equal(c.snapshot.status, 'corrected');
+  assert.equal(await cash(), 75);
+});
