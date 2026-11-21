@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../utils/server';
 import { recordExpense, recordIncome, recordRefund, recordTransfer, recordCardPayment, recordSnapshot, reverseTransaction } from '../utils/money';
@@ -368,14 +369,14 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         <h1 className={`text-2xl font-bold text-fg`}>Scan</h1>
         <p className={`text-sm ${muted}`}>
           Take a photo of a receipt, or choose a screenshot of your bank or card app, or a statement PDF. The app fills in everything it can: new accounts, the account for each line,
-          the kind of line and a category. Check it, change anything with Edit, then tap Confirm. Nothing is saved before that.
+          the kind of line and a category. Check it, change anything with Edit, then tap Save. Nothing is saved before that.
         </p>
       </div>
 
       <div className={`border rounded-lg p-4 space-y-3 ${card}`}>
         {!aiReady && (
           <p role="status" className="text-sm rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 px-3 py-2">
-            Reading photos needs a Gemini key. The owner of the app adds it once in Settings. Until then you can add transactions with the + button.
+            Reading photos needs a Gemini key. The owner of the app adds it once in Settings. Until then you can add transactions from Home.
           </p>
         )}
         <div className="grid grid-cols-2 gap-3">
@@ -404,10 +405,6 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                   placeholder="For example: this is my Visa ending 1234, or only the grocery lines"
                   className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2 text-fg placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none" />
               </label>
-              <button type="button" onClick={read} disabled={reading}
-                className="press px-4 py-2.5 rounded-xl bg-accent text-accent-contrast font-medium hover:opacity-90 disabled:opacity-50">
-                {reading ? 'Reading...' : image.pdf ? 'Read statement' : 'Read screenshot'}
-              </button>
             </div>
           </div>
         )}
@@ -583,13 +580,27 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               <p className={`text-xs ${muted}`}>The balance is checked after the lines are saved. Anything that still doesn't add up is shown, never hidden. Unticked, the difference stays open on Where you stand.</p>
             </section>
           )}
-          <button type="button" onClick={save} disabled={saving || !chosen || blocked > 0}
-            className="w-full px-4 py-2.5 rounded-lg bg-accent text-accent-contrast font-medium hover:bg-blue-700 disabled:opacity-50">
-            {saving ? 'Saving...' : blocked ? `Answer ${blocked} ${blocked === 1 ? 'question' : 'questions'} above first` : `Confirm and save ${chosen} ${chosen === 1 ? 'item' : 'items'}`}
-          </button>
         </div>
       )}
 
+      {image && createPortal(
+        <div className="fixed inset-x-0 z-20 border-t border-line bg-background/95 backdrop-blur-md" style={{ bottom: 'calc(58px + env(safe-area-inset-bottom))' }}>
+          <div className="max-w-3xl mx-auto px-4 py-3 flex gap-2">
+          <button type="button" onClick={read} disabled={reading || saving}
+            className={`press px-4 py-3 rounded-xl font-medium disabled:opacity-50 ${proposal ? 'border border-line bg-surface text-fg' : 'flex-1 bg-accent text-accent-contrast hover:opacity-90'}`}>
+            {reading ? 'Reading...' : proposal ? 'Read again' : image.pdf ? 'Read statement' : 'Read screenshot'}
+          </button>
+          {proposal && (
+            <button type="button" onClick={save} disabled={saving || reading || !chosen || blocked > 0}
+              className="press flex-1 px-4 py-3 rounded-xl bg-accent text-accent-contrast font-medium hover:opacity-90 disabled:opacity-50">
+              {saving ? 'Saving...' : blocked ? `Answer ${blocked} ${blocked === 1 ? 'question' : 'questions'} first` : `Save ${chosen} ${chosen === 1 ? 'item' : 'items'}`}
+            </button>
+          )}
+          </div>
+        </div>
+      , document.body)}
+
+      {image && <div className="h-20" aria-hidden="true" />}
       {done && (
         <div role="status" className={`border rounded-lg p-4 text-sm ${card}`}>
           {done.created.length > 0 && <div>Accounts added: {done.created.join(', ')}.</div>}

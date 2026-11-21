@@ -68,7 +68,7 @@ export function MainLayout() {
         </div>
       </main>
 
-      <button
+      {location.pathname !== '/screenshot' && <button
         type="button"
         onClick={openAddTransaction}
         className="press fixed right-4 w-14 h-14 bg-accent text-accent-contrast rounded-2xl shadow-md shadow-accent/20 hover:opacity-90 flex items-center justify-center z-20"
@@ -76,7 +76,7 @@ export function MainLayout() {
         aria-label="Add a transaction"
       >
         <Plus size={28} />
-      </button>
+      </button>}
 
       <BottomNavigation darkMode={darkMode} />
     </div>
