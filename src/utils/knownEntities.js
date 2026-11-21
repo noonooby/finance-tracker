@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { server } from './server';
 
 /**
  * Known Entities Utility
@@ -8,10 +8,10 @@ import { supabase } from './supabase';
 // Fetch suggestions for autocomplete
 export const fetchSuggestions = async (type, query = '', limit = 10) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return [];
 
-    let queryBuilder = supabase
+    let queryBuilder = server
       .from('known_entities')
       .select('id, name, usage_count, last_used_at')
       .eq('user_id', user.id)
@@ -44,13 +44,13 @@ export const upsertKnownEntity = async (type, name) => {
   try {
     if (!name || !name.trim()) return null;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return null;
 
     const trimmedName = name.trim();
 
     // Check if exists
-    const { data: existing } = await supabase
+    const { data: existing } = await server
       .from('known_entities')
       .select('id, usage_count')
       .eq('user_id', user.id)
@@ -60,7 +60,7 @@ export const upsertKnownEntity = async (type, name) => {
 
     if (existing) {
       // Update existing - increment usage
-      const { data, error } = await supabase
+      const { data, error } = await server
         .from('known_entities')
         .update({
           usage_count: existing.usage_count + 1,
@@ -79,7 +79,7 @@ export const upsertKnownEntity = async (type, name) => {
       return data;
     } else {
       // Insert new
-      const { data, error } = await supabase
+      const { data, error } = await server
         .from('known_entities')
         .insert({
           user_id: user.id,
@@ -109,10 +109,10 @@ export const upsertKnownEntity = async (type, name) => {
 // Delete a suggestion
 export const deleteKnownEntity = async (id) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return false;
 
-    const { error } = await supabase
+    const { error } = await server
       .from('known_entities')
       .delete()
       .eq('id', id)
@@ -133,10 +133,10 @@ export const deleteKnownEntity = async (id) => {
 // Get all suggestions for a type (for management UI)
 export const getAllSuggestions = async (type) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return [];
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('known_entities')
       .select('*')
       .eq('user_id', user.id)
@@ -158,10 +158,10 @@ export const getAllSuggestions = async (type) => {
 // Clear all suggestions for a type
 export const clearAllSuggestions = async (type) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return false;
 
-    const { error } = await supabase
+    const { error } = await server
       .from('known_entities')
       .delete()
       .eq('user_id', user.id)
@@ -182,7 +182,7 @@ export const clearAllSuggestions = async (type) => {
 // Batch upsert multiple entities (useful for seeding)
 export const batchUpsertKnownEntities = async (entities) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return false;
 
     const entitiesToInsert = entities.map(entity => ({
@@ -195,7 +195,7 @@ export const batchUpsertKnownEntities = async (entities) => {
       updated_at: new Date().toISOString()
     }));
 
-    const { error } = await supabase
+    const { error } = await server
       .from('known_entities')
       .upsert(entitiesToInsert, {
         onConflict: 'user_id,name,type'
@@ -219,10 +219,10 @@ export const batchUpsertKnownEntities = async (entities) => {
  */
 export const fetchAllKnownEntities = async () => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return {};
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('known_entities')
       .select('*')
       .eq('user_id', user.id)

@@ -9,7 +9,7 @@
 //   credit card   balance = amount owed                    (purchase: positive, payment: negative)
 //   gift card     balance = value left on the card         (purchase with it: negative)
 //   loan          balance = amount owed                    (payment: negative)
-import { moveMoney, reverseTransaction } from './supabase';
+import { moveMoney, reverseTransaction } from './server';
 
 export { reverseTransaction };
 

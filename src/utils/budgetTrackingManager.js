@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { server } from './server';
 import { localDate } from './helpers';
 
 /**
@@ -23,7 +23,7 @@ import { localDate } from './helpers';
  */
 export async function saveBudgetPeriod(budgetData) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const {
@@ -45,7 +45,7 @@ export async function saveBudgetPeriod(budgetData) {
       throw new Error('Missing required fields: period_start, period_end, budget_limit, actual_spent');
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('budget_tracking')
       .insert({
         user_id: user.id,
@@ -83,10 +83,10 @@ export async function saveBudgetPeriod(budgetData) {
  */
 export async function updateBudgetPeriod(periodId, updates) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('budget_tracking')
       .update({
         ...updates,
@@ -117,10 +117,10 @@ export async function updateBudgetPeriod(periodId, updates) {
  */
 export async function getBudgetHistory(filters = {}) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    let query = supabase
+    let query = server
       .from('budget_tracking')
       .select('*')
       .eq('user_id', user.id)
@@ -158,10 +158,10 @@ export async function getBudgetHistory(filters = {}) {
  */
 export async function getBudgetPeriod(categoryId, periodStart, periodEnd) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    let query = supabase
+    let query = server
       .from('budget_tracking')
       .select('*')
       .eq('user_id', user.id)
@@ -192,10 +192,10 @@ export async function getBudgetPeriod(categoryId, periodStart, periodEnd) {
  */
 export async function calculateActualSpending(categoryId, startDate, endDate) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    let query = supabase
+    let query = server
       .from('transactions')
       .select('amount')
       .eq('user_id', user.id)
@@ -401,10 +401,10 @@ export async function getBudgetSummary(categoryId, numberOfMonths = 6) {
  */
 export async function deleteBudgetPeriod(periodId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { error } = await supabase
+    const { error } = await server
       .from('budget_tracking')
       .delete()
       .eq('id', periodId)

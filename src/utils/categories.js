@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { server } from './server';
 import { DEFAULT_CATEGORIES } from './helpers';
 
 /**
@@ -9,13 +9,13 @@ import { DEFAULT_CATEGORIES } from './helpers';
 // Fetch all categories for user
 export const fetchCategories = async () => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) {
       console.warn('No user found, returning default categories');
       return DEFAULT_CATEGORIES;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('categories')
       .select('*')
       .or(`user_id.eq.${user.id},is_system.eq.true`)
@@ -42,12 +42,12 @@ export const fetchCategories = async () => {
 // Fetch categories by type (expense or income)
 export const fetchCategoriesByType = async (isIncome = false) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) {
       return DEFAULT_CATEGORIES.filter(cat => cat.is_income === isIncome);
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('categories')
       .select('*')
       .or(`user_id.eq.${user.id},is_system.eq.true`)
@@ -69,10 +69,10 @@ export const fetchCategoriesByType = async (isIncome = false) => {
 // Add new category
 export const addCategory = async (categoryData) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('categories')
       .insert({
         id: `cat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -103,10 +103,10 @@ export const addCategory = async (categoryData) => {
 // Update category
 export const updateCategory = async (categoryId, updates) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('categories')
       .update({
         ...updates,
@@ -132,11 +132,11 @@ export const updateCategory = async (categoryId, updates) => {
 // Delete category
 export const deleteCategory = async (categoryId) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Check if it's a system category
-    const { data: category } = await supabase
+    const { data: category } = await server
       .from('categories')
       .select('is_system')
       .eq('id', categoryId)
@@ -146,7 +146,7 @@ export const deleteCategory = async (categoryId) => {
       throw new Error('Cannot delete system categories');
     }
 
-    const { error } = await supabase
+    const { error } = await server
       .from('categories')
       .delete()
       .eq('id', categoryId)
@@ -167,11 +167,11 @@ export const deleteCategory = async (categoryId) => {
 // Seed default categories for new user
 export const seedDefaultCategories = async () => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return false;
 
     // Check if user already has categories
-    const { data: existing } = await supabase
+    const { data: existing } = await server
       .from('categories')
       .select('id')
       .eq('user_id', user.id)
@@ -194,7 +194,7 @@ export const seedDefaultCategories = async () => {
       created_at: new Date().toISOString()
     }));
 
-    const { error } = await supabase
+    const { error } = await server
       .from('categories')
       .insert(categoriesToInsert);
 
@@ -214,10 +214,10 @@ export const seedDefaultCategories = async () => {
 // Get category by ID
 export const getCategoryById = async (categoryId) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return null;
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('categories')
       .select('*')
       .eq('id', categoryId)

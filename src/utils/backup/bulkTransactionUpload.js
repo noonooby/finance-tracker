@@ -4,7 +4,7 @@
  */
 
 import * as XLSX from 'xlsx';
-import { supabase } from '../supabase';
+import { server } from '../server';
 import { format } from 'date-fns';
 import { fetchCategories } from '../categories';
 import { getAllSettings } from '../settingsManager';
@@ -182,7 +182,7 @@ async function matchCategory(description, type, categories) {
  * Parse and validate transaction rows from Excel
  */
 async function parseTransactionRows(data) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user } } = await server.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
   // Load categories and settings for smart matching
@@ -327,7 +327,7 @@ export async function importNewTransactions(file, options = {}) {
   const { dryRun = false } = options;
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Read Excel file
@@ -387,7 +387,7 @@ export async function importNewTransactions(file, options = {}) {
       const batch = validTransactions.slice(i, i + batchSize);
       const transactionsToInsert = batch.map(t => t.transaction);
 
-      const { error: batchError } = await supabase
+      const { error: batchError } = await server
         .from('transactions')
         .insert(transactionsToInsert);
 

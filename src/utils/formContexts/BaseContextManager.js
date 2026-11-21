@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { server } from '../server';
 
 export class BaseContextManager {
   constructor(tableName, triggerColumn) {
@@ -11,11 +11,11 @@ export class BaseContextManager {
 
   async getContext(triggerValue) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await server.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       if (!triggerValue) return null;
 
-      const { data, error } = await supabase
+      const { data, error } = await server
         .from(this.tableName)
         .select('*')
         .eq('user_id', user.id)
@@ -32,7 +32,7 @@ export class BaseContextManager {
 
   async saveContext(triggerValue, contextData) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await server.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       if (!triggerValue) throw new Error('Trigger value is required');
 
@@ -40,7 +40,7 @@ export class BaseContextManager {
       const timestamp = new Date().toISOString();
 
       if (existing) {
-        const { data, error } = await supabase
+        const { data, error } = await server
           .from(this.tableName)
           .update({
             ...contextData,
@@ -56,7 +56,7 @@ export class BaseContextManager {
         if (error) throw error;
         return data;
       } else {
-        const { data, error } = await supabase
+        const { data, error } = await server
           .from(this.tableName)
           .insert({
             user_id: user.id,
@@ -81,10 +81,10 @@ export class BaseContextManager {
 
   async getRecentTriggers(limit = 5) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await server.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
+      const { data, error } = await server
         .from(this.tableName)
         .select('*')
         .eq('user_id', user.id)
@@ -111,10 +111,10 @@ export class BaseContextManager {
 
   async deleteContext(triggerValue) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await server.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { error } = await supabase
+      const { error } = await server
         .from(this.tableName)
         .delete()
         .eq('user_id', user.id)
@@ -129,10 +129,10 @@ export class BaseContextManager {
 
   async getAllContexts() {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await server.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
+      const { data, error } = await server
         .from(this.tableName)
         .select('*')
         .eq('user_id', user.id)

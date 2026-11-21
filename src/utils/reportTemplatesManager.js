@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { server } from './server';
 
 /**
  * Report Templates Manager
@@ -10,10 +10,10 @@ import { supabase } from './supabase';
  */
 export async function getAllReportTemplates() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('report_templates')
       .select('*')
       .eq('user_id', user.id)
@@ -32,10 +32,10 @@ export async function getAllReportTemplates() {
  */
 export async function getReportTemplate(templateId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('report_templates')
       .select('*')
       .eq('id', templateId)
@@ -55,10 +55,10 @@ export async function getReportTemplate(templateId) {
  */
 export async function getReportTemplatesByType(templateType) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('report_templates')
       .select('*')
       .eq('user_id', user.id)
@@ -78,10 +78,10 @@ export async function getReportTemplatesByType(templateType) {
  */
 export async function getFavoriteReportTemplates() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('report_templates')
       .select('*')
       .eq('user_id', user.id)
@@ -101,7 +101,7 @@ export async function getFavoriteReportTemplates() {
  */
 export async function saveReportTemplate(templateData) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Validate required fields
@@ -110,7 +110,7 @@ export async function saveReportTemplate(templateData) {
     }
 
     // Check if template with same name exists
-    const { data: existing } = await supabase
+    const { data: existing } = await server
       .from('report_templates')
       .select('id')
       .eq('user_id', user.id)
@@ -135,7 +135,7 @@ export async function saveReportTemplate(templateData) {
       updated_at: new Date().toISOString()
     };
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('report_templates')
       .insert(insertData)
       .select()
@@ -156,7 +156,7 @@ export async function saveReportTemplate(templateData) {
  */
 export async function updateReportTemplate(templateId, updates) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const updateData = {
@@ -170,7 +170,7 @@ export async function updateReportTemplate(templateId, updates) {
     delete updateData.created_at;
     delete updateData.use_count;
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('report_templates')
       .update(updateData)
       .eq('id', templateId)
@@ -193,10 +193,10 @@ export async function updateReportTemplate(templateId, updates) {
  */
 export async function deleteReportTemplate(templateId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { error } = await supabase
+    const { error } = await server
       .from('report_templates')
       .delete()
       .eq('id', templateId)
@@ -217,10 +217,10 @@ export async function deleteReportTemplate(templateId) {
  */
 export async function toggleReportTemplateFavorite(templateId, isFavorite) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('report_templates')
       .update({ 
         is_favorite: isFavorite,
@@ -246,11 +246,11 @@ export async function toggleReportTemplateFavorite(templateId, isFavorite) {
  */
 export async function trackReportTemplateUsage(templateId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Get current use_count
-    const { data: current } = await supabase
+    const { data: current } = await server
       .from('report_templates')
       .select('use_count')
       .eq('id', templateId)
@@ -259,7 +259,7 @@ export async function trackReportTemplateUsage(templateId) {
 
     const newCount = (current?.use_count || 0) + 1;
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('report_templates')
       .update({ 
         use_count: newCount,
@@ -287,7 +287,7 @@ export async function trackReportTemplateUsage(templateId) {
  */
 export async function duplicateReportTemplate(templateId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Get the original template
@@ -300,7 +300,7 @@ export async function duplicateReportTemplate(templateId) {
 
     // Check if copy name exists, increment counter if needed
     while (true) {
-      const { data: existing } = await supabase
+      const { data: existing } = await server
         .from('report_templates')
         .select('id')
         .eq('user_id', user.id)
@@ -333,10 +333,10 @@ export async function duplicateReportTemplate(templateId) {
  */
 export async function getReportTemplateStats() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('report_templates')
       .select('template_type, is_favorite, use_count')
       .eq('user_id', user.id);

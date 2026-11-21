@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { supabase } from '../utils/supabase';
+import { server } from '../utils/server';
 
 export const AuthContext = createContext(null);
 
@@ -9,14 +9,14 @@ export function AuthProvider({ children }) {
 
   // Session check on mount
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    server.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setInitializing(false);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = server.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 
@@ -24,7 +24,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    await server.auth.signOut();
     setSession(null);
   }, []);
 

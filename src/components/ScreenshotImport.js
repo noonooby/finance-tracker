@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api } from '../utils/supabase';
+import { api } from '../utils/server';
 import { recordExpense, recordIncome, recordRefund, recordAdjustment } from '../utils/money';
-import { supabase } from '../utils/supabase';
+import { server } from '../utils/server';
 import { formatCurrency } from '../utils/helpers';
 import { Camera, Image as ImageIcon } from 'lucide-react';
 
@@ -47,7 +47,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const [fixes, setFixes] = useState([]);
   const [done, setDone] = useState(null);
   const [aiReady, setAiReady] = useState(true);
-  useEffect(() => { supabase.auth.config().then((c) => setAiReady(c.ai !== false)); }, []);
+  useEffect(() => { server.auth.config().then((c) => setAiReady(c.ai !== false)); }, []);
 
   const accountOptions = useMemo(() => [
     ...bankAccounts.map((a) => ({ value: `bank_account:${a.id}`, label: a.name })),
@@ -96,7 +96,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     for (const r of rows.filter((x) => x.on)) {
       try {
         if (r.action === 'mark_posted') {
-          const { error: e } = await supabase.from('transactions').update({ pending: false, date: r.date }).eq('id', r.existing_id);
+          const { error: e } = await server.from('transactions').update({ pending: false, date: r.date }).eq('id', r.existing_id);
           if (e) throw new Error(e.message);
           result.posted += 1;
           continue;

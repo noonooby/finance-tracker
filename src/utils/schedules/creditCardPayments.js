@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { server } from '../server';
 import { formatCurrency, localDate, addMonths, generateId } from '../helpers';
 import { recordCardPayment, reverseTransaction } from '../money';
 import { logActivity } from '../activityLogger';
@@ -29,8 +29,8 @@ const configuredAmount = (card) => {
 
 async function freshAccounts() {
   const [b, c] = await Promise.all([
-    supabase.from('bank_accounts').select('*'),
-    supabase.from('credit_cards').select('*'),
+    server.from('bank_accounts').select('*'),
+    server.from('credit_cards').select('*'),
   ]);
   return { bankAccounts: b.data || [], creditCards: c.data || [] };
 }
@@ -66,7 +66,7 @@ export async function processOverdueCreditCardPayments(creditCards, bankAccounts
       const nextDate = nextDue(dueDate, anchorDay);
       if (owed <= 0) {
         // Nothing owed for this period: just move to the next due date.
-        await supabase.from('credit_cards').update({ due_date: nextDate }).eq('id', card.id).eq('due_date', dueDate);
+        await server.from('credit_cards').update({ due_date: nextDate }).eq('id', card.id).eq('due_date', dueDate);
         dueDate = nextDate;
         continue;
       }
@@ -87,7 +87,7 @@ export async function processOverdueCreditCardPayments(creditCards, bankAccounts
         break;
       }
       if (result.repeated) {
-        await supabase.from('credit_cards').update({ due_date: nextDate }).eq('id', card.id).eq('due_date', dueDate);
+        await server.from('credit_cards').update({ due_date: nextDate }).eq('id', card.id).eq('due_date', dueDate);
       } else {
         results.processed.push({ card: card.name, amount, dueDate, source: result.sourceName, sourceType });
         card = { ...card, balance: round2(owed - amount) };
@@ -165,7 +165,7 @@ export async function createCreditCardPayment(paymentData, card, paymentSource, 
  */
 export async function getCreditCardPaymentHistory(cardId) {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('credit_card_payments')
       .select('*')
       .eq('card_id', cardId)
@@ -182,7 +182,7 @@ export async function getCreditCardPaymentHistory(cardId) {
  * Undo a credit card payment: reverses its transaction exactly, then puts the card's due date back.
  */
 export async function undoCreditCardPayment(paymentId) {
-  const { data: payment, error: fetchError } = await supabase.from('credit_card_payments').select('*').eq('id', paymentId).single();
+  const { data: payment, error: fetchError } = await server.from('credit_card_payments').select('*').eq('id', paymentId).single();
   if (fetchError) throw fetchError;
   if (!payment) throw new Error('Payment not found');
   if (payment.status === 'undone') return true;
@@ -191,8 +191,8 @@ export async function undoCreditCardPayment(paymentId) {
   await reverseTransaction(payment.transaction_id);
 
   if (payment.due_date) {
-    await supabase.from('credit_cards').update({ due_date: String(payment.due_date).split('T')[0] }).eq('id', payment.card_id);
+    await server.from('credit_cards').update({ due_date: String(payment.due_date).split('T')[0] }).eq('id', payment.card_id);
   }
-  await supabase.from('credit_card_payments').update({ status: 'undone', undone_at: new Date().toISOString() }).eq('id', paymentId);
+  await server.from('credit_card_payments').update({ status: 'undone', undone_at: new Date().toISOString() }).eq('id', paymentId);
   return true;
 }

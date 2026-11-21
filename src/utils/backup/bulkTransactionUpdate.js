@@ -4,7 +4,7 @@
  */
 
 import * as XLSX from 'xlsx';
-import { supabase } from '../supabase';
+import { server } from '../server';
 import { format } from 'date-fns';
 
 /**
@@ -12,11 +12,11 @@ import { format } from 'date-fns';
  */
 export async function exportTransactionsForEdit(filters = {}) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Build query
-    let query = supabase
+    let query = server
       .from('transactions')
       .select('*')
       .eq('user_id', user.id)
@@ -124,7 +124,7 @@ export async function importEditedTransactions(file, options = {}) {
   const { dryRun = false } = options;
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Read Excel file
@@ -137,7 +137,7 @@ export async function importEditedTransactions(file, options = {}) {
 
     // Fetch existing transactions for comparison
     const ids = data.map(row => row.ID).filter(Boolean);
-    const { data: existing, error: fetchError } = await supabase
+    const { data: existing, error: fetchError } = await server
       .from('transactions')
       .select('*')
       .eq('user_id', user.id)
@@ -294,7 +294,7 @@ export async function importEditedTransactions(file, options = {}) {
     for (let i = 0; i < updates.length; i += batchSize) {
       const batch = updates.slice(i, i + batchSize);
       
-      const { error: batchError } = await supabase
+      const { error: batchError } = await server
         .from('transactions')
         .upsert(
           batch.map(u => ({ ...u, user_id: user.id, updated_at: new Date().toISOString() })),
@@ -328,7 +328,7 @@ export async function importEditedTransactions(file, options = {}) {
  */
 export async function bulkUpdateTransactions(transactionIds, updates) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     if (!transactionIds || transactionIds.length === 0) {
@@ -353,7 +353,7 @@ export async function bulkUpdateTransactions(transactionIds, updates) {
     });
 
     // Update transactions
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('transactions')
       .update(updateData)
       .eq('user_id', user.id)

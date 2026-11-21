@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { server } from './server';
 
 // Default settings structure
 export const DEFAULT_SETTINGS = {
@@ -95,10 +95,10 @@ const SETTINGS_COLUMN_MAP = {
 
 export async function getAllSettings() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('settings')
       .select('*')
       .eq('user_id', user.id)
@@ -136,7 +136,7 @@ export async function getSetting(key, defaultValue = null) {
 
 export async function setSetting(key, value) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const dbColumn = SETTINGS_COLUMN_MAP[key];
@@ -144,7 +144,7 @@ export async function setSetting(key, value) {
       throw new Error(`Unknown setting key: ${key}`);
     }
 
-    const { data: existing } = await supabase
+    const { data: existing } = await server
       .from('settings')
       .select('user_id')
       .eq('user_id', user.id)
@@ -156,7 +156,7 @@ export async function setSetting(key, value) {
     };
 
     if (existing) {
-      const { error } = await supabase
+      const { error } = await server
         .from('settings')
         .update(updateData)
         .eq('user_id', user.id);
@@ -168,7 +168,7 @@ export async function setSetting(key, value) {
         ...updateData
       };
       
-      const { error } = await supabase
+      const { error } = await server
         .from('settings')
         .insert(insertData);
       
@@ -182,10 +182,10 @@ export async function setSetting(key, value) {
 
 export async function setMultipleSettings(settings) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data: existing } = await supabase
+    const { data: existing } = await server
       .from('settings')
       .select('user_id')
       .eq('user_id', user.id)
@@ -201,7 +201,7 @@ export async function setMultipleSettings(settings) {
     updateData.updated_at = new Date().toISOString();
 
     if (existing) {
-      const { error } = await supabase
+      const { error } = await server
         .from('settings')
         .update(updateData)
         .eq('user_id', user.id);
@@ -213,7 +213,7 @@ export async function setMultipleSettings(settings) {
         ...updateData
       };
       
-      const { error } = await supabase
+      const { error } = await server
         .from('settings')
         .insert(insertData);
       

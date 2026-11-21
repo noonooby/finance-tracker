@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { server } from '../server';
 import { predictNextDate, formatCurrency, localDate, generateId } from '../helpers';
 import { recordIncome, reverseTransaction } from '../money';
 import { logActivity } from '../activityLogger';
@@ -13,7 +13,7 @@ import { logActivity } from '../activityLogger';
  */
 export async function createIncomeSchedule(scheduleData) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const schedule = {
@@ -36,7 +36,7 @@ export async function createIncomeSchedule(scheduleData) {
       updated_at: new Date().toISOString()
     };
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('income_schedules')
       .insert(schedule)
       .select()
@@ -67,10 +67,10 @@ export async function createIncomeSchedule(scheduleData) {
  */
 export async function getIncomeSchedules() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('income_schedules')
       .select('*')
       .eq('user_id', user.id)
@@ -90,11 +90,11 @@ export async function getIncomeSchedules() {
  */
 export async function getIncomeScheduleWithHistory(scheduleId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Get schedule
-    const { data: schedule, error: scheduleError } = await supabase
+    const { data: schedule, error: scheduleError } = await server
       .from('income_schedules')
       .select('*')
       .eq('id', scheduleId)
@@ -104,7 +104,7 @@ export async function getIncomeScheduleWithHistory(scheduleId) {
     if (scheduleError) throw scheduleError;
 
     // Get all occurrences
-    const { data: occurrences, error: occurrencesError } = await supabase
+    const { data: occurrences, error: occurrencesError } = await server
       .from('income')
       .select('*')
       .eq('schedule_id', scheduleId)
@@ -129,18 +129,18 @@ export async function getIncomeScheduleWithHistory(scheduleId) {
  */
 export async function updateIncomeSchedule(scheduleId, updates) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Get previous state
-    const { data: previous } = await supabase
+    const { data: previous } = await server
       .from('income_schedules')
       .select('*')
       .eq('id', scheduleId)
       .eq('user_id', user.id)
       .single();
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('income_schedules')
       .update({
         ...updates,
@@ -175,11 +175,11 @@ export async function updateIncomeSchedule(scheduleId, updates) {
  */
 export async function deleteIncomeSchedule(scheduleId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Get schedule for logging
-    const { data: schedule } = await supabase
+    const { data: schedule } = await server
       .from('income_schedules')
       .select('*')
       .eq('id', scheduleId)
@@ -189,14 +189,14 @@ export async function deleteIncomeSchedule(scheduleId) {
     if (!schedule) throw new Error('Schedule not found');
 
     // Get all occurrences
-    const { data: occurrences } = await supabase
+    const { data: occurrences } = await server
       .from('income')
       .select('*')
       .eq('schedule_id', scheduleId)
       .eq('user_id', user.id);
 
     // Delete schedule (cascades to income via foreign key)
-    const { error } = await supabase
+    const { error } = await server
       .from('income_schedules')
       .delete()
       .eq('id', scheduleId)
@@ -226,14 +226,14 @@ export async function deleteIncomeSchedule(scheduleId) {
  */
 export async function toggleIncomeSchedule(scheduleId, pause = true) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const updates = pause
       ? { is_active: false, paused_at: new Date().toISOString() }
       : { is_active: true, paused_at: null };
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('income_schedules')
       .update(updates)
       .eq('id', scheduleId)
@@ -274,7 +274,7 @@ export async function processDueIncomeSchedules() {
   const todayString = localDate();
   const results = { deposited: [], skipped: [] };
 
-  const { data: dueSchedules, error: fetchError } = await supabase
+  const { data: dueSchedules, error: fetchError } = await server
     .from('income_schedules')
     .select('*')
     .eq('is_active', true)
@@ -282,7 +282,7 @@ export async function processDueIncomeSchedules() {
   if (fetchError) throw fetchError;
   if (!dueSchedules || dueSchedules.length === 0) return results;
 
-  const { data: bankAccounts } = await supabase.from('bank_accounts').select('*');
+  const { data: bankAccounts } = await server.from('bank_accounts').select('*');
   const accounts = { bankAccounts: bankAccounts || [], creditCards: [] };
 
   for (const schedule of dueSchedules) {
@@ -299,7 +299,7 @@ export async function processDueIncomeSchedules() {
         (schedule.recurring_duration_type === 'until_date' && schedule.recurring_until_date && date > String(schedule.recurring_until_date).split('T')[0]) ||
         (schedule.recurring_duration_type === 'occurrences' && schedule.recurring_occurrences_total && completed >= schedule.recurring_occurrences_total);
       if (ended) {
-        await supabase.from('income_schedules').update({ is_active: false, completed_at: new Date().toISOString() }).eq('id', schedule.id);
+        await server.from('income_schedules').update({ is_active: false, completed_at: new Date().toISOString() }).eq('id', schedule.id);
         results.skipped.push({ source: schedule.source, reason: 'Schedule ended' });
         break;
       }
@@ -310,7 +310,7 @@ export async function processDueIncomeSchedules() {
         const r = await processIncomeOccurrence(schedule, date, schedUpdate, accounts);
         if (r.repeated) {
           // Already deposited (another run, or undone since). Only make sure the schedule has moved past it.
-          await supabase.from('income_schedules').update({ next_date: nextDate }).eq('id', schedule.id).eq('next_date', date);
+          await server.from('income_schedules').update({ next_date: nextDate }).eq('id', schedule.id).eq('next_date', date);
         } else {
           completed += 1;
           results.deposited.push({ source: schedule.source, amount: schedule.amount, date, depositTarget: r.depositTarget, depositAccountName: r.depositAccountName });
@@ -375,7 +375,7 @@ async function processIncomeOccurrence(schedule, date, schedUpdate, accounts) {
  * Undo an income occurrence: reverses its transaction (exact amounts, same account), then rolls the schedule back.
  */
 export async function undoIncomeOccurrence(incomeId) {
-  const { data: income, error: fetchError } = await supabase.from('income').select('*').eq('id', incomeId).single();
+  const { data: income, error: fetchError } = await server.from('income').select('*').eq('id', incomeId).single();
   if (fetchError) throw fetchError;
   if (!income) throw new Error('Income not found');
   if (!income.schedule_id) throw new Error('This is manual income, not from a schedule');
@@ -383,22 +383,22 @@ export async function undoIncomeOccurrence(incomeId) {
   let txId = income.transaction_id;
   if (!txId) {
     // Older rows: find the matching active transaction.
-    const { data: txs } = await supabase.from('transactions').select('*')
+    const { data: txs } = await server.from('transactions').select('*')
       .eq('type', 'income').eq('income_source', income.source).eq('date', income.date).eq('status', 'active');
     txId = txs && txs[0] ? txs[0].id : null;
   }
   if (!txId) throw new Error('The transaction for this income was not found.');
   await reverseTransaction(txId);
 
-  const { data: schedule } = await supabase.from('income_schedules').select('*').eq('id', income.schedule_id).single();
+  const { data: schedule } = await server.from('income_schedules').select('*').eq('id', income.schedule_id).single();
   if (schedule) {
-    await supabase.from('income_schedules').update({
+    await server.from('income_schedules').update({
       next_date: income.date,
       recurring_occurrences_completed: Math.max(0, (schedule.recurring_occurrences_completed || 0) - 1),
     }).eq('id', schedule.id);
   }
 
-  const { error: deleteError } = await supabase.from('income').delete().eq('id', incomeId);
+  const { error: deleteError } = await server.from('income').delete().eq('id', incomeId);
   if (deleteError) throw deleteError;
   return true;
 }

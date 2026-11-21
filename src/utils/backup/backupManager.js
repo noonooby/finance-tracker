@@ -3,7 +3,7 @@
  * Exports/imports all user data in a single JSON file
  */
 
-import { supabase } from '../supabase';
+import { server } from '../server';
 import { format } from 'date-fns';
 
 const BACKUP_VERSION = '1.0.0';
@@ -41,7 +41,7 @@ const TABLES_TO_BACKUP = [
  */
 export async function exportFullBackup() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const backup = {
@@ -55,7 +55,7 @@ export async function exportFullBackup() {
     // Export each table
     for (const table of TABLES_TO_BACKUP) {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await server
           .from(table)
           .select('*')
           .eq('user_id', user.id);
@@ -146,7 +146,7 @@ export async function importFullBackup(backupFile, options = {}) {
   const { clearExisting = true, skipTables = [] } = options;
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Read and parse backup file
@@ -193,7 +193,7 @@ export async function importFullBackup(backupFile, options = {}) {
 
         for (let i = 0; i < recordsToImport.length; i += batchSize) {
           const batch = recordsToImport.slice(i, i + batchSize);
-          const { error } = await supabase
+          const { error } = await server
             .from(table)
             .upsert(batch, { onConflict: 'id' });
 
@@ -237,7 +237,7 @@ async function clearAllUserData(userId) {
 
   for (const table of tablesToClear) {
     try {
-      const { error } = await supabase
+      const { error } = await server
         .from(table)
         .delete()
         .eq('user_id', userId);
@@ -256,13 +256,13 @@ async function clearAllUserData(userId) {
  */
 export async function getBackupStats() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const stats = {};
     
     for (const table of TABLES_TO_BACKUP) {
-      const { count, error } = await supabase
+      const { count, error } = await server
         .from(table)
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id);

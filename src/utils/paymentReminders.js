@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { server } from './server';
 import { getDaysUntil, formatCurrency } from './helpers';
 
 /**
@@ -140,7 +140,7 @@ export const getAllPaymentReminders = async (
  */
 export const createReminderNotification = async (reminder) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const alertTypeMap = {
@@ -163,7 +163,7 @@ export const createReminderNotification = async (reminder) => {
     };
 
     // Check if notification already exists
-    const { data: existing } = await supabase
+    const { data: existing } = await server
       .from('alert_history')
       .select('id')
       .eq('alert_key', notification.alert_key)
@@ -175,7 +175,7 @@ export const createReminderNotification = async (reminder) => {
       return null;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('alert_history')
       .insert([notification])
       .select()
@@ -218,10 +218,10 @@ export const generateAllReminders = async (loans, creditCards, reservedFunds, al
  */
 export const getActiveReminders = async () => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return [];
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('alert_history')
       .select('*')
       .eq('user_id', user.id)
@@ -244,10 +244,10 @@ export const getActiveReminders = async () => {
  */
 export const markReminderRead = async (reminderId) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return false;
 
-    const { error } = await supabase
+    const { error } = await server
       .from('alert_history')
       .update({ 
         read: true,
@@ -269,10 +269,10 @@ export const markReminderRead = async (reminderId) => {
  */
 export const dismissReminder = async (reminderId) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return false;
 
-    const { error } = await supabase
+    const { error } = await server
       .from('alert_history')
       .update({ 
         dismissed: true,

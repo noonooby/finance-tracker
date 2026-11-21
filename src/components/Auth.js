@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../utils/supabase';
+import { server } from '../utils/server';
 
 export default function Auth({ darkMode }) {
   const [config, setConfig] = useState(null);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    supabase.auth.config().then(setConfig);
+    server.auth.config().then(setConfig);
     try {
       const err = sessionStorage.getItem('finance_err');
       if (err) { setMessage(err); sessionStorage.removeItem('finance_err'); }
@@ -14,7 +14,7 @@ export default function Auth({ darkMode }) {
   }, []);
 
   const devSignIn = async () => {
-    try { await supabase.auth.devSignIn(); } catch (e) { setMessage(e.message); }
+    try { await server.auth.devSignIn(); } catch (e) { setMessage(e.message); }
   };
 
   const muted = darkMode ? 'text-gray-400' : 'text-gray-600';
@@ -33,7 +33,7 @@ export default function Auth({ darkMode }) {
         ) : config.google ? (
           <button
             type="button"
-            onClick={() => supabase.auth.signInWithGoogle()}
+            onClick={() => server.auth.signInWithGoogle()}
             className="w-full flex items-center justify-center gap-3 border border-gray-300 bg-white text-gray-800 py-2.5 px-4 rounded-lg hover:bg-gray-50 font-medium"
           >
             <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">

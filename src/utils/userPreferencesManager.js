@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { server } from './server';
 
 /**
  * User Preferences Manager
@@ -10,10 +10,10 @@ import { supabase } from './supabase';
  */
 export async function getUserPreferences() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('user_preferences')
       .select('*')
       .eq('user_id', user.id)
@@ -87,12 +87,12 @@ function getDefaultPreferences() {
  */
 async function createDefaultPreferences() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const defaults = getDefaultPreferences();
     
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('user_preferences')
       .insert({
         user_id: user.id,
@@ -116,11 +116,11 @@ async function createDefaultPreferences() {
  */
 export async function updateUserPreferences(updates) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Check if preferences exist
-    const { data: existing } = await supabase
+    const { data: existing } = await server
       .from('user_preferences')
       .select('user_id')
       .eq('user_id', user.id)
@@ -137,7 +137,7 @@ export async function updateUserPreferences(updates) {
 
     if (existing) {
       // Update existing preferences
-      const { data, error } = await supabase
+      const { data, error } = await server
         .from('user_preferences')
         .update(updateData)
         .eq('user_id', user.id)
@@ -148,7 +148,7 @@ export async function updateUserPreferences(updates) {
       return data;
     } else {
       // Insert new preferences
-      const { data, error } = await supabase
+      const { data, error } = await server
         .from('user_preferences')
         .insert({
           user_id: user.id,

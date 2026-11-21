@@ -1,5 +1,5 @@
 // Data client for the app's own server (Supabase is no longer used).
-// It keeps the small part of the Supabase query style the screens use: supabase.from('table').select().eq(...).order(...)
+// It keeps the small part of the Supabase query style the screens use: server.from('table').select().eq(...).order(...)
 // so the screens did not need rewriting. The server limits every query to the signed-in user.
 // Money changes do not go through this: they use moveMoney / reverseTransaction below, which the server applies all at once.
 
@@ -98,7 +98,7 @@ export const auth = {
   async config() { try { return await api('/api/config', null, 'GET'); } catch { return {}; } },
 };
 
-export const supabase = { from: (table) => new Query(table), auth };
+export const server = { from: (table) => new Query(table), auth };
 
 // ---------- money ----------
 // moveMoney({ key, legs: [{ table, id, delta, floor }], rows: [{ table, values }] })

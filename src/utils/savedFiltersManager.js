@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { server } from './server';
 
 /**
  * Saved Filters Manager
@@ -10,10 +10,10 @@ import { supabase } from './supabase';
  */
 export async function getAllSavedFilters(filterType = 'transaction') {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('saved_filters')
       .select('*')
       .eq('user_id', user.id)
@@ -33,10 +33,10 @@ export async function getAllSavedFilters(filterType = 'transaction') {
  */
 export async function getSavedFilter(filterId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('saved_filters')
       .select('*')
       .eq('id', filterId)
@@ -56,10 +56,10 @@ export async function getSavedFilter(filterId) {
  */
 export async function getPinnedFilters(filterType = 'transaction') {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('saved_filters')
       .select('*')
       .eq('user_id', user.id)
@@ -80,7 +80,7 @@ export async function getPinnedFilters(filterType = 'transaction') {
  */
 export async function saveFilter(filterData) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Validate required fields
@@ -89,7 +89,7 @@ export async function saveFilter(filterData) {
     }
 
     // Check if filter with same name exists
-    const { data: existing } = await supabase
+    const { data: existing } = await server
       .from('saved_filters')
       .select('id')
       .eq('user_id', user.id)
@@ -113,7 +113,7 @@ export async function saveFilter(filterData) {
       updated_at: new Date().toISOString()
     };
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('saved_filters')
       .insert(insertData)
       .select()
@@ -134,7 +134,7 @@ export async function saveFilter(filterData) {
  */
 export async function updateSavedFilter(filterId, updates) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const updateData = {
@@ -149,7 +149,7 @@ export async function updateSavedFilter(filterId, updates) {
     delete updateData.use_count;
     delete updateData.last_used;
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('saved_filters')
       .update(updateData)
       .eq('id', filterId)
@@ -172,10 +172,10 @@ export async function updateSavedFilter(filterId, updates) {
  */
 export async function deleteSavedFilter(filterId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { error } = await supabase
+    const { error } = await server
       .from('saved_filters')
       .delete()
       .eq('id', filterId)
@@ -196,10 +196,10 @@ export async function deleteSavedFilter(filterId) {
  */
 export async function toggleFilterPin(filterId, isPinned) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('saved_filters')
       .update({ 
         is_pinned: isPinned,
@@ -225,11 +225,11 @@ export async function toggleFilterPin(filterId, isPinned) {
  */
 export async function trackFilterUsage(filterId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Get current use_count
-    const { data: current } = await supabase
+    const { data: current } = await server
       .from('saved_filters')
       .select('use_count')
       .eq('id', filterId)
@@ -238,7 +238,7 @@ export async function trackFilterUsage(filterId) {
 
     const newCount = (current?.use_count || 0) + 1;
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('saved_filters')
       .update({ 
         use_count: newCount,
@@ -266,7 +266,7 @@ export async function trackFilterUsage(filterId) {
  */
 export async function duplicateFilter(filterId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Get the original filter
@@ -279,7 +279,7 @@ export async function duplicateFilter(filterId) {
 
     // Check if copy name exists, increment counter if needed
     while (true) {
-      const { data: existing } = await supabase
+      const { data: existing } = await server
         .from('saved_filters')
         .select('id')
         .eq('user_id', user.id)
@@ -311,10 +311,10 @@ export async function duplicateFilter(filterId) {
  */
 export async function getFilterStats(filterType = 'transaction') {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('saved_filters')
       .select('is_pinned, use_count, name')
       .eq('user_id', user.id)
@@ -373,11 +373,11 @@ export function findMatchingFilter(currentFilters, savedFilters) {
  */
 export async function getQuickFilterSuggestions(filterType = 'transaction', limit = 5) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Get most used filters (pinned first, then by use count)
-    const { data: pinned, error: pinnedError } = await supabase
+    const { data: pinned, error: pinnedError } = await server
       .from('saved_filters')
       .select('*')
       .eq('user_id', user.id)
@@ -387,7 +387,7 @@ export async function getQuickFilterSuggestions(filterType = 'transaction', limi
 
     if (pinnedError) throw pinnedError;
 
-    const { data: frequent, error: frequentError } = await supabase
+    const { data: frequent, error: frequentError } = await server
       .from('saved_filters')
       .select('*')
       .eq('user_id', user.id)

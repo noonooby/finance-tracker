@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { server } from '../server';
 import { predictNextDate, formatCurrency, localDate, generateId } from '../helpers';
 import { recordLoanPayment, reverseTransaction } from '../money';
 import { logActivity } from '../activityLogger';
@@ -15,9 +15,9 @@ const dayOf = (iso) => (iso ? Number(String(iso).split('T')[0].split('-')[2]) ||
 
 async function freshAccounts() {
   const [b, c, l] = await Promise.all([
-    supabase.from('bank_accounts').select('*'),
-    supabase.from('credit_cards').select('*'),
-    supabase.from('loans').select('*'),
+    server.from('bank_accounts').select('*'),
+    server.from('credit_cards').select('*'),
+    server.from('loans').select('*'),
   ]);
   return { bankAccounts: b.data || [], creditCards: c.data || [], loans: l.data || [] };
 }
@@ -75,7 +75,7 @@ export async function processOverdueLoanPayments(loans, creditCards = [], bankAc
         break;
       }
       if (result.repeated) {
-        await supabase.from('loans').update({ next_payment_date: nextDate }).eq('id', loan.id).eq('next_payment_date', dueDate);
+        await server.from('loans').update({ next_payment_date: nextDate }).eq('id', loan.id).eq('next_payment_date', dueDate);
       } else {
         results.processed.push({ loan: loan.name, amount, dueDate, source: result.sourceName, sourceType });
         loan = { ...loan, balance: round2(owed - amount), recurring_occurrences_completed: (loan.recurring_occurrences_completed || 0) + 1 };
@@ -154,7 +154,7 @@ export async function createLoanPayment(paymentData, loan, paymentSource, accoun
  */
 export async function getLoanPaymentHistory(loanId) {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('loan_payments')
       .select('*')
       .eq('loan_id', loanId)
@@ -171,7 +171,7 @@ export async function getLoanPaymentHistory(loanId) {
  * Undo a loan payment: reverses its transaction exactly, then rolls the loan's next date back.
  */
 export async function undoLoanPayment(paymentId) {
-  const { data: payment, error: fetchError } = await supabase.from('loan_payments').select('*').eq('id', paymentId).single();
+  const { data: payment, error: fetchError } = await server.from('loan_payments').select('*').eq('id', paymentId).single();
   if (fetchError) throw fetchError;
   if (!payment) throw new Error('Payment not found');
   if (payment.status === 'undone') return true;
@@ -179,13 +179,13 @@ export async function undoLoanPayment(paymentId) {
 
   await reverseTransaction(payment.transaction_id);
 
-  const { data: loan } = await supabase.from('loans').select('*').eq('id', payment.loan_id).single();
+  const { data: loan } = await server.from('loans').select('*').eq('id', payment.loan_id).single();
   if (loan) {
-    await supabase.from('loans').update({
+    await server.from('loans').update({
       next_payment_date: payment.due_date,
       recurring_occurrences_completed: Math.max(0, (loan.recurring_occurrences_completed || 0) - 1),
     }).eq('id', loan.id);
   }
-  await supabase.from('loan_payments').update({ status: 'undone', undone_at: new Date().toISOString() }).eq('id', paymentId);
+  await server.from('loan_payments').update({ status: 'undone', undone_at: new Date().toISOString() }).eq('id', paymentId);
   return true;
 }

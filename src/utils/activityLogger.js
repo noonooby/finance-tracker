@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { server } from './server';
 import { dbOperation } from './db';
 import { reverseTransaction } from './money';
 
@@ -20,7 +20,7 @@ export const logActivity = async (
   snapshot = null
 ) => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) return;
 
     const activity = {
@@ -35,7 +35,7 @@ export const logActivity = async (
       created_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from('activities').insert(activity);
+    const { error } = await server.from('activities').insert(activity);
     if (error) throw error;
 
   } catch (error) {
@@ -213,7 +213,7 @@ export const undoActivity = async (activity, onUpdate) => {
     }
 
     // Remove the activity entry after undo
-    await supabase.from('activities').delete().eq('id', activity.id);
+    await server.from('activities').delete().eq('id', activity.id);
 
     if (onUpdate) await onUpdate();
     return true;

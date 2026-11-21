@@ -13,7 +13,7 @@ import {
   EyeOff, 
   SlidersHorizontal 
 } from 'lucide-react';
-import { supabase } from '../utils/supabase';
+import { server } from '../utils/server';
 import { undoActivity } from '../utils/activityLogger';
 import { getSetting, setSetting } from '../utils/settingsManager';
 import {
@@ -266,10 +266,10 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
 
   const loadActivities = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await server.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      const { data, error } = await server
         .from('activities')
         .select('*')
         .eq('user_id', user.id)

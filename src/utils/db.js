@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { server } from './server';
 import { logActivity } from './activityLogger';
 import { localDate } from './helpers';
 import { recordTransfer, recordAdjustment } from './money';
@@ -53,7 +53,7 @@ const findRecordAmount = (record = {}) => {
 
 export const dbOperation = async (storeName, operation, data = null, logOptions = {}) => {
   const tableName = TABLE_MAP[storeName] || storeName;
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user } } = await server.auth.getUser();
   
   if (!user) {
     throw new Error('Not authenticated');
@@ -63,7 +63,7 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
     switch (operation) {
       case 'getAll': {
         if (tableName === 'settings') {
-          const { data: result, error } = await supabase
+          const { data: result, error } = await server
             .from(tableName)
             .select('*')
             .eq('user_id', user.id)
@@ -83,7 +83,7 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
           return [];
         }
         
-        const { data: results, error } = await supabase
+        const { data: results, error } = await server
           .from(tableName)
           .select('*')
           .eq('user_id', user.id)
@@ -95,7 +95,7 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
 
       case 'get': {
         if (tableName === 'settings') {
-          const { data: result, error } = await supabase
+          const { data: result, error } = await server
             .from(tableName)
             .select('*')
             .eq('user_id', user.id)
@@ -115,7 +115,7 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
           return null;
         }
         
-        const { data: result, error } = await supabase
+        const { data: result, error } = await server
           .from(tableName)
           .select('*')
           .eq('id', data)
@@ -128,7 +128,7 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
 
       case 'put': {
         if (tableName === 'settings') {
-          const { data: existing } = await supabase
+          const { data: existing } = await server
             .from(tableName)
             .select('user_id')
             .eq('user_id', user.id)
@@ -148,14 +148,14 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
           );
           
           if (existing) {
-            const { error } = await supabase
+            const { error } = await server
               .from(tableName)
               .update(settingsData)
               .eq('user_id', user.id);
             
             if (error) throw error;
           } else {
-            const { error } = await supabase
+            const { error } = await server
               .from(tableName)
               .insert(settingsData);
             
@@ -169,7 +169,7 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
         let previousData = null;
         
         if (data.id && !logOptions.skipActivityLog) {
-          const { data: existing } = await supabase
+          const { data: existing } = await server
             .from(tableName)
             .select('*')
             .eq('id', data.id)
@@ -187,7 +187,7 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
         
         const insertData = { ...data, user_id: user.id };
         
-        const { data: result, error } = await supabase
+        const { data: result, error } = await server
           .from(tableName)
           .upsert(insertData)
           .select()
@@ -239,7 +239,7 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
       case 'delete': {
         let deletedItem = null;
         if (!logOptions.skipActivityLog && ENTITY_TYPE_MAP[storeName]) {
-          const { data: item } = await supabase
+          const { data: item } = await server
             .from(tableName)
             .select('*')
             .eq('id', data)
@@ -249,7 +249,7 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
           deletedItem = item;
         }
         
-        const { error } = await supabase
+        const { error } = await server
           .from(tableName)
           .delete()
           .eq('id', data)
@@ -305,7 +305,7 @@ export const initDB = async () => {
 };
 
 export const deleteAllUserData = async () => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user } } = await server.auth.getUser();
   if (!user) {
     throw new Error('Not authenticated');
   }
@@ -324,7 +324,7 @@ export const deleteAllUserData = async () => {
 
   for (const table of tables) {
     try {
-      const { error } = await supabase
+      const { error } = await server
         .from(table)
         .delete()
         .eq('user_id', user.id);
@@ -341,7 +341,7 @@ export const deleteAllUserData = async () => {
   }
 
   try {
-    await supabase
+    await server
       .from('settings')
       .update({
         available_cash: 0,
@@ -395,10 +395,10 @@ export const deleteAllUserData = async () => {
 
 export async function getAllBankAccounts() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('bank_accounts')
       .select('*')
       .eq('user_id', user.id)
@@ -416,10 +416,10 @@ export async function getAllBankAccounts() {
 
 export async function getBankAccount(accountId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('bank_accounts')
       .select('*')
       .eq('id', accountId)
@@ -436,10 +436,10 @@ export async function getBankAccount(accountId) {
 
 export async function getPrimaryBankAccount() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('bank_accounts')
       .select('*')
       .eq('user_id', user.id)
@@ -456,11 +456,11 @@ export async function getPrimaryBankAccount() {
 
 export async function upsertBankAccount(accountData) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     if (accountData.is_primary) {
-      await supabase
+      await server
         .from('bank_accounts')
         .update({ is_primary: false })
         .eq('user_id', user.id)
@@ -473,7 +473,7 @@ export async function upsertBankAccount(accountData) {
       updated_at: new Date().toISOString()
     };
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('bank_accounts')
       .upsert(payload)
       .select()
@@ -490,7 +490,7 @@ export async function upsertBankAccount(accountData) {
 
 export async function deleteBankAccount(accountId) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const account = await getBankAccount(accountId);
@@ -498,7 +498,7 @@ export async function deleteBankAccount(accountId) {
       throw new Error('Cannot delete primary account. Set another account as primary first.');
     }
 
-    const { error } = await supabase
+    const { error } = await server
       .from('bank_accounts')
       .delete()
       .eq('id', accountId)
@@ -610,10 +610,10 @@ export const withdrawCashFromBank = (accountId, amount) => moveCash(accountId, a
 
 export async function getCardTransactions(cardId, limit = 5) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('transactions')
       .select('*')
       .eq('user_id', user.id)
@@ -633,10 +633,10 @@ export async function getCardTransactions(cardId, limit = 5) {
 
 export async function getLoanTransactions(loanId, limit = 5) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('transactions')
       .select('*')
       .eq('user_id', user.id)
@@ -656,10 +656,10 @@ export async function getLoanTransactions(loanId, limit = 5) {
 
 export async function getBankAccountTransactions(accountId, limit = 5) {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase
+    const { data, error } = await server
       .from('transactions')
       .select('*')
       .eq('user_id', user.id)

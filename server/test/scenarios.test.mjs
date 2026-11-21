@@ -1,5 +1,5 @@
 // Personal finance scenarios, run against a throwaway database through the same code the app uses
-// (src/utils/money.js and src/utils/supabase.js talking to server/server.js). No Google, no Gemini: the screenshot
+// (src/utils/money.js and src/utils/server.js talking to server/server.js). No Google, no Gemini: the screenshot
 // reader is given a fixed reading. Run: npm run test:scenarios
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -29,15 +29,15 @@ globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v
 const realFetch = globalThis.fetch;
 globalThis.fetch = (u, o) => realFetch(String(u).startsWith('/') ? base + u : u, o);
 const lib = path.join(tmp, 'lib'); fs.mkdirSync(lib);
-for (const f of ['supabase.js', 'money.js', 'helpers.js']) {
+for (const f of ['server.js', 'money.js', 'helpers.js']) {
   const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
   fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
 }
-const { supabase, api } = await import(pathToFileURL(path.join(lib, 'supabase.mjs')));
+const { server: client, api } = await import(pathToFileURL(path.join(lib, 'server.mjs')));
 const M = await import(pathToFileURL(path.join(lib, 'money.mjs')));
-await supabase.auth.devSignIn();
+await client.auth.devSignIn();
 
-const db = supabase;
+const db = client;
 const get = async (t, id) => (await db.from(t).select('*').eq('id', id).single()).data;
 const cash = async () => Number(((await db.from('settings').select('*').eq('key', 'cashInHand').maybeSingle()).data || {}).value || 0);
 async function accounts() {

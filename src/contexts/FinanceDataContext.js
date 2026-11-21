@@ -7,7 +7,7 @@ import {
 } from '../utils/db';
 import { DEFAULT_CATEGORIES, calculateTotalBankBalance } from '../utils/helpers';
 import { processDueIncomeSchedules, processOverdueLoanPayments, processOverdueCreditCardPayments } from '../utils/schedules';
-import { supabase } from '../utils/supabase';
+import { server } from '../utils/server';
 
 export const FinanceDataContext = createContext(null);
 
@@ -73,10 +73,10 @@ export function FinanceDataProvider({ children }) {
   // Load latest activities
   const loadLatestActivities = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await server.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      const { data, error } = await server
         .from('activities')
         .select('*')
         .eq('user_id', user.id)
