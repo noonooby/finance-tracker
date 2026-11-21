@@ -211,6 +211,8 @@ function money(uid, b) {
       const seen = db.prepare('SELECT result FROM money_keys WHERE user_id = ? AND k = ?').get(uid, key);
       if (seen) return { ...JSON.parse(seen.result || '{}'), repeated: true };
     }
+    // replace: an edit undoes the old transaction in the same step, so a failed edit leaves the old one as it was
+    const replaced = (b.replace || []).map(id => reverseInner(uid, String(id), { remove: true }));
     const legs = applyLegs(uid, b.legs);
     const rows = (b.rows || []).map(({ table, values }) => {
       if (!TABLES.has(table)) fail(400, 'Unknown table');
@@ -222,14 +224,13 @@ function money(uid, b) {
       return v;
     });
     for (const u of b.updates || []) updateRows(uid, u.table, [['id', 'eq', u.id]], u.values);
-    const result = { legs, rows };
+    const result = { legs, rows, replaced: replaced.map(r => r.transaction.id) };
     if (key) db.prepare('INSERT INTO money_keys (user_id, k, result) VALUES (?,?,?)').run(uid, key, JSON.stringify(result));
     return result;
   });
 }
 // Undo a transaction: every balance it moved moves back by the same amount, on the same account, never clamped.
-function reverse(uid, id, b = {}) {
-  return tx(() => {
+function reverseInner(uid, id, b = {}) {
     const t = selectRows(uid, { table: 'transactions', filters: [['id', 'eq', id]], limit: 1 })[0];
     if (!t) fail(404, 'Transaction not found');
     if (t.status === 'undone' || t.status === 'deleted') return { transaction: t, legs: [], repeated: true };
@@ -237,8 +238,8 @@ function reverse(uid, id, b = {}) {
     const n = { ...t, status: b.remove ? 'deleted' : 'undone', undone_at: now(), updated_at: now() };
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), 'transactions', String(id), uid);
     return { transaction: n, legs };
-  });
 }
+const reverse = (uid, id, b) => tx(() => reverseInner(uid, id, b));
 
 // ---------- routes ----------
 const routes = [];
@@ -249,10 +250,16 @@ route('POST', '/api/db', (req, b) => runQuery(authUser(req).id, b));
 route('POST', '/api/money', (req, b) => money(authUser(req).id, b));
 route('POST', '/api/transactions/:id/reverse', (req, b, [id]) => reverse(authUser(req).id, id, b));
 route('GET', '/api/config', () => ({ google: !!(G_ID && G_SECRET), dev: !!DEV_USER, ai: !!process.env.GEMINI_API_KEY }));
-route('POST', '/api/read-screenshot', async (req, b) => require('./reader').read(authUser(req).id, b));
+route('POST', '/api/read-screenshot', async (req, b) => {
+  const uid = authUser(req).id;
+  const all = (t) => selectRows(uid, { table: t, filters: [] });
+  const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
+  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today };
+  try { return await require('./reader').read(uid, b, ctx); } catch (e) { if (e.status) fail(e.status, e.message); throw e; }
+});
 // Local testing only: DEV_USER signs in without Google. Refused unless NODE_ENV is development.
 const DEV_USER = process.env.NODE_ENV === 'development' ? (process.env.DEV_USER || '') : '';
-route('POST', '/api/dev-login', () => { if (!DEV_USER) fail(404, 'Not found'); return { token: newSession(userFor(DEV_USER, 'Test user')) }; });
+route('POST', '/api/dev-login', (req, b) => { if (!DEV_USER) fail(404, 'Not found'); return { token: newSession(userFor(b.email ? String(b.email) : DEV_USER, 'Test user')) }; });
 
 // ---------- Google sign-in ----------
 const G_ID = process.env.GOOGLE_CLIENT_ID || '', G_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';

@@ -9,6 +9,7 @@ import {
   Activity,
   List,
   BarChart3,
+  Camera,
   Settings as SettingsIcon
 } from 'lucide-react';
 
@@ -32,6 +33,7 @@ export default function BottomNavigation({ darkMode }) {
     { id: 'income', path: '/income', icon: DollarSign, label: 'Income' },
     { id: 'activity', path: '/activity', icon: Activity, label: 'Activity' },
     { id: 'transactions', path: '/transactions', icon: List, label: 'Transactions' },
+    { id: 'screenshot', path: '/screenshot', icon: Camera, label: 'Screenshot' },
     { id: 'reports', path: '/reports', icon: BarChart3, label: 'Reports' },
     { id: 'settings', path: '/settings', icon: SettingsIcon, label: 'Settings' }
   ];
