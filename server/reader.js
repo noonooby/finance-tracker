@@ -16,11 +16,14 @@ const MAX_BYTES = 8_000_000;
 const PROMPT = `You read one screenshot from a banking app, credit card app, or a receipt. Report only what is visible; never guess.
 Return JSON:
 {"kind":"transactions"|"receipt"|"balance"|"other",
- "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|other","balance":number or null,"available":number or null}],
- "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null"}],
+ "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null}],
+ "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null",
+   "type":"purchase|income|refund|card_payment|transfer|fee|interest","other_account":"for card_payment or transfer: the other account's name or last 4 digits as shown, else null",
+   "category":"one short category: for a purchase or fee (Groceries, Dining, Transport, Fuel, Bills, Utilities, Phone, Shopping, Entertainment, Health, Travel, Subscriptions, Rent, Insurance, Education, Personal care, Gifts, Fees); for income (Salary, Freelance, Interest, Government, Refund, Other income); else null"}],
  "receipt":{"merchant":"","date":"YYYY-MM-DD","total":number,"items":[{"name":"","amount":number}]} or null,
  "notes":"anything unclear, short"}
-Rules: amounts are positive numbers; direction "out" is money spent or charged, "in" is money received, refunds and payments to the card.
+Rules: payroll, salary or direct deposit from an employer is income with category Salary; a payment to a credit card (e.g. "PAYMENT THANK YOU", "VISA PAYMENT") is card_payment; money moved between the person's own accounts is transfer; pay and deposits are income.
+Amounts are positive numbers; direction "out" is money spent or charged, "in" is money received, refunds and payments to the card.
 A year missing from a date: use YEAR_NOW unless that puts the date in the future, then the year before. Today is TODAY.`;
 
 const mkey = (m) => String(m || '').toLowerCase().replace(/^(sq|sp|tst|klarna|paypal|pp)\s*\*\s*/, '').replace(/[^a-z]/g, '').slice(0, 24);
@@ -66,23 +69,53 @@ function plan(reading, ctx, sourceId) {
     ...bankAccounts.map(a => ({ ...a, _type: 'bank_account' })),
     ...creditCards.map(c => ({ ...c, _type: 'credit_card' })),
   ];
-  const only = (reading.accounts || []).length === 1 ? resolveAccount(all, reading.accounts[0]) : null;
+  // Accounts on the screenshot that are not in the app yet become drafts the person confirms ("new:0", "new:1").
+  const drafts = [];
+  for (const a of reading.accounts || []) {
+    if (resolveAccount(all, a)) continue;
+    const t = a.type === 'credit_card' ? 'credit_card' : a.type === 'loan' ? null : 'bank_account';
+    if (!t) continue;
+    drafts.push({ id: 'new:' + drafts.length, _type: t, name: String(a.name || (t === 'credit_card' ? 'Credit card' : 'Bank account')).slice(0, 60),
+      last4: a.last4 ? String(a.last4).slice(-4) : null, account_type: a.type === 'savings' ? 'savings' : 'checking',
+      credit_limit: Number(a.credit_limit) > 0 ? Number(a.credit_limit) : null, due_date: /^\d{4}-\d{2}-\d{2}$/.test(String(a.due_date || '')) ? a.due_date : null,
+      minimum_payment: Number(a.minimum_payment) > 0 ? Number(a.minimum_payment) : null,
+      balance: a.balance == null || !Number.isFinite(Number(a.balance)) ? null : Math.round(Math.abs(Number(a.balance)) * 100) / 100 });
+  }
+  const withDrafts = [...all, ...drafts];
+  const only = (reading.accounts || []).length === 1 ? resolveAccount(withDrafts, reading.accounts[0]) : (!(reading.accounts || []).length && drafts.length === 1 ? drafts[0] : null);
+  const KINDS = new Set(['purchase', 'income', 'refund', 'card_payment', 'transfer', 'fee', 'interest']);
   const seen = new Map();
   const lines = (reading.lines || []).map((l, i) => {
     const amount = Math.round(Math.abs(Number(l.amount)) * 100) / 100;
-    const acct = resolveAccount(all, { last4: l.last4, name: l.account_name }) || only;
+    const acct = resolveAccount(withDrafts, { last4: l.last4, name: l.account_name }) || only;
+    let kind = KINDS.has(l.type) ? l.type : (l.direction === 'in' ? 'income' : 'purchase');
+    if (kind === 'fee' || kind === 'interest') kind = l.direction === 'in' ? 'income' : 'purchase';
+    if (kind === 'income' && acct && acct._type === 'credit_card') kind = 'refund';
+    const otherRef = l.other_account ? { name: l.other_account, last4: (String(l.other_account).match(/\d{4}(?!.*\d)/) || [])[0] } : null;
+    let other = otherRef ? resolveAccount(withDrafts.filter(x => !acct || x.id !== acct.id), otherRef) : null;
+    // A card payment seen from the card's side: the card is this account; the other side is the bank it came from.
+    if (kind === 'card_payment' && acct && acct._type !== 'credit_card' && other && other._type !== 'credit_card') kind = 'transfer';
     const sig = [acct ? acct.id : '?', l.date, mkey(l.merchant), amount.toFixed(2)].join('|');
     const n = seen.get(sig) || 0; seen.set(sig, n + 1);
     const key = 'shot:' + crypto.createHash('sha256').update(sig + '|' + n).digest('hex').slice(0, 32);
     const out = {
       i, date: l.date, merchant: l.merchant, amount, direction: l.direction === 'in' ? 'in' : 'out', pending: !!l.pending,
       account: acct ? { type: acct._type, id: acct.id, name: acct.name } : null, key, action: 'record',
+      // For a line on a new account the browser rebuilds the key with the saved account's id, so a later scan matches it.
+      key_rest: `${l.date}|${mkey(l.merchant)}|${amount.toFixed(2)}|${n}`,
+      kind, other: other ? { type: other._type, id: other.id, name: other.name } : null, other_hint: l.other_account || null,
+      category_guess: (kind === 'purchase' || kind === 'income') && l.category ? String(l.category).slice(0, 40) : null,
     };
     if (!(amount > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(String(l.date || ''))) { out.action = 'skip'; out.why = 'No clear amount or date'; return out; }
     if (!acct) { out.action = 'choose_account'; out.why = 'Choose which account this is'; }
     // Already recorded by hand (same account, amount, merchant, within a day): offered unticked.
     const same = acct && transactions.find(t => t.status !== 'undone' && t.status !== 'deleted' && String(t.payment_method_id) === String(acct.id)
       && Math.abs(Number(t.amount) - amount) < 0.005 && dayDiff(t.date, l.date) <= 1 && mkey(t.description) && mkey(t.description) === mkey(l.merchant));
+    const ids = [acct && acct.id, other && other.id].filter(Boolean).map(String);
+    const samePair = !same && (kind === 'card_payment' || kind === 'transfer') && ids.length && transactions.find(t => t.status !== 'undone' && t.status !== 'deleted'
+      && (t.type === 'credit_card_payment' || t.type === 'transfer') && Math.abs(Number(t.amount) - amount) < 0.005 && dayDiff(t.date, l.date) <= 3
+      && [t.payment_method_id, t.card_id, t.to_account_id, t.from_account_id].filter(Boolean).map(String).some(x => ids.includes(x)));
+    if (samePair) { out.action = 'already'; out.existing_id = samePair.id; out.why = 'Looks already recorded from the other account'; }
     if (same && !l.pending && same.pending) { out.action = 'mark_posted'; out.existing_id = same.id; out.why = 'Posts the pending line already recorded'; }
     else if (same) { out.action = 'already'; out.existing_id = same.id; out.why = 'Looks already recorded'; }
     // A posted line whose pending version is recorded from an earlier screenshot (date may move a few days).
@@ -99,8 +132,9 @@ function plan(reading, ctx, sourceId) {
     const shown = Math.round(Math.abs(Number(a.balance)) * 100) / 100, has = Math.round(Number(acct.balance || 0) * 100) / 100;
     return shown === has ? null : { account: { type: acct._type, id: acct.id, name: acct.name }, shown, current: has };
   }).filter(Boolean);
-  const unknown = (reading.accounts || []).filter(a => !resolveAccount(all, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
-  return { source_id: sourceId, kind: reading.kind || 'other', lines, balances, unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
+  const unknown = (reading.accounts || []).filter(a => !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
+  const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
+  return { source_id: sourceId, kind: reading.kind || 'other', lines, balances, new_accounts, unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
 }
 
 // body: { image: base64 (no data: prefix) or data URL, mime }

@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../utils/server';
-import { recordExpense, recordIncome, recordRefund, recordAdjustment } from '../utils/money';
+import { recordExpense, recordIncome, recordRefund, recordAdjustment, recordTransfer, recordCardPayment } from '../utils/money';
 import { server } from '../utils/server';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, generateId } from '../utils/helpers';
 import { Camera, Image as ImageIcon } from 'lucide-react';
 
 const readFile = (file) => new Promise((resolve, reject) => {
@@ -36,29 +36,65 @@ const STATUS_TEXT = {
   choose_account: 'Choose the account',
   skip: 'Could not read',
 };
+const KIND_TEXT = { purchase: 'Purchase', income: 'Money in', refund: 'Refund', card_payment: 'Card payment', transfer: 'Transfer' };
 
-export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCards = [], loans = [], categories = [], onUpdate }) {
+// Same merchant key as the server (server/reader.js mkey), used to find how a merchant was categorised before.
+const mkey = (m) => String(m || '').toLowerCase().replace(/^(sq|sp|tst|klarna|paypal|pp)\s*\*\s*/, '').replace(/[^a-z]/g, '').slice(0, 24);
+async function sha32(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+}
+// A new account (not saved yet) is referred to by its draft id, e.g. "new:0".
+const ref = (a) => (!a ? '' : String(a.id).startsWith('new:') ? String(a.id) : `${a.type}:${a.id}`);
+
+// How one line changes the balance of one account (bank: money in it; card: owed).
+function effectOn(row, accountRef, isCard) {
+  const a = Number(row.amount) || 0;
+  if (row.kind === 'transfer') {
+    if (row.from === accountRef) return isCard ? a : -a;
+    if (row.to === accountRef) return isCard ? -a : a;
+    return 0;
+  }
+  if (row.kind === 'card_payment') {
+    if (row.card === accountRef) return -a;
+    if (row.source === accountRef) return isCard ? a : -a;
+    return 0;
+  }
+  if (row.target !== accountRef) return 0;
+  if (row.kind === 'purchase') return isCard ? a : -a;
+  return isCard ? -a : a; // income or refund
+}
+
+export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCards = [], loans = [], categories = [], transactions = [], onUpdate }) {
   const [image, setImage] = useState(null);
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [proposal, setProposal] = useState(null);
   const [rows, setRows] = useState([]);
+  const [drafts, setDrafts] = useState([]);
   const [fixes, setFixes] = useState([]);
+  const [open, setOpen] = useState(null);
   const [done, setDone] = useState(null);
   const [aiReady, setAiReady] = useState(true);
   useEffect(() => { server.auth.config().then((c) => setAiReady(c.ai !== false)); }, []);
 
-  const accountOptions = useMemo(() => [
-    ...bankAccounts.map((a) => ({ value: `bank_account:${a.id}`, label: a.name })),
-    ...creditCards.map((c) => ({ value: `credit_card:${c.id}`, label: c.name })),
-    { value: 'cash_in_hand', label: 'Cash in hand' },
-  ], [bankAccounts, creditCards]);
   const expenseCategories = categories.filter((c) => !c.is_income);
+  const incomeCategories = categories.filter((c) => c.is_income);
+  const catsFor = (kind) => (kind === 'purchase' ? expenseCategories : kind === 'income' ? incomeCategories : []);
+  const accountOptions = useMemo(() => [
+    ...drafts.filter((d) => d.on).map((d) => ({ value: d.id, label: `New: ${d.name}` })),
+    ...bankAccounts.map((a) => ({ value: `bank_account:${a.id}`, label: a.name })),
+    ...creditCards.filter((c) => !c.is_gift_card).map((c) => ({ value: `credit_card:${c.id}`, label: c.name })),
+    ...creditCards.filter((c) => c.is_gift_card).map((c) => ({ value: `credit_card:${c.id}`, label: `${c.name} (gift card)` })),
+    { value: 'cash_in_hand', label: 'Cash in hand' },
+  ], [drafts, bankAccounts, creditCards]);
+  const nameOf = (v) => (accountOptions.find((o) => o.value === v) || {}).label || 'Choose';
+  const isCardRef = (v) => v.startsWith('credit_card:') || (v.startsWith('new:') && (drafts.find((d) => d.id === v) || {}).type === 'credit_card');
 
   const card = darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900';
   const muted = darkMode ? 'text-gray-400' : 'text-gray-600';
-  const input = `px-2 py-1.5 rounded border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`;
+  const input = `px-2 py-1.5 rounded border text-sm w-full ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`;
 
   const pick = async (e) => {
     const file = e.target.files && e.target.files[0];
@@ -68,17 +104,38 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     try { setImage({ ...(await prepare(file)), name: file.name }); } catch (err) { setError(err.message); }
   };
 
+  // A category for a purchase: how this merchant was categorised before, else the reader's guess matched to your categories.
+  const suggestCategory = (merchant, guess, income = false) => {
+    const pool = income ? incomeCategories : expenseCategories;
+    const k = mkey(merchant);
+    const past = k && [...transactions].sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .find((t) => t.category_id && mkey(t.description) === k);
+    if (past && pool.some((c) => String(c.id) === String(past.category_id))) return String(past.category_id);
+    const g = String(guess || '').toLowerCase();
+    const hit = (g && pool.find((c) => c.name.toLowerCase() === g))
+      || (g && pool.find((c) => c.name.toLowerCase().includes(g) || g.includes(c.name.toLowerCase())));
+    return hit ? String(hit.id) : '';
+  };
+
   const read = async () => {
-    setReading(true); setError(''); setDone(null);
+    setReading(true); setError(''); setDone(null); setOpen(null);
     try {
       const p = await api('/api/read-screenshot', { image: image.url, mime: image.type, today: new Date().toLocaleDateString('en-CA') });
       setProposal(p);
-      setRows(p.lines.map((l) => ({
-        ...l,
-        on: l.action === 'record' || l.action === 'mark_posted',
-        target: l.account ? `${l.account.type}:${l.account.id}` : '',
-        category_id: '',
-      })));
+      setDrafts((p.new_accounts || []).map((d) => ({ ...d, on: true, balance: d.balance == null ? '' : String(d.balance),
+        credit_limit: d.credit_limit == null ? '' : String(d.credit_limit), due_date: d.due_date || '' })));
+      setRows(p.lines.map((l) => {
+        const acct = ref(l.account), oth = ref(l.other);
+        const out = l.direction === 'out';
+        const kind = l.kind || (out ? 'purchase' : 'income');
+        const r = { ...l, kind, on: l.action === 'record' || l.action === 'mark_posted', target: acct, category_id: kind === 'purchase' || kind === 'income' ? suggestCategory(l.merchant, l.category_guess, kind === 'income') : '' };
+        if (kind === 'transfer') { r.from = out ? acct : oth; r.to = out ? oth : acct; }
+        if (kind === 'card_payment') {
+          const acctIsCard = acct.startsWith('credit_card:') || (l.account && l.account.type === 'credit_card');
+          r.card = acctIsCard ? acct : oth; r.source = acctIsCard ? oth : acct;
+        }
+        return r;
+      }));
       setFixes(p.balances.map((b) => ({ ...b, on: false })));
     } catch (err) {
       setError(err.message);
@@ -88,35 +145,92 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   };
 
   const setRow = (i, patch) => setRows((rs) => rs.map((r) => (r.i === i ? { ...r, ...patch } : r)));
+  const setDraft = (id, patch) => setDrafts((ds) => ds.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+  const changeKind = (r, kind) => {
+    const base = r.target || r.from || r.card || r.source || '';
+    const patch = { kind };
+    if (kind === 'transfer') { patch.from = r.direction === 'in' ? (r.other_ref || '') : base; patch.to = r.direction === 'in' ? base : ''; }
+    else if (kind === 'card_payment') { patch.card = isCardRef(base) ? base : ''; patch.source = isCardRef(base) ? '' : base; }
+    else patch.target = base;
+    if (kind === 'purchase' || kind === 'income') patch.category_id = suggestCategory(r.merchant, r.category_guess, kind === 'income');
+    setRow(r.i, patch);
+  };
+
+  // What still needs an answer before a line can be saved.
+  const missing = (r) => {
+    if (r.action === 'mark_posted' || r.action === 'skip') return null;
+    if (!(Number(r.amount) > 0)) return 'Enter the amount';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) return 'Enter the date';
+    if (r.kind === 'transfer') return !r.from || !r.to ? 'Choose both accounts' : r.from === r.to ? 'Choose two different accounts' : null;
+    if (r.kind === 'card_payment') return !r.card ? 'Choose the card' : !r.source ? 'Choose what paid it' : null;
+    return r.target ? null : 'Choose the account';
+  };
 
   const save = async () => {
     setSaving(true); setError('');
-    const accounts = { bankAccounts, creditCards, loans };
-    const result = { recorded: 0, posted: 0, repeated: 0, corrected: 0, failed: [] };
-    for (const r of rows.filter((x) => x.on)) {
+    const result = { recorded: 0, posted: 0, repeated: 0, corrected: 0, created: [], failed: [] };
+    const chosenRows = rows.filter((x) => x.on);
+    const banks = [...bankAccounts], cards = [...creditCards];
+    const realRef = {};
+    // 1. New accounts. The opening balance is set so that, after the lines below are recorded, it equals the balance on the screenshot.
+    for (const d of drafts.filter((x) => x.on)) {
       try {
-        if (r.action === 'mark_posted') {
-          const { error: e } = await server.from('transactions').update({ pending: false, date: r.date }).eq('id', r.existing_id);
+        const shown = d.balance === '' ? null : Number(d.balance);
+        const effect = chosenRows.reduce((s, r) => s + effectOn(r, d.id, d.type === 'credit_card'), 0);
+        if (shown == null || !Number.isFinite(shown)) throw new Error('Enter its balance today');
+        const opening = Math.round((shown - effect) * 100) / 100;
+        const id = generateId();
+        const table = d.type === 'credit_card' ? 'credit_cards' : 'bank_accounts';
+        const row = d.type === 'credit_card'
+          ? { id, name: d.name.trim(), balance: opening, last4: d.last4 || null, credit_limit: Number(d.credit_limit) || 0, due_date: d.due_date || null,
+            minimum_payment: d.minimum_payment || null, is_gift_card: false, created_at: new Date().toISOString() }
+          : { id, name: d.name.trim(), balance: opening, last4: d.last4 || null, account_type: d.account_type || 'checking', institution: '', created_at: new Date().toISOString() };
+        const { error: e } = await server.from(table).insert(row);
+        if (e) throw new Error(e.message);
+        (d.type === 'credit_card' ? cards : banks).push(row);
+        realRef[d.id] = `${d.type}:${id}`;
+        result.created.push(d.name);
+      } catch (err) { result.failed.push(`${d.name}: ${err.message}`); }
+    }
+    const accounts = { bankAccounts: banks, creditCards: cards, loans };
+    const real = (v) => (v && v.startsWith('new:') ? realRef[v] || null : v);
+    // 2. The lines.
+    for (const r0 of chosenRows) {
+      const label = `${r0.merchant} ${formatCurrency(r0.amount)}`;
+      try {
+        if (r0.action === 'mark_posted') {
+          const { error: e } = await server.from('transactions').update({ pending: false, date: r0.date }).eq('id', r0.existing_id);
           if (e) throw new Error(e.message);
           result.posted += 1;
           continue;
         }
-        if (!r.target) throw new Error('Choose the account');
-        const cat = categories.find((c) => String(c.id) === String(r.category_id));
-        const common = { amount: r.amount, date: r.date, description: r.merchant, key: r.key, extra: { pending: r.pending, from_screenshot: proposal.source_id } };
-        let res;
-        if (r.direction === 'out') {
-          res = await recordExpense({ ...common, source: r.target, category_id: cat ? cat.id : null, category_name: cat ? cat.name : null }, accounts);
-        } else if (r.target.startsWith('credit_card:')) {
-          res = await recordRefund({ ...common, target: r.target }, accounts);
-        } else {
-          res = await recordIncome({ ...common, target: r.target, source_name: r.merchant }, accounts);
+        const why = missing(r0);
+        if (why) throw new Error(why);
+        const r = { ...r0, target: real(r0.target), from: real(r0.from), to: real(r0.to), card: real(r0.card), source: real(r0.source) };
+        if ([r.target, r.from, r.to, r.card, r.source].some((v, k) => v === null && [r0.target, r0.from, r0.to, r0.card, r0.source][k])) throw new Error('Its new account was not added');
+        let key = r.key;
+        if (r0.account && String(r0.account.id).startsWith('new:') && r.key_rest) {
+          const id = (realRef[String(r0.account.id)] || '').split(':')[1];
+          if (id) key = 'shot:' + await sha32(`${id}|${r.key_rest}`);
         }
-        if (res.repeated) result.repeated += 1; else result.recorded += 1;
+        const common = { amount: Number(r.amount), date: r.date, description: r.merchant, key, extra: { pending: r.pending, from_screenshot: proposal.source_id } };
+        let res;
+        if (r.kind === 'purchase') {
+          const cat = categories.find((c) => String(c.id) === String(r.category_id));
+          res = await recordExpense({ ...common, source: r.target, category_id: cat ? cat.id : null, category_name: cat ? cat.name : null }, accounts);
+        } else if (r.kind === 'refund') res = await recordRefund({ ...common, target: r.target }, accounts);
+        else if (r.kind === 'income') {
+          const cat = categories.find((c) => String(c.id) === String(r.category_id));
+          res = await recordIncome({ ...common, target: r.target, source_name: r.merchant, extra: { ...common.extra, category_id: cat ? cat.id : null, category_name: cat ? cat.name : null } }, accounts);
+        }
+        else if (r.kind === 'transfer') res = await recordTransfer({ ...common, from: r.from, to: r.to }, accounts);
+        else if (r.kind === 'card_payment') res = await recordCardPayment({ ...common, cardId: r.card.split(':')[1], source: r.source }, accounts);
+        if (res && res.repeated) result.repeated += 1; else result.recorded += 1;
       } catch (err) {
-        result.failed.push(`${r.merchant} ${formatCurrency(r.amount)}: ${err.message}`);
+        result.failed.push(`${label}: ${err.message}`);
       }
     }
+    // 3. Balance corrections the person ticked.
     for (const f of fixes.filter((x) => x.on)) {
       try {
         await recordAdjustment({ target: `${f.account.type}:${f.account.id}`, newBalance: f.shown, current: f.current,
@@ -129,18 +243,34 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     setDone(result);
     setSaving(false);
     if (onUpdate) await onUpdate();
-    if (!result.failed.length) { setProposal(null); setImage(null); }
+    if (!result.failed.length) { setProposal(null); setImage(null); setDrafts([]); }
   };
 
-  const chosen = rows.filter((r) => r.on).length + fixes.filter((f) => f.on).length;
+  const chosen = rows.filter((r) => r.on).length + fixes.filter((f) => f.on).length + drafts.filter((d) => d.on).length;
+  const draftNeeds = (d) => (!d.on ? null : !d.name.trim() ? 'Enter a name' : d.balance === '' || !Number.isFinite(Number(d.balance)) ? `Not on the screenshot: enter ${d.type === 'credit_card' ? 'what you owe on it' : 'its balance'} today` : null);
+  const blocked = rows.filter((r) => r.on && missing(r)).length + drafts.filter(draftNeeds).length;
+  const lineSummary = (r) => {
+    if (r.kind === 'transfer') return `${nameOf(r.from)} to ${nameOf(r.to)}`;
+    if (r.kind === 'card_payment') return `${nameOf(r.source)} pays ${nameOf(r.card)}`;
+    return nameOf(r.target);
+  };
+  const Select = ({ value, onChange, label, cards }) => (
+    <label className="block text-xs">
+      <span className={muted}>{label}</span>
+      <select className={input} value={value || ''} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Choose</option>
+        {accountOptions.filter((o) => cards === undefined || isCardRef(o.value) === cards).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </label>
+  );
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Scan</h1>
         <p className={`text-sm ${muted}`}>
-          Take a photo of a receipt, or choose a screenshot of your bank or card app. The app reads it and lists what it found.
-          Nothing is saved until you tick the lines you want and tap Record.
+          Take a photo of a receipt, or choose a screenshot of your bank or card app. The app fills in everything it can: new accounts, the account for each line,
+          the kind of line and a category. Check it, change anything with Edit, then tap Confirm. Nothing is saved before that.
         </p>
       </div>
 
@@ -175,49 +305,115 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       </div>
 
       {proposal && (
-        <div className={`border rounded-lg p-4 space-y-3 ${card}`}>
-          <h2 className="font-semibold">What the screenshot shows</h2>
+        <div className={`border rounded-lg p-4 space-y-4 ${card}`}>
+          <h2 className="font-semibold">Check before saving</h2>
           {proposal.notes && <p className={`text-sm ${muted}`}>{proposal.notes}</p>}
-          {proposal.unknown_accounts.length > 0 && (
-            <p className="text-sm text-amber-600">
-              Not in the app yet: {proposal.unknown_accounts.map((a) => a.name + (a.last4 ? ` (ending ${a.last4})` : '')).join(', ')}.
-              Add it under Banks or Cards, then read the screenshot again, or choose an account for each line below.
-            </p>
-          )}
-          {rows.length === 0 && <p className={`text-sm ${muted}`}>No transactions found in this screenshot.</p>}
-          <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-            {rows.map((r) => (
-              <li key={r.i} className="py-2 flex flex-wrap items-center gap-2">
-                <input type="checkbox" checked={r.on} disabled={r.action === 'skip'} aria-label={`Record ${r.merchant}`}
-                  onChange={(e) => setRow(r.i, { on: e.target.checked })} />
-                <div className="flex-1 min-w-[10rem]">
-                  <div className="font-medium">{r.merchant}</div>
-                  <div className={`text-xs ${muted}`}>
-                    {r.date}{r.pending ? ', pending' : ''} - {STATUS_TEXT[r.action] || r.action}
-                  </div>
+
+          {drafts.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold">New accounts to add</h3>
+              {drafts.map((d) => (
+                <div key={d.id} className={`rounded-lg border p-3 space-y-2 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input type="checkbox" checked={d.on} onChange={(e) => setDraft(d.id, { on: e.target.checked })} />
+                    Add {d.name}{d.last4 ? ` (ending ${d.last4})` : ''}
+                  </label>
+                  {d.on && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block text-xs"><span className={muted}>Name</span>
+                        <input className={input} value={d.name} onChange={(e) => setDraft(d.id, { name: e.target.value })} /></label>
+                      <label className="block text-xs"><span className={muted}>Kind</span>
+                        <select className={input} value={d.type === 'credit_card' ? 'credit_card' : d.account_type} onChange={(e) => setDraft(d.id, e.target.value === 'credit_card' ? { type: 'credit_card' } : { type: 'bank_account', account_type: e.target.value })}>
+                          <option value="checking">Chequing</option><option value="savings">Savings</option><option value="credit_card">Credit card</option>
+                        </select></label>
+                      <label className="block text-xs"><span className={muted}>Last 4 digits</span>
+                        <input className={input} inputMode="numeric" maxLength={4} value={d.last4 || ''} onChange={(e) => setDraft(d.id, { last4: e.target.value.replace(/\D/g, '') })} /></label>
+                      <label className="block text-xs"><span className={muted}>{d.type === 'credit_card' ? 'Owed today' : 'Balance today'}</span>
+                        <input className={input} type="number" step="0.01" inputMode="decimal" value={d.balance} placeholder="Not shown" onChange={(e) => setDraft(d.id, { balance: e.target.value })} /></label>
+                      {d.type === 'credit_card' && (<>
+                        <label className="block text-xs"><span className={muted}>Credit limit</span>
+                          <input className={input} type="number" step="0.01" inputMode="decimal" value={d.credit_limit} placeholder="Optional" onChange={(e) => setDraft(d.id, { credit_limit: e.target.value })} /></label>
+                        <label className="block text-xs"><span className={muted}>Payment due</span>
+                          <input className={input} type="date" value={d.due_date} onChange={(e) => setDraft(d.id, { due_date: e.target.value })} /></label>
+                      </>)}
+                    </div>
+                  )}
+                  {draftNeeds(d) && <div className="text-xs text-amber-600">{draftNeeds(d)}</div>}
                 </div>
-                <span className={r.direction === 'in' ? 'text-green-600 font-medium' : 'font-medium'}>
-                  {r.direction === 'in' ? '+' : '-'}{formatCurrency(r.amount)}
-                </span>
-                {r.action !== 'mark_posted' && r.action !== 'skip' && (
-                  <>
-                    <select className={input} value={r.target} aria-label="Account" onChange={(e) => setRow(r.i, { target: e.target.value, on: true })}>
-                      <option value="">Choose account</option>
-                      {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                    {r.direction === 'out' && (
-                      <select className={input} value={r.category_id} aria-label="Category" onChange={(e) => setRow(r.i, { category_id: e.target.value })}>
-                        <option value="">No category</option>
-                        {expenseCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+              ))}
+              <p className={`text-xs ${muted}`}>The lines below are recorded on the new account and its balance ends at the figure above.</p>
+            </section>
+          )}
+          {proposal.unknown_accounts.length > 0 && (
+            <p className="text-sm text-amber-600">Also on the screenshot but not added: {proposal.unknown_accounts.map((a) => a.name).join(', ')}. Add loans under More, Loans.</p>
+          )}
+
+          <section className="space-y-1">
+            <h3 className="text-sm font-semibold">Lines</h3>
+            {rows.length === 0 && <p className={`text-sm ${muted}`}>No transactions found in this screenshot.</p>}
+            <ul className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+              {rows.map((r) => {
+                const need = r.on && missing(r);
+                const cat = catsFor(r.kind).find((c) => String(c.id) === String(r.category_id));
+                const editable = r.action !== 'mark_posted' && r.action !== 'skip';
+                return (
+                  <li key={r.i} className="py-2 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <input type="checkbox" className="mt-1" checked={r.on} disabled={r.action === 'skip'} aria-label={`Save ${r.merchant}`}
+                        onChange={(e) => setRow(r.i, { on: e.target.checked })} />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{r.merchant}</div>
+                        <div className={`text-xs ${muted}`}>
+                          {r.date}{r.pending ? ', pending' : ''} · {KIND_TEXT[r.kind] || r.kind} · {lineSummary(r)}{cat ? ` · ${cat.name}` : ''}
+                        </div>
+                        {r.action !== 'record' && r.action !== 'choose_account' && <div className={`text-xs ${muted}`}>{r.why || STATUS_TEXT[r.action]}</div>}
+                        {need && <div className="text-xs text-amber-600">{need}</div>}
+                      </div>
+                      <div className="text-right">
+                        <div className={r.kind === 'purchase' ? 'font-medium' : 'font-medium text-green-600'}>{formatCurrency(r.amount)}</div>
+                        {editable && <button type="button" className="text-xs font-medium text-blue-600 dark:text-blue-400" onClick={() => setOpen(open === r.i ? null : r.i)} aria-expanded={open === r.i}>{open === r.i ? 'Done' : 'Edit'}</button>}
+                      </div>
+                    </div>
+                    {editable && open === r.i && (
+                      <div className="grid grid-cols-2 gap-2 pl-6">
+                        <label className="block text-xs col-span-2"><span className={muted}>Description</span>
+                          <input className={input} value={r.merchant} onChange={(e) => setRow(r.i, { merchant: e.target.value })} /></label>
+                        <label className="block text-xs"><span className={muted}>Amount</span>
+                          <input className={input} type="number" step="0.01" inputMode="decimal" value={r.amount} onChange={(e) => setRow(r.i, { amount: e.target.value })} /></label>
+                        <label className="block text-xs"><span className={muted}>Date</span>
+                          <input className={input} type="date" value={r.date} onChange={(e) => setRow(r.i, { date: e.target.value })} /></label>
+                        <label className="block text-xs col-span-2"><span className={muted}>What it is</span>
+                          <select className={input} value={r.kind} onChange={(e) => changeKind(r, e.target.value)}>
+                            {Object.entries(KIND_TEXT).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+                          </select></label>
+                        {r.kind === 'transfer' && (<>
+                          <Select label="From" value={r.from} onChange={(v) => setRow(r.i, { from: v })} />
+                          <Select label="To" value={r.to} onChange={(v) => setRow(r.i, { to: v })} />
+                        </>)}
+                        {r.kind === 'card_payment' && (<>
+                          <Select label="Card paid" value={r.card} cards onChange={(v) => setRow(r.i, { card: v })} />
+                          <Select label="Paid from" value={r.source} cards={false} onChange={(v) => setRow(r.i, { source: v })} />
+                        </>)}
+                        {!['transfer', 'card_payment'].includes(r.kind) && (
+                          <Select label={r.kind === 'purchase' ? 'Paid with' : 'Into'} value={r.target} onChange={(v) => setRow(r.i, { target: v })} />
+                        )}
+                        {catsFor(r.kind).length > 0 && (
+                          <label className="block text-xs"><span className={muted}>Category</span>
+                            <select className={input} value={r.category_id} onChange={(e) => setRow(r.i, { category_id: e.target.value })}>
+                              <option value="">No category</option>
+                              {catsFor(r.kind).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select></label>
+                        )}
+                      </div>
                     )}
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
           {fixes.length > 0 && (
-            <div className="space-y-1">
+            <section className="space-y-1">
               <h3 className="font-semibold text-sm">Balances that differ from the app</h3>
               {fixes.map((f, i) => (
                 <label key={i} className="flex items-center gap-2 text-sm">
@@ -225,24 +421,26 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                   Set {f.account.name} to {formatCurrency(f.shown)} (the app shows {formatCurrency(f.current)})
                 </label>
               ))}
-              <p className={`text-xs ${muted}`}>Record the lines first, then correct a balance only if it still differs.</p>
-            </div>
+              <p className={`text-xs ${muted}`}>Tick this only if the balance still differs after the lines are saved.</p>
+            </section>
           )}
-          <button type="button" onClick={save} disabled={saving || !chosen}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50">
-            {saving ? 'Recording...' : `Record ${chosen} ${chosen === 1 ? 'item' : 'items'}`}
+          <button type="button" onClick={save} disabled={saving || !chosen || blocked > 0}
+            className="w-full px-4 py-2.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50">
+            {saving ? 'Saving...' : blocked ? `Answer ${blocked} ${blocked === 1 ? 'question' : 'questions'} above first` : `Confirm and save ${chosen} ${chosen === 1 ? 'item' : 'items'}`}
           </button>
         </div>
       )}
 
       {done && (
         <div role="status" className={`border rounded-lg p-4 text-sm ${card}`}>
-          Recorded {done.recorded}. Pending lines marked as posted: {done.posted}.
-          {done.repeated > 0 && ` Already recorded from an earlier screenshot, skipped: ${done.repeated}.`}
+          {done.created.length > 0 && <div>Accounts added: {done.created.join(', ')}.</div>}
+          Saved {done.recorded}. Pending lines marked as posted: {done.posted}.
+          {done.repeated > 0 && ` Already saved from an earlier screenshot, skipped: ${done.repeated}.`}
           {done.corrected > 0 && ` Balances corrected: ${done.corrected}.`}
           {done.failed.length > 0 && (
             <ul className="mt-2 text-red-600 list-disc pl-5">{done.failed.map((f) => <li key={f}>{f}</li>)}</ul>
           )}
+          <div className={`mt-1 ${muted}`}>Each saved line can be undone from Transactions or Activity.</div>
         </div>
       )}
     </div>

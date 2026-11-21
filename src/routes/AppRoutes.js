@@ -262,6 +262,7 @@ const ScreenshotRoute = React.memo(() => {
       creditCards={financeData.creditCards}
       loans={financeData.loans}
       categories={financeData.categories}
+      transactions={financeData.transactions}
       onUpdate={financeData.loadAllData}
     />
   );

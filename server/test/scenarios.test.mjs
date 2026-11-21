@@ -330,3 +330,39 @@ test('gemini key: owner sets it once, others refused, never returned', async () 
   assert.deepEqual(JSON.parse((await call(owner, 'GET')).text), { set: true, canSet: false });
   fs.unlinkSync(keyFile);
 });
+
+test('screenshot draft: new card, salary, card payment, transfer, already recorded from the other side', () => {
+  const { plan } = require(path.join(root, 'server', 'reader.js'));
+  const ctx = {
+    bankAccounts: [{ id: 'chq', name: 'Everyday Chequing', last4: '1111', balance: 2000 }, { id: 'sav', name: 'Savings', last4: '2222', balance: 5000 }],
+    creditCards: [],
+    transactions: [{ id: 't1', type: 'transfer', amount: 300, date: '2026-11-10', status: 'active', payment_method_id: 'chq', to_account_id: 'sav', description: 'Transfer' }],
+  };
+  // A card app the app does not know yet.
+  const card = plan({ kind: 'transactions', accounts: [{ name: 'Amex Cobalt', last4: '3005', type: 'credit_card', balance: 812.4, credit_limit: 5000, due_date: '2026-12-05' }],
+    lines: [
+      { date: '2026-11-18', merchant: 'LOBLAWS', amount: 84.2, direction: 'out', type: 'purchase', category: 'Groceries' },
+      { date: '2026-11-15', merchant: 'PAYMENT THANK YOU', amount: 500, direction: 'in', type: 'card_payment', other_account: 'Chequing 1111' },
+    ] }, ctx, 's1');
+  assert.equal(card.new_accounts.length, 1);
+  assert.deepEqual([card.new_accounts[0].type, card.new_accounts[0].last4, card.new_accounts[0].balance, card.new_accounts[0].credit_limit, card.new_accounts[0].due_date], ['credit_card', '3005', 812.4, 5000, '2026-12-05']);
+  assert.equal(card.lines[0].account.id, 'new:0');
+  assert.equal(card.lines[0].kind, 'purchase');
+  assert.equal(card.lines[0].category_guess, 'Groceries');
+  assert.equal(card.lines[1].kind, 'card_payment');
+  assert.equal(card.lines[1].other.id, 'chq');
+  assert.ok(card.lines[0].key_rest);
+
+  // A bank screenshot: pay is income with Salary, a move to savings is a transfer already recorded from the other account.
+  const bank = plan({ kind: 'transactions', accounts: [{ name: 'Everyday Chequing', last4: '1111', type: 'chequing', balance: 2000 }],
+    lines: [
+      { date: '2026-11-14', merchant: 'ACME CORP PAYROLL', amount: 2500, direction: 'in', type: 'income', category: 'Salary' },
+      { date: '2026-11-11', merchant: 'TFR TO SAVINGS', amount: 300, direction: 'out', type: 'transfer', other_account: 'Savings 2222' },
+      { date: '2026-11-12', merchant: 'UNKNOWN', amount: 20, direction: 'out' },
+    ] }, ctx, 's2');
+  assert.equal(bank.new_accounts.length, 0);
+  assert.deepEqual([bank.lines[0].kind, bank.lines[0].category_guess, bank.lines[0].account.id], ['income', 'Salary', 'chq']);
+  assert.deepEqual([bank.lines[1].kind, bank.lines[1].other.id, bank.lines[1].action], ['transfer', 'sav', 'already']);
+  assert.equal(bank.lines[2].kind, 'purchase');
+  assert.equal(bank.lines[2].category_guess, null);
+});
