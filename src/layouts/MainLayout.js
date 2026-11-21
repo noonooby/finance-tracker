@@ -23,7 +23,9 @@ export function MainLayout() {
         style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))' }}>
         <div className="flex justify-between items-center max-w-3xl mx-auto">
           <button type="button" onClick={() => navigate('/')} className="press flex items-center gap-2 text-left rounded-xl" aria-label="Go to Home">
-            <img src="/icon.svg" alt="" width="28" height="28" className="rounded-lg" />
+            <span aria-hidden="true" className="grid place-items-center w-7 h-7 rounded-lg bg-accent text-accent-contrast transition-colors">
+              <svg viewBox="0 0 512 512" width="18" height="18"><path d="M128 340l84-84 64 56 112-128" fill="none" stroke="currentColor" strokeWidth="44" strokeLinecap="round" strokeLinejoin="round"/><circle cx="388" cy="184" r="30" fill="currentColor"/></svg>
+            </span>
             <span className="text-lg font-semibold tracking-tight">Finance</span>
           </button>
           <div className="flex items-center gap-1">

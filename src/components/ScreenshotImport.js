@@ -3,6 +3,7 @@ import { api } from '../utils/server';
 import { recordExpense, recordIncome, recordRefund, recordTransfer, recordCardPayment, recordSnapshot, reverseTransaction } from '../utils/money';
 import { server } from '../utils/server';
 import { formatCurrency, generateId } from '../utils/helpers';
+import { loadPending, savePending, clearPending } from '../utils/pendingScan';
 import { Camera, Image as ImageIcon } from 'lucide-react';
 
 const readFile = (file) => new Promise((resolve, reject) => {
@@ -19,12 +20,13 @@ async function prepare(file) {
   if (file.type === 'application/pdf') return { url: original, type: 'application/pdf', pdf: true };
   try {
     const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = original; });
-    const scale = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
-    if (scale === 1 && file.size < 3_000_000 && file.type !== 'image/heic' && file.type !== 'image/heif') return { url: original, type: file.type || 'image/jpeg' };
+    // Every picture is made smaller before it is read or kept: 1600 pixels on the long side, JPEG. Text stays sharp.
+    const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    if (scale === 1 && file.size < 400_000 && file.type !== 'image/heic' && file.type !== 'image/heif') return { url: original, type: file.type || 'image/jpeg' };
     const c = document.createElement('canvas');
     c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    return { url: c.toDataURL('image/jpeg', 0.85), type: 'image/jpeg' };
+    return { url: c.toDataURL('image/jpeg', 0.82), type: 'image/jpeg' };
   } catch {
     return { url: original, type: file.type || 'image/jpeg' };
   }
@@ -69,6 +71,7 @@ function effectOn(row, accountRef, isCard) {
 export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCards = [], loans = [], categories = [], transactions = [], onUpdate }) {
   const [image, setImage] = useState(null);
   const [note, setNote] = useState('');
+  const [resumed, setResumed] = useState(false);
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -104,8 +107,14 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     e.target.value = '';
     if (!file) return;
     setError(''); setProposal(null); setDone(null);
-    try { setImage({ ...(await prepare(file)), name: file.name }); } catch (err) { setError(err.message); }
+    try {
+      const img = { ...(await prepare(file)), name: file.name };
+      setImage(img); setResumed(false);
+      savePending({ image: img, note });
+    } catch (err) { setError(err.message); }
   };
+
+  const removePicture = () => { setImage(null); setProposal(null); setDrafts([]); setRows([]); setFixes([]); setNote(''); setError(''); setResumed(false); clearPending(); };
 
   // A category for a purchase: how this merchant was categorised before, else the reader's guess matched to your categories.
   const suggestCategory = (merchant, guess, income = false) => {
@@ -124,6 +133,18 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     setReading(true); setError(''); setDone(null); setOpen(null);
     try {
       const p = await api('/api/read-screenshot', { image: image.url, mime: image.type, note: note.trim() || undefined, today: new Date().toLocaleDateString('en-CA') });
+      applyProposal(p);
+      savePending({ image, note, proposal: p });
+    } catch (err) {
+      setError(`${err.message} Your picture is kept here, so you can try again without choosing it again.`);
+      savePending({ image, note });
+    } finally {
+      setReading(false);
+    }
+  };
+
+  // Shows a reading (fresh, or kept from before) as editable lines.
+  function applyProposal(p) {
       setProposal(p);
       setDrafts((p.new_accounts || []).map((d) => ({ ...d, on: true, balance: d.balance == null ? '' : String(d.balance),
         credit_limit: d.credit_limit == null ? '' : String(d.credit_limit), due_date: d.due_date || '' })));
@@ -141,12 +162,29 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       }));
       setFixes(p.balances.map((b) => ({ ...b, on: true })));
       setRemovals({});
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setReading(false);
-    }
-  };
+  }
+
+  // The note is kept with the picture as it is typed.
+  const loadedRef = React.useRef(false);
+  useEffect(() => {
+    if (!loadedRef.current || !image) return;
+    const t = setTimeout(() => savePending({ image, note, proposal }), 400);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note]);
+
+  // Pick up a scan kept from before (after an error, a reload, or leaving the page).
+  useEffect(() => {
+    let live = true;
+    loadPending().then((v) => {
+      loadedRef.current = true;
+      if (!live || !v) return;
+      setImage(v.image); setNote(v.note || ''); setResumed(true);
+      if (v.proposal) applyProposal(v.proposal);
+    });
+    return () => { live = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setRow = (i, patch) => setRows((rs) => rs.map((r) => (r.i === i ? { ...r, ...patch } : r)));
   const setDraft = (id, patch) => setDrafts((ds) => ds.map((d) => (d.id === id ? { ...d, ...patch } : d)));
@@ -268,7 +306,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     setDone(result);
     setSaving(false);
     if (onUpdate) await onUpdate();
-    if (!result.failed.length) { setProposal(null); setImage(null); setDrafts([]); }
+    if (!result.failed.length) { setProposal(null); setImage(null); setDrafts([]); setNote(''); setResumed(false); clearPending(); }
   };
 
   const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length;
@@ -324,9 +362,13 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf" onChange={pick} className="sr-only" />
           </label>
         </div>
+        {image && resumed && <p className="text-sm text-muted">Picked up where you left off. This picture was kept on this device.</p>}
         {image && (
           <div className="flex flex-col sm:flex-row gap-3 items-start">
-            {image.pdf ? <div className="text-sm font-medium">{image.name}</div> : <img src={image.url} alt="The screenshot to read" className="max-h-64 rounded border border-line" />}
+            <div className="space-y-2">
+              {image.pdf ? <div className="text-sm font-medium">{image.name}</div> : <img src={image.url} alt="The screenshot to read" className="max-h-64 rounded-xl border border-line" />}
+              <button type="button" onClick={removePicture} className="press text-sm text-muted underline">Remove picture</button>
+            </div>
             <div className="w-full space-y-2">
               <label className="block text-sm">
                 <span className="text-muted">Note about this picture (optional)</span>

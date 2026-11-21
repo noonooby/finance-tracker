@@ -61,6 +61,14 @@ export function ThemeProvider({ children }) {
       const bg = getComputedStyle(r).getPropertyValue('--background').trim();
       meta.setAttribute('content', bg ? `rgb(${bg.split(/\s+/).join(',')})` : (darkMode ? '#101014' : '#f6f6f8'));
     }
+    // The browser tab icon takes the theme colour too.
+    const acc = getComputedStyle(r).getPropertyValue('--accent').trim();
+    const icon = document.querySelector('link[rel="icon"]');
+    if (icon && acc) {
+      const fill = `rgb(${acc.split(/\s+/).join(',')})`;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="${fill}"/><path d="M128 340l84-84 64 56 112-128" fill="none" stroke="#fff" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="388" cy="184" r="28" fill="#fff"/></svg>`;
+      icon.setAttribute('href', 'data:image/svg+xml,' + encodeURIComponent(svg));
+    }
     write('finance_dark', darkMode ? '1' : '0');
   }, [darkMode, theme]);
 
