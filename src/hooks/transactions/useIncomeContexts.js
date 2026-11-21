@@ -54,7 +54,6 @@ export const useIncomeContexts = (editingItem = null) => {
       const context = await getIncomeSourceContext(sourceName);
       if (context) {
         const contextData = applyIncomeContext(context);
-        console.log('✅ Applied context for:', sourceName);
         return contextData;
       }
       return null;

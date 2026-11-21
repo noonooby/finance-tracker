@@ -80,19 +80,14 @@ export default function AddTransaction({
   const loadExpenseContexts = useCallback(async () => {
     try {
       if (formData.type === 'expense') {
-        console.log('🔍 Loading expense contexts...');
         const recent = await getRecentExpenseDescriptions(5);
-        console.log('📊 Recent expenses found:', recent?.length || 0, recent);
         setRecentExpenses(recent);
         
         // Pre-fill last used expense context only if no preselected card
         const lastContext = await getLastUsedExpenseContext();
-        console.log('🎯 Last context:', lastContext);
-        console.log('💳 Preselected card:', preselectedCard ? preselectedCard.name : 'none');
         
         if (lastContext && !formData.description && !preselectedCard) {
           const contextData = applyExpenseContext(lastContext);
-          console.log('✅ Applying last context:', contextData);
           setFormData(prev => ({
             ...prev,
             description: lastContext.description,
@@ -108,7 +103,7 @@ export default function AddTransaction({
         }
       }
     } catch (error) {
-      console.error('❌ Error loading expense contexts:', error);
+      console.error('Error loading expense contexts:', error);
     }
   }, [formData.type, formData.description, preselectedCard]);
 
@@ -172,7 +167,6 @@ export default function AddTransaction({
           setFormData(prev => ({ ...prev, ...contextData }));
         }
         
-        console.log('✅ Applied expense context for:', formData.description);
       }
     } catch (error) {
       console.error('Error loading expense context:', error);
@@ -319,10 +313,10 @@ export default function AddTransaction({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto`}>
+      <div role="dialog" aria-modal="true" aria-label="Add transaction" className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto`}>
         <div className={`sticky top-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b p-4 flex justify-between items-center`}>
           <h2 className="text-xl font-bold">Add Transaction</h2>
-          <button onClick={onClose} className={`${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>
+          <button onClick={onClose} aria-label="Close" className={`${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>
             <X size={24} />
           </button>
         </div>
@@ -409,7 +403,7 @@ export default function AddTransaction({
                     }`}
                   >
                     {expense.description}
-                    {expense.usage_count > 10 && ' ⭐'}
+                    {expense.usage_count > 10 && ' (frequent)'}
                   </button>
                 ))}
               </div>

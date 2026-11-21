@@ -50,7 +50,6 @@ export function ThemeProvider({ children }) {
           applyDensityToDOM(density);
         } catch (densityError) {
           // Column might not exist yet - use default
-          console.log('Display density column not yet migrated, using default');
           setDisplayDensityState('comfortable');
           applyDensityToDOM('comfortable');
         }
@@ -101,7 +100,6 @@ export function ThemeProvider({ children }) {
       console.error('Error setting display density:', error);
       // If column doesn't exist yet, still apply to DOM for immediate UX
       if (error.message?.includes('display_density') || error.code === 'PGRST204') {
-        console.log('Display density column not yet migrated - applying locally only');
         setDisplayDensityState(density);
         applyDensityToDOM(density);
       } else {

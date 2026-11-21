@@ -30,6 +30,7 @@ import {
   trackReportTemplateUsage,
   duplicateReportTemplate
 } from '../utils/reportTemplatesManager';
+import { showToast } from '../utils/toast';
 
 export default function Reports({ darkMode, categories, cashInHand = 0 }) {
   const [transactions, setTransactions] = useState([]);
@@ -103,7 +104,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
       setSaveAsFavorite(false);
       setShowSaveDialog(false);
       
-      alert(`Template "${templateData.name}" saved successfully!`);
+      showToast.success(`Template "${templateData.name}" saved successfully!`);
     } catch (error) {
       console.error('Error saving template:', error);
       setSaveError(error.message || 'Failed to save template');
@@ -121,7 +122,6 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
       // Update local state
       await loadSavedTemplates();
       
-      console.log('📂 Template loaded:', template.name);
     } catch (error) {
       console.error('Error loading template:', error);
     }
@@ -144,10 +144,10 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
     try {
       await deleteReportTemplate(template.id);
       await loadSavedTemplates();
-      alert('Template deleted successfully');
+      showToast.success('Template deleted successfully');
     } catch (error) {
       console.error('Error deleting template:', error);
-      alert('Failed to delete template');
+      showToast.error('Failed to delete template');
     }
   };
 
@@ -155,19 +155,19 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
     try {
       await duplicateReportTemplate(template.id);
       await loadSavedTemplates();
-      alert(`Template duplicated successfully!`);
+      showToast.success(`Template duplicated successfully!`);
     } catch (error) {
       console.error('Error duplicating template:', error);
-      alert('Failed to duplicate template');
+      showToast.error('Failed to duplicate template');
     }
   };
 
-  const handleExportExcel = (reportData) => {
+  const handleExportExcel = async (reportData) => {
     try {
-      exportToExcel(reportData);
+      await exportToExcel(reportData);
     } catch (error) {
       console.error('Error exporting to Excel:', error);
-      alert('Failed to export to Excel. Please try again.');
+      showToast.error('Failed to export to Excel. Please try again.');
     }
   };
 
@@ -176,7 +176,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
       exportToCSV(reportData);
     } catch (error) {
       console.error('Error exporting to CSV:', error);
-      alert('Failed to export to CSV. Please try again.');
+      showToast.error('Failed to export to CSV. Please try again.');
     }
   };
 
@@ -452,7 +452,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
       {/* Save Template Dialog */}
       {showSaveDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full`}>
+          <div role="dialog" aria-modal="true" aria-label="Save report template" className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full`}>
             <h3 className="text-xl font-bold mb-4">Save Report Template</h3>
             
             <div className="space-y-4">
@@ -758,11 +758,11 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-left">
               <h3 className="font-semibold mb-2">Planned Features:</h3>
               <ul className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
-                <li>✓ Drag and drop widgets</li>
-                <li>✓ Resize and rearrange elements</li>
-                <li>✓ Custom chart configurations</li>
-                <li>✓ Save report templates</li>
-                <li>✓ Schedule automated reports</li>
+                <li>Drag and drop widgets</li>
+                <li>Resize and rearrange elements</li>
+                <li>Custom chart configurations</li>
+                <li>Save report templates</li>
+                <li>Schedule automated reports</li>
               </ul>
             </div>
           </div>

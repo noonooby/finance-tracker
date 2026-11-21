@@ -7,6 +7,7 @@ import {
   getUserPreferences,
   toggleFavoriteCategory
 } from '../utils/userPreferencesManager';
+import { showToast } from '../utils/toast';
 
 /**
  * CategoryManager Component
@@ -74,10 +75,10 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       await seedDefaultCategories();
       await loadCategories();
       if (onUpdate) onUpdate();
-      alert('Default categories added successfully!');
+      showToast.success('Default categories added successfully!');
     } catch (error) {
       console.error('Error seeding categories:', error);
-      alert('Error adding default categories. Please try again.');
+      showToast.error('Error adding default categories. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -85,7 +86,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
 
   const handleAdd = async () => {
     if (!formData.name.trim()) {
-      alert('Please enter a category name');
+      showToast.error('Please enter a category name');
       return;
     }
 
@@ -111,7 +112,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       setShowAddForm(false);
     } catch (error) {
       console.error('Error adding category:', error);
-      alert('Error adding category. Please try again.');
+      showToast.error('Error adding category. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -129,7 +130,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
 
   const handleSaveEdit = async (categoryId) => {
     if (!formData.name.trim()) {
-      alert('Please enter a category name');
+      showToast.error('Please enter a category name');
       return;
     }
 
@@ -153,7 +154,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       });
     } catch (error) {
       console.error('Error updating category:', error);
-      alert('Error updating category. Please try again.');
+      showToast.error('Error updating category. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -181,7 +182,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error deleting category:', error);
-      alert(error.message || 'Error deleting category. Please try again.');
+      showToast.error(error.message || 'Error deleting category. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -458,7 +459,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                         <Check size={16} />
                         Save
                       </button>
-                      <button
+                      <button aria-label="Cancel edit"
                         onClick={handleCancelEdit}
                         className={`px-4 py-2 rounded-lg ${
                           darkMode

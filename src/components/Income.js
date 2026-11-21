@@ -199,7 +199,6 @@ export default function Income({
       try {
         const results = await processDueIncomeSchedules();
         if (results.deposited.length > 0) {
-          console.log('🎉 Auto-deposited income:', results.deposited);
           const sources = results.deposited.map(d => d.source).join(', ');
           showToast.success(`Auto-deposited income from: ${sources}`);
           
@@ -305,7 +304,7 @@ export default function Income({
                     }`}
                   >
                     {source.source_name}
-                    {source.usage_count > 10 && ' ⭐'}
+                    {source.usage_count > 10 && ' (frequent)'}
                   </button>
                 ))}
               </div>

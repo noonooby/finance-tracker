@@ -333,9 +333,8 @@ export const deleteAllUserData = async () => {
         console.error(`Error deleting from ${table}:`, error);
         throw error;
       }
-      console.log(`✅ Deleted all data from ${table}`);
     } catch (tableError) {
-      console.error(`❌ Failed to delete from ${table}:`, tableError);
+      console.error(`Failed to delete from ${table}:`, tableError);
       throw tableError;
     }
   }
@@ -387,9 +386,8 @@ export const deleteAllUserData = async () => {
         updated_at: new Date().toISOString()
       })
       .eq('user_id', user.id);
-    console.log('✅ Settings reset to defaults');
   } catch (settingsError) {
-    console.error('❌ Error resetting settings:', settingsError);
+    console.error('Error resetting settings:', settingsError);
   }
 };
 
@@ -406,10 +404,9 @@ export async function getAllBankAccounts() {
       .order('created_at', { ascending: true });
 
     if (error) throw error;
-    console.log('📊 Loaded bank accounts:', data?.length || 0);
     return data || [];
   } catch (error) {
-    console.error('❌ Error fetching bank accounts:', error);
+    console.error('Error fetching bank accounts:', error);
     throw error;
   }
 }
@@ -429,7 +426,7 @@ export async function getBankAccount(accountId) {
     if (error) throw error;
     return data;
   } catch (error) {
-    console.error('❌ Error fetching bank account:', error);
+    console.error('Error fetching bank account:', error);
     throw error;
   }
 }
@@ -449,7 +446,7 @@ export async function getPrimaryBankAccount() {
     if (error) throw error;
     return data || null;
   } catch (error) {
-    console.error('❌ Error fetching primary bank account:', error);
+    console.error('Error fetching primary bank account:', error);
     return null;
   }
 }
@@ -480,10 +477,9 @@ export async function upsertBankAccount(accountData) {
       .single();
 
     if (error) throw error;
-    console.log('✅ Bank account saved:', data.name);
     return data;
   } catch (error) {
-    console.error('❌ Error upserting bank account:', error);
+    console.error('Error upserting bank account:', error);
     throw error;
   }
 }
@@ -505,9 +501,8 @@ export async function deleteBankAccount(accountId) {
       .eq('user_id', user.id);
 
     if (error) throw error;
-    console.log('🗑️ Bank account deleted:', account.name);
   } catch (error) {
-    console.error('❌ Error deleting bank account:', error);
+    console.error('Error deleting bank account:', error);
     throw error;
   }
 }
@@ -527,10 +522,9 @@ export async function getTotalBankBalance() {
     const total = accounts.reduce((sum, account) => {
       return sum + (parseFloat(account.balance) || 0);
     }, 0);
-    console.log('💵 Total bank balance:', total);
     return total;
   } catch (error) {
-    console.error('❌ Error calculating total bank balance:', error);
+    console.error('Error calculating total bank balance:', error);
     return 0;
   }
 }
@@ -626,7 +620,7 @@ export async function getCardTransactions(cardId, limit = 5) {
     if (error) throw error;
     return data || [];
   } catch (error) {
-    console.error('❌ Error fetching card transactions:', error);
+    console.error('Error fetching card transactions:', error);
     return [];
   }
 }
@@ -649,7 +643,7 @@ export async function getLoanTransactions(loanId, limit = 5) {
     if (error) throw error;
     return data || [];
   } catch (error) {
-    console.error('❌ Error fetching loan transactions:', error);
+    console.error('Error fetching loan transactions:', error);
     return [];
   }
 }
@@ -687,7 +681,7 @@ export async function getBankAccountTransactions(accountId, limit = 5) {
     
     return filtered;
   } catch (error) {
-    console.error('❌ Error fetching bank account transactions:', error);
+    console.error('Error fetching bank account transactions:', error);
     return [];
   }
 }

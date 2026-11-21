@@ -89,17 +89,18 @@ export default function BackupManager() {
     try {
       const result = await importNewTransactions(uploadPreview.file, { dryRun: false });
 
+      const skippedText = result.skipped ? `\n${result.skipped} already added before, skipped` : '';
       if (result.errors > 0) {
+        const details = (result.errorDetails || []).slice(0, 5).map((e) => `Row ${e.row}: ${e.error}`).join('\n');
+        const more = result.errors > 5 ? `\n${result.errors - 5} more rows not added` : '';
         toast.error(
-          `Added ${result.inserted} transactions\n${result.errors} errors occurred`,
-          { duration: 5000 }
+          `Added ${result.inserted || 0} transactions${skippedText}\nNot added:\n${details}${more}`,
+          { duration: 15000 }
         );
-      } else {
-        toast.success(
-          `Successfully added ${result.inserted} new transactions`,
-          { duration: 4000 }
-        );
+        setUploadPreview(null);
+        return;
       }
+      toast.success(`Added ${result.inserted} new transactions${skippedText}`, { duration: 4000 });
 
       setUploadPreview(null);
       window.location.reload();
@@ -386,7 +387,7 @@ export default function BackupManager() {
       {/* Import Preview Modal */}
       {importPreview && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
+          <div role="dialog" aria-modal="true" aria-label="Confirm import" className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
               Confirm import
             </h3>
@@ -461,7 +462,7 @@ export default function BackupManager() {
       {/* Upload Preview Modal */}
       {uploadPreview && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
+          <div role="dialog" aria-modal="true" aria-label="Confirm upload" className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
               Confirm upload
             </h3>

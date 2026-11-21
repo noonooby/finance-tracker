@@ -86,7 +86,6 @@ export const showToast = {
    */
   info: (message) => {
     toast(message, {
-      icon: 'ℹ️',
       ...toastConfig.info,
     });
   },

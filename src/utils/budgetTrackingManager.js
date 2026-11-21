@@ -68,10 +68,9 @@ export async function saveBudgetPeriod(budgetData) {
 
     if (error) throw error;
 
-    console.log('✅ Budget period saved:', data);
     return data;
   } catch (error) {
-    console.error('❌ Error saving budget period:', error);
+    console.error('Error saving budget period:', error);
     throw error;
   }
 }
@@ -99,10 +98,9 @@ export async function updateBudgetPeriod(periodId, updates) {
 
     if (error) throw error;
 
-    console.log('✅ Budget period updated:', data);
     return data;
   } catch (error) {
-    console.error('❌ Error updating budget period:', error);
+    console.error('Error updating budget period:', error);
     throw error;
   }
 }
@@ -145,7 +143,7 @@ export async function getBudgetHistory(filters = {}) {
     if (error) throw error;
     return data || [];
   } catch (error) {
-    console.error('❌ Error fetching budget history:', error);
+    console.error('Error fetching budget history:', error);
     throw error;
   }
 }
@@ -179,7 +177,7 @@ export async function getBudgetPeriod(categoryId, periodStart, periodEnd) {
     if (error) throw error;
     return data;
   } catch (error) {
-    console.error('❌ Error fetching budget period:', error);
+    console.error('Error fetching budget period:', error);
     throw error;
   }
 }
@@ -218,7 +216,7 @@ export async function calculateActualSpending(categoryId, startDate, endDate) {
 
     return total;
   } catch (error) {
-    console.error('❌ Error calculating spending:', error);
+    console.error('Error calculating spending:', error);
     throw error;
   }
 }
@@ -286,7 +284,7 @@ export async function trackCurrentMonth(categoryId, budgetLimit) {
       });
     }
   } catch (error) {
-    console.error('❌ Error tracking current month:', error);
+    console.error('Error tracking current month:', error);
     throw error;
   }
 }
@@ -309,7 +307,6 @@ export async function trackPreviousMonth(categoryId, budgetLimit) {
     // Check if already tracked
     const existing = await getBudgetPeriod(categoryId, periodStart, periodEnd);
     if (existing) {
-      console.log('Previous month already tracked');
       return existing;
     }
     
@@ -330,7 +327,7 @@ export async function trackPreviousMonth(categoryId, budgetLimit) {
       notes: 'Final monthly budget'
     });
   } catch (error) {
-    console.error('❌ Error tracking previous month:', error);
+    console.error('Error tracking previous month:', error);
     throw error;
   }
 }
@@ -390,7 +387,7 @@ export async function getBudgetSummary(categoryId, numberOfMonths = 6) {
       history: recentHistory
     };
   } catch (error) {
-    console.error('❌ Error getting budget summary:', error);
+    console.error('Error getting budget summary:', error);
     throw error;
   }
 }
@@ -412,9 +409,8 @@ export async function deleteBudgetPeriod(periodId) {
 
     if (error) throw error;
 
-    console.log('✅ Budget period deleted');
   } catch (error) {
-    console.error('❌ Error deleting budget period:', error);
+    console.error('Error deleting budget period:', error);
     throw error;
   }
 }
@@ -478,7 +474,7 @@ export async function getCurrentBudgetStatus(categoryId, budgetLimit) {
       periodEnd
     };
   } catch (error) {
-    console.error('❌ Error getting current budget status:', error);
+    console.error('Error getting current budget status:', error);
     throw error;
   }
 }
@@ -505,7 +501,7 @@ export async function trackAllCategoryBudgets(categoryBudgets) {
     
     return results;
   } catch (error) {
-    console.error('❌ Error tracking all category budgets:', error);
+    console.error('Error tracking all category budgets:', error);
     throw error;
   }
 }
@@ -533,7 +529,7 @@ export async function getBudgetChartData(categoryId, months = 6) {
       percentage: parseFloat(period.percentage_used) || 0
     }));
   } catch (error) {
-    console.error('❌ Error getting budget chart data:', error);
+    console.error('Error getting budget chart data:', error);
     throw error;
   }
 }
@@ -563,10 +559,9 @@ export async function checkAndFinalizePreviousMonths(categoryBudgets) {
       }
     }
     
-    console.log('✅ Previous month finalization check complete');
     return results;
   } catch (error) {
-    console.error('❌ Error finalizing previous months:', error);
+    console.error('Error finalizing previous months:', error);
     throw error;
   }
 }

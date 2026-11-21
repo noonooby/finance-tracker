@@ -53,7 +53,6 @@ export async function createIncomeSchedule(scheduleData) {
       { schedule: data }
     );
 
-    console.log('✅ Income schedule created:', data.source);
     return data;
 
   } catch (error) {

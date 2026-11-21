@@ -28,7 +28,6 @@ export const fetchCategories = async () => {
 
     // If no categories found, return defaults as fallback
     if (!data || data.length === 0) {
-      console.log('No categories in DB, returning defaults');
       return DEFAULT_CATEGORIES;
     }
 
@@ -178,7 +177,6 @@ export const seedDefaultCategories = async () => {
       .limit(1);
 
     if (existing && existing.length > 0) {
-      console.log('User already has categories, skipping seed');
       return true;
     }
 
@@ -203,7 +201,6 @@ export const seedDefaultCategories = async () => {
       return false;
     }
 
-    console.log('Successfully seeded default categories');
     return true;
   } catch (error) {
     console.error('Error in seedDefaultCategories:', error);

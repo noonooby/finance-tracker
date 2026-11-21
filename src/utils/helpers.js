@@ -143,7 +143,6 @@ export const recalculateAvailableCash = async () => {
       value: calculatedCash
     });
 
-    console.log(`Available cash recalculated: $${calculatedCash.toFixed(2)}`);
 
     // Return both old and new values for activity logging
     return {
@@ -230,7 +229,7 @@ export const validateAvailableCash = async () => {
  */
 export function calculateTotalBankBalance(bankAccounts) {
   if (!bankAccounts || !Array.isArray(bankAccounts)) {
-    console.warn('⚠️ calculateTotalBankBalance: Invalid input, returning 0');
+    console.warn('calculateTotalBankBalance: Invalid input, returning 0');
     return 0;
   }
 

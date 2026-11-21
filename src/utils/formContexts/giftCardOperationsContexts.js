@@ -78,9 +78,8 @@ export async function saveGiftCardAddBalanceContext(formData, giftCard) {
   try {
     const context = addBalanceManager.extractContext(formData, giftCard);
     await addBalanceManager.saveContext(giftCard.name, context);
-    console.log('✅ Gift card add balance context saved for', giftCard.name);
   } catch (error) {
-    console.error('❌ Failed to save gift card add balance context:', error);
+    console.error('Failed to save gift card add balance context:', error);
   }
 }
 
@@ -91,12 +90,11 @@ export async function getGiftCardAddBalanceContext(giftCardName) {
   try {
     const context = await addBalanceManager.getContext(giftCardName);
     if (context) {
-      console.log('✅ Found gift card add balance context for card:', giftCardName);
       return addBalanceManager.applyContext(context);
     }
     return null;
   } catch (error) {
-    console.error('❌ Failed to get gift card add balance context:', error);
+    console.error('Failed to get gift card add balance context:', error);
     return null;
   }
 }
@@ -109,9 +107,8 @@ export async function saveGiftCardUseBalanceContext(formData, giftCard) {
     const context = useBalanceManager.extractContext(formData, giftCard);
     const description = `${giftCard.name} purchase`;
     await useBalanceManager.saveContext(description, context);
-    console.log('✅ Gift card use balance context saved for', giftCard.name);
   } catch (error) {
-    console.error('❌ Failed to save gift card use balance context:', error);
+    console.error('Failed to save gift card use balance context:', error);
   }
 }
 
@@ -123,12 +120,11 @@ export async function getGiftCardUseBalanceContext(giftCardName) {
     const description = `${giftCardName} purchase`;
     const context = await useBalanceManager.getContext(description);
     if (context) {
-      console.log('✅ Found gift card use balance context for card:', giftCardName);
       return useBalanceManager.applyContext(context);
     }
     return null;
   } catch (error) {
-    console.error('❌ Failed to get gift card use balance context:', error);
+    console.error('Failed to get gift card use balance context:', error);
     return null;
   }
 }
@@ -171,7 +167,7 @@ export async function getRecentGiftCardAmounts(giftCardName, limit = 5) {
     
     return uniqueAmounts;
   } catch (error) {
-    console.error('❌ Failed to get recent gift card amounts:', error);
+    console.error('Failed to get recent gift card amounts:', error);
     return [];
   }
 }

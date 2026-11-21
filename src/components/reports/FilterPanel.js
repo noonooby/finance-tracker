@@ -41,7 +41,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
           <h3 className="text-lg font-semibold">Report Filters</h3>
         </div>
         {onClose && (
-          <button onClick={onClose} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
+          <button onClick={onClose} aria-label="Close filters" className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
             <X size={20} />
           </button>
         )}

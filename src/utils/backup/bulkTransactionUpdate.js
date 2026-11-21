@@ -3,7 +3,7 @@
  * Export to Excel, edit, import back with validation
  */
 
-import * as XLSX from 'xlsx';
+import { downloadWorkbook, readSheetRows, toDateText } from '../excel';
 import { server } from '../server';
 import { format } from 'date-fns';
 
@@ -57,26 +57,21 @@ export async function exportTransactionsForEdit(filters = {}) {
     }));
 
     // Create workbook
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(excelData);
-
-    // Set column widths
-    ws['!cols'] = [
-      { wch: 36 }, // ID
-      { wch: 12 }, // Date
-      { wch: 12 }, // Type
-      { wch: 12 }, // Amount
-      { wch: 30 }, // Description
-      { wch: 36 }, // Category ID
-      { wch: 20 }, // Category Name
-      { wch: 20 }, // Payment Method
-      { wch: 36 }, // Payment Method ID
-      { wch: 20 }, // Payment Method Name
-      { wch: 30 }, // Notes
-      { wch: 10 }  // Status
+    const cols = [
+      36, // ID
+      12, // Date
+      12, // Type
+      12, // Amount
+      30, // Description
+      36, // Category ID
+      20, // Category Name
+      20, // Payment Method
+      36, // Payment Method ID
+      20, // Payment Method Name
+      30, // Notes
+      10  // Status
     ];
 
-    XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
 
     // Add instructions sheet
     const instructions = [
@@ -102,17 +97,17 @@ export async function exportTransactionsForEdit(filters = {}) {
       [''],
       ['After editing, save and import the file back into the app.']
     ];
-    const instructionsWs = XLSX.utils.aoa_to_sheet(instructions);
-    XLSX.utils.book_append_sheet(wb, instructionsWs, 'Instructions');
 
     // Download
     const filename = `transactions-bulk-edit-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.xlsx`;
-    XLSX.writeFile(wb, filename);
+    await downloadWorkbook([
+      { name: 'Transactions', rows: excelData.length ? excelData : [{ ID: '', Date: '', Type: '', Amount: '', Description: '', 'Category ID': '', 'Category Name': '', 'Payment Method': '', 'Payment Method ID': '', 'Payment Method Name': '', Notes: '', Status: '' }], cols },
+      { name: 'Instructions', rows: instructions },
+    ], filename);
 
-    console.log('✅ Exported', data.length, 'transactions for editing');
     return { success: true, count: data.length, filename };
   } catch (error) {
-    console.error('❌ Export failed:', error);
+    console.error('Export failed:', error);
     throw error;
   }
 }
@@ -128,12 +123,9 @@ export async function importEditedTransactions(file, options = {}) {
     if (!user) throw new Error('Not authenticated');
 
     // Read Excel file
-    const buffer = await file.arrayBuffer();
-    const wb = XLSX.read(buffer);
-    const ws = wb.Sheets['Transactions'];
-    const data = XLSX.utils.sheet_to_json(ws);
+    const data = await readSheetRows(file, 'Transactions');
+    if (!data) throw new Error('No "Transactions" sheet found in file');
 
-    console.log('📊 Processing', data.length, 'transactions...');
 
     // Fetch existing transactions for comparison
     const ids = data.map(row => row.ID).filter(Boolean);
@@ -153,7 +145,7 @@ export async function importEditedTransactions(file, options = {}) {
 
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
-      const rowNum = i + 2; // Excel row (header is row 1)
+      const rowNum = row.__row;
 
       try {
         // Validate ID exists
@@ -177,10 +169,8 @@ export async function importEditedTransactions(file, options = {}) {
         const refused = [];
 
         // Date
-        if (row.Date && row.Date !== original.date) {
-          const dateStr = typeof row.Date === 'number' 
-            ? XLSX.SSF.format('yyyy-mm-dd', row.Date)
-            : String(row.Date);
+        if (row.Date && toDateText(row.Date) !== original.date) {
+          const dateStr = toDateText(row.Date);
           
           if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
             errors.push({ row: rowNum, id: row.ID, error: `Invalid date format: ${dateStr}` });
@@ -302,14 +292,13 @@ export async function importEditedTransactions(file, options = {}) {
         );
 
       if (batchError) {
-        console.error('❌ Batch update error:', batchError);
+        console.error('Batch update error:', batchError);
         updateErrors.push({ batch: i / batchSize + 1, error: batchError.message });
       } else {
         updated += batch.length;
       }
     }
 
-    console.log('✅ Updated', updated, 'transactions');
     
     return {
       success: true,
@@ -318,54 +307,7 @@ export async function importEditedTransactions(file, options = {}) {
       errorDetails: updateErrors.length > 0 ? updateErrors : undefined
     };
   } catch (error) {
-    console.error('❌ Import failed:', error);
-    throw error;
-  }
-}
-
-/**
- * Bulk update specific fields for multiple transactions
- */
-export async function bulkUpdateTransactions(transactionIds, updates) {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    if (!transactionIds || transactionIds.length === 0) {
-      throw new Error('No transactions selected');
-    }
-
-    const moneyFields = ['amount', 'type', 'status', 'payment_method', 'payment_method_id', 'card_id', 'loan_id'];
-    const blocked = Object.keys(updates || {}).filter(k => moneyFields.includes(k));
-    if (blocked.length) {
-      throw new Error(`${blocked.join(', ')} cannot be changed in bulk: edit each transaction in the app so its balances move too`);
-    }
-
-    // Prepare update data
-    const updateData = {
-      ...updates,
-      updated_at: new Date().toISOString()
-    };
-
-    // Remove undefined fields
-    Object.keys(updateData).forEach(key => {
-      if (updateData[key] === undefined) delete updateData[key];
-    });
-
-    // Update transactions
-    const { data, error } = await server
-      .from('transactions')
-      .update(updateData)
-      .eq('user_id', user.id)
-      .in('id', transactionIds)
-      .select();
-
-    if (error) throw error;
-
-    console.log('✅ Bulk updated', data.length, 'transactions');
-    return { success: true, updated: data.length };
-  } catch (error) {
-    console.error('❌ Bulk update failed:', error);
+    console.error('Import failed:', error);
     throw error;
   }
 }

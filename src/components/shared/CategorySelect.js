@@ -15,6 +15,7 @@ import { Search, Plus, Check, X } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { addCategory } from '../../utils/categories';
 import IconPicker from '../IconPicker';
+import { showToast } from '../../utils/toast';
 
 export default function CategorySelect({
   categories,
@@ -103,10 +104,9 @@ export default function CategorySelect({
       setIsOpen(false);
       setNewCategoryData({ name: '', icon: 'Package', color: '#6b7280' });
       
-      console.log('✅ Category created and selected:', newCategory.name);
     } catch (error) {
       console.error('Error creating category:', error);
-      alert('Failed to create category. Please try again.');
+      showToast.error('Failed to create category. Please try again.');
     } finally {
       setCreating(false);
     }

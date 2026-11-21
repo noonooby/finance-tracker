@@ -20,6 +20,7 @@ import {
   getUserPreferences,
   updateActivityPreferences
 } from '../utils/userPreferencesManager';
+import { showToast } from '../utils/toast';
 
 const parseSnapshot = (snapshot) => {
   if (!snapshot) return null;
@@ -239,7 +240,6 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
     
     try {
       await updateActivityPreferences(newPreferences);
-      console.log('✅ Activity preferences saved');
     } catch (error) {
       console.error('Error saving activity preferences:', error);
     }
@@ -258,7 +258,6 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
     setShowAllActivities(checked);
     try {
       await setSetting('showViewOnlyActivities', checked);
-      console.log('✅ Activity view preference saved');
     } catch (error) {
       console.error('Error saving activity toggle preference:', error);
     }
@@ -294,7 +293,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       await loadActivities();
     } catch (error) {
       console.error('Error undoing activity:', error);
-      alert('Failed to undo action. Please try again.');
+      showToast.error('Failed to undo action. Please try again.');
     } finally {
       setUndoingId(null);
     }

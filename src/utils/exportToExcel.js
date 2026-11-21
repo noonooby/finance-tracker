@@ -1,54 +1,54 @@
 /**
  * Excel Export Utility
- * Uses SheetJS (xlsx) to create multi-sheet Excel files
+ * Creates multi-sheet Excel files
  */
 
-import * as XLSX from 'xlsx';
+import { downloadWorkbook } from './excel';
 import { format } from 'date-fns';
 import { formatCurrency } from './reportHelpers';
 
 /**
  * Export report data to Excel file with multiple sheets
  */
-export const exportToExcel = (reportData) => {
+export const exportToExcel = async (reportData) => {
   const { name, filters, summary, transactions, categoryData, paymentMethodData, trendData } = reportData;
 
   // Create a new workbook
-  const wb = XLSX.utils.book_new();
+  const wb = [];
 
   // Sheet 1: Summary
   const summarySheet = createSummarySheet(name, filters, summary);
-  XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+  wb.push({ name: 'Summary', rows: summarySheet });
 
   // Sheet 2: Transactions
   if (transactions && transactions.length > 0) {
     const transactionsSheet = createTransactionsSheet(transactions);
-    XLSX.utils.book_append_sheet(wb, transactionsSheet, 'Transactions');
+    wb.push({ name: 'Transactions', rows: transactionsSheet });
   }
 
   // Sheet 3: Category Breakdown
   if (categoryData && categoryData.length > 0) {
     const categorySheet = createCategorySheet(categoryData, summary);
-    XLSX.utils.book_append_sheet(wb, categorySheet, 'By Category');
+    wb.push({ name: 'By Category', rows: categorySheet });
   }
 
   // Sheet 4: Payment Method Breakdown
   if (paymentMethodData && paymentMethodData.length > 0) {
     const paymentSheet = createPaymentMethodSheet(paymentMethodData);
-    XLSX.utils.book_append_sheet(wb, paymentSheet, 'By Payment Method');
+    wb.push({ name: 'By Payment Method', rows: paymentSheet });
   }
 
   // Sheet 5: Trends
   if (trendData && trendData.length > 0) {
     const trendsSheet = createTrendsSheet(trendData);
-    XLSX.utils.book_append_sheet(wb, trendsSheet, 'Trends');
+    wb.push({ name: 'Trends', rows: trendsSheet });
   }
 
   // Generate filename
   const filename = `${name.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
 
   // Write and download file
-  XLSX.writeFile(wb, filename);
+  await downloadWorkbook(wb, filename);
 };
 
 /**
@@ -73,7 +73,7 @@ const createSummarySheet = (reportName, filters, summary) => {
     ['Smallest Transaction:', formatCurrency(summary.smallestTransaction)]
   ];
 
-  return XLSX.utils.aoa_to_sheet(data);
+  return data;
 };
 
 /**
@@ -92,7 +92,7 @@ const createTransactionsSheet = (transactions) => {
     'Status': t.status || 'active'
   }));
 
-  return XLSX.utils.json_to_sheet(data);
+  return data;
 };
 
 /**
@@ -116,7 +116,7 @@ const createCategorySheet = (categoryData, summary) => {
     'Average': ''
   });
 
-  return XLSX.utils.json_to_sheet(data);
+  return data;
 };
 
 /**
@@ -141,7 +141,7 @@ const createPaymentMethodSheet = (paymentMethodData) => {
     'Average': totalTransactions > 0 ? Number((totalAmount / totalTransactions).toFixed(2)) : 0
   });
 
-  return XLSX.utils.json_to_sheet(data);
+  return data;
 };
 
 /**
@@ -167,5 +167,5 @@ const createTrendsSheet = (trendData) => {
     'Transaction Count': trendData.reduce((sum, t) => sum + t.transactions.length, 0)
   });
 
-  return XLSX.utils.json_to_sheet(data);
+  return data;
 };

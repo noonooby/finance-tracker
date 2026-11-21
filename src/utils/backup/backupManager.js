@@ -61,14 +61,13 @@ export async function exportFullBackup() {
           .eq('user_id', user.id);
 
         if (error && error.code !== 'PGRST116') {
-          console.warn(`⚠️ Error exporting ${table}:`, error);
+          console.warn(`Error exporting ${table}:`, error);
           backup.data[table] = [];
         } else {
           backup.data[table] = data || [];
-          console.log(`✅ Exported ${table}: ${data?.length || 0} records`);
         }
       } catch (tableError) {
-        console.warn(`⚠️ Failed to export ${table}:`, tableError);
+        console.warn(`Failed to export ${table}:`, tableError);
         backup.data[table] = [];
       }
     }
@@ -86,7 +85,7 @@ export async function exportFullBackup() {
 
     return backup;
   } catch (error) {
-    console.error('❌ Backup export failed:', error);
+    console.error('Backup export failed:', error);
     throw error;
   }
 }
@@ -109,10 +108,9 @@ export async function downloadBackup() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    console.log('✅ Backup downloaded:', filename);
     return { success: true, filename, stats: backup.stats };
   } catch (error) {
-    console.error('❌ Download failed:', error);
+    console.error('Download failed:', error);
     throw error;
   }
 }
@@ -129,7 +127,7 @@ function validateBackup(backup) {
   const criticalTables = ['settings', 'categories', 'transactions'];
   for (const table of criticalTables) {
     if (!backup.data[table]) {
-      console.warn(`⚠️ Backup missing ${table} data`);
+      console.warn(`Backup missing ${table} data`);
     }
   }
 
@@ -156,11 +154,9 @@ export async function importFullBackup(backupFile, options = {}) {
     // Validate
     validateBackup(backup);
 
-    console.log('📦 Starting import...', backup.stats);
     
     // Clear existing data if requested
     if (clearExisting) {
-      console.log('🗑️ Clearing existing data...');
       await clearAllUserData(user.id);
     }
 
@@ -168,7 +164,6 @@ export async function importFullBackup(backupFile, options = {}) {
     const results = {};
     for (const table of TABLES_TO_BACKUP) {
       if (skipTables.includes(table)) {
-        console.log(`⏭️ Skipping ${table}`);
         results[table] = { skipped: true };
         continue;
       }
@@ -198,7 +193,7 @@ export async function importFullBackup(backupFile, options = {}) {
             .upsert(batch, { onConflict: 'id' });
 
           if (error) {
-            console.error(`❌ Error importing batch to ${table}:`, error);
+            console.error(`Error importing batch to ${table}:`, error);
             errors += batch.length;
           } else {
             imported += batch.length;
@@ -206,9 +201,8 @@ export async function importFullBackup(backupFile, options = {}) {
         }
 
         results[table] = { imported, errors };
-        console.log(`✅ Imported ${table}: ${imported} records${errors ? ` (${errors} errors)` : ''}`);
       } catch (tableError) {
-        console.error(`❌ Failed to import ${table}:`, tableError);
+        console.error(`Failed to import ${table}:`, tableError);
         results[table] = { imported: 0, errors: records.length };
       }
     }
@@ -221,10 +215,9 @@ export async function importFullBackup(backupFile, options = {}) {
       details: results
     };
 
-    console.log('✅ Import complete:', stats);
     return { success: true, stats };
   } catch (error) {
-    console.error('❌ Import failed:', error);
+    console.error('Import failed:', error);
     throw error;
   }
 }
@@ -243,10 +236,10 @@ async function clearAllUserData(userId) {
         .eq('user_id', userId);
 
       if (error && error.code !== 'PGRST116') {
-        console.warn(`⚠️ Error clearing ${table}:`, error);
+        console.warn(`Error clearing ${table}:`, error);
       }
     } catch (err) {
-      console.warn(`⚠️ Failed to clear ${table}:`, err);
+      console.warn(`Failed to clear ${table}:`, err);
     }
   }
 }
@@ -275,7 +268,7 @@ export async function getBackupStats() {
       total: Object.values(stats).reduce((sum, count) => sum + count, 0)
     };
   } catch (error) {
-    console.error('❌ Failed to get stats:', error);
+    console.error('Failed to get stats:', error);
     throw error;
   }
 }

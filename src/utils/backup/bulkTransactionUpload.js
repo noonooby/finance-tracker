@@ -3,7 +3,8 @@
  * Simple template-based system for adding multiple new transactions at once
  */
 
-import * as XLSX from 'xlsx';
+import { downloadWorkbook, readSheetRows, toDateText, MAX_SHEET_ROWS } from '../excel';
+import { recordExpense, recordIncome, parseSource } from '../money';
 import { server } from '../server';
 import { format } from 'date-fns';
 import { fetchCategories } from '../categories';
@@ -36,22 +37,7 @@ export async function downloadTransactionTemplate() {
       }
     ];
 
-    // Create workbook
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(templateData);
-
-    // Set column widths
-    ws['!cols'] = [
-      { wch: 12 }, // Date
-      { wch: 10 }, // Amount
-      { wch: 25 }, // Description
-      { wch: 12 }, // Type
-      { wch: 20 }, // Category
-      { wch: 20 }, // Payment Method
-      { wch: 30 }  // Notes
-    ];
-
-    XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+    const cols = [12, 10, 25, 12, 20, 20, 30];
 
     // Add instructions sheet
     const instructions = [
@@ -65,65 +51,33 @@ export async function downloadTransactionTemplate() {
       ['Required Fields:'],
       ['- Date: Format must be YYYY-MM-DD (e.g., 2025-01-15)'],
       ['- Amount: Positive number (e.g., 45.00 or 1200)'],
+      ['- Type: "income" or "expense"'],
       [''],
-      ['Optional Fields (will be auto-detected if left empty):'],
+      ['Optional Fields:'],
       ['- Description: Brief description of transaction'],
-      ['- Type: "income" or "expense" (auto-detected from description/amount)'],
-      ['- Category: Category name (auto-matched from description)'],
-      ['- Payment Method: "Cash in Hand", "Bank Account", "Credit Card", or card name'],
+      ['- Category: Category name (matched from the description when left empty)'],
+      ['- Payment Method: "Cash in Hand", or the exact name of one of your bank accounts or cards.'],
+      ['  "Bank Account" works when you have only one bank account. Empty uses your default payment method.'],
+      ['  Income can only go to cash or a bank account.'],
       ['- Notes: Additional details'],
       [''],
-      ['Smart Auto-Detection:'],
-      ['- Type is auto-detected from keywords (salary, paycheck → income)'],
-      ['- Category is auto-matched from description using learned patterns'],
-      ['- Payment method defaults to your setting if not specified'],
-      [''],
-      ['Valid Type Values:'],
-      ['- income'],
-      ['- expense'],
-      [''],
-      ['Tips:'],
-      ['- Keep descriptions consistent for better auto-categorization'],
-      ['- Leave Type/Category blank to use smart detection'],
-      ['- You can add hundreds of transactions at once'],
-      ['- Review the preview before finalizing the upload']
+      ['Rows that cannot be read clearly are listed back to you and not added.'],
+      ['Uploading the same file again does not add the same rows twice.'],
+      [`At most ${MAX_SHEET_ROWS} rows per file.`],
     ];
-    const instructionsWs = XLSX.utils.aoa_to_sheet(instructions);
-    XLSX.utils.book_append_sheet(wb, instructionsWs, 'Instructions');
 
     // Download
     const filename = `transaction-upload-template-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
-    XLSX.writeFile(wb, filename);
+    await downloadWorkbook([
+      { name: 'Transactions', rows: templateData, cols },
+      { name: 'Instructions', rows: instructions },
+    ], filename);
 
-    console.log('✅ Template downloaded:', filename);
     return { success: true, filename };
   } catch (error) {
-    console.error('❌ Template download failed:', error);
+    console.error('Template download failed:', error);
     throw error;
   }
-}
-
-/**
- * Auto-detect transaction type from description and keywords
- */
-function detectTransactionType(description, amount) {
-  if (!description) return 'expense'; // Default to expense
-
-  const desc = description.toLowerCase();
-  
-  // Income keywords
-  const incomeKeywords = [
-    'salary', 'paycheck', 'pay check', 'wage', 'bonus',
-    'refund', 'reimbursement', 'income', 'deposit',
-    'payment received', 'freelance', 'contract', 'dividend',
-    'interest', 'cashback', 'reward', 'gift received'
-  ];
-
-  for (const keyword of incomeKeywords) {
-    if (desc.includes(keyword)) return 'income';
-  }
-
-  return 'expense';
 }
 
 /**
@@ -178,150 +132,137 @@ async function matchCategory(description, type, categories) {
   return null; // No match found
 }
 
+
+async function loadAccounts(userId) {
+  const [banks, cards] = await Promise.all([
+    server.from('bank_accounts').select('*').eq('user_id', userId),
+    server.from('credit_cards').select('*').eq('user_id', userId),
+  ]);
+  if (banks.error) throw banks.error;
+  if (cards.error) throw cards.error;
+  return { bankAccounts: banks.data || [], creditCards: cards.data || [] };
+}
+
+// Turns the Payment Method cell into one source of money, or explains why it cannot.
+function resolveSource(cell, type, defaultSource, accounts) {
+  const { bankAccounts, creditCards } = accounts;
+  const text = cell === undefined || cell === null ? '' : String(cell).trim();
+  const lower = text.toLowerCase();
+  let source = null;
+  if (!text) {
+    const d = parseSource(defaultSource);
+    if (d.type === 'cash_in_hand') source = 'cash_in_hand';
+    else if (d.type === 'bank_account' && d.id && bankAccounts.some((b) => String(b.id) === String(d.id))) source = `bank_account:${d.id}`;
+    else if (d.type === 'credit_card' && d.id && creditCards.some((c) => String(c.id) === String(d.id))) source = `credit_card:${d.id}`;
+    else if (d.type === 'bank_account' && bankAccounts.length === 1) source = `bank_account:${bankAccounts[0].id}`;
+    else return { error: 'Payment Method is empty and your default payment method is not one account: name the account' };
+  } else if (lower === 'cash in hand' || lower === 'cash') {
+    source = 'cash_in_hand';
+  } else if (lower === 'bank account' || lower === 'bank') {
+    if (bankAccounts.length !== 1) return { error: `"${text}" is not clear: you have ${bankAccounts.length} bank accounts, use the account name` };
+    source = `bank_account:${bankAccounts[0].id}`;
+  } else {
+    const banks = bankAccounts.filter((b) => String(b.name || '').trim().toLowerCase() === lower);
+    const cards = creditCards.filter((c) => String(c.name || '').trim().toLowerCase() === lower);
+    if (banks.length + cards.length === 0) return { error: `No account or card named "${text}"` };
+    if (banks.length + cards.length > 1) return { error: `More than one account or card is named "${text}"` };
+    source = banks.length ? `bank_account:${banks[0].id}` : `credit_card:${cards[0].id}`;
+  }
+  if (type === 'income' && source.startsWith('credit_card:')) return { error: 'Income can only go to cash or a bank account' };
+  return { source };
+}
+
+async function sha256(text) {
+  const bytes = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /**
  * Parse and validate transaction rows from Excel
  */
-async function parseTransactionRows(data) {
-  const { data: { user } } = await server.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-
-  // Load categories and settings for smart matching
+async function parseTransactionRows(data, userId) {
   const categories = await fetchCategories();
   const settings = await getAllSettings();
-  const defaultPaymentMethod = settings.defaultPaymentMethod || 'cash_in_hand';
+  const accounts = await loadAccounts(userId);
+  const defaultSource = settings.defaultPaymentMethod || 'cash_in_hand';
 
   const validTransactions = [];
   const errors = [];
+  const seen = new Map();
 
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    const rowNum = i + 2; // Excel row (header is row 1)
-
+  for (const row of data) {
+    const rowNum = row.__row;
     try {
-      // Validate required fields
-      if (!row.Date) {
-        errors.push({ row: rowNum, error: 'Missing Date' });
+      if (!row.Date) { errors.push({ row: rowNum, error: 'Missing Date' }); continue; }
+      const dateStr = toDateText(row.Date);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || Number.isNaN(Date.parse(dateStr))) {
+        errors.push({ row: rowNum, error: `Invalid date: ${dateStr}. Use YYYY-MM-DD` });
         continue;
       }
 
-      if (!row.Amount || isNaN(Number(row.Amount)) || Number(row.Amount) <= 0) {
-        errors.push({ row: rowNum, error: `Invalid Amount: ${row.Amount}` });
+      const amount = Math.round(Number(row.Amount) * 100) / 100;
+      if (row.Amount === undefined || typeof row.Amount === 'boolean' || !Number.isFinite(amount) || amount <= 0) {
+        errors.push({ row: rowNum, error: `Invalid Amount: ${row.Amount ?? '(empty)'}` });
         continue;
       }
 
-      // Parse date
-      const dateStr = typeof row.Date === 'number'
-        ? XLSX.SSF.format('yyyy-mm-dd', row.Date)
-        : String(row.Date);
-
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        errors.push({ row: rowNum, error: `Invalid date format: ${dateStr}. Use YYYY-MM-DD` });
-        continue;
-      }
-
-      const amount = Number(row.Amount);
-      const description = row.Description ? String(row.Description).trim() : '';
-
-      // Auto-detect or use provided type
-      let type = row.Type ? String(row.Type).toLowerCase().trim() : null;
-      if (!type) {
-        type = detectTransactionType(description, amount);
-      }
-
-      // Validate type
+      const type = row.Type ? String(row.Type).toLowerCase().trim() : '';
       if (!['income', 'expense'].includes(type)) {
-        errors.push({ row: rowNum, error: `Invalid type: ${type}. Must be "income" or "expense"` });
+        errors.push({ row: rowNum, error: type ? `Invalid Type: ${type}. Use "income" or "expense"` : 'Missing Type: use "income" or "expense"' });
         continue;
       }
 
-      // Auto-match or use provided category
+      const description = row.Description ? String(row.Description).trim().slice(0, 500) : '';
+      const notes = row.Notes ? String(row.Notes).trim().slice(0, 2000) : '';
+
+      const { source, error: sourceError } = resolveSource(row['Payment Method'], type, defaultSource, accounts);
+      if (sourceError) { errors.push({ row: rowNum, error: sourceError }); continue; }
+
       let categoryId = null;
       let categoryName = null;
-
       if (row.Category) {
-        // Try to find category by name
         const catName = String(row.Category).trim();
-        const matchedCat = categories.find(c => 
-          c.name.toLowerCase() === catName.toLowerCase() &&
-          (type === 'income' ? c.is_income : !c.is_income)
-        );
-        
-        if (matchedCat) {
-          categoryId = matchedCat.id;
-          categoryName = matchedCat.name;
-        } else {
-          categoryName = catName; // Store name even if not found
-        }
+        const matchedCat = categories.find((c) => c.name.toLowerCase() === catName.toLowerCase() && (type === 'income' ? c.is_income : !c.is_income));
+        if (matchedCat) { categoryId = matchedCat.id; categoryName = matchedCat.name; } else { categoryName = catName; }
       } else if (description) {
-        // Auto-match from description
         categoryId = await matchCategory(description, type, categories);
-        if (categoryId) {
-          const cat = categories.find(c => c.id === categoryId);
-          categoryName = cat?.name;
-        }
+        if (categoryId) categoryName = categories.find((c) => c.id === categoryId)?.name || null;
       }
 
-      // Payment method
-      let paymentMethod = defaultPaymentMethod;
-      let paymentMethodName = null;
+      // Once-only key: the same row in the same sheet uploaded again is not counted twice.
+      const fields = JSON.stringify([dateStr, amount, type, description, source, categoryName || '', notes]);
+      const occurrence = (seen.get(fields) || 0) + 1;
+      seen.set(fields, occurrence);
+      const key = `sheet:${await sha256(fields)}:${occurrence}`;
 
-      if (row['Payment Method']) {
-        const pmInput = String(row['Payment Method']).toLowerCase().trim();
-        
-        if (pmInput === 'cash in hand' || pmInput === 'cash') {
-          paymentMethod = 'cash_in_hand';
-          paymentMethodName = 'Cash in Hand';
-        } else if (pmInput === 'bank account' || pmInput === 'bank') {
-          paymentMethod = 'bank_account';
-          paymentMethodName = 'Bank Account';
-        } else if (pmInput === 'credit card' || pmInput === 'card') {
-          paymentMethod = 'credit_card';
-          paymentMethodName = 'Credit Card';
-        } else {
-          // Assume it's a specific card/account name
-          paymentMethod = 'credit_card';
-          paymentMethodName = row['Payment Method'];
-        }
-      }
-
-      const notes = row.Notes ? String(row.Notes).trim() : '';
-
-      // Build transaction object
-      const transaction = {
-        user_id: user.id,
-        type,
-        amount,
-        date: dateStr,
-        description,
-        category_id: categoryId,
-        category_name: categoryName,
-        payment_method: paymentMethod,
-        payment_method_name: paymentMethodName,
-        notes,
-        status: 'active',
-        is_cleared: false,
-        auto_generated: false
-      };
-
+      const { type: pmType } = parseSource(source);
       validTransactions.push({
-        transaction,
         rowNum,
-        autoDetected: {
-          type: !row.Type,
-          category: !row.Category && categoryId !== null
-        }
+        key,
+        source,
+        transaction: {
+          type,
+          amount,
+          date: dateStr,
+          description,
+          category_id: categoryId,
+          category_name: categoryName,
+          payment_method: pmType,
+          notes,
+        },
+        autoDetected: { type: false, category: !row.Category && categoryId !== null },
       });
-
     } catch (rowError) {
       errors.push({ row: rowNum, error: rowError.message });
     }
   }
 
-  return { validTransactions, errors };
+  return { validTransactions, errors, accounts };
 }
 
 /**
- * Import new transactions from Excel file
+ * Import new transactions from Excel file. Every row moves money through utils/money.js with a once-only key.
  */
 export async function importNewTransactions(file, options = {}) {
   const { dryRun = false } = options;
@@ -330,27 +271,12 @@ export async function importNewTransactions(file, options = {}) {
     const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    // Read Excel file
-    const buffer = await file.arrayBuffer();
-    const wb = XLSX.read(buffer);
-    const ws = wb.Sheets['Transactions'];
-    
-    if (!ws) {
-      throw new Error('No "Transactions" sheet found in file');
-    }
+    const data = await readSheetRows(file, 'Transactions');
+    if (!data) throw new Error('No "Transactions" sheet found in file');
+    if (data.length === 0) throw new Error('No data found in file');
 
-    const data = XLSX.utils.sheet_to_json(ws);
+    const { validTransactions, errors, accounts } = await parseTransactionRows(data, user.id);
 
-    if (data.length === 0) {
-      throw new Error('No data found in file');
-    }
-
-    console.log('📊 Processing', data.length, 'rows...');
-
-    // Parse and validate
-    const { validTransactions, errors } = await parseTransactionRows(data);
-
-    // Dry run - return preview
     if (dryRun) {
       return {
         success: true,
@@ -359,58 +285,41 @@ export async function importNewTransactions(file, options = {}) {
         valid: validTransactions.length,
         errors: errors.length,
         preview: {
-          transactions: validTransactions.slice(0, 10).map(t => ({
-            ...t.transaction,
-            autoDetected: t.autoDetected
-          })),
-          errors: errors.slice(0, 10)
-        }
+          transactions: validTransactions.slice(0, 10).map((t) => ({ ...t.transaction, autoDetected: t.autoDetected })),
+          errors: errors.slice(0, 10),
+        },
       };
     }
 
-    // Apply - insert transactions
     if (validTransactions.length === 0) {
-      return {
-        success: false,
-        message: 'No valid transactions to import',
-        errors: errors.length,
-        errorDetails: errors
-      };
+      return { success: false, message: 'No valid transactions to import', errors: errors.length, errorDetails: errors };
     }
 
     let inserted = 0;
+    let skipped = 0;
     const insertErrors = [...errors];
 
-    // Insert in batches of 50
-    const batchSize = 50;
-    for (let i = 0; i < validTransactions.length; i += batchSize) {
-      const batch = validTransactions.slice(i, i + batchSize);
-      const transactionsToInsert = batch.map(t => t.transaction);
-
-      const { error: batchError } = await server
-        .from('transactions')
-        .insert(transactionsToInsert);
-
-      if (batchError) {
-        console.error('❌ Batch insert error:', batchError);
-        batch.forEach(t => {
-          insertErrors.push({ row: t.rowNum, error: batchError.message });
-        });
-      } else {
-        inserted += batch.length;
+    for (const t of validTransactions) {
+      const { type, amount, date, description, category_id, category_name, notes } = t.transaction;
+      try {
+        const result = type === 'income'
+          ? await recordIncome({ amount, target: t.source, date, description, notes, key: t.key, extra: { category_id, category_name } }, accounts)
+          : await recordExpense({ amount, source: t.source, date, description, notes, category_id, category_name, key: t.key }, accounts);
+        if (result && result.repeated) skipped += 1; else inserted += 1;
+      } catch (rowError) {
+        insertErrors.push({ row: t.rowNum, error: rowError.message });
       }
     }
-
-    console.log('✅ Inserted', inserted, 'transactions');
 
     return {
       success: true,
       inserted,
+      skipped,
       errors: insertErrors.length,
-      errorDetails: insertErrors.length > 0 ? insertErrors : undefined
+      errorDetails: insertErrors.length > 0 ? insertErrors : undefined,
     };
   } catch (error) {
-    console.error('❌ Import failed:', error);
+    console.error('Import failed:', error);
     throw error;
   }
 }

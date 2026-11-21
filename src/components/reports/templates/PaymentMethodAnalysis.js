@@ -99,23 +99,10 @@ export default function PaymentMethodAnalysis({
     );
   }
 
-  // Prepare chart data with icons
-  const getPaymentMethodIcon = (method) => {
-    switch(method) {
-      case 'cash_in_hand': return '';
-      case 'bank_account': return '';
-      case 'credit_card': return '';
-      case 'loan': return '';
-      case 'reserved_fund': return '';
-      case 'transfer': return '↔️';
-      default: return '';
-    }
-  };
-
   const chartData = paymentMethodData
     .filter(method => method.method !== 'cash') // Exclude legacy cash
     .map(method => ({
-      name: `${getPaymentMethodIcon(method.method)} ${method.name}`,
+      name: method.name,
       value: method.total,
       color: method.method === 'cash_in_hand' ? '#10B981' : 
              method.method === 'bank_account' ? '#3B82F6' :
