@@ -35,7 +35,6 @@ export default function TransactionHistory({
   categories,
   creditCards,
   loans,
-  reservedFunds,
   availableCash,
   onUpdate,
   onUpdateCash,
@@ -59,7 +58,6 @@ export default function TransactionHistory({
     loan: 'all',
     bankAccount: 'all',
     incomeSource: 'all',
-    reservedFund: 'all'
   });
 
   // Saved filters state
@@ -73,7 +71,7 @@ export default function TransactionHistory({
 
   // === HELPER FUNCTIONS (Safe - No Side Effects) ===
   const isPaymentType = (type) =>
-    type === 'payment' || type === 'loan_payment' || type === 'credit_card_payment' || type === 'reserved_fund_paid';
+    type === 'payment' || type === 'loan_payment' || type === 'credit_card_payment';
 
   const getTotalsByType = () => {
     const totals = {
@@ -176,13 +174,6 @@ export default function TransactionHistory({
       });
     }
 
-    if (filters.reservedFund !== 'all') {
-      filtered = filtered.filter(t => {
-        if (t.reserved_fund_id === filters.reservedFund) return true;
-        if (t.fund_id === filters.reservedFund) return true;
-        return false;
-      });
-    }
 
     setFilteredTransactions(filtered);
   }, [transactions, filters]);
@@ -262,7 +253,6 @@ export default function TransactionHistory({
       loan: 'all',
       bankAccount: 'all',
       incomeSource: 'all',
-      reservedFund: 'all'
     });
   };
 
@@ -442,7 +432,6 @@ export default function TransactionHistory({
           categories={categories}
           creditCards={creditCards}
           loans={loans}
-          reservedFunds={reservedFunds}
           availableCash={availableCash}
           onUpdateCash={onUpdateCash}
           bankAccounts={bankAccounts}
@@ -538,7 +527,6 @@ export default function TransactionHistory({
         creditCards={creditCards}
         loans={loans}
         bankAccounts={bankAccounts}
-        reservedFunds={reservedFunds}
         onClearFilters={handleClearFilters}
       />
 

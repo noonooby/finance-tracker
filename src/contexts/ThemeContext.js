@@ -89,7 +89,6 @@ export function ThemeProvider({ children }) {
     write('finance_theme', id);
   }, []);
 
-  const [showCashInDashboard, setShowCashInDashboard] = useState(false);
   const [displayDensity, setDisplayDensityState] = useState('comfortable');
   const [alertSettings, setAlertSettings] = useState({ 
     defaultDays: 7, 
@@ -105,9 +104,6 @@ export function ThemeProvider({ children }) {
         const darkModeSetting = settings?.find(s => s.key === 'darkMode');
         // A choice made on this device wins; otherwise use the saved account setting.
         if (darkModeSetting && !read('finance_mode')) setColorModeState(darkModeSetting.value ? 'dark' : 'light');
-        
-        const showCashSetting = settings?.find(s => s.key === 'showCashInDashboard');
-        setShowCashInDashboard(showCashSetting?.value || false);
         
         const alertSetting = settings?.find(s => s.key === 'alertSettings');
         const alertValue = alertSetting?.value || {};
@@ -146,11 +142,6 @@ export function ThemeProvider({ children }) {
     setAlertSettings(nextSettings);
   }, [alertSettings]);
 
-  const toggleCashDisplay = useCallback(async (show) => {
-    await dbOperation('settings', 'put', { key: 'showCashInDashboard', value: show });
-    setShowCashInDashboard(show);
-  }, []);
-
   // Apply density to DOM
   const applyDensityToDOM = (density) => {
     const root = document.documentElement;
@@ -180,12 +171,10 @@ export function ThemeProvider({ children }) {
 
   const value = {
     darkMode,
-    showCashInDashboard,
     displayDensity,
     alertSettings,
     toggleDarkMode,
     updateAlertSettings,
-    toggleCashDisplay,
     setDisplayDensity,
     setDarkMode,
     colorMode,
@@ -193,7 +182,6 @@ export function ThemeProvider({ children }) {
     theme,
     setTheme,
     themes: THEMES,
-    setShowCashInDashboard,
     setAlertSettings,
   };
 

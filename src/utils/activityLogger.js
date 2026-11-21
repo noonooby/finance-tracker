@@ -160,18 +160,6 @@ export const undoActivity = async (activity, onUpdate) => {
 
       case 'payment':
         if (hasMoney) await reverseMoney(); else warnNoRecord();
-        // Reserved funds are set aside amounts, not balances: put back the fund records the payment used.
-        if (snapshot) {
-          const funds = Array.isArray(snapshot.affectedFunds) && snapshot.affectedFunds.length
-            ? snapshot.affectedFunds
-            : snapshot.affectedFund ? [snapshot.affectedFund] : [];
-          for (const entry of funds) {
-            const fund = entry && (entry.fund || entry);
-            if (!fund || (fund.id == null && fund.fund_id == null)) continue;
-            const { source_account_name, ...fundToRestore } = fund;
-            await dbOperation('reservedFunds', 'put', fundToRestore, { skipActivityLog: true });
-          }
-        }
         break;
 
       case 'expense':

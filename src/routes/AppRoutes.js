@@ -75,10 +75,8 @@ const DashboardRoute = React.memo(() => {
   
   const {
     darkMode,
-    showCashInDashboard,
     alertSettings,
     updateAlertSettings,
-    toggleCashDisplay,
   } = useTheme();
   
   const { handleNavigate } = useUI();
@@ -132,8 +130,6 @@ const DashboardRoute = React.memo(() => {
       onNavigate={handleNavigate}
       onUpdateAlertSettings={updateAlertSettings}
       bankAccounts={bankAccounts}
-      showCashInDashboard={showCashInDashboard}
-      onToggleCashDisplay={toggleCashDisplay}
       onReloadAll={loadAllData}
       latestActivities={latestActivities}
       onProcessDuePayments={handleProcessDuePayments}
@@ -283,7 +279,6 @@ const ReportsRoute = React.memo(() => {
 const SettingsRoute = React.memo(() => {
   const { darkMode, displayDensity, setDisplayDensity } = useTheme();
   const { loadAllData, loadCategories, categories } = useFinanceData();
-  const { showCashInDashboard, toggleCashDisplay } = useTheme();
   
   return (
     <Settings
@@ -292,9 +287,7 @@ const SettingsRoute = React.memo(() => {
       onDisplayDensityChange={setDisplayDensity}
       onUpdate={loadAllData}
       onReloadCategories={loadCategories}
-      showCashInDashboard={showCashInDashboard}
       categories={categories}
-      onToggleCashDisplay={toggleCashDisplay}
     />
   );
 });

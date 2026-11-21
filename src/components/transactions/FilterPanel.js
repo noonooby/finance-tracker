@@ -14,7 +14,6 @@ export default function FilterPanel({
   creditCards,
   loans,
   bankAccounts,
-  reservedFunds,
   onClearFilters
 }) {
   return (

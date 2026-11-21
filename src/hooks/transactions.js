@@ -22,7 +22,6 @@ export { useIncomeOperations, useIncomeContexts, useIncomeValidation, useIncomeP
 export function useTransactionOperations({
   creditCards,
   loans,
-  reservedFunds,
   bankAccounts,
   availableCash,
   onUpdateCash,
@@ -152,10 +151,6 @@ function paymentSourceOf(formData, { bankAccounts, creditCards }) {
     const card = creditCards?.find(c => c.id === sourceId);
     if (!card) throw new Error('Payment card not found');
     return { sourceType, sourceId, source: `credit_card:${sourceId}`, sourceName: card.name };
-  }
-  if (sourceType === 'reserved_fund') {
-    // Reserved funds have no table on the server, so there is no balance to pay from.
-    throw new Error('Paying from a reserved fund is not available. Choose an account.');
   }
   throw new Error('Choose the account it is paid from.');
 }

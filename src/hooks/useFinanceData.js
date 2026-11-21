@@ -6,7 +6,6 @@ import { FinanceDataContext } from '../contexts/FinanceDataContext';
  * @returns {Object} Financial data state and methods
  * @property {Array} creditCards - List of credit cards
  * @property {Array} loans - List of loans
- * @property {Array} reservedFunds - List of reserved funds
  * @property {Array} income - List of income sources
  * @property {Array} transactions - List of transactions
  * @property {Array} categories - List of categories
