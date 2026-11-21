@@ -24,9 +24,15 @@ const SESSION_MS = 30 * 864e5;
 
 const TABLES = new Set(['activities', 'alert_history', 'bank_accounts', 'budget_tracking', 'categories', 'credit_card_payments', 'credit_cards',
   'income', 'income_schedules', 'known_entities', 'loan_payments', 'loans', 'report_templates', 'saved_filters', 'scheduled_payments',
-  'settings', 'transactions', 'user_preferences', 'uploads']);
+  'settings', 'transactions', 'user_preferences', 'uploads', 'investments', 'assets', 'balance_points']);
 // Tables whose balance /api/money may change, and the fields it may change.
-const MONEY_FIELDS = { bank_accounts: ['balance'], credit_cards: ['balance'], loans: ['balance'], settings: ['value'] };
+const MONEY_FIELDS = { bank_accounts: ['balance'], credit_cards: ['balance'], loans: ['balance'], investments: ['balance'], assets: ['balance'], settings: ['value'] };
+// Tables only the server writes.
+const SERVER_ONLY = new Set(['balance_points']);
+// The user's calendar day (balances are dated by it). APP_TZ defaults to Toronto, like the Telegram bot.
+const APP_TZ = process.env.APP_TZ || 'America/Toronto';
+const today = () => new Date().toLocaleDateString('en-CA', { timeZone: APP_TZ });
+const isDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
 
 class HttpError extends Error { constructor(s, m) { super(m); this.status = s; } }
 const fail = (s, m) => { throw new HttpError(s, m); };
@@ -103,6 +109,23 @@ function selectRows(uid, q) {
   if (q.offset) sql += ` OFFSET ${Math.max(0, +q.offset | 0)}`;
   return db.prepare(sql).all(...args).map(rowOut);
 }
+// Every balance carries the day it was last known (balance_as_of) and leaves a dated point in balance_points,
+// one per account per day (the last figure of the day wins). That history drives net worth over time and
+// investment snapshots; the date tells the user how current each figure is.
+function stamp(uid, tbl, row, field, day) {
+  if (!MONEY_FIELDS[tbl] || !MONEY_FIELDS[tbl].includes(field)) return row;
+  if (tbl === 'settings' && row.key !== 'cashInHand') return row;
+  const d = isDay(day) ? day : today();
+  const acct = tbl === 'settings' ? 'cash' : tbl;
+  row.balance_as_of = d;
+  db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(row), tbl, String(row.id), uid);
+  const pid = `${acct}:${row.id}:${d}`;
+  const point = { id: pid, user_id: uid, account_table: acct, account_id: row.id, date: d, value: Number(row[field]) || 0, updated_at: now() };
+  db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?) ON CONFLICT(tbl, id) DO UPDATE SET data = excluded.data WHERE rows.user_id = excluded.user_id')
+    .run('balance_points', pid, uid, JSON.stringify(point));
+  return row;
+}
+
 function clean(values) {
   if (!values || typeof values !== 'object' || Array.isArray(values)) fail(400, 'A row must be an object');
   const v = { ...values };
@@ -127,6 +150,7 @@ function insertRow(uid, tbl, values, upsertOn) {
   if (v.id == null) v.id = crypto.randomUUID();
   v.created_at = v.created_at || now(); v.updated_at = v.updated_at || v.created_at;
   db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)').run(tbl, String(v.id), uid, JSON.stringify(v));
+  for (const f of MONEY_FIELDS[tbl] || []) if (f in v) stamp(uid, tbl, v, f, values.balance_as_of);
   return v;
 }
 function updateRows(uid, tbl, filters, values, orGroups) {
@@ -138,6 +162,8 @@ function updateRows(uid, tbl, filters, values, orGroups) {
     const n = { ...r, ...v, id: r.id, user_id: uid, updated_at: now() };
     if (r._legs) n._legs = r._legs;
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), tbl, String(r.id), uid);
+    // Stating a balance (even the same figure) confirms it as of today, or as of the date given.
+    for (const f of MONEY_FIELDS[tbl] || []) if (f in v) stamp(uid, tbl, n, f, values.balance_as_of);
     out.push(n);
   }
   return out;
@@ -152,6 +178,7 @@ function deleteRows(uid, tbl, filters, orGroups) {
 }
 function runQuery(uid, q) {
   if (!TABLES.has(q.table)) fail(400, 'Unknown table');
+  if (SERVER_ONLY.has(q.table) && q.action !== 'select') fail(403, 'That table is kept by the server');
   const filters = q.filters || [], orG = q.or || [];
   switch (q.action) {
     case 'select': {
@@ -194,13 +221,26 @@ function applyLegs(uid, legs) {
     if (!Number.isFinite(d)) fail(400, 'Amount is not a number');
     if (!d) continue;
     const { r, field } = legTarget(uid, l);
-    const before = cents(r[field]), after = before + d;
+    const before = cents(r[field]);
+    let delta = d, interest = 0;
+    // A payment on a loan with interest: the interest for the period comes off first, worked out here from the balance
+    // as it stands inside this step (never from a figure the browser had). Only the rest lowers what is owed.
+    if (l.periodic_rate != null && l.table === 'loans' && d < 0) {
+      const rate = Number(l.periodic_rate);
+      if (!(rate >= 0 && rate < 1)) fail(400, 'Interest rate is not valid');
+      const pay = -d;
+      interest = Math.min(pay, Math.max(0, Math.round(before * rate)));
+      delta = -(pay - interest);
+    }
+    const after = before + delta;
     if (l.floor != null && after < cents(l.floor)) {
       fail(409, `${r.name || 'Cash in hand'} would go to ${(after / 100).toFixed(2)}, below its limit of ${Number(l.floor).toFixed(2)}`);
     }
     const n = { ...r, [field]: fromCents(after), updated_at: now() };
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), l.table, String(r.id), uid);
-    done.push({ table: l.table, id: r.id, key: l.table === 'settings' ? r.key : undefined, field, delta: fromCents(d), before: fromCents(before), after: fromCents(after) });
+    stamp(uid, l.table, n, field, l.as_of);
+    done.push({ table: l.table, id: r.id, key: l.table === 'settings' ? r.key : undefined, field, delta: fromCents(delta), before: fromCents(before), after: fromCents(after),
+      ...(interest ? { interest: fromCents(interest), principal: fromCents(-delta) } : {}) });
   }
   return done;
 }
@@ -217,6 +257,8 @@ function money(uid, b) {
     const rows = (b.rows || []).map(({ table, values }) => {
       if (!TABLES.has(table)) fail(400, 'Unknown table');
       const v = insertRow(uid, table, values);
+      const split = legs.find(x => x.interest != null);
+      if (table === 'transactions' && split) { v.interest_amount = split.interest; v.principal_amount = split.principal; }
       if (table === 'transactions' && legs.length) {
         v._legs = legs.map(({ table, id, key, field, delta }) => ({ table, id, key, field, delta }));
         db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ?').run(JSON.stringify(v), table, String(v.id));

@@ -10,6 +10,7 @@
 //   gift card     balance = value left on the card         (purchase with it: negative)
 //   loan          balance = amount owed                    (payment: negative)
 import { moveMoney, reverseTransaction } from './server';
+import { periodicRate } from './finance';
 
 export { reverseTransaction };
 
@@ -36,6 +37,7 @@ export function parseSource(source, id) {
 export function payFrom(source, amount, { bankAccounts = [], creditCards = [] } = {}) {
   const { type, id } = parseSource(source);
   if (type === 'cash_in_hand') return { table: 'settings', key: 'cashInHand', delta: -amount, floor: 0 };
+  if (type === 'investment') return { table: 'investments', id, delta: -amount, floor: 0 };
   if (type === 'bank_account') {
     const a = bankAccounts.find((x) => String(x.id) === String(id));
     if (!a) throw new Error('That bank account no longer exists.');
@@ -54,6 +56,7 @@ export function payFrom(source, amount, { bankAccounts = [], creditCards = [] } 
 export function payInto(target, amount, { creditCards = [] } = {}) {
   const { type, id } = parseSource(target);
   if (type === 'cash_in_hand') return { table: 'settings', key: 'cashInHand', delta: amount };
+  if (type === 'investment') return { table: 'investments', id, delta: amount };
   if (type === 'bank_account') return { table: 'bank_accounts', id, delta: amount };
   if (type === 'credit_card') {
     const c = creditCards.find((x) => String(x.id) === String(id));
@@ -63,10 +66,10 @@ export function payInto(target, amount, { creditCards = [] } = {}) {
   throw new Error('Choose where the money goes.');
 }
 
-const sourceName = (source, { bankAccounts = [], creditCards = [] }) => {
+const sourceName = (source, { bankAccounts = [], creditCards = [], investments = [] }) => {
   const { type, id } = parseSource(source);
   if (type === 'cash_in_hand') return 'Cash in hand';
-  const list = type === 'bank_account' ? bankAccounts : creditCards;
+  const list = type === 'bank_account' ? bankAccounts : type === 'investment' ? investments : creditCards;
   return (list.find((x) => String(x.id) === String(id)) || {}).name || null;
 };
 
@@ -134,7 +137,10 @@ export async function recordLoanPayment({ loanId, amount, source, date, descript
   const rows = [];
   if (paymentRow) rows.push({ table: 'loan_payments', values: { loan_id: loan.id, amount: a, payment_date: date, ...paymentRow } });
   rows.push({ table: 'transactions', values: txRow({ type: 'loan_payment', amount: a, date, description: description || `Payment to ${loan.name}`, loan_id: loan.id, ...extra }, source, accounts) });
-  return send(key, [payFrom(source, a, accounts), { table: 'loans', id: loan.id, delta: -a, floor: 0 }], rows, withUpdates(updates));
+  // With an interest rate on the loan, the server takes the period's interest off first and only the rest lowers the balance.
+  const rate = periodicRate(loan);
+  const loanLeg = { table: 'loans', id: loan.id, delta: -a, floor: 0, ...(rate > 0 ? { periodic_rate: rate } : {}) };
+  return send(key, [payFrom(source, a, accounts), loanLeg], rows, withUpdates(updates));
 }
 
 // Moving money between two of your own places (bank to bank, bank to cash, cash to bank).
@@ -163,7 +169,7 @@ export async function recordAdjustment({ target, newBalance, current, date, desc
   if (!delta) return Promise.resolve({ legs: [], rows: [] });
   const { type, id } = parseSource(target);
   const leg = type === 'cash_in_hand' ? { table: 'settings', key: 'cashInHand', delta }
-    : { table: type === 'bank_account' ? 'bank_accounts' : type === 'loan' ? 'loans' : 'credit_cards', id, delta };
+    : { table: { bank_account: 'bank_accounts', loan: 'loans', investment: 'investments', asset: 'assets' }[type] || 'credit_cards', id, delta };
   return send(key, [leg], [
     { table: 'transactions', values: txRow({ type: 'adjustment', amount: Math.abs(delta), direction: delta > 0 ? 'up' : 'down', date, description: description || 'Balance correction' }, target, accounts) },
   ]);

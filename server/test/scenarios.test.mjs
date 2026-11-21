@@ -29,12 +29,13 @@ globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v
 const realFetch = globalThis.fetch;
 globalThis.fetch = (u, o) => realFetch(String(u).startsWith('/') ? base + u : u, o);
 const lib = path.join(tmp, 'lib'); fs.mkdirSync(lib);
-for (const f of ['server.js', 'money.js', 'helpers.js']) {
+for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js']) {
   const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
   fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
 }
 const { server: client, api } = await import(pathToFileURL(path.join(lib, 'server.mjs')));
 const M = await import(pathToFileURL(path.join(lib, 'money.mjs')));
+const F = await import(pathToFileURL(path.join(lib, 'finance.mjs')));
 await client.auth.devSignIn();
 
 const db = client;
@@ -222,6 +223,72 @@ test('screenshot without a Gemini key says so plainly', async () => {
   await assert.rejects(api('/api/read-screenshot', { image: 'aGVsbG8=', mime: 'image/png' }), /not set up/);
   process.env.READER_STUB = saved;
   await assert.rejects(api('/api/read-screenshot', { image: 'aGVsbG8=', mime: 'application/pdf' }), /PNG, JPEG/);
+});
+
+
+test('mortgage: semi-annual compounding, each payment splits into interest and principal, undo puts back only what moved', async () => {
+  // 400,000 at 5% compounded twice a year, paid monthly: monthly rate (1.025)^(1/6)-1 = 0.4123915%
+  const mtg = await add('loans', { name: 'Mortgage', loan_type: 'mortgage', balance: 400000, interest_rate: 5, frequency: 'monthly', payment_amount: 2326.38, next_payment_date: '2026-12-01' });
+  const rate = F.periodicRate(mtg);
+  assert.ok(Math.abs(rate - 0.004123915) < 1e-8);
+  const big = await add('bank_accounts', { name: 'Joint', balance: 10000 });
+  const r = await M.recordLoanPayment({ loanId: mtg.id, amount: 2326.38, source: `bank_account:${big.id}`, date: '2026-12-01' }, await accounts());
+  assert.equal(r.transaction.interest_amount, 1649.57);
+  assert.equal(r.transaction.principal_amount, 676.81);
+  assert.equal((await get('loans', mtg.id)).balance, 399323.19);
+  assert.equal((await get('bank_accounts', big.id)).balance, 7673.62);
+  await M.reverseTransaction(r.transaction.id);
+  assert.equal((await get('loans', mtg.id)).balance, 400000);
+  assert.equal((await get('bank_accounts', big.id)).balance, 10000);
+  // That payment pays the mortgage off in about 25 years.
+  const plan = F.amortize({ ...mtg, balance: 400000 });
+  assert.ok(plan.rows.length >= 299 && plan.rows.length <= 301, 'payments: ' + plan.rows.length);
+  assert.equal(plan.neverPaysOff, false);
+  // A payment smaller than the interest never pays off; the plan says so.
+  assert.equal(F.amortize({ ...mtg, payment_amount: 1000 }).neverPaysOff, true);
+});
+
+test('a loan without a rate: the whole payment lowers the balance', async () => {
+  assert.equal(F.periodicRate(loan), 0);
+});
+
+test('investments: contributions move money, market value is a dated snapshot with history', async () => {
+  const T = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+  const tfsa = await add('investments', { name: 'TFSA', kind: 'tfsa', balance: 20000, balance_as_of: '2026-10-01' });
+  assert.equal(tfsa.balance_as_of, '2026-10-01');
+  await M.recordTransfer({ amount: 500, from: `bank_account:${sav.id}`, to: `investment:${tfsa.id}`, date: '2026-11-20' }, await accounts());
+  assert.equal((await get('investments', tfsa.id)).balance, 20500);
+  // The market moved: the user states the new value from the broker app.
+  await db.from('investments').update({ balance: 21234.56, balance_as_of: T }).eq('id', tfsa.id);
+  const pts = (await db.from('balance_points').select('*').eq('account_id', tfsa.id).order('date')).data;
+  // One point per day, the day's last figure wins: the October opening value, then today's stated value.
+  assert.deepEqual(pts.map((p) => [p.date, p.value]), [['2026-10-01', 20000], [T, 21234.56]]);
+  const { error } = await db.from('balance_points').insert({ account_id: 'x', value: 1 });
+  assert.match(error.message, /kept by the server/);
+});
+
+test('where you stand: net worth, mortgage apart from other debt, out-of-date figures flagged', async () => {
+  await add('assets', { name: 'House', kind: 'property', balance: 650000, balance_as_of: '2026-06-01' });
+  const a = await accounts();
+  const [inv, as] = await Promise.all(['investments', 'assets'].map((t) => db.from(t).select('*')));
+  const p = F.position({ ...a, cash: await cash(), cashAsOf: '2026-11-21', investments: inv.data, assets: as.data }, new Date(2026, 10, 21));
+  const owed = a.loans.reduce((s, l) => s + l.balance, 0) + a.creditCards.filter((c) => !c.is_gift_card && c.balance > 0).reduce((s, c) => s + c.balance, 0)
+    + a.bankAccounts.filter((b) => b.balance < 0).reduce((s, b) => s - b.balance, 0);
+  assert.equal(Math.round(p.totalOwe * 100), Math.round(owed * 100));
+  assert.equal(p.netWorth, Math.round((p.totalHave - p.totalOwe) * 100) / 100);
+  assert.equal(p.mortgage, 400000);
+  assert.equal(p.debtExcludingMortgage, Math.round((p.totalOwe - 400000) * 100) / 100);
+  assert.ok(p.stale.some((x) => x.name === 'House'), 'the house value from June is out of date');
+  assert.ok(!p.stale.some((x) => x.name === 'TFSA'), 'the TFSA was updated today');
+  assert.equal(p.upToDate, false);
+  // Every account touched by a money step today carries today's date.
+  assert.ok(a.bankAccounts.every((b) => /^\d{4}-\d{2}-\d{2}$/.test(b.balance_as_of)));
+});
+
+test('month end: spendable now, plus pay due, minus payments due', async () => {
+  const m = F.monthEnd({ liquid: 1000, incomeSchedules: [{ amount: 2500, next_date: '2026-11-28' }, { amount: 99, next_date: '2026-12-02' }],
+    loans: [{ payment_amount: 400, next_payment_date: '2026-11-25' }], creditCards: [{ balance: 300, due_date: '2026-11-30', minimum_payment: 25 }] }, new Date(2026, 10, 21));
+  assert.deepEqual([m.coming, m.going, m.atEnd], [2500, 425, 3075]);
 });
 
 test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
