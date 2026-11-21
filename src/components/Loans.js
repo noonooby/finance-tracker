@@ -51,6 +51,9 @@ export default function Loans({
     interestRate: '',
     loanType: 'loan',
     compounding: '',
+    provider: '',
+    setupFee: '',
+    onCardId: '',
     paymentAmount: '',
     frequency: 'monthly',
     nextPaymentDate: localDate(),
@@ -242,6 +245,9 @@ export default function Loans({
         interest_rate: parseFloat(formData.interestRate) || 0,
         loan_type: formData.loanType || 'loan',
         compounding: formData.compounding || null,
+        provider: formData.provider || null,
+        setup_fee: parseFloat(formData.setupFee) || 0,
+        on_card_id: formData.onCardId || null,
         payment_amount: parseFloat(formData.paymentAmount) || 0,
         frequency: formData.frequency,
         next_payment_date: formData.nextPaymentDate,
@@ -323,7 +329,6 @@ export default function Loans({
     console.log('📊 Loans data:', loans);
     console.log('💰 Available cash:', availableCash);
     console.log('🏦 Bank accounts:', bankAccounts);
-    console.log('💳 Credit cards:', creditCards);
     console.log('💵 Cash in hand:', cashInHand);
 
     if (!window.confirm('Process all overdue loan payments?')) {
@@ -370,6 +375,9 @@ export default function Loans({
       interestRate: '',
       loanType: 'loan',
       compounding: '',
+      provider: '',
+      setupFee: '',
+      onCardId: '',
       paymentAmount: '',
       frequency: 'monthly',
       nextPaymentDate: localDate(),
@@ -393,6 +401,9 @@ export default function Loans({
       interestRate: loan.interest_rate ? (parseFloat(loan.interest_rate)).toFixed(2) : '',
       loanType: loan.loan_type || 'loan',
       compounding: loan.compounding || '',
+      provider: loan.provider || '',
+      setupFee: loan.setup_fee ? String(loan.setup_fee) : '',
+      onCardId: loan.on_card_id || '',
       paymentAmount: (parseFloat(loan.payment_amount) || 0).toFixed(2),
       frequency: loan.frequency,
       nextPaymentDate: loan.next_payment_date,

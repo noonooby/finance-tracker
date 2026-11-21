@@ -170,6 +170,10 @@ export default function LoanForm({
             <option value="loan">Loan</option>
             <option value="mortgage">Mortgage</option>
             <option value="line_of_credit">Line of credit</option>
+            <option value="car_lease">Car lease or car loan</option>
+            <option value="bnpl">Pay later (Klarna, Affirm, PayPal)</option>
+            <option value="plan">Equal payment plan</option>
+            <option value="student">Student loan</option>
           </select>
         </label>
         <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -183,6 +187,26 @@ export default function LoanForm({
           </select>
         </label>
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          Lender or provider
+          <input value={formData.provider || ''} onChange={(e) => setFormData({ ...formData, provider: e.target.value })} placeholder="e.g. Affirm, TD" className={`mt-1 w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`} />
+        </label>
+        <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          Setup fee
+          <input type="number" step="0.01" inputMode="decimal" value={formData.setupFee || ''} onChange={(e) => setFormData({ ...formData, setupFee: e.target.value })} placeholder="0.00" className={`mt-1 w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`} />
+        </label>
+      </div>
+      {(formData.loanType === 'plan' || formData.loanType === 'bnpl') && (
+        <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          Where it lives
+          <select value={formData.onCardId || ''} onChange={(e) => setFormData({ ...formData, onCardId: e.target.value })} className={`mt-1 w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}>
+            <option value="">On its own (paid separately)</option>
+            {creditCards.filter((c) => !c.is_gift_card).map((c) => <option key={c.id} value={c.id}>Inside {c.name} (billed on the card)</option>)}
+          </select>
+          <span className={`block text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>A plan inside a card is part of the card's balance. Each installment is billed on the card, so no separate payment is made.</span>
+        </label>
+      )}
       <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>With a rate set, each payment is split into interest and the part that lowers what you owe.</p>
 
       {/* Payment Frequency */}

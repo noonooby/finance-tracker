@@ -178,10 +178,44 @@ export default function CreditCardForm({
               ))}
             </select>
             <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              {isEdit
-                ? 'Auto-process overdue payments from this source'
-                : 'This source will be used when processing overdue payments automatically'}
+              With an account chosen, the card is paid from it on the due date. Leave it on none if you pay it yourself.
             </p>
+            {formData.connectedPaymentSource && (
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <label className={smallLabel}>Autopay pays
+                  <select value={formData.autopayMode || 'statement'} onChange={(e) => setFormData({ ...formData, autopayMode: e.target.value })} className={inputClass}>
+                    <option value="statement">The full balance</option>
+                    <option value="minimum">The minimum payment</option>
+                    <option value="fixed">A fixed amount</option>
+                  </select>
+                </label>
+                {formData.autopayMode === 'fixed' && (
+                  <label className={smallLabel}>Amount
+                    <input type="number" step="0.01" inputMode="decimal" value={formData.autopayFixed} onChange={(e) => setFormData({ ...formData, autopayFixed: e.target.value })} className={inputClass} />
+                  </label>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className={smallLabel}>Minimum payment
+              <input type="number" step="0.01" inputMode="decimal" placeholder="From the statement" value={formData.minimumPayment} onChange={(e) => setFormData({ ...formData, minimumPayment: e.target.value })} className={inputClass} />
+            </label>
+            <label className={smallLabel}>Annual fee
+              <input type="number" step="0.01" inputMode="decimal" placeholder="0.00" value={formData.annualFee} onChange={(e) => setFormData({ ...formData, annualFee: e.target.value })} className={inputClass} />
+            </label>
+            <label className={smallLabel}>Cash advance rate %
+              <input type="number" step="0.01" inputMode="decimal" placeholder="Optional" value={formData.cashRate} onChange={(e) => setFormData({ ...formData, cashRate: e.target.value })} className={inputClass} />
+            </label>
+            <label className={smallLabel}>Promo rate %
+              <input type="number" step="0.01" inputMode="decimal" placeholder="e.g. 0" value={formData.promoRate} onChange={(e) => setFormData({ ...formData, promoRate: e.target.value })} className={inputClass} />
+            </label>
+            {formData.promoRate !== '' && (
+              <label className={smallLabel}>Promo ends
+                <input type="date" value={formData.promoEnd} onChange={(e) => setFormData({ ...formData, promoEnd: e.target.value })} className={inputClass} />
+              </label>
+            )}
           </div>
         </>
       ) : (

@@ -19,7 +19,14 @@ const parseLocal = (iso) => {
 const nextDue = (iso, anchorDay) => localDate(addMonths(parseLocal(iso), 1, anchorDay || dayOf(iso)));
 
 // The amount set for automatic payment, if the card has one; otherwise null (pay the full balance).
+// autopay_mode: statement (full balance), minimum (the card's minimum, or the usual 3% with a $10 floor), fixed.
 const configuredAmount = (card) => {
+  if (card.autopay_mode === 'statement') return null;
+  if (card.autopay_mode === 'fixed') return round2(Number(card.autopay_fixed) || 0) || null;
+  if (card.autopay_mode === 'minimum') {
+    const owed = round2(Number(card.balance) || 0);
+    return round2(Number(card.minimum_payment) || 0) || Math.min(owed, Math.max(10, round2(owed * 0.03)));
+  }
   for (const f of ['auto_pay_amount', 'autopay_amount', 'payment_amount', 'minimum_payment', 'min_payment']) {
     const n = round2(Number(card[f]) || 0);
     if (n > 0) return n;

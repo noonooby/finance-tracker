@@ -43,6 +43,26 @@ export async function processOverdueLoanPayments(loans, creditCards = [], bankAc
       results.skipped.push({ loan: loan.name, reason: 'No payment amount configured' });
       continue;
     }
+    // A plan inside a credit card (equal payment plan): its balance is already part of the card's balance, so a due date
+    // moves no money. The installment is billed to the card, and the plan's remaining balance goes down by it.
+    // Each step is guarded by the date it expects, so running this twice changes nothing.
+    if (loan.on_card_id) {
+      let dueDate = String(loan.next_payment_date).split('T')[0];
+      let left = round2(Number(loan.balance) || 0);
+      const anchor = dayOf(loan.start_date) || dayOf(loan.next_payment_date);
+      while (dueDate <= todayString && left > 0) {
+        const nextDate = predictNextDate(dueDate, loan.frequency || 'monthly', anchor);
+        const bill = Math.min(configured, left);
+        const { data } = await server.from('loans').update({ balance: round2(left - bill), next_payment_date: nextDate, last_billed: dueDate })
+          .eq('id', loan.id).eq('next_payment_date', loan.next_payment_date).select();
+        if (!data || !data.length) break;
+        loan = data[0];
+        left = round2(left - bill);
+        results.processed.push({ loan: loan.name, amount: bill, dueDate, billedToCard: true });
+        dueDate = nextDate;
+      }
+      continue;
+    }
     const sourceType = loan.connected_payment_source;
     if (!sourceType || (sourceType !== 'cash_in_hand' && !loan.connected_payment_source_id)) {
       results.skipped.push({ loan: loan.name, reason: 'No connected payment source' });

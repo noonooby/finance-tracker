@@ -410,3 +410,40 @@ test('snapshots: the balance you saw is fixed; older lines are history; gaps are
   assert.equal(c.snapshot.status, 'corrected');
   assert.equal(await cash(), 75);
 });
+
+test('debts: card plans are inside the card, cost of debt, what is coming up', () => {
+  const today = new Date(2026, 10, 21);
+  const cards = [
+    { id: 'c1', name: 'Visa', balance: 3000, interest_rate: 20.99, connected_payment_source: 'bank_account', connected_payment_source_id: 'b1', autopay_mode: 'minimum', minimum_payment: 90, due_date: '2026-12-05', annual_fee: 120 },
+    { id: 'c2', name: 'Amex', balance: 500, interest_rate: 21.99, connected_payment_source: 'bank_account', connected_payment_source_id: 'b1', autopay_mode: 'statement', due_date: '2026-11-30' },
+    { id: 'c3', name: 'Promo card', balance: 1000, interest_rate: 19.99, promo_rate: 0, promo_end: '2026-12-15', due_date: '2026-12-01' },
+  ];
+  const loans = [
+    { id: 'p1', name: 'Phone plan', balance: 1200, payment_amount: 100, frequency: 'monthly', next_payment_date: '2026-12-05', on_card_id: 'c1', loan_type: 'plan', interest_rate: 0 },
+    { id: 'k1', name: 'Klarna', balance: 300, payment_amount: 75, frequency: 'biweekly', next_payment_date: '2026-11-28', loan_type: 'bnpl', interest_rate: 0 },
+  ];
+  const banks = [{ id: 'b1', name: 'Chequing', balance: -200, allows_overdraft: true, overdraft_limit: 500, overdraft_rate: 21, overdraft_monthly_fee: 4 }];
+  // The plan is part of the Visa balance: owed is 3000 + 500 + 1000 + Klarna 300 + overdraft 200, not 1200 more.
+  const p = F.position({ bankAccounts: banks, creditCards: cards, loans }, today);
+  assert.equal(p.totalOwe, 5000);
+  // Cost: Visa interest on the 1800 not in the plan (autopay pays only the minimum), its fee, nothing on Amex (paid in full),
+  // nothing on the promo card until it ends, nothing on 0% Klarna, overdraft 200 at 21% plus 4.
+  const cost = F.monthlyCost({ creditCards: cards, loans, bankAccounts: banks }, today);
+  const by = Object.fromEntries(cost.items.map((i) => [i.name + ':' + i.why.split(' ')[0], i.amount]));
+  assert.equal(by['Visa:interest'], 31.49);
+  assert.equal(by['Visa:annual'], 10);
+  assert.equal(by['Chequing:overdraft'], 7.5);
+  assert.ok(!cost.items.some((i) => i.name === 'Amex' || i.name === 'Promo card' || i.name === 'Klarna'));
+  // Coming up: Klarna (you pay), Amex (autopay, full), Visa minimum 90, the plan billed on Visa, the promo card and its promo ending.
+  const up = F.upcoming({ creditCards: cards, loans, bankAccounts: banks }, today, 30);
+  const row = (n, k) => up.find((x) => x.name === n && x.kind === k);
+  assert.deepEqual([row('Klarna', 'loan').amount, row('Klarna', 'loan').auto], [75, false]);
+  assert.deepEqual([row('Amex', 'card').amount, row('Amex', 'card').from], [500, 'Chequing']);
+  assert.equal(row('Visa', 'card').amount, 90);
+  assert.deepEqual([row('Phone plan', 'plan').from, row('Phone plan', 'plan').auto], ['Visa', true]);
+  assert.ok(row('Promo card', 'promo_end'));
+  assert.deepEqual(up.map((x) => x.date), [...up.map((x) => x.date)].sort());
+  // Month end does not pay the plan twice.
+  const m = F.monthEnd({ liquid: 1000, loans, creditCards: [] }, today);
+  assert.equal(m.going, 75);
+});

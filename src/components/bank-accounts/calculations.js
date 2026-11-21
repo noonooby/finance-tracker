@@ -8,7 +8,10 @@ export const EMPTY_ACCOUNT_FORM = {
   is_primary: false,
   institution: '',
   allows_overdraft: false,
-  overdraft_limit: ''
+  overdraft_limit: '',
+  overdraft_monthly_fee: '',
+  overdraft_use_fee: '',
+  overdraft_rate: ''
 };
 
 export const emptyTransferData = () => ({
@@ -26,7 +29,10 @@ export const accountToFormData = (account) => ({
   is_primary: account.is_primary || false,
   institution: account.institution || '',
   allows_overdraft: account.allows_overdraft || false,
-  overdraft_limit: account.overdraft_limit?.toString() || ''
+  overdraft_limit: account.overdraft_limit?.toString() || '',
+  overdraft_monthly_fee: account.overdraft_monthly_fee?.toString() || '',
+  overdraft_use_fee: account.overdraft_use_fee?.toString() || '',
+  overdraft_rate: account.overdraft_rate?.toString() || ''
 });
 
 export const normalizeId = (value) => {
@@ -104,6 +110,9 @@ export const buildAccountPayload = (formData, editingItem, accountId) => {
     institution: formData.institution.trim(),
     allows_overdraft: formData.allows_overdraft || false,
     overdraft_limit: formData.allows_overdraft ? (parseFloat(formData.overdraft_limit) || 0) : 0,
+    overdraft_monthly_fee: formData.allows_overdraft ? (parseFloat(formData.overdraft_monthly_fee) || 0) : 0,
+    overdraft_use_fee: formData.allows_overdraft ? (parseFloat(formData.overdraft_use_fee) || 0) : 0,
+    overdraft_rate: formData.allows_overdraft ? (parseFloat(formData.overdraft_rate) || 0) : 0,
     created_at: editingItem?.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString()
   };

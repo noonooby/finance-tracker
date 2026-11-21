@@ -143,6 +143,18 @@ export default function AccountForm({
                 Maximum negative balance allowed before transactions are blocked
               </p>
             )}
+            <div className="grid grid-cols-3 gap-2 mt-2">
+              <label className="block text-xs">Monthly fee
+                <input type="number" step="0.01" inputMode="decimal" placeholder="0.00" value={formData.overdraft_monthly_fee} onChange={(e) => set({ overdraft_monthly_fee: e.target.value })} className={inputClass(darkMode)} />
+              </label>
+              <label className="block text-xs">Fee each time used
+                <input type="number" step="0.01" inputMode="decimal" placeholder="0.00" value={formData.overdraft_use_fee} onChange={(e) => set({ overdraft_use_fee: e.target.value })} className={inputClass(darkMode)} />
+              </label>
+              <label className="block text-xs">Interest % a year
+                <input type="number" step="0.01" inputMode="decimal" placeholder="e.g. 21" value={formData.overdraft_rate} onChange={(e) => set({ overdraft_rate: e.target.value })} className={inputClass(darkMode)} />
+              </label>
+            </div>
+            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Used to show what the overdraft costs when the balance goes below zero.</p>
           </div>
         )}
       </div>

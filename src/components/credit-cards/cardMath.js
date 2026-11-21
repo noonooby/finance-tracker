@@ -19,7 +19,14 @@ export function emptyCardForm(defaultDays) {
     hasExpiry: false,
     expiryDate: '',
     connectedPaymentSource: null,
-    connectedPaymentSourceId: null
+    connectedPaymentSourceId: null,
+    autopayMode: 'statement',
+    autopayFixed: '',
+    minimumPayment: '',
+    promoRate: '',
+    promoEnd: '',
+    cashRate: '',
+    annualFee: ''
   };
 }
 
@@ -41,7 +48,14 @@ export function formFromCard(card, defaultDays) {
     hasExpiry: card.has_expiry || false,
     expiryDate: card.expiry_date || '',
     connectedPaymentSource: card.connected_payment_source || null,
-    connectedPaymentSourceId: card.connected_payment_source_id || null
+    connectedPaymentSourceId: card.connected_payment_source_id || null,
+    autopayMode: card.autopay_mode || 'statement',
+    autopayFixed: card.autopay_fixed ? String(card.autopay_fixed) : '',
+    minimumPayment: card.minimum_payment ? String(card.minimum_payment) : '',
+    promoRate: card.promo_rate != null && card.promo_rate !== '' ? String(card.promo_rate) : '',
+    promoEnd: card.promo_end || '',
+    cashRate: card.cash_rate ? String(card.cash_rate) : '',
+    annualFee: card.annual_fee ? String(card.annual_fee) : ''
   };
 }
 
@@ -76,6 +90,13 @@ export function cardFromForm(formData, { id, createdAt, defaultDays }) {
     expiry_date: gift && formData.hasExpiry ? (formData.expiryDate || null) : null,
     connected_payment_source: gift ? null : (formData.connectedPaymentSource || null),
     connected_payment_source_id: gift ? null : (formData.connectedPaymentSourceId || null),
+    autopay_mode: gift ? null : (formData.autopayMode || 'statement'),
+    autopay_fixed: gift ? 0 : (parseFloat(formData.autopayFixed) || 0),
+    minimum_payment: gift ? 0 : (parseFloat(formData.minimumPayment) || 0),
+    promo_rate: gift || formData.promoRate === '' ? null : (parseFloat(formData.promoRate) || 0),
+    promo_end: gift ? null : (formData.promoEnd || null),
+    cash_rate: gift ? 0 : (parseFloat(formData.cashRate) || 0),
+    annual_fee: gift ? 0 : (parseFloat(formData.annualFee) || 0),
     created_at: createdAt || new Date().toISOString()
   };
 }

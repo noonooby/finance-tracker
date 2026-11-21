@@ -101,6 +101,8 @@ export function position({ bankAccounts = [], cash = 0, cashAsOf = null, creditC
   for (const a of assets) have.push(line('asset', a, Number(a.balance) || 0));
   for (const l of loans) {
     const v = Number(l.balance) || 0;
+    // A plan inside a credit card is already counted in that card's balance.
+    if (l.on_card_id) continue;
     if (v > 0) owe.push(line(l.loan_type === 'mortgage' ? 'mortgage' : 'loan', l, v));
   }
   const sum = (xs) => round2(xs.reduce((s, x) => s + x.value, 0));
@@ -125,7 +127,82 @@ export function monthEnd({ liquid, incomeSchedules = [], loans = [], creditCards
   const t = iso(today);
   const due = (d) => d && d >= t && d <= end;
   const coming = incomeSchedules.filter((s) => s.is_active !== false && due(s.next_date)).reduce((s, x) => s + (Number(x.amount) || 0), 0);
-  const going = loans.filter((l) => due(l.next_payment_date)).reduce((s, l) => s + (Number(l.payment_amount) || 0), 0)
+  const going = loans.filter((l) => !l.on_card_id && due(l.next_payment_date)).reduce((s, l) => s + (Number(l.payment_amount) || 0), 0)
     + creditCards.filter((c) => !c.is_gift_card && Number(c.balance) > 0 && due(c.due_date)).reduce((s, c) => s + (Number(c.minimum_payment || c.payment_amount) || Number(c.balance) || 0), 0);
   return { end, now: round2(liquid), coming: round2(coming), going: round2(going), atEnd: round2(liquid + coming - going) };
+}
+
+// The rate a card charges today: a promo rate while it lasts, otherwise the purchase rate.
+export function cardRate(card, today = new Date()) {
+  const t = iso(today);
+  if (card.promo_rate != null && card.promo_rate !== '' && (!card.promo_end || card.promo_end >= t)) return Number(card.promo_rate) || 0;
+  return Number(card.interest_rate) || 0;
+}
+
+// What carrying your debt costs in a month, line by line, roughly: card interest (none when autopay pays the full balance),
+// loan interest, overdraft interest and fees, and annual fees spread over the year.
+export function monthlyCost({ creditCards = [], loans = [], bankAccounts = [] }, today = new Date()) {
+  const items = [];
+  const add = (name, amount, why) => { const a = round2(amount); if (a > 0) items.push({ name, amount: a, why }); };
+  for (const c of creditCards) {
+    if (c.is_gift_card) continue;
+    const bal = Number(c.balance) || 0;
+    const inPlans = loans.filter((l) => String(l.on_card_id) === String(c.id)).reduce((s, l) => s + (Number(l.balance) || 0), 0);
+    const revolving = Math.max(0, bal - inPlans);
+    const paidInFull = c.connected_payment_source && (c.autopay_mode || 'statement') === 'statement';
+    if (revolving > 0 && !paidInFull) add(c.name, revolving * cardRate(c, today) / 100 / 12, `interest at ${cardRate(c, today)}% if the balance is carried`);
+    if (Number(c.annual_fee) > 0) add(c.name, Number(c.annual_fee) / 12, 'annual fee, per month');
+  }
+  for (const l of loans) {
+    const bal = Number(l.balance) || 0;
+    if (bal <= 0) continue;
+    const n = PAYMENTS_PER_YEAR[l.frequency || 'monthly'] || 12;
+    add(l.name, bal * periodicRate(l) * n / 12, Number(l.interest_rate) > 0 ? `interest at ${l.interest_rate}%` : 'no interest');
+  }
+  for (const a of bankAccounts) {
+    const bal = Number(a.balance) || 0;
+    if (bal >= 0 || !a.allows_overdraft) continue;
+    add(a.name, (-bal) * (Number(a.overdraft_rate) || 0) / 100 / 12 + (Number(a.overdraft_monthly_fee) || 0), 'overdraft interest and monthly fee');
+  }
+  items.sort((x, y) => y.amount - x.amount);
+  return { total: round2(items.reduce((s, x) => s + x.amount, 0)), items };
+}
+
+// Everything due in the next `days` days, soonest first, and whether it pays itself or you pay it.
+// -> [{ date, name, amount, kind: 'card'|'loan'|'plan'|'promo_end', auto, from, note }]
+export function upcoming({ creditCards = [], loans = [], bankAccounts = [] }, today = new Date(), days = 30) {
+  const t = iso(today), end = iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + days));
+  const inWindow = (d) => d && d >= t && d <= end;
+  const late = (d) => d && d < t;
+  const nameOf = (src, id) => (src === 'cash_in_hand' ? 'cash' : (bankAccounts.find((b) => String(b.id) === String(id)) || {}).name || 'an account');
+  const out = [];
+  for (const c of creditCards) {
+    if (c.is_gift_card) continue;
+    const bal = Number(c.balance) || 0;
+    const d = c.due_date && String(c.due_date).slice(0, 10);
+    if (bal > 0 && (inWindow(d) || late(d))) {
+      const mode = c.autopay_mode || 'statement';
+      const min = Number(c.minimum_payment) || Math.min(bal, Math.max(10, round2(bal * 0.03)));
+      const amount = mode === 'fixed' ? Math.min(bal, Number(c.autopay_fixed) || bal) : mode === 'minimum' ? min : bal;
+      out.push({ date: d, name: c.name, amount: round2(amount), kind: 'card', auto: !!c.connected_payment_source, from: c.connected_payment_source ? nameOf(c.connected_payment_source, c.connected_payment_source_id) : null,
+        note: late(d) ? 'past due' : !c.connected_payment_source ? `minimum ${round2(min)}` : mode === 'minimum' ? 'autopay pays the minimum; interest applies on the rest' : null });
+    }
+    if (c.promo_end && inWindow(c.promo_end) && c.promo_rate != null && c.promo_rate !== '') {
+      out.push({ date: c.promo_end, name: c.name, amount: null, kind: 'promo_end', auto: false, note: `promo rate of ${c.promo_rate}% ends; then ${Number(c.interest_rate) || 0}%` });
+    }
+  }
+  for (const l of loans) {
+    const bal = Number(l.balance) || 0;
+    const d = l.next_payment_date && String(l.next_payment_date).slice(0, 10);
+    if (bal <= 0 || !(inWindow(d) || late(d))) continue;
+    const amount = Math.min(bal, Number(l.payment_amount) || bal);
+    if (l.on_card_id) {
+      const card = creditCards.find((c) => String(c.id) === String(l.on_card_id));
+      out.push({ date: d, name: l.name, amount: round2(amount), kind: 'plan', auto: true, from: card ? card.name : 'the card', note: 'installment billed on the card' });
+    } else {
+      out.push({ date: d, name: l.name, amount: round2(amount), kind: 'loan', auto: !!l.connected_payment_source,
+        from: l.connected_payment_source ? nameOf(l.connected_payment_source, l.connected_payment_source_id) : null, note: late(d) ? 'past due' : null });
+    }
+  }
+  return out.sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
