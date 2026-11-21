@@ -1,5 +1,6 @@
 import React, { createContext, useState, useCallback, useEffect } from 'react';
 import { dbOperation } from '../utils/db';
+import { getToken } from '../utils/server';
 import { getUserPreferences, setDisplayDensity as saveDisplayDensity } from '../utils/userPreferencesManager';
 
 export const ThemeContext = createContext(null);
@@ -99,6 +100,8 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     const loadSettings = async () => {
       try {
+        // Signed out: nothing saved to load yet (the choice on this device still applies).
+        if (!getToken()) return;
         const settings = await dbOperation('settings', 'getAll');
         
         const darkModeSetting = settings?.find(s => s.key === 'darkMode');
