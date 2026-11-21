@@ -34,6 +34,22 @@ const SECTIONS = [
       </ul>
     </>
   )],
+  ['position', 'Where you stand: net worth and what is out of date', (
+    <>
+      <p><Link to="/position">Where you stand</Link> adds up what you have (accounts, cash, investments, property, gift cards) and what you owe (cards, loans, the mortgage). The mortgage is counted, and also shown apart so you can see your other debt on its own.</p>
+      <ul>
+        <li>Each figure shows the day it was last updated. One older than 35 days is marked out of date. Tap <b>Update</b> and type today's figure; it is saved as a correction you can undo.</li>
+        <li>The month ahead takes what you can spend now, adds pay due before the month ends and takes off loan and card payments due by then.</li>
+        <li>The line chart is your net worth on each day a figure changed.</li>
+      </ul>
+    </>
+  )],
+  ['investments', 'Investments, property and mortgages', (
+    <>
+      <p>Add a TFSA, RRSP, brokerage account or your home under <Link to="/investments">Investments and property</Link>, with what it is worth today. Update the value when you check it. Money you put in from a bank account is a <b>contribution</b>: it leaves the bank account and adds to the investment.</p>
+      <p>For a mortgage or a loan with a rate, set the rate and the kind on the loan. Each payment is then split: the interest for the period first, and only the rest lowers what you owe. Mortgages in Canada add interest twice a year, and that is the default for the Mortgage kind. The loan shows the payoff date and the interest still to pay.</p>
+    </>
+  )],
   ['accounts', 'Accounts, cash and transfers', (
     <>
       <p>The <Link to="/bank-accounts">Accounts</Link> tab lists your bank accounts and the cash you carry. <b>Transfer</b> moves money between two of your accounts; <b>Withdraw</b> and <b>Deposit</b> move money between a bank account and cash.</p>

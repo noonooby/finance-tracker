@@ -26,6 +26,8 @@ const Reports = lazy(() => import('../components/Reports'));
 const ScreenshotImport = lazy(() => import('../components/ScreenshotImport'));
 const More = lazy(() => import('../components/More'));
 const Help = lazy(() => import('../components/Help'));
+const Position = lazy(() => import('../components/Position'));
+const Investments = lazy(() => import('../components/Investments'));
 
 /**
  * Loading Fallback Component
@@ -364,6 +366,8 @@ export function AppRoutes() {
           </Suspense>
         } />
         <Route path="/more" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={More} /></Suspense>} />
+        <Route path="/position" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Position} /></Suspense>} />
+        <Route path="/investments" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Investments} /></Suspense>} />
         <Route path="/help" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Help} /></Suspense>} />
         <Route path="/screenshot" element={
           <Suspense fallback={<LoadingFallback />}>

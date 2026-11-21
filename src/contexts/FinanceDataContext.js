@@ -23,6 +23,9 @@ export function FinanceDataProvider({ children }) {
   // Cash states
   const [availableCash, setAvailableCash] = useState(0);
   const [cashInHand, setCashInHand] = useState(0);
+  const [cashAsOf, setCashAsOf] = useState(null);
+  const [investments, setInvestments] = useState([]);
+  const [assets, setAssets] = useState([]);
   
   // Loading states
   const [dataLoading, setDataLoading] = useState(false);
@@ -110,6 +113,7 @@ export function FinanceDataProvider({ children }) {
       
       const cashInHandSetting = settings?.find(s => s.key === 'cashInHand');
       setCashInHand(Number(cashInHandSetting?.value) || 0);
+      setCashAsOf(cashInHandSetting?.balance_as_of || null);
 
       const cashSetting = settings?.find(s => s.key === 'availableCash');
       const cashValue = Number(cashSetting?.value) || 0;
@@ -126,8 +130,10 @@ export function FinanceDataProvider({ children }) {
         dbOperation('loans', 'getAll'),
         dbOperation('income', 'getAll'),
         dbOperation('transactions', 'getAll'),
-        getAllBankAccounts()
-      ]);
+        getAllBankAccounts(),
+        server.from('investments').select('*').then((r) => r.data || []),
+        server.from('assets').select('*').then((r) => r.data || []),
+      ]).then(([c, l, i, t, a, inv, as]) => { setInvestments(inv); setAssets(as); return [c, l, i, t, a]; });
       
       let incomeData = incomeDataRaw || [];
       let transactionsData = transRaw || [];
@@ -217,6 +223,11 @@ export function FinanceDataProvider({ children }) {
     bankAccounts,
     availableCash,
     cashInHand,
+    cashAsOf,
+    investments,
+    assets,
+    setInvestments,
+    setAssets,
     dataLoading,
     loadError,
     latestActivities,
@@ -244,7 +255,7 @@ export function FinanceDataProvider({ children }) {
     displayAvailableCash,
     totalCreditCardDebt,
     totalLoanDebt,
-  }), [creditCards, loans, income, transactions, categories, bankAccounts, availableCash, cashInHand, dataLoading, loadError,
+  }), [creditCards, loans, income, transactions, categories, bankAccounts, availableCash, cashInHand, cashAsOf, investments, assets, dataLoading, loadError,
     latestActivities, loadAllData, loadDataProgressively, loadBankAccounts, loadCategories, loadLatestActivities,
     handleUpdateCash, updateCashInHand, displayAvailableCash, totalCreditCardDebt, totalLoanDebt]);
 

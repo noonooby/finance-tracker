@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, Users, FileText } from 'lucide-react';
+import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, Users, FileText, Scale, PiggyBank } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { OTHER_APPS } from '../utils/apps';
 
@@ -36,6 +36,8 @@ export default function More({ darkMode }) {
       <h1 className="text-2xl font-bold">More</h1>
 
       <Section title="Money">
+        <Item icon={Scale} label="Where you stand" hint="Net worth today, what is out of date, and the month ahead" to="/position" />
+        <Item icon={PiggyBank} label="Investments and property" hint="TFSA, RRSP, home: values and contributions" to="/investments" />
         <Item icon={CreditCard} label="Cards" hint="Credit cards and gift cards" to="/cards" />
         <Item icon={TrendingUp} label="Loans" hint="What you owe and when it is due" to="/loans" />
         <Item icon={DollarSign} label="Income" hint="Pay and other money coming in, one-off or on a schedule" to="/income" />

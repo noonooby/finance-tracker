@@ -40,6 +40,7 @@ import {
 
 // Dashboard Sections
 import AlertSettingsSection from './dashboard/AlertSettingsSection';
+import NetWorthCard from './dashboard/NetWorthCard';
 
 export default function Dashboard({
   darkMode,
@@ -266,6 +267,7 @@ export default function Dashboard({
 
   return (
     <div className={compactMode ? 'space-y-1.5' : 'space-y-4'}>
+      {!isNew && <NetWorthCard darkMode={darkMode} />}
       {isNew && (
         <section className={`rounded-2xl border p-5 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <h2 className="text-xl font-semibold">Welcome</h2>

@@ -163,6 +163,28 @@ export default function LoanForm({
         className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
       />
 
+      <div className="grid grid-cols-2 gap-2">
+        <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          Kind
+          <select value={formData.loanType || 'loan'} onChange={(e) => setFormData({ ...formData, loanType: e.target.value })} className={`mt-1 w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}>
+            <option value="loan">Loan</option>
+            <option value="mortgage">Mortgage</option>
+            <option value="line_of_credit">Line of credit</option>
+          </select>
+        </label>
+        <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          Interest added
+          <select value={formData.compounding || ''} onChange={(e) => setFormData({ ...formData, compounding: e.target.value })} className={`mt-1 w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}>
+            <option value="">{formData.loanType === 'mortgage' ? 'Twice a year (usual for mortgages)' : 'Monthly (usual)'}</option>
+            <option value="monthly">Monthly</option>
+            <option value="semiannual">Twice a year</option>
+            <option value="annual">Once a year</option>
+            <option value="daily">Daily</option>
+          </select>
+        </label>
+      </div>
+      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>With a rate set, each payment is split into interest and the part that lowers what you owe.</p>
+
       {/* Payment Frequency */}
       <div>
         <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -175,6 +197,7 @@ export default function LoanForm({
         >
           <option value="weekly">Weekly</option>
           <option value="biweekly">Bi-Weekly</option>
+          <option value="semimonthly">Twice a month</option>
           <option value="monthly">Monthly</option>
           <option value="bimonthly">Bi-Monthly</option>
         </select>

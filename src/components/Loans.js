@@ -10,6 +10,7 @@ import RecentTransactions from './shared/RecentTransactions';
 import useAsyncAction from '../hooks/useAsyncAction';
 import ActionButton from './shared/ActionButton';
 import { showToast } from '../utils/toast';
+import PayoffSummary from './loans/PayoffSummary';
 import { getUserPreferences, togglePinnedLoan } from '../utils/userPreferencesManager';
 import {
   getLoanCreationContext,
@@ -48,6 +49,8 @@ export default function Loans({
     principal: '',
     balance: '',
     interestRate: '',
+    loanType: 'loan',
+    compounding: '',
     paymentAmount: '',
     frequency: 'monthly',
     nextPaymentDate: localDate(),
@@ -237,6 +240,8 @@ export default function Loans({
         principal: parseFloat(formData.principal) || 0,
         balance: parseFloat(formData.balance) || 0,
         interest_rate: parseFloat(formData.interestRate) || 0,
+        loan_type: formData.loanType || 'loan',
+        compounding: formData.compounding || null,
         payment_amount: parseFloat(formData.paymentAmount) || 0,
         frequency: formData.frequency,
         next_payment_date: formData.nextPaymentDate,
@@ -363,6 +368,8 @@ export default function Loans({
       principal: '',
       balance: '',
       interestRate: '',
+      loanType: 'loan',
+      compounding: '',
       paymentAmount: '',
       frequency: 'monthly',
       nextPaymentDate: localDate(),
@@ -384,6 +391,8 @@ export default function Loans({
       principal: (parseFloat(loan.principal) || 0).toFixed(2),
       balance: (parseFloat(loan.balance) || 0).toFixed(2),
       interestRate: loan.interest_rate ? (parseFloat(loan.interest_rate)).toFixed(2) : '',
+      loanType: loan.loan_type || 'loan',
+      compounding: loan.compounding || '',
       paymentAmount: (parseFloat(loan.payment_amount) || 0).toFixed(2),
       frequency: loan.frequency,
       nextPaymentDate: loan.next_payment_date,
@@ -574,6 +583,7 @@ export default function Loans({
                       Payment: {formatCurrency(loan.payment_amount)}
                     </div>
                   )}
+                  <PayoffSummary loan={loan} darkMode={darkMode} />
                   {loan.frequency && (
                     <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
                       <span>Frequency: {formatFrequency(loan.frequency)}</span>
