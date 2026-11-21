@@ -1,7 +1,6 @@
 // Public rates for a named product (a credit card, a bank account's overdraft, a loan), looked up by Gemini with Google Search.
 // Only the product name and kind are sent: never balances, limits or anything about the person.
 // The answer is a suggestion with its source; the person confirms it, and a personal rate always wins.
-const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 const ASK = {
   credit_card: 'the credit card "NAME" in Canada: standard purchase interest rate (percent a year), cash advance rate, annual fee in CAD, and whether it offers equal payment / instalment plans',
@@ -24,14 +23,9 @@ Reply with JSON only, no other text:
 "overdraft_rate":number or null,"overdraft_monthly_fee":number or null,"overdraft_use_fee":number or null,"account_monthly_fee":number or null,
 "rate_low":number or null,"rate_high":number or null,"setup_fee":number or null,"offers_plans":true|false|null,"source_url":"the page you used","notes":"short"}
 If you are not sure it is the same product, set found to false.`;
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
-    method: 'POST', signal: AbortSignal.timeout(45000),
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0 } }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) { const e = new Error('Could not look up rates right now. Try again in a minute.'); e.status = 502; throw e; }
-  const text = (j?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+  const text = await require('./gemini').generate(key,
+    { contents: [{ parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0 } },
+    { what: 'look up rates', timeoutMs: 45000 });
   const m = text.match(/\{[\s\S]*\}/);
   let o = {};
   try { o = m ? JSON.parse(m[0]) : {}; } catch { o = {}; }

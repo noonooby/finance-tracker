@@ -68,6 +68,7 @@ function effectOn(row, accountRef, isCard) {
 
 export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCards = [], loans = [], categories = [], transactions = [], onUpdate }) {
   const [image, setImage] = useState(null);
+  const [note, setNote] = useState('');
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -122,7 +123,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const read = async () => {
     setReading(true); setError(''); setDone(null); setOpen(null);
     try {
-      const p = await api('/api/read-screenshot', { image: image.url, mime: image.type, today: new Date().toLocaleDateString('en-CA') });
+      const p = await api('/api/read-screenshot', { image: image.url, mime: image.type, note: note.trim() || undefined, today: new Date().toLocaleDateString('en-CA') });
       setProposal(p);
       setDrafts((p.new_accounts || []).map((d) => ({ ...d, on: true, balance: d.balance == null ? '' : String(d.balance),
         credit_limit: d.credit_limit == null ? '' : String(d.credit_limit), due_date: d.due_date || '' })));
@@ -186,7 +187,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         const table = d.type === 'credit_card' ? 'credit_cards' : 'bank_accounts';
         const row = d.type === 'credit_card'
           ? { id, name: d.name.trim(), balance: opening, last4: d.last4 || null, credit_limit: Number(d.credit_limit) || 0, due_date: d.due_date || null,
-            minimum_payment: d.minimum_payment || null, is_gift_card: false, created_at: new Date().toISOString() }
+            minimum_payment: d.minimum_payment || null, statement_balance: d.statement_balance ?? null, autopay_mode: d.autopay ? 'statement' : null,
+            is_gift_card: false, created_at: new Date().toISOString() }
           : { id, name: d.name.trim(), balance: opening, last4: d.last4 || null, account_type: d.account_type || 'checking', institution: '', created_at: new Date().toISOString() };
         const { error: e } = await server.from(table).insert(row);
         if (e) throw new Error(e.message);
@@ -325,13 +327,21 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         {image && (
           <div className="flex flex-col sm:flex-row gap-3 items-start">
             {image.pdf ? <div className="text-sm font-medium">{image.name}</div> : <img src={image.url} alt="The screenshot to read" className="max-h-64 rounded border border-line" />}
-            <button type="button" onClick={read} disabled={reading}
-              className="px-4 py-2 rounded-lg bg-accent text-accent-contrast font-medium hover:bg-blue-700 disabled:opacity-50">
-              {reading ? 'Reading...' : image.pdf ? 'Read statement' : 'Read screenshot'}
-            </button>
+            <div className="w-full space-y-2">
+              <label className="block text-sm">
+                <span className="text-muted">Note about this picture (optional)</span>
+                <textarea rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)}
+                  placeholder="For example: this is my Visa ending 1234, or only the grocery lines"
+                  className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2 text-fg placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none" />
+              </label>
+              <button type="button" onClick={read} disabled={reading}
+                className="press px-4 py-2.5 rounded-xl bg-accent text-accent-contrast font-medium hover:opacity-90 disabled:opacity-50">
+                {reading ? 'Reading...' : image.pdf ? 'Read statement' : 'Read screenshot'}
+              </button>
+            </div>
           </div>
         )}
-        {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+        {error && <p role="alert" className="text-sm text-negative">{error}</p>}
       </div>
 
       {proposal && (
@@ -386,6 +396,13 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                         <label className="block text-xs"><span className={muted}>Payment due</span>
                           <input className={input} type="date" value={d.due_date} onChange={(e) => setDraft(d.id, { due_date: e.target.value })} /></label>
                       </>)}
+                      {d.type === 'credit_card' && (d.statement_balance != null || d.autopay != null) && (
+                        <p className={`col-span-full text-xs ${muted}`}>
+                          {d.statement_balance != null && `Statement balance ${formatCurrency(d.statement_balance)}. `}
+                          {d.autopay === true && 'Autopay is on: after saving, choose the account it pays from under Cards.'}
+                          {d.autopay === false && 'Autopay is off.'}
+                        </p>
+                      )}
                     </div>
                   )}
                   {draftNeeds(d) && <div className="text-xs text-amber-600">{draftNeeds(d)}</div>}
