@@ -16,9 +16,9 @@ import { AppRoutes } from './routes';
 import ToastContainer from './components/shared/ToastContainer';
 
 // Modal Optimizations
-import './styles/modal-optimizations.css';
 import './styles/ultra-compact-modal.css';
 import './styles/mobile-safe-layout.css';
+import './styles/modal-optimizations.css';
 
 // Density System
 import './styles/density.css';

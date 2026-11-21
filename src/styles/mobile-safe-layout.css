@@ -11,18 +11,7 @@
  * ============================================ */
 
 /* On mobile, ensure content doesn't go behind nav */
-@media (max-width: 768px) {
-  /* Main content area */
-  body {
-    padding-bottom: 80px;
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
-  }
-  
-  /* Grid layouts need extra bottom space */
-  div[class*="grid"] {
-    padding-bottom: 20px;
-  }
-}
+/* Page content keeps clear of the bottom bar through the layout's own padding (MainLayout). */
 
 /* ============================================
  * MODALS - Safe from bottom nav
@@ -82,18 +71,6 @@ div.fixed.inset-0.bg-black.bg-opacity-50 div[class*="overflow-y-auto"] {
 /* ============================================
  * BUTTONS AT BOTTOM - Always visible
  * ============================================ */
-
-@media (max-width: 768px) {
-  /* Buttons in cards need extra bottom margin */
-  div[class*="rounded-lg"] > div:has(button):last-child {
-    margin-bottom: 20px;
-  }
-  
-  /* Last element in grid should have extra margin */
-  div[class*="grid"] > div:last-child {
-    margin-bottom: 80px;
-  }
-}
 
 /* ============================================
  * UTILITY CLASSES

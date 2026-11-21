@@ -16,8 +16,8 @@ export function Section({ title, action, className, children }) {
     <section className={cx('space-y-2', className)}>
       {(title || action) && (
         <div className="flex items-center justify-between gap-3 px-1">
-          {title && <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">{title}</h2>}
-          {action}
+          {title && <h2 className="text-xs font-semibold uppercase tracking-wide text-muted min-w-0 truncate">{title}</h2>}
+          {action && <div className="shrink-0 text-right">{action}</div>}
         </div>
       )}
       {children}

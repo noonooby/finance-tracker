@@ -1,651 +1,197 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  AlertCircle, 
-  Settings as SettingsIcon, 
-  Eye, 
-  EyeOff, 
-  Wallet, 
-  ArrowDownToLine, 
-  ArrowUpFromLine,
-  DollarSign,
-  AlertTriangle,
-  Calendar,
-  TrendingUp,
-  CreditCard as CreditCardIcon,
-  Building2,
-  Activity,
-  Lightbulb
-} from 'lucide-react';
-import { formatCurrency } from '../utils/helpers';
-import { withdrawCashFromBank, depositCashToBank } from '../utils/db';
-import { logActivity } from '../utils/activityLogger';
-import {
-  getUserPreferences,
-  toggleDashboardSection,
-  updateDashboardWidgets,
-  toggleCompactMode
-} from '../utils/userPreferencesManager';
+import { ChevronRight, Camera, AlertTriangle, CheckCircle2, Repeat, Hand } from 'lucide-react';
+import { useFinanceData } from '../hooks/useFinanceData';
+import { api, server } from '../utils/server';
+import { position, monthEnd, monthlyCost, upcoming } from '../utils/finance';
+import { formatCurrency, formatDate, parseDay } from '../utils/helpers';
+import { Card, Section, Stat, Badge, Button } from './shared/ui';
 
-// Dashboard Widgets
-import {
-  CashBalanceWidget,
-  UrgentObligationsWidget,
-  UpcomingObligationsWidget,
-  NextIncomeWidget,
-  DebtSummaryWidget,
-  BankAccountsWidget,
-  LatestUpdatesWidget
-} from './dashboard/widgets';
+// Home: the one place to see where you stand, what is due, what debt costs, and anything that does not add up.
+// Everything here is worked out by utils/finance.js from the balances you gave and the lines recorded since.
+const short = (d) => { const x = parseDay(d); return x ? x.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''; };
 
-// Dashboard Sections
-import AlertSettingsSection from './dashboard/AlertSettingsSection';
-import NetWorthCard from './dashboard/NetWorthCard';
-
-export default function Dashboard({
-  darkMode,
-  availableCash,
-  upcomingObligations,
-  nextIncome,
-  totalCreditCardDebt,
-  totalLoanDebt,
-  creditCards,
-  loans,
-  alertSettings,
-  onNavigate,
-  onUpdateAlertSettings,
-  bankAccounts,
-  cashInHand,
-  showCashInDashboard,
-  onUpdateCashInHand,
-  onToggleCashDisplay,
-  onReloadAll,
-  latestActivities,
-  onProcessDuePayments
-}) {
-  const navigate = useNavigate();
-  const upcomingDays = alertSettings?.upcomingDays || 30;
-  
-  // Dashboard preferences
-  const [collapsedSections, setCollapsedSections] = useState([]);
-  const [visibleWidgets, setVisibleWidgets] = useState([
-    'cash_balance',
-    'urgent_obligations',
-    'upcoming_obligations',
-    'next_income',
-    'debt_summary',
-    'bank_accounts',
-    'latest_updates'
-  ]);
-  const [compactMode, setCompactMode] = useState(false);
-  const [showCustomization, setShowCustomization] = useState(false);
-  
-  // Cash operations modal state
-  const [showCashModal, setShowCashModal] = useState(false);
-  const [cashOperation, setCashOperation] = useState('withdraw');
-  const [cashFormData, setCashFormData] = useState({
-    accountId: '',
-    amount: ''
-  });
-  const [processingCash, setProcessingCash] = useState(false);
-  
-  // Get accounts in overdraft
-  const overdraftAccounts = (bankAccounts || []).filter(acc => (Number(acc.balance) || 0) < 0);
-
-  // Load preferences on mount
-  useEffect(() => {
-    loadPreferences();
-  }, []);
-
-  const loadPreferences = async () => {
-    try {
-      const prefs = await getUserPreferences();
-      setCollapsedSections(prefs.collapsed_dashboard_sections || []);
-      setVisibleWidgets(prefs.visible_dashboard_widgets || [
-        'cash_balance',
-        'urgent_obligations',
-        'upcoming_obligations',
-        'next_income',
-        'debt_summary',
-        'bank_accounts',
-        'latest_updates'
-      ]);
-      setCompactMode(prefs.dashboard_compact_mode || false);
-    } catch (error) {
-      console.error('Error loading preferences:', error);
-    }
-  };
-
-  const handleToggleSection = async (sectionId) => {
-    try {
-      const newCollapsed = collapsedSections.includes(sectionId)
-        ? collapsedSections.filter(id => id !== sectionId)
-        : [...collapsedSections, sectionId];
-      
-      setCollapsedSections(newCollapsed);
-      await toggleDashboardSection(sectionId);
-    } catch (error) {
-      console.error('Error toggling section:', error);
-    }
-  };
-
-  const handleToggleWidget = async (widgetId) => {
-    try {
-      const newVisible = visibleWidgets.includes(widgetId)
-        ? visibleWidgets.filter(id => id !== widgetId)
-        : [...visibleWidgets, widgetId];
-      
-      setVisibleWidgets(newVisible);
-      await updateDashboardWidgets(newVisible);
-    } catch (error) {
-      console.error('Error toggling widget:', error);
-    }
-  };
-
-  const handleToggleCompactMode = async () => {
-    try {
-      const newCompactMode = !compactMode;
-      setCompactMode(newCompactMode);
-      await toggleCompactMode(newCompactMode);
-    } catch (error) {
-      console.error('Error toggling compact mode:', error);
-    }
-  };
-
-  const isWidgetVisible = (widgetId) => visibleWidgets.includes(widgetId);
-  const isSectionCollapsed = (sectionId) => collapsedSections.includes(sectionId);
-
-  const handleObligationClick = (obligation) => {
-    if (!obligation || !onNavigate) return;
-    const id = obligation.id;
-    switch (obligation.type) {
-      case 'credit_card':
-        onNavigate({ view: 'cards', focus: { type: 'card', id } });
-        break;
-      case 'loan':
-        onNavigate({ view: 'loans', focus: { type: 'loan', id } });
-        break;
-      case 'reserved_fund':
-        onNavigate({ view: 'reserved', focus: { type: 'fund', id } });
-        break;
-      default:
-        break;
-    }
-  };
-
-  const handleSummaryNavigate = (view) => {
-    if (!onNavigate) return;
-    onNavigate({ view });
-  };
-  
-  const handleCashOperation = async () => {
-    if (!cashFormData.accountId || !cashFormData.amount) {
-      alert('Please select an account and enter an amount');
-      return;
-    }
-    
-    const amount = parseFloat(cashFormData.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      alert('Please enter a valid amount');
-      return;
-    }
-    
-    setProcessingCash(true);
-    
-    try {
-      let result;
-      
-      if (cashOperation === 'withdraw') {
-        result = await withdrawCashFromBank(cashFormData.accountId, amount);
-        
-        await logActivity(
-          'cash_withdrawal',
-          'bank_account',
-          result.accountId,
-          result.accountName,
-          `Withdrew ${formatCurrency(result.amount)} from '${result.accountName}' to cash in hand`,
-          {
-            accountId: result.accountId,
-            accountName: result.accountName,
-            amount: result.amount,
-            previousBankBalance: result.previousBankBalance,
-            newBankBalance: result.newBankBalance,
-            previousCashInHand: result.previousCashInHand,
-            newCashInHand: result.newCashInHand,
-            transactionId: result.transactionId
-          }
-        );
-        
-        alert(`Successfully withdrew ${formatCurrency(amount)} from ${result.accountName} to cash in hand`);
-      } else {
-        result = await depositCashToBank(cashFormData.accountId, amount);
-        
-        await logActivity(
-          'cash_deposit',
-          'bank_account',
-          result.accountId,
-          result.accountName,
-          `Deposited ${formatCurrency(result.amount)} from cash in hand to '${result.accountName}'`,
-          {
-            accountId: result.accountId,
-            accountName: result.accountName,
-            amount: result.amount,
-            previousBankBalance: result.previousBankBalance,
-            newBankBalance: result.newBankBalance,
-            previousCashInHand: result.previousCashInHand,
-            newCashInHand: result.newCashInHand,
-            transactionId: result.transactionId
-          }
-        );
-        
-        alert(`Successfully deposited ${formatCurrency(amount)} from cash in hand to ${result.accountName}`);
-      }
-      
-      if (onReloadAll) await onReloadAll();
-      
-      setCashFormData({ accountId: '', amount: '' });
-      setShowCashModal(false);
-    } catch (error) {
-      console.error('Cash operation failed:', error);
-      alert(error.message || 'Cash operation failed');
-    } finally {
-      setProcessingCash(false);
-    }
-  };
-
-  const availableWidgets = [
-    { id: 'cash_balance', label: 'Cash Balance', icon: DollarSign },
-    { id: 'urgent_obligations', label: 'Urgent Obligations', icon: AlertTriangle },
-    { id: 'upcoming_obligations', label: 'Upcoming Obligations', icon: Calendar },
-    { id: 'next_income', label: 'Next Income', icon: TrendingUp },
-    { id: 'debt_summary', label: 'Debt Summary', icon: CreditCardIcon },
-    { id: 'bank_accounts', label: 'Bank Accounts', icon: Building2 },
-    { id: 'latest_updates', label: 'Latest Updates', icon: Activity }
-  ];
-
-  const isNew = !(bankAccounts && bankAccounts.length) && !(creditCards && creditCards.length) && !(loans && loans.length) && !Number(cashInHand);
-
+function Row({ onClick, children }) {
   return (
-    <div className={compactMode ? 'space-y-1.5' : 'space-y-4'}>
-      {!isNew && <NetWorthCard darkMode={darkMode} />}
-      {isNew && (
-        <section className={`rounded-2xl border p-5 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <h2 className="text-xl font-semibold">Welcome</h2>
-          <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Three steps and the app keeps your balances for you.</p>
-          <ol className="mt-4 space-y-3">
+    <button type="button" onClick={onClick} className="row press w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-surface-2">
+      {children}
+    </button>
+  );
+}
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const d = useFinanceData();
+  const [schedules, setSchedules] = useState([]);
+  const [checks, setChecks] = useState([]);
+  useEffect(() => {
+    server.from('income_schedules').select('*').then((r) => setSchedules(r.data || []));
+    api('/api/checks', null, 'GET').then((x) => setChecks(x || [])).catch(() => setChecks([]));
+  }, [d.bankAccounts, d.creditCards, d.loans, d.transactions]);
+
+  const today = useMemo(() => new Date(), []);
+  const p = useMemo(() => position({ bankAccounts: d.bankAccounts, cash: d.cashInHand, cashAsOf: d.cashAsOf, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets }, today), [d, today]);
+  const m = useMemo(() => monthEnd({ liquid: p.liquid, incomeSchedules: schedules, loans: d.loans, creditCards: d.creditCards }, today), [p.liquid, schedules, d.loans, d.creditCards, today]);
+  const cost = useMemo(() => monthlyCost({ creditCards: d.creditCards, loans: d.loans, bankAccounts: d.bankAccounts }, today), [d.creditCards, d.loans, d.bankAccounts, today]);
+  const due = useMemo(() => upcoming({ creditCards: d.creditCards, loans: d.loans, bankAccounts: d.bankAccounts }, today, 30), [d.creditCards, d.loans, d.bankAccounts, today]);
+  const nextPay = useMemo(() => schedules.filter((s) => s.is_active !== false && s.next_date).sort((a, b) => String(a.next_date).localeCompare(String(b.next_date)))[0], [schedules]);
+  const recent = useMemo(() => [...(d.transactions || [])].filter((t) => t.status !== 'undone' && t.status !== 'deleted')
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0, 5), [d.transactions]);
+  const cards = (d.creditCards || []).filter((c) => !c.is_gift_card);
+  const limit = cards.reduce((s, c) => s + (Number(c.credit_limit) || 0), 0);
+  const owedOnCards = cards.reduce((s, c) => s + Math.max(0, Number(c.balance) || 0), 0);
+  const youPay = due.filter((x) => x.amount != null && !x.auto).reduce((s, x) => s + x.amount, 0);
+
+  const isNew = !d.dataLoading && !(d.bankAccounts || []).length && !cards.length && !(d.loans || []).length && !Number(d.cashInHand);
+  if (isNew) {
+    return (
+      <div className="space-y-4">
+        <Card className="space-y-4">
+          <div>
+            <h1 className="text-xl font-semibold">Welcome</h1>
+            <p className="text-sm text-muted mt-1">The quickest start: scan a screenshot of each bank and card app. The app adds the accounts and their balances, and you confirm.</p>
+          </div>
+          <Button onClick={() => navigate('/screenshot')} className="w-full"><Camera size={18} aria-hidden="true" /> Scan a screenshot</Button>
+          <ol className="space-y-3 text-sm">
             {[
-              ['1', 'Add your bank accounts and cash', 'Enter each balance as your bank app shows it today.', '/bank-accounts', 'Add accounts'],
-              ['2', 'Add your cards and loans', 'For a credit card, enter what you owe.', '/cards', 'Add cards'],
-              ['3', 'Record what you spend', 'Use the + button, or scan a receipt or a screenshot of your bank app.', '/screenshot', 'Scan'],
+              ['1', 'Give today\'s balances', 'A screenshot, or type them on Accounts and Cards. Each becomes a fixed point.', '/bank-accounts', 'Accounts'],
+              ['2', 'Add loans, leases and plans', 'Mortgage, car lease, Klarna, Affirm and equal payment plans live under Loans.', '/loans', 'Loans'],
+              ['3', 'Fill in the past when you like', 'Statements (PDF) and older screenshots add history without changing today.', '/help#position', 'How it works'],
             ].map(([n, title, hint, to, label]) => (
               <li key={n} className="flex items-start gap-3">
-                <span className="shrink-0 w-7 h-7 rounded-full bg-blue-600 text-white text-sm font-semibold flex items-center justify-center">{n}</span>
-                <span className="flex-1">
-                  <span className="block font-medium">{title}</span>
-                  <span className={`block text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{hint}</span>
-                </span>
-                <a href={to} onClick={(e) => { e.preventDefault(); navigate(to); }}
-                  className="shrink-0 text-sm font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/15">{label}</a>
+                <span className="shrink-0 w-7 h-7 rounded-full bg-accent-soft text-accent text-sm font-semibold grid place-items-center">{n}</span>
+                <span className="flex-1"><span className="block font-medium">{title}</span><span className="block text-xs text-muted">{hint}</span></span>
+                <button type="button" onClick={() => navigate(to)} className="press shrink-0 text-xs font-medium text-accent px-2 py-1 rounded-lg bg-accent-soft">{label}</button>
               </li>
             ))}
           </ol>
-          <p className={`text-xs mt-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            More detail in <a href="/help" onClick={(e) => { e.preventDefault(); navigate('/help'); }} className="text-blue-600 dark:text-blue-400">Help</a>.
-          </p>
-        </section>
-      )}
-      {/* Dashboard Customization Button */}
-      <div className="flex justify-end">
-        <button
-          onClick={() => setShowCustomization(true)}
-          className={`flex items-center ${compactMode ? 'gap-1 px-2 py-1 text-xs' : 'gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base'} rounded-lg ${
-            darkMode
-              ? 'bg-gray-700 hover:bg-gray-600 text-white'
-              : 'bg-gray-200 hover:bg-gray-300'
-          }`}
-        >
-          <SettingsIcon size={compactMode ? 14 : 18} />
-          Customize Dashboard
-        </button>
+        </Card>
       </div>
+    );
+  }
 
-      {/* Customization Panel */}
-      {showCustomization && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowCustomization(false)}>
-          <div 
-            className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold flex items-center gap-2">
-                <SettingsIcon size={24} />
-                Customize Dashboard
-              </h3>
-              <button
-                onClick={() => setShowCustomization(false)}
-                className={`text-2xl leading-none ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900'}`}
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="space-y-6">
-              {/* Compact Mode */}
-              <div>
-                <h4 className="font-semibold mb-3">Display Mode</h4>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={compactMode}
-                    onChange={handleToggleCompactMode}
-                    className="w-4 h-4"
-                  />
-                  <div>
-                    <div className="font-medium">Compact Mode</div>
-                    <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                      Reduce spacing and padding for a denser view
-                    </div>
-                  </div>
-                </label>
-              </div>
-              
-              {/* Widget Visibility */}
-              <div>
-                <h4 className="font-semibold mb-3">Visible Widgets</h4>
-                <div className="space-y-2">
-                  {availableWidgets.map(widget => {
-                    const IconComponent = widget.icon;
-                    return (
-                      <label key={widget.id} className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={isWidgetVisible(widget.id)}
-                          onChange={() => handleToggleWidget(widget.id)}
-                          className="w-4 h-4"
-                        />
-                        <IconComponent size={18} className="text-gray-500" />
-                        <span className="flex-1">{widget.label}</span>
-                        {isWidgetVisible(widget.id) ? (
-                          <Eye size={16} className="text-green-600" />
-                        ) : (
-                          <EyeOff size={16} className="text-gray-400" />
-                        )}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-              
-              <div className={`p-3 rounded-lg ${darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'} border`}>
-                <p className="text-sm flex items-center gap-2">
-                  <Lightbulb size={16} className="text-blue-600" />
-                  <span><strong>Tip:</strong> Your dashboard preferences are saved automatically and will sync across all your devices.</span>
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowCustomization(false)}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Done
-              </button>
-            </div>
+  return (
+    <div className="space-y-5">
+      <Card role="link" tabIndex={0} onClick={() => navigate('/position')} onKeyDown={(e) => { if (e.key === 'Enter') navigate('/position'); }} className="press cursor-pointer">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs text-muted">Net worth today</div>
+            <div className={`text-3xl font-bold tabular-nums ${p.netWorth < 0 ? 'text-negative' : ''}`}>{d.dataLoading ? <span className="skeleton inline-block w-40 h-8 rounded-lg" /> : formatCurrency(p.netWorth)}</div>
+            <div className="text-xs text-muted mt-1">Have {formatCurrency(p.totalHave)} · Owe {formatCurrency(p.totalOwe)}{p.mortgage ? ` (mortgage ${formatCurrency(p.mortgage)})` : ''}</div>
           </div>
+          <ChevronRight size={18} className="text-muted mt-1" aria-hidden="true" />
         </div>
+        <div className="mt-3 grid grid-cols-3 gap-3 pt-3 border-t border-line">
+          <Stat label="Spendable" value={formatCurrency(p.liquid)} />
+          <Stat label="Month end" value={formatCurrency(m.atEnd)} tone={m.atEnd < 0 ? 'negative' : undefined} />
+          <Stat label="Debt costs" value={`${formatCurrency(cost.total)}`} sub="a month" tone={cost.total > 0 ? 'warning' : undefined} />
+        </div>
+      </Card>
+
+      {(checks.length > 0 || p.stale.length > 0) ? (
+        <Card role="link" tabIndex={0} onClick={() => navigate('/position')} onKeyDown={(e) => { if (e.key === 'Enter') navigate('/position'); }} className="press cursor-pointer flex items-start gap-3 border-warning/40">
+          <AlertTriangle size={18} className="text-warning mt-0.5 shrink-0" aria-hidden="true" />
+          <span className="flex-1 text-sm">
+            {checks.length > 0 && <span className="block font-medium">{checks.length} {checks.length === 1 ? 'balance does' : 'balances do'} not add up</span>}
+            {p.stale.length > 0 && <span className="block text-muted">{p.stale.length} {p.stale.length === 1 ? 'figure is' : 'figures are'} more than 35 days old</span>}
+            <span className="block text-xs text-muted mt-0.5">Open to see where and by how much.</span>
+          </span>
+          <ChevronRight size={18} className="text-muted" aria-hidden="true" />
+        </Card>
+      ) : (
+        <div className="flex items-center gap-2 px-1 text-xs text-positive"><CheckCircle2 size={14} aria-hidden="true" /> Every balance is current and adds up.</div>
       )}
 
-      {/* Overdraft Warning Banner */}
-      {overdraftAccounts.length > 0 && (
-        <div className={`${darkMode ? 'bg-red-900 border-red-700' : 'bg-red-50 border-red-200'} border rounded-lg ${compactMode ? 'p-1.5' : 'p-4'}`}>
-          <div className={`flex items-center ${compactMode ? 'gap-1' : 'gap-2'} ${darkMode ? 'text-red-200' : 'text-red-800'} font-semibold ${compactMode ? 'mb-0.5' : 'mb-2'} ${compactMode ? 'text-xs' : ''}`}>
-            <AlertCircle size={compactMode ? 14 : 20} />
-            <span>Overdraft Alert</span>
-          </div>
-          <div className={compactMode ? 'space-y-0' : 'space-y-1'}>
-            {overdraftAccounts.map(acc => (
-              <div key={acc.id} className={`${compactMode ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
-                '{acc.name}' is in overdraft by {formatCurrency(Math.abs(acc.balance))}. Resolve soon to avoid fees.
+      <Section title="Next 30 days" action={youPay > 0 ? <span className="text-xs text-muted">You pay {formatCurrency(youPay)}</span> : null}>
+        <Card padded={false} className="divide-y divide-line overflow-hidden">
+          {due.length === 0 && <p className="px-4 py-3 text-sm text-muted">Nothing due.</p>}
+          {due.slice(0, 8).map((x, i) => (
+            <Row key={i} onClick={() => navigate(x.kind === 'card' || x.kind === 'promo_end' ? '/cards' : '/loans')}>
+              <span className="w-12 shrink-0 text-xs text-muted tabular-nums">{short(x.date)}</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium truncate">{x.name}</span>
+                <span className="block text-xs text-muted truncate">
+                  {x.kind === 'promo_end' ? x.note : x.auto ? `Autopay from ${x.from}` : 'You pay'}{x.note && x.kind !== 'promo_end' ? ` · ${x.note}` : ''}
+                </span>
+              </span>
+              {x.amount != null && <span className="text-sm font-semibold tabular-nums">{formatCurrency(x.amount)}</span>}
+              {x.kind !== 'promo_end' && (x.auto ? <Repeat size={14} className="text-muted" aria-label="Automatic" /> : <Hand size={14} className="text-warning" aria-label="You pay" />)}
+            </Row>
+          ))}
+          {nextPay && (
+            <Row onClick={() => navigate('/income')}>
+              <span className="w-12 shrink-0 text-xs text-muted tabular-nums">{short(nextPay.next_date)}</span>
+              <span className="flex-1 min-w-0"><span className="block text-sm font-medium truncate">{nextPay.name || nextPay.source || 'Pay'}</span><span className="block text-xs text-muted">Coming in</span></span>
+              <span className="text-sm font-semibold tabular-nums text-positive">+{formatCurrency(nextPay.amount)}</span>
+            </Row>
+          )}
+        </Card>
+      </Section>
+
+      {cost.items.length > 0 && (
+        <Section title="What debt costs you" action={<span className="text-xs text-muted">about {formatCurrency(cost.total)} a month</span>}>
+          <Card padded={false} className="divide-y divide-line">
+            {cost.items.slice(0, 5).map((c, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                <span className="flex-1 min-w-0"><span className="block text-sm truncate">{c.name}</span><span className="block text-xs text-muted truncate">{c.why}</span></span>
+                <span className="text-sm tabular-nums">{formatCurrency(c.amount)}</span>
               </div>
             ))}
-          </div>
-        </div>
-      )}
-      
-      {/* Cash Balance Widget */}
-      {isWidgetVisible('cash_balance') && (
-        <CashBalanceWidget
-          darkMode={darkMode}
-          availableCash={availableCash}
-          cashInHand={cashInHand}
-          bankAccounts={bankAccounts}
-          showCashInDashboard={showCashInDashboard}
-          compactMode={compactMode}
-          onCashOperation={() => setShowCashModal(true)}
-        />
+          </Card>
+        </Section>
       )}
 
-      {/* Alert Settings */}
-      <AlertSettingsSection
-        darkMode={darkMode}
-        alertSettings={alertSettings}
-        compactMode={compactMode}
-        isCollapsed={isSectionCollapsed('alert_settings')}
-        onToggleCollapse={() => handleToggleSection('alert_settings')}
-        onSave={onUpdateAlertSettings}
-      />
+      <Section title="Accounts and debts">
+        <Card padded={false} className="divide-y divide-line overflow-hidden">
+          <Row onClick={() => navigate('/bank-accounts')}>
+            <span className="flex-1 text-sm">Bank and cash</span>
+            <span className="text-sm font-semibold tabular-nums">{formatCurrency(p.liquid)}</span>
+            <ChevronRight size={16} className="text-muted" aria-hidden="true" />
+          </Row>
+          {cards.length > 0 && (
+            <Row onClick={() => navigate('/cards')}>
+              <span className="flex-1 text-sm">Cards{limit > 0 && <span className="text-xs text-muted"> · {Math.round((owedOnCards / limit) * 100)}% of limits used</span>}</span>
+              <span className="text-sm font-semibold tabular-nums">{formatCurrency(owedOnCards)}</span>
+              <ChevronRight size={16} className="text-muted" aria-hidden="true" />
+            </Row>
+          )}
+          {(d.loans || []).some((l) => Number(l.balance) > 0) && (
+            <Row onClick={() => navigate('/loans')}>
+              <span className="flex-1 text-sm">Loans, leases and plans</span>
+              <span className="text-sm font-semibold tabular-nums">{formatCurrency((d.loans || []).filter((l) => !l.on_card_id).reduce((s, l) => s + Math.max(0, Number(l.balance) || 0), 0))}</span>
+              <ChevronRight size={16} className="text-muted" aria-hidden="true" />
+            </Row>
+          )}
+          {(p.investments > 0 || (d.assets || []).length > 0) && (
+            <Row onClick={() => navigate('/investments')}>
+              <span className="flex-1 text-sm">Investments and property</span>
+              <span className="text-sm font-semibold tabular-nums">{formatCurrency(p.totalHave - p.liquid - (p.have.filter((x) => x.kind === 'gift_card' || x.kind === 'card_credit').reduce((s, x) => s + x.value, 0)))}</span>
+              <ChevronRight size={16} className="text-muted" aria-hidden="true" />
+            </Row>
+          )}
+        </Card>
+      </Section>
 
-      {/* Urgent Obligations Widget */}
-      {isWidgetVisible('urgent_obligations') && (
-        <UrgentObligationsWidget
-          darkMode={darkMode}
-          obligations={upcomingObligations}
-          compactMode={compactMode}
-          onObligationClick={handleObligationClick}
-          onProcessDuePayments={onProcessDuePayments}
-        />
-      )}
-
-      {/* Upcoming Obligations Widget */}
-      {isWidgetVisible('upcoming_obligations') && (
-        <UpcomingObligationsWidget
-          darkMode={darkMode}
-          obligations={upcomingObligations}
-          upcomingDays={upcomingDays}
-          compactMode={compactMode}
-          isCollapsed={isSectionCollapsed('upcoming_obligations')}
-          onToggleCollapse={() => handleToggleSection('upcoming_obligations')}
-          onObligationClick={handleObligationClick}
-        />
-      )}
-
-      {/* Next Income Widget */}
-      {isWidgetVisible('next_income') && (
-        <NextIncomeWidget
-          darkMode={darkMode}
-          nextIncome={nextIncome}
-          compactMode={compactMode}
-          onNavigate={handleSummaryNavigate}
-        />
-      )}
-
-      {/* Debt Summary Widget */}
-      {isWidgetVisible('debt_summary') && (
-        <DebtSummaryWidget
-          darkMode={darkMode}
-          totalCreditCardDebt={totalCreditCardDebt}
-          totalLoanDebt={totalLoanDebt}
-          creditCardsCount={creditCards.length}
-          loansCount={loans.length}
-          compactMode={compactMode}
-          onNavigate={handleSummaryNavigate}
-        />
-      )}
-
-      {/* Bank Accounts Widget */}
-      {isWidgetVisible('bank_accounts') && (
-        <BankAccountsWidget
-          darkMode={darkMode}
-          bankAccounts={bankAccounts}
-          compactMode={compactMode}
-          onNavigate={handleSummaryNavigate}
-        />
-      )}
-      
-      {/* Latest Updates Widget */}
-      {isWidgetVisible('latest_updates') && (
-        <LatestUpdatesWidget
-          darkMode={darkMode}
-          activities={latestActivities}
-          compactMode={compactMode}
-          isCollapsed={isSectionCollapsed('latest_updates')}
-          onToggleCollapse={() => handleToggleSection('latest_updates')}
-          onViewAll={() => onNavigate?.({ view: 'activity' })}
-        />
-      )}
-      
-      {/* Cash Operations Modal */}
-      {showCashModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowCashModal(false)}>
-          <div 
-            className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-6 max-w-md w-full m-4`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <Wallet size={20} />
-                Cash Operations
-              </h3>
-              <button
-                onClick={() => setShowCashModal(false)}
-                className={`text-2xl leading-none ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900'}`}
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              {/* Operation Type */}
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Operation Type
-                </label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCashOperation('withdraw')}
-                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${cashOperation === 'withdraw'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
-                      : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    <ArrowDownToLine size={18} />
-                    Withdraw
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCashOperation('deposit')}
-                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${cashOperation === 'deposit'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
-                      : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    <ArrowUpFromLine size={18} />
-                    Deposit
-                  </button>
-                </div>
+      <Section title="Latest" action={<button type="button" onClick={() => navigate('/transactions')} className="text-xs font-medium text-accent">All transactions</button>}>
+        <Card padded={false} className="divide-y divide-line">
+          {recent.length === 0 && <p className="px-4 py-3 text-sm text-muted">Nothing recorded yet.</p>}
+          {recent.map((t) => {
+            // Money in for you: income, a refund, or a correction that raised an account (for a card or loan, "up" means owing more).
+            const owing = t.payment_method === 'credit_card' || t.payment_method === 'loan';
+            const inflow = t.type === 'income' || t.type === 'refund' || (t.type === 'adjustment' && (t.direction === 'up') !== owing);
+            return (
+              <div key={t.id} className="flex items-center gap-3 px-4 py-2.5">
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm truncate">{t.description || t.category_name || t.type}</span>
+                  <span className="block text-xs text-muted truncate">{formatDate(t.date)}{t.payment_method_name ? ` · ${t.payment_method_name}` : ''}{t.history_only ? ' · history' : ''}</span>
+                </span>
+                {t.pending && <Badge tone="warning">Pending</Badge>}
+                <span className={`text-sm tabular-nums ${inflow ? 'text-positive' : ''}`}>{inflow ? '+' : ''}{formatCurrency(t.amount)}</span>
               </div>
-              
-              {/* Account Selection */}
-              <div>
-                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Select Account *
-                </label>
-                <select
-                  value={cashFormData.accountId}
-                  onChange={(e) => setCashFormData({ ...cashFormData, accountId: e.target.value })}
-                  className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-                >
-                  <option value="">Choose account</option>
-                  {(bankAccounts || []).map(account => (
-                    <option key={account.id} value={account.id}>
-                      {account.name} - {formatCurrency(account.balance)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              {/* Amount */}
-              <div>
-                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Amount *
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={cashFormData.amount}
-                  onChange={(e) => setCashFormData({ ...cashFormData, amount: e.target.value })}
-                  className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-                />
-              </div>
-              
-              {/* Preview */}
-              {cashFormData.accountId && cashFormData.amount && (() => {
-                const selectedAccount = bankAccounts.find(acc => acc.id === cashFormData.accountId);
-                const amount = parseFloat(cashFormData.amount) || 0;
-                if (!selectedAccount || amount <= 0) return null;
-                
-                const currentBankBalance = Number(selectedAccount.balance) || 0;
-                const currentCash = Number(cashInHand) || 0;
-                const newBankBalance = cashOperation === 'withdraw' 
-                  ? currentBankBalance - amount
-                  : currentBankBalance + amount;
-                const newCashInHand = cashOperation === 'withdraw'
-                  ? currentCash + amount
-                  : currentCash - amount;
-                
-                return (
-                  <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                    <div className={`text-xs font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preview:</div>
-                    <div className={`text-sm space-y-1 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                    <div className="flex items-center gap-2">
-                      <Wallet size={14} />
-                        Cash in Hand: {formatCurrency(currentCash)} → {formatCurrency(newCashInHand)}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Building2 size={14} />
-                      {selectedAccount.name}: {formatCurrency(currentBankBalance)} → {formatCurrency(newBankBalance)}
-                    </div>
-                  </div>
-                  </div>
-                );
-              })()}
-              
-              {/* Action Buttons */}
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={handleCashOperation}
-                  disabled={processingCash}
-                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {processingCash ? 'Processing...' : cashOperation === 'withdraw' ? 'Withdraw Cash' : 'Deposit Cash'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowCashModal(false);
-                    setCashFormData({ accountId: '', amount: '' });
-                  }}
-                  className={`flex-1 ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'} py-2 rounded-lg font-medium`}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+            );
+          })}
+        </Card>
+      </Section>
     </div>
   );
 }
