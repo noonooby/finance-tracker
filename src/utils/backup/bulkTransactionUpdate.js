@@ -88,7 +88,8 @@ export async function exportTransactionsForEdit(filters = {}) {
       ['4. Valid Type values: income, expense, payment, transfer'],
       ['5. Date format: YYYY-MM-DD (e.g., 2025-01-15)'],
       ['6. Amount must be a positive number'],
-      ['7. Status values: active, deleted'],
+      ['7. Amount, Type and Payment Method changes on transactions that moved money are not applied: edit those in the app'],
+      ['8. Status cannot be changed here: undo or delete a transaction in the app'],
       [''],
       ['Fields you can edit:'],
       ['- Date'],
@@ -120,7 +121,7 @@ export async function exportTransactionsForEdit(filters = {}) {
  * Import edited transactions from Excel
  */
 export async function importEditedTransactions(file, options = {}) {
-  const { dryRun = false, skipValidation = false } = options;
+  const { dryRun = false } = options;
 
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -170,6 +171,10 @@ export async function importEditedTransactions(file, options = {}) {
         // Build update object (only changed fields)
         const update = { id: row.ID };
         let hasChanges = false;
+        // A transaction that moved money keeps its amount, type and payment method: changing them here
+        // would leave the balances it moved out of step. Those edits go through the app.
+        const movedMoney = Array.isArray(original._legs) && original._legs.length > 0;
+        const refused = [];
 
         // Date
         if (row.Date && row.Date !== original.date) {
@@ -192,8 +197,8 @@ export async function importEditedTransactions(file, options = {}) {
             errors.push({ row: rowNum, id: row.ID, error: `Invalid amount: ${row.Amount}` });
             continue;
           }
-          update.amount = amount;
-          hasChanges = true;
+          if (movedMoney) refused.push('Amount');
+          else { update.amount = amount; hasChanges = true; }
         }
 
         // Type
@@ -203,8 +208,8 @@ export async function importEditedTransactions(file, options = {}) {
             errors.push({ row: rowNum, id: row.ID, error: `Invalid type: ${row.Type}` });
             continue;
           }
-          update.type = row.Type;
-          hasChanges = true;
+          if (movedMoney) refused.push('Type');
+          else { update.type = row.Type; hasChanges = true; }
         }
 
         // Description
@@ -219,6 +224,14 @@ export async function importEditedTransactions(file, options = {}) {
           hasChanges = true;
         }
 
+        // Payment Method / ID
+        if (movedMoney && (
+          (row['Payment Method'] !== undefined && String(row['Payment Method'] || '') !== String(original.payment_method || '')) ||
+          (row['Payment Method ID'] !== undefined && String(row['Payment Method ID'] || '') !== String(original.payment_method_id || ''))
+        )) {
+          refused.push('Payment Method');
+        }
+
         // Payment Method Name
         if (row['Payment Method Name'] !== undefined && row['Payment Method Name'] !== original.payment_method_name) {
           update.payment_method_name = String(row['Payment Method Name'] || '');
@@ -231,14 +244,13 @@ export async function importEditedTransactions(file, options = {}) {
           hasChanges = true;
         }
 
-        // Status
-        if (row.Status && row.Status !== original.status) {
-          if (!['active', 'deleted'].includes(row.Status)) {
-            errors.push({ row: rowNum, id: row.ID, error: `Invalid status: ${row.Status}` });
-            continue;
-          }
-          update.status = row.Status;
-          hasChanges = true;
+        // Status is not taken from the sheet: undo or delete in the app so balances move too
+        if (row.Status && row.Status !== (original.status || 'active')) {
+          errors.push({ row: rowNum, id: row.ID, error: `Status not changed: undo or delete this transaction in the app` });
+        }
+
+        if (refused.length) {
+          errors.push({ row: rowNum, id: row.ID, error: `${refused.join(', ')} not changed: edit this transaction in the app so its balances move too` });
         }
 
         if (hasChanges) {
@@ -321,6 +333,12 @@ export async function bulkUpdateTransactions(transactionIds, updates) {
 
     if (!transactionIds || transactionIds.length === 0) {
       throw new Error('No transactions selected');
+    }
+
+    const moneyFields = ['amount', 'type', 'status', 'payment_method', 'payment_method_id', 'card_id', 'loan_id'];
+    const blocked = Object.keys(updates || {}).filter(k => moneyFields.includes(k));
+    if (blocked.length) {
+      throw new Error(`${blocked.join(', ')} cannot be changed in bulk: edit each transaction in the app so its balances move too`);
     }
 
     // Prepare update data

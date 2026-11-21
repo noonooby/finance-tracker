@@ -35,7 +35,7 @@ import {
   dbOperation
 } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
-import SmartInput from './SmartInput';
+import { recordAdjustment } from '../utils/money';
 import {
   getUserPreferences,
   togglePinnedBankAccount
@@ -344,7 +344,7 @@ export default function BankAccounts({
           
           if (accountTransactions.length > 0 && Math.abs(balanceChange) > 1) {
             const proceed = window.confirm(
-              `⚠️ Balance Traceability Warning\n\n` +
+              `Balance Traceability Warning\n\n` +
               `You're changing the balance by ${formatCurrency(Math.abs(balanceChange))}.\n\n` +
               `This account has ${accountTransactions.length} transaction(s) in history.\n` +
               `Manual balance changes may cause discrepancies in your records.\n\n` +
@@ -732,12 +732,7 @@ export default function BankAccounts({
     const sourceBalance = Number(sourceAccount.balance) || 0;
     const destinationBalance = Number(destinationAccount.balance) || 0;
 
-    if (sourceBalance < amount) {
-      showToast.error(
-        `Insufficient funds in ${sourceAccount.name}. Available: ${formatCurrency(sourceBalance)}`
-      );
-      return;
-    }
+    // The server checks the balance and overdraft limit when the transfer is recorded.
 
     setSaving(true);
     
@@ -1371,22 +1366,29 @@ export default function BankAccounts({
                     return;
                   }
                   
-                  const oldAmount = cashInHand || 0;
-                  await onUpdateCashInHand(amount);
-                  
-                  await logActivity(
-                    'edit_setting',
-                    'cash_in_hand',
-                    'cash-in-hand',
-                    'Cash in Hand',
-                    `Updated cash in hand from ${formatCurrency(oldAmount)} to ${formatCurrency(amount)}`,
-                    {
-                      settingKey: 'cashInHand',
-                      previousValue: oldAmount,
-                      newValue: amount
+                  const oldAmount = Number(cashInHand) || 0;
+                  try {
+                    // Recorded as a balance correction so it shows in history and can be undone.
+                    const res = await recordAdjustment(
+                      { target: 'cash_in_hand', newBalance: amount, current: oldAmount, date: localDate(), description: 'Cash in hand correction' },
+                      { bankAccounts, creditCards }
+                    );
+                    if (res.transaction) {
+                      await logActivity(
+                        'cash_adjustment',
+                        'cash_in_hand',
+                        'cash-in-hand',
+                        'Cash in Hand',
+                        `Updated cash in hand from ${formatCurrency(oldAmount)} to ${formatCurrency(amount)}`,
+                        { previousValue: oldAmount, newValue: amount, transactionId: res.transaction.id }
+                      );
                     }
-                  );
-                  
+                    if (onReloadAll) await onReloadAll(); else await onUpdate();
+                  } catch (err) {
+                    showToast.error(err.message || 'Could not update cash in hand');
+                    return;
+                  }
+
                   showToast.success('Cash in hand updated');
                 }}
                 className={`p-2 rounded ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'}`}
@@ -1636,9 +1638,9 @@ export default function BankAccounts({
                     {/* Overdraft Warning */}
                     {(Number(account.balance) || 0) < 0 && account.allows_overdraft && (
                       <div className="text-xs text-red-600 mt-1 space-y-1">
-                        <div>⚠️ Limit: {formatCurrency(account.overdraft_limit || 0)}</div>
+                        <div>Limit: {formatCurrency(account.overdraft_limit || 0)}</div>
                         <div>Available: {formatCurrency((account.overdraft_limit || 0) + (Number(account.balance) || 0))}</div>
-                        <div className="font-medium">⚠️ Resolve by end of day to avoid fees</div>
+                        <div className="font-medium">Resolve by end of day to avoid fees</div>
                       </div>
                     )}
                     
@@ -1657,7 +1659,7 @@ export default function BankAccounts({
                       
                       return (
                         <div className={`text-xs mt-2 p-2 rounded ${darkMode ? 'bg-blue-900/20 text-blue-300 border border-blue-800' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
-                          <div className="font-semibold mb-1">🔗 Auto-pays:</div>
+                          <div className="font-semibold mb-1">Auto-pays:</div>
                           {linkedLoans.map(loan => (
                             <div key={loan.id} className="ml-2">
                               • Loan: {loan.name} ({formatCurrency(loan.payment_amount || 0)}/{formatFrequency(loan.frequency)})

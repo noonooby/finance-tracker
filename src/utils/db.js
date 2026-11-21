@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { logActivity } from './activityLogger';
 import { localDate } from './helpers';
+import { recordTransfer, recordAdjustment } from './money';
 
 const TABLE_MAP = {
   creditCards: 'credit_cards',
@@ -511,29 +512,13 @@ export async function deleteBankAccount(accountId) {
   }
 }
 
+// The user states what an account really holds: recorded as a 'Balance correction' so it can be undone.
 export async function updateBankAccountBalance(accountId, newBalance) {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const { data, error } = await supabase
-      .from('bank_accounts')
-      .update({
-        balance: newBalance,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', accountId)
-      .eq('user_id', user.id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    console.log('💰 Balance updated:', data.name, '→', newBalance);
-    return data;
-  } catch (error) {
-    console.error('❌ Error updating bank account balance:', error);
-    throw error;
-  }
+  const account = await getBankAccount(accountId);
+  if (!account) throw new Error('That bank account no longer exists.');
+  const bankAccounts = await getAllBankAccounts();
+  await recordAdjustment({ target: `bank_account:${accountId}`, newBalance, current: account.balance, date: localDate() }, { bankAccounts });
+  return getBankAccount(accountId);
 }
 
 export async function getTotalBankBalance() {
@@ -551,72 +536,29 @@ export async function getTotalBankBalance() {
 }
 
 export async function transferBetweenAccounts(fromAccountId, toAccountId, amount, description = 'Account Transfer', transferDate = null) {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const amountValue = Number(amount);
-    if (!Number.isFinite(amountValue) || amountValue <= 0) {
-      throw new Error('Transfer amount must be a positive number');
-    }
-
-    const fromAccount = await getBankAccount(fromAccountId);
-    const toAccount = await getBankAccount(toAccountId);
-
-    if (!fromAccount || !toAccount) {
-      throw new Error('One or both accounts not found');
-    }
-
-    const fromBalance = Number(fromAccount.balance) || 0;
-    const toBalance = Number(toAccount.balance) || 0;
-    const normalizedAmount = Math.round(amountValue * 100) / 100;
-
-    if (fromBalance < normalizedAmount) {
-      throw new Error(
-        `Insufficient funds in ${fromAccount.name}. `
-        + `Available: $${fromBalance.toFixed(2)}, Requested: $${normalizedAmount.toFixed(2)}`
-      );
-    }
-
-    const newFromBalance = Math.max(0, Math.round((fromBalance - normalizedAmount) * 100) / 100);
-    const newToBalance = Math.round((toBalance + normalizedAmount) * 100) / 100;
-
-    const updatedFromAccount = await updateBankAccountBalance(fromAccountId, newFromBalance);
-    const updatedToAccount = await updateBankAccountBalance(toAccountId, newToBalance);
-
-    const effectiveDate = transferDate || localDate();
-
-    const transaction = {
-      type: 'transfer',
-      amount: normalizedAmount,
-      date: effectiveDate,
-      description: description,
-      notes: `Transferred $${normalizedAmount.toFixed(2)} from ${fromAccount.name} ($${fromBalance.toFixed(2)} → $${newFromBalance.toFixed(2)}) to ${toAccount.name} ($${toBalance.toFixed(2)} → $${newToBalance.toFixed(2)}).`,
-      payment_method: 'transfer',
-      payment_method_id: fromAccountId,
-      payment_method_name: fromAccount.name,
-      status: 'active',
-      undone_at: null
-    };
-
-    const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
-    console.log('💸 Transfer complete:', fromAccount.name, '→', toAccount.name, normalizedAmount);
-
-    return {
-      fromAccount: updatedFromAccount?.name || fromAccount.name,
-      toAccount: updatedToAccount?.name || toAccount.name,
-      fromAccountId,
-      toAccountId,
-      fromBalance: Number(updatedFromAccount?.balance) || newFromBalance,
-      toBalance: Number(updatedToAccount?.balance) || newToBalance,
-      transactionId: savedTransaction?.id,
-      amount: normalizedAmount,
-      description
-    };
-  } catch (error) {
-    console.error('❌ Error transferring between accounts:', error);
-    throw error;
-  }
+  const bankAccounts = await getAllBankAccounts();
+  const fromAccount = bankAccounts.find((a) => String(a.id) === String(fromAccountId));
+  const toAccount = bankAccounts.find((a) => String(a.id) === String(toAccountId));
+  if (!fromAccount || !toAccount) throw new Error('One or both accounts not found');
+  const result = await recordTransfer({
+    amount,
+    from: `bank_account:${fromAccountId}`,
+    to: `bank_account:${toAccountId}`,
+    date: transferDate || localDate(),
+    description,
+  }, { bankAccounts });
+  const value = Number(result.transaction?.amount) || Number(amount);
+  return {
+    fromAccount: fromAccount.name,
+    toAccount: toAccount.name,
+    fromAccountId,
+    toAccountId,
+    fromBalance: Number(fromAccount.balance) - value,
+    toBalance: Number(toAccount.balance) + value,
+    transactionId: result.transaction?.id,
+    amount: value,
+    description
+  };
 }
 
 export async function getCashInHand() {
@@ -624,92 +566,47 @@ export async function getCashInHand() {
     const setting = await dbOperation('settings', 'get', 'cashInHand');
     return Number(setting?.value) || 0;
   } catch (error) {
-    console.error('❌ Error getting cash in hand:', error);
+    console.error('Error getting cash in hand:', error);
     return 0;
   }
 }
 
+// The user states how much cash they hold: recorded as a 'Balance correction' so it can be undone.
 export async function updateCashInHand(newAmount) {
-  try {
-    await dbOperation('settings', 'put', { key: 'cashInHand', value: newAmount });
-    console.log('💵 Cash in hand updated:', newAmount);
-  } catch (error) {
-    console.error('❌ Error updating cash in hand:', error);
-    throw error;
-  }
+  const current = await getCashInHand();
+  return recordAdjustment({ target: 'cash_in_hand', newBalance: newAmount, current, date: localDate() }, {});
 }
 
-export async function withdrawCashFromBank(accountId, amount) {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const account = await getBankAccount(accountId);
-    if (!account) throw new Error('Account not found');
-
-    const currentBalance = Number(account.balance) || 0;
-    const withdrawAmount = Number(amount) || 0;
-    const newBalance = currentBalance - withdrawAmount;
-
-    if (newBalance < 0) {
-      if (!account.allows_overdraft) {
-        throw new Error(
-          `Insufficient funds in '${account.name}'.\n` +
-          `Available: ${currentBalance.toFixed(2)}\n` +
-          `Required: ${withdrawAmount.toFixed(2)}\n\n` +
-          `This account does not allow overdraft.`
-        );
-      }
-      
-      const overdraftAmount = Math.abs(newBalance);
-      if (overdraftAmount > (account.overdraft_limit || 0)) {
-        throw new Error(
-          `Insufficient funds in '${account.name}'.\n` +
-          `This would exceed your overdraft limit.\n\n` +
-          `Available: ${currentBalance.toFixed(2)}\n` +
-          `Overdraft: ${account.overdraft_limit.toFixed(2)}\n` +
-          `Total: ${(currentBalance + account.overdraft_limit).toFixed(2)}\n` +
-          `Required: ${withdrawAmount.toFixed(2)}`
-        );
-      }
-    }
-
-    await updateBankAccountBalance(accountId, newBalance);
-
-    const currentCash = await getCashInHand();
-    const newCash = currentCash + withdrawAmount;
-    await updateCashInHand(newCash);
-
-    const transaction = {
-      type: 'cash_withdrawal',
-      amount: withdrawAmount,
-      date: localDate(),
-      description: `Withdrew cash from ${account.name}`,
-      payment_method: 'cash_withdrawal',
-      payment_method_id: accountId,
-      payment_method_name: account.name,
-      status: 'active',
-      undone_at: null
-    };
-
-    const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
-    console.log('💵 Cash withdrawn:', withdrawAmount, 'from', account.name);
-
-    return {
-      accountName: account.name,
-      accountId,
-      amount: withdrawAmount,
-      previousBankBalance: currentBalance,
-      newBankBalance: newBalance,
-      previousCashInHand: currentCash,
-      newCashInHand: newCash,
-      transactionId: savedTransaction?.id
-    };
-  } catch (error) {
-    console.error('❌ Error withdrawing cash:', error);
-    throw error;
-  }
+// Bank to cash, or cash to bank, as one step on the server.
+async function moveCash(accountId, amount, toCash) {
+  const bankAccounts = await getAllBankAccounts();
+  const account = bankAccounts.find((a) => String(a.id) === String(accountId));
+  if (!account) throw new Error('Account not found');
+  const currentCash = await getCashInHand();
+  const bank = `bank_account:${accountId}`;
+  const result = await recordTransfer({
+    amount,
+    from: toCash ? bank : 'cash_in_hand',
+    to: toCash ? 'cash_in_hand' : bank,
+    date: localDate(),
+    description: toCash ? `Withdrew cash from ${account.name}` : `Deposited cash to ${account.name}`,
+    extra: { type: toCash ? 'cash_withdrawal' : 'cash_deposit' },
+  }, { bankAccounts });
+  const value = Number(result.transaction?.amount) || Number(amount);
+  const previousBankBalance = Number(account.balance) || 0;
+  return {
+    accountName: account.name,
+    accountId,
+    amount: value,
+    previousBankBalance,
+    newBankBalance: previousBankBalance + (toCash ? -value : value),
+    previousCashInHand: currentCash,
+    newCashInHand: currentCash + (toCash ? value : -value),
+    transactionId: result.transaction?.id
+  };
 }
+
+export const withdrawCashFromBank = (accountId, amount) => moveCash(accountId, amount, true);
 
 export async function getCardTransactions(cardId, limit = 5) {
   try {
@@ -795,59 +692,4 @@ export async function getBankAccountTransactions(accountId, limit = 5) {
   }
 }
 
-export async function depositCashToBank(accountId, amount) {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const account = await getBankAccount(accountId);
-    if (!account) throw new Error('Account not found');
-
-    const currentCash = await getCashInHand();
-    const depositAmount = Number(amount) || 0;
-
-    if (depositAmount > currentCash) {
-      throw new Error(
-        `Insufficient cash in hand.\n` +
-        `Available: ${currentCash.toFixed(2)}\n` +
-        `Required: ${depositAmount.toFixed(2)}`
-      );
-    }
-
-    const currentBalance = Number(account.balance) || 0;
-    const newBalance = currentBalance + depositAmount;
-    const newCash = Math.max(0, currentCash - depositAmount);
-
-    await updateBankAccountBalance(accountId, newBalance);
-    await updateCashInHand(newCash);
-
-    const transaction = {
-      type: 'cash_deposit',
-      amount: depositAmount,
-      date: localDate(),
-      description: `Deposited cash to ${account.name}`,
-      payment_method: 'cash_deposit',
-      payment_method_id: accountId,
-      payment_method_name: account.name,
-      status: 'active',
-      undone_at: null
-    };
-
-    const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
-    console.log('💵 Cash deposited:', depositAmount, 'to', account.name);
-
-    return {
-      accountName: account.name,
-      accountId,
-      amount: depositAmount,
-      previousBankBalance: currentBalance,
-      newBankBalance: newBalance,
-      previousCashInHand: currentCash,
-      newCashInHand: newCash,
-      transactionId: savedTransaction?.id
-    };
-  } catch (error) {
-    console.error('❌ Error depositing cash:', error);
-    throw error;
-  }
-}
+export const depositCashToBank = (accountId, amount) => moveCash(accountId, amount, false);

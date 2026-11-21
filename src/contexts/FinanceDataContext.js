@@ -1,7 +1,9 @@
-import React, { createContext, useState, useCallback } from 'react';
+import React, { createContext, useState, useCallback, useMemo, useRef } from 'react';
 import { 
   dbOperation,
-  getAllBankAccounts
+  getAllBankAccounts,
+  getCashInHand,
+  updateCashInHand as recordCashInHand
 } from '../utils/db';
 import { DEFAULT_CATEGORIES, calculateTotalBankBalance } from '../utils/helpers';
 import { processDueIncomeSchedules } from '../utils/schedules';
@@ -24,6 +26,8 @@ export function FinanceDataProvider({ children }) {
   
   // Loading states
   const [dataLoading, setDataLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const loadingRef = useRef(null);
   
   // Latest activities
   const [latestActivities, setLatestActivities] = useState([]);
@@ -87,8 +91,18 @@ export function FinanceDataProvider({ children }) {
   }, []);
 
   // Progressive data loading
-  const loadDataProgressively = useCallback(async () => {
+  // A load already running is shared, so two callers at startup cause one load.
+  const loadDataProgressively = useCallback(() => {
+    if (!loadingRef.current) {
+      loadingRef.current = runLoad().finally(() => { loadingRef.current = null; });
+    }
+    return loadingRef.current;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadBankAccounts, loadCategories]);
+
+  async function runLoad() {
     setDataLoading(true);
+    setLoadError(null);
     try {
       // PHASE 1: Load critical settings first
       console.log('📊 Phase 1: Loading critical settings...');
@@ -146,11 +160,12 @@ export function FinanceDataProvider({ children }) {
 
       console.log('✅ All data loaded successfully!');
     } catch (error) {
-      console.error('❌ Error loading data:', error);
+      console.error('Error loading data:', error);
+      setLoadError(error?.message || 'Could not load your data.');
     } finally {
       setDataLoading(false);
     }
-  }, [loadBankAccounts, loadCategories]);
+  }
 
   // Full data reload
   const loadAllData = useCallback(async () => {
@@ -158,114 +173,27 @@ export function FinanceDataProvider({ children }) {
     await loadLatestActivities();
   }, [loadDataProgressively, loadLatestActivities]);
 
-  // Update cash handler
+  // Refreshes bank accounts and cash from the server. It never changes a balance: money moves only through utils/money.js.
   const handleUpdateCash = useCallback(async (newAmount, options = {}) => {
-    try {
-      const { accountId: preferredAccountId, delta, syncOnly = false } = options || {};
-
-      const accounts = await getAllBankAccounts();
-      setBankAccounts(accounts);
-
-      const currentTotal = calculateTotalBankBalance(accounts);
-      setAvailableCash(currentTotal);
-
-      if (syncOnly) {
-        console.log('🔄 Cash sync requested without balance adjustments');
-        return;
-      }
-
-      if (!accounts || accounts.length === 0) {
-        console.warn('⚠️ No bank accounts available; skipping cash adjustment.');
-        return;
-      }
-
-      let desiredTotal = currentTotal;
-      if (typeof delta === 'number' && Number.isFinite(delta)) {
-        desiredTotal = currentTotal + delta;
-      } else if (typeof newAmount === 'number' && Number.isFinite(newAmount)) {
-        desiredTotal = newAmount;
-      }
-
-      const effectiveDelta = desiredTotal - currentTotal;
-      const deltaRounded = Math.round(effectiveDelta * 100) / 100;
-
-      if (Math.abs(deltaRounded) < 0.005) {
-        console.log('ℹ️ No cash adjustment needed (already in sync).');
-        return;
-      }
-
-      const matchesPreferred = preferredAccountId
-        ? accounts.find(acc => String(acc.id) === String(preferredAccountId))
-        : null;
-
-      const primaryAccount = accounts.find(acc => acc.is_primary);
-      const fallbackAccount = accounts[0];
-
-      const targetAccount = matchesPreferred || primaryAccount || fallbackAccount;
-
-      if (!targetAccount) {
-        console.warn('⚠️ Unable to locate a target bank account for cash adjustment.');
-        return;
-      }
-
-      const currentBalance = Number(targetAccount.balance) || 0;
-      const nextBalance = Math.round((currentBalance + deltaRounded) * 100) / 100;
-
-      if (deltaRounded < 0 && nextBalance < -0.005) {
-        throw new Error(`Insufficient funds in ${targetAccount.name}. Needed: ${Math.abs(deltaRounded).toFixed(2)}`);
-      }
-
-      const safeNextBalance = Math.max(0, nextBalance);
-
-      // Update bank account balance
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { data: updatedAccount, error } = await supabase
-        .from('bank_accounts')
-        .update({
-          balance: safeNextBalance,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', targetAccount.id)
-        .eq('user_id', user.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      console.log('💰 Balance updated:', updatedAccount.name, '→', safeNextBalance);
-
-      const updatedAccounts = accounts.map(acc =>
-        String(acc.id) === String(updatedAccount.id) ? updatedAccount : acc
-      );
-      setBankAccounts(updatedAccounts);
-
-      const updatedTotal = calculateTotalBankBalance(updatedAccounts);
-      setAvailableCash(updatedTotal);
-
-      console.log(
-        `✅ Bank account "${updatedAccount.name}" adjusted by ${deltaRounded.toFixed(2)}. `
-        + `New balance: ${safeNextBalance.toFixed(2)}`
-      );
-
-    } catch (error) {
-      console.error('❌ Error updating cash:', error);
-      throw error;
+    if (newAmount !== null && newAmount !== undefined && !options?.syncOnly) {
+      console.warn('handleUpdateCash no longer sets balances; record the money event through utils/money.js instead. Refreshing only.');
     }
-  }, []);
+    await loadBankAccounts();
+    setCashInHand(await getCashInHand());
+  }, [loadBankAccounts]);
 
-  // Update cash in hand
+  // The user states how much cash they hold: recorded as a balance correction, then reloaded.
   const updateCashInHand = useCallback(async (newAmount) => {
-    await dbOperation('settings', 'put', { key: 'cashInHand', value: newAmount });
-    setCashInHand(newAmount);
+    await recordCashInHand(newAmount);
+    setCashInHand(await getCashInHand());
   }, []);
 
   // Calculated values
-  const displayAvailableCash = calculateTotalBankBalance(bankAccounts) + cashInHand;
-  const totalCreditCardDebt = creditCards.reduce((sum, card) => sum + card.balance, 0);
-  const totalLoanDebt = loans.reduce((sum, loan) => sum + loan.balance, 0);
+  const displayAvailableCash = calculateTotalBankBalance(bankAccounts) + (Number(cashInHand) || 0);
+  const totalCreditCardDebt = creditCards.reduce((sum, card) => sum + (Number(card.balance) || 0), 0);
+  const totalLoanDebt = loans.reduce((sum, loan) => sum + (Number(loan.balance) || 0), 0);
 
-  const value = {
+  const value = useMemo(() => ({
     // States
     creditCards,
     loans,
@@ -276,6 +204,7 @@ export function FinanceDataProvider({ children }) {
     availableCash,
     cashInHand,
     dataLoading,
+    loadError,
     latestActivities,
     
     // Setters
@@ -301,7 +230,9 @@ export function FinanceDataProvider({ children }) {
     displayAvailableCash,
     totalCreditCardDebt,
     totalLoanDebt,
-  };
+  }), [creditCards, loans, income, transactions, categories, bankAccounts, availableCash, cashInHand, dataLoading, loadError,
+    latestActivities, loadAllData, loadDataProgressively, loadBankAccounts, loadCategories, loadLatestActivities,
+    handleUpdateCash, updateCashInHand, displayAvailableCash, totalCreditCardDebt, totalLoanDebt]);
 
   return (
     <FinanceDataContext.Provider value={value}>

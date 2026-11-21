@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Save, FolderOpen } from 'lucide-react';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
+import { reverseTransaction } from '../utils/money';
 import AddTransaction from './AddTransaction';
 import {
   getAllSavedFilters,
@@ -74,15 +75,6 @@ export default function TransactionHistory({
   // === HELPER FUNCTIONS (Safe - No Side Effects) ===
   const isPaymentType = (type) =>
     type === 'payment' || type === 'loan_payment' || type === 'credit_card_payment' || type === 'reserved_fund_paid';
-
-  const resolvePaymentSubtype = (transaction) => {
-    if (transaction.subtype) return transaction.subtype;
-    if (transaction.type === 'credit_card_payment') return 'credit_card';
-    if (transaction.type === 'loan_payment') return 'loan';
-    if (transaction.payment_method === 'credit_card') return 'credit_card';
-    if (transaction.payment_method === 'loan') return 'loan';
-    return null;
-  };
 
   const getTotalsByType = () => {
     const totals = {
@@ -309,7 +301,7 @@ export default function TransactionHistory({
       setSaveAsPin(false);
       setShowSaveDialog(false);
       
-      alert(`✅ Filter "${filterData.name}" saved successfully!`);
+      alert(`Filter "${filterData.name}" saved successfully!`);
     } catch (error) {
       console.error('Error saving filter:', error);
       setSaveError(error.message || 'Failed to save filter');
@@ -346,7 +338,7 @@ export default function TransactionHistory({
       await deleteSavedFilter(filter.id);
       await loadSavedFilters();
       await loadQuickFilters();
-      alert('🗑️ Filter deleted successfully');
+      alert('Filter deleted successfully');
     } catch (error) {
       console.error('Error deleting filter:', error);
       alert('Failed to delete filter');
@@ -357,7 +349,7 @@ export default function TransactionHistory({
     try {
       await duplicateFilter(filter.id);
       await loadSavedFilters();
-      alert(`✅ Filter duplicated successfully!`);
+      alert(`Filter duplicated successfully!`);
     } catch (error) {
       console.error('Error duplicating filter:', error);
       alert('Failed to duplicate filter');
@@ -365,160 +357,12 @@ export default function TransactionHistory({
   };
 
   // === CRITICAL FINANCIAL LOGIC (STAYS HERE - DO NOT EXTRACT) ===
-  /**
-   * Reverts the financial effects of a transaction
-   * CRITICAL: This handles money - DO NOT move to separate file
-   */
-  const revertTransactionEffects = useCallback(async (transaction) => {
-    if (!transaction || transaction.status === 'undone') return;
-
-    const amount = Number(transaction.amount) || 0;
-    if (amount <= 0) return;
-
-    let cashDelta = 0;
-
-    const normalizeBalance = (value) => {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
-
-    const updateCardBalance = async (cardId, delta) => {
-      if (!cardId) return;
-      let card = creditCards.find(c => c.id === cardId);
-      if (!card) {
-        try {
-          card = await dbOperation('creditCards', 'get', cardId);
-        } catch (cardError) {
-          console.warn('Unable to load card for transaction reversal', cardError);
-        }
-      }
-      if (!card) return;
-      const currentBalance = normalizeBalance(card.balance);
-      const newBalance = Math.max(0, currentBalance + delta);
-      await dbOperation('creditCards', 'put', { ...card, balance: newBalance }, { skipActivityLog: true });
-    };
-
-    const updateLoanBalance = async (loanId, delta) => {
-      if (!loanId) return;
-      let loan = loans.find(l => l.id === loanId);
-      if (!loan) {
-        try {
-          loan = await dbOperation('loans', 'get', loanId);
-        } catch (loanError) {
-          console.warn('Unable to load loan for transaction reversal', loanError);
-        }
-      }
-      if (!loan) return;
-      const currentBalance = normalizeBalance(loan.balance);
-      const newBalance = currentBalance + delta;
-      await dbOperation('loans', 'put', { ...loan, balance: newBalance }, { skipActivityLog: true });
-    };
-
-    if (transaction.type === 'income') {
-      cashDelta -= amount;
-    } else if (transaction.type === 'expense') {
-      // Check if this is a gift card transaction
-      const cardId = transaction.card_id || transaction.payment_method_id;
-      let isGiftCardTransaction = false;
-      
-      if (cardId) {
-        const card = creditCards.find(c => c.id === cardId);
-        isGiftCardTransaction = card?.is_gift_card || false;
-      }
-      
-      if (isGiftCardTransaction) {
-        // Gift card reload: reduce gift card balance + refund payment source
-        await updateCardBalance(cardId, -amount); // Reduce gift card balance
-        
-        // Refund payment source
-        if (transaction.payment_method === 'bank_account' && transaction.payment_method_id) {
-          const { getBankAccount, updateBankAccountBalance } = await import('../utils/db');
-          const account = await getBankAccount(transaction.payment_method_id);
-          if (account) {
-            await updateBankAccountBalance(transaction.payment_method_id, 
-              (parseFloat(account.balance) || 0) + amount
-            );
-          }
-        } else if (transaction.payment_method === 'cash_in_hand') {
-          if (onUpdateCashInHand) {
-            const { getCashInHand } = await import('../utils/db');
-            const currentCash = await getCashInHand();
-            await onUpdateCashInHand(currentCash + amount);
-          }
-        } else if (transaction.payment_method === 'credit_card' && transaction.payment_method_id) {
-          // Refund to payment card (reverse the charge)
-          await updateCardBalance(transaction.payment_method_id, -amount);
-        }
-      } else {
-        // Regular expense (not gift card)
-        if (transaction.payment_method === 'cash') {
-          cashDelta += amount;
-        } else if (transaction.payment_method === 'cash_in_hand') {
-          if (onUpdateCashInHand) {
-            const { getCashInHand } = await import('../utils/db');
-            const currentCash = await getCashInHand();
-            await onUpdateCashInHand(currentCash + amount);
-          }
-        } else if (transaction.payment_method === 'bank_account' && transaction.payment_method_id) {
-          const { getBankAccount, updateBankAccountBalance } = await import('../utils/db');
-          const account = await getBankAccount(transaction.payment_method_id);
-          if (account) {
-            await updateBankAccountBalance(transaction.payment_method_id, 
-              (parseFloat(account.balance) || 0) + amount
-            );
-          }
-        } else if (transaction.payment_method === 'credit_card') {
-          const cardId = transaction.card_id || transaction.payment_method_id;
-          await updateCardBalance(cardId, -amount);
-        }
-      }
-    } else if (isPaymentType(transaction.type)) {
-      const paymentSubtype = resolvePaymentSubtype(transaction);
-      if (transaction.subtype === 'loan_via_credit_card') {
-        const cardId = transaction.card_id || transaction.payment_method_id;
-        const loanId = transaction.loan_id || transaction.payment_method_id;
-        if (cardId) await updateCardBalance(cardId, -amount);
-        if (loanId) await updateLoanBalance(loanId, amount);
-        return;
-      }
-      if (paymentSubtype === 'credit_card') {
-        const cardId = transaction.card_id || transaction.payment_method_id;
-        await updateCardBalance(cardId, amount);
-        cashDelta += amount;
-      } else if (paymentSubtype === 'loan') {
-        const loanId = transaction.loan_id || transaction.payment_method_id;
-        await updateLoanBalance(loanId, amount);
-        cashDelta += amount;
-      } else if (transaction.payment_method === 'cash') {
-        cashDelta += amount;
-      }
-    } else {
-      if (transaction.payment_method === 'cash') {
-        cashDelta += amount;
-      } else if (transaction.payment_method === 'credit_card') {
-        const cardId = transaction.card_id || transaction.payment_method_id;
-        await updateCardBalance(cardId, -amount);
-      } else if (transaction.payment_method === 'loan') {
-        const loanId = transaction.loan_id || transaction.payment_method_id;
-        await updateLoanBalance(loanId, amount);
-        cashDelta += amount;
-      }
-    }
-
-    if (cashDelta !== 0) {
-      let currentCash = Number(availableCash) || 0;
-      try {
-        const currentCashSetting = await dbOperation('settings', 'get', 'availableCash');
-        if (currentCashSetting && currentCashSetting.value !== undefined) {
-          currentCash = Number(currentCashSetting.value) || currentCash;
-        }
-      } catch (cashError) {
-        console.warn('Unable to fetch current cash balance, falling back to local value.', cashError);
-      }
-      const newCash = currentCash + cashDelta;
-      await onUpdateCash(newCash);
-    }
-  }, [availableCash, creditCards, loans, onUpdateCash, onUpdateCashInHand]);
+  // Money goes back through the server: exactly what the transaction moved, on the same accounts.
+  // A transaction with no recorded legs moved nothing through this path, so it is only marked.
+  const revertTransactionEffects = useCallback(async (transaction, { remove = false } = {}) => {
+    if (!transaction || transaction.status === 'undone' || transaction.status === 'deleted') return;
+    await reverseTransaction(transaction.id, remove ? { remove: true } : {});
+  }, []);
 
   /**
    * Handles transaction deletion
@@ -536,7 +380,7 @@ export default function TransactionHistory({
       };
       
       // Revert financial effects FIRST
-      await revertTransactionEffects(transaction);
+      await revertTransactionEffects(transaction, { remove: true });
 
       // Handle linked income deletion
       if (transaction.type === 'income' && transaction.payment_method_id) {
