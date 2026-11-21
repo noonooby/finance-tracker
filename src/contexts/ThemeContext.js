@@ -5,7 +5,17 @@ import { getUserPreferences, setDisplayDensity as saveDisplayDensity } from '../
 export const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
-  const [darkMode, setDarkMode] = useState(false);
+  // Until the saved choice loads, follow the phone's setting; remember the last choice on this device to avoid a flash.
+  const [darkMode, setDarkMode] = useState(() => {
+    try { const v = localStorage.getItem('finance_dark'); if (v !== null) return v === '1'; } catch {}
+    return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', !!darkMode);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', darkMode ? '#111827' : '#ffffff');
+    try { localStorage.setItem('finance_dark', darkMode ? '1' : '0'); } catch {}
+  }, [darkMode]);
   const [showCashInDashboard, setShowCashInDashboard] = useState(false);
   const [displayDensity, setDisplayDensityState] = useState('comfortable');
   const [alertSettings, setAlertSettings] = useState({ 
@@ -20,7 +30,7 @@ export function ThemeProvider({ children }) {
         const settings = await dbOperation('settings', 'getAll');
         
         const darkModeSetting = settings?.find(s => s.key === 'darkMode');
-        setDarkMode(darkModeSetting?.value || false);
+        if (darkModeSetting) setDarkMode(!!darkModeSetting.value);
         
         const showCashSetting = settings?.find(s => s.key === 'showCashInDashboard');
         setShowCashInDashboard(showCashSetting?.value || false);

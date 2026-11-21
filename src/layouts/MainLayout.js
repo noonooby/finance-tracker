@@ -1,157 +1,68 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
-import { Download, Upload, Moon, Sun, Plus } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Moon, Sun, Plus, HelpCircle } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { useTheme } from '../hooks/useTheme';
 import { useUI } from '../hooks/useUI';
-import { dbOperation } from '../utils/db';
 import BottomNavigation from '../BottomNavigation';
-import { localDate } from '../utils/helpers';
 
 /**
- * Main Layout Component
- * Wraps all authenticated pages with header and navigation
+ * Main layout: header, the current page, the add button and the tab bar.
  */
 export function MainLayout() {
-  const { signOut } = useAuth();
-  const {
-    creditCards,
-    loans,
-    income,
-    categories,
-    bankAccounts,
-    cashInHand,
-    alertSettings,
-    isMigrating,
-    dataLoading,
-    loadAllData,
-    updateCashInHand,
-  } = useFinanceData();
-  
+  const { isMigrating, dataLoading, loadError, loadAllData } = useFinanceData();
   const { darkMode, toggleDarkMode } = useTheme();
   const { openAddTransaction } = useUI();
-
-  // Export data
-  const exportData = async () => {
-    const data = {
-      creditCards,
-      loans,
-      income,
-      categories,
-      bankAccounts,
-      cashInHand,
-      alertSettings,
-      exportDate: new Date().toISOString()
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `finance-backup-${localDate()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Import data
-  const importData = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const data = JSON.parse(e.target.result);
-        
-        for (const card of data.creditCards || []) await dbOperation('creditCards', 'put', card);
-        for (const loan of data.loans || []) await dbOperation('loans', 'put', loan);
-        for (const inc of data.income || []) await dbOperation('income', 'put', inc);
-        for (const cat of data.categories || []) await dbOperation('categories', 'put', cat);
-        
-        if (data.cashInHand) {
-          await updateCashInHand(data.cashInHand);
-        }
-        
-        await loadAllData();
-        
-        alert('Data imported successfully!');
-      } catch (error) {
-        console.error('Import error:', error);
-        alert('Error importing data. Please check the file format.');
-      }
-    };
-    reader.readAsText(file);
-  };
+  const location = useLocation();
+  const navigate = useNavigate();
+  const iconBtn = `p-2 rounded-full ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`;
 
   return (
     <div className={`h-screen flex flex-col ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-      {/* Header */}
-      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b p-4 flex-shrink-0 z-10`}>
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Finance Tracker</h1>
-            {(isMigrating || dataLoading) && (
-              <span className="text-xs text-blue-500 animate-pulse">
-                {isMigrating ? 'Syncing accounts…' : 'Loading data…'}
-              </span>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={toggleDarkMode}
-              className={`p-2 ${darkMode ? 'text-yellow-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'} rounded-lg`}
-              title={darkMode ? 'Light Mode' : 'Dark Mode'}
-            >
-              {darkMode ? <Sun size={24} /> : <Moon size={24} />}
+      <header className={`${darkMode ? 'bg-gray-900/90 border-gray-800' : 'bg-white/90 border-gray-200'} backdrop-blur border-b px-4 py-3 flex-shrink-0 z-10`}
+        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
+        <div className="flex justify-between items-center max-w-3xl mx-auto">
+          <button type="button" onClick={() => navigate('/')} className="flex items-center gap-2 text-left">
+            <img src="/icon.svg" alt="" width="28" height="28" className="rounded-lg" />
+            <span className="text-lg font-semibold tracking-tight">Finance</span>
+          </button>
+          <div className="flex items-center gap-1">
+            {(isMigrating || dataLoading) && <span className="text-xs text-gray-500 mr-2" role="status">Loading</span>}
+            <button type="button" onClick={() => navigate('/help')} className={iconBtn} aria-label="Help">
+              <HelpCircle size={22} />
             </button>
-            <button
-              onClick={exportData}
-              className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded-lg`}
-              title="Export Data"
-            >
-              <Download size={24} />
-            </button>
-            <label className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded-lg cursor-pointer`} title="Import Data">
-              <Upload size={24} />
-              <input
-                type="file"
-                accept=".json"
-                onChange={importData}
-                className="hidden"
-              />
-            </label>
-            <button
-              onClick={signOut}
-              className={`px-3 py-1 text-sm ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded-lg`}
-            >
-              Sign Out
+            <button type="button" onClick={toggleDarkMode} className={iconBtn} aria-label={darkMode ? 'Use light mode' : 'Use dark mode'}>
+              {darkMode ? <Sun size={22} /> : <Moon size={22} />}
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Main Content Area - Proper spacing for bottom nav */}
-      <div className="flex-1 min-h-0 relative">
-        {/* Scrollable Content */}
-        <div className="absolute inset-0 overflow-y-auto">
-          <div className="p-4 pb-32">
+      {loadError && (
+        <div role="alert" className="bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-200 text-sm px-4 py-2 flex items-center justify-between gap-3">
+          <span>Could not load your data. Check your connection.</span>
+          <button type="button" onClick={() => loadAllData()} className="font-medium underline">Try again</button>
+        </div>
+      )}
+
+      <main className="flex-1 min-h-0 relative">
+        <div className="absolute inset-0 overflow-y-auto overscroll-contain">
+          <div key={location.pathname} className="page-enter p-4 pb-36 max-w-3xl mx-auto">
             <Outlet />
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* Floating Add Button - Position above bottom nav */}
       <button
+        type="button"
         onClick={openAddTransaction}
-        className="fixed bottom-24 right-4 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center z-20 flex-shrink-0"
-        title="Add Transaction"
-        style={{ touchAction: 'manipulation' }}
+        className="press fixed right-4 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center z-20"
+        style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))', touchAction: 'manipulation' }}
+        aria-label="Add a transaction"
       >
         <Plus size={28} />
       </button>
 
-      {/* Bottom Navigation */}
       <BottomNavigation darkMode={darkMode} />
     </div>
   );

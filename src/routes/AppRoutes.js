@@ -24,6 +24,8 @@ const BankAccounts = lazy(() => import('../components/BankAccounts'));
 const Settings = lazy(() => import('../components/Settings'));
 const Reports = lazy(() => import('../components/Reports'));
 const ScreenshotImport = lazy(() => import('../components/ScreenshotImport'));
+const More = lazy(() => import('../components/More'));
+const Help = lazy(() => import('../components/Help'));
 
 /**
  * Loading Fallback Component
@@ -243,6 +245,11 @@ const TransactionsRoute = React.memo(() => {
   );
 });
 
+const ThemedPage = ({ Page }) => {
+  const { darkMode } = useTheme();
+  return <Page darkMode={darkMode} />;
+};
+
 const ScreenshotRoute = React.memo(() => {
   const { darkMode } = useTheme();
   const financeData = useFinanceData();
@@ -356,6 +363,8 @@ export function AppRoutes() {
             <TransactionsRoute />
           </Suspense>
         } />
+        <Route path="/more" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={More} /></Suspense>} />
+        <Route path="/help" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Help} /></Suspense>} />
         <Route path="/screenshot" element={
           <Suspense fallback={<LoadingFallback />}>
             <ScreenshotRoute />

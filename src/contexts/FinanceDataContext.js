@@ -6,7 +6,7 @@ import {
   updateCashInHand as recordCashInHand
 } from '../utils/db';
 import { DEFAULT_CATEGORIES, calculateTotalBankBalance } from '../utils/helpers';
-import { processDueIncomeSchedules } from '../utils/schedules';
+import { processDueIncomeSchedules, processOverdueLoanPayments, processOverdueCreditCardPayments } from '../utils/schedules';
 import { supabase } from '../utils/supabase';
 
 export const FinanceDataContext = createContext(null);
@@ -142,11 +142,25 @@ export function FinanceDataProvider({ children }) {
         setAvailableCash(totalBalance);
       }
       
-      // PHASE 4: Process due income schedules
-      console.log('📊 Phase 4: Processing due income schedules...');
+      // PHASE 4: Scheduled money: pay days, then loan and card payments with a connected account.
+      // Each date is recorded once (the server keeps a once-only key), so running this on every load is safe.
       const autoResults = await processDueIncomeSchedules();
-      
-      if (autoResults.deposited.length > 0) {
+      let paid = 0;
+      try {
+        const freshCards = (await dbOperation('creditCards', 'getAll')) || [];
+        const freshLoans = (await dbOperation('loans', 'getAll')) || [];
+        const loanRes = await processOverdueLoanPayments(freshLoans, freshCards, accounts || [], 0);
+        const cardRes = await processOverdueCreditCardPayments(freshCards, accounts || [], 0);
+        paid = (loanRes?.processed?.length || 0) + (cardRes?.processed?.length || 0);
+        if (paid) {
+          setLoans((await dbOperation('loans', 'getAll')) || []);
+          setCreditCards((await dbOperation('creditCards', 'getAll')) || []);
+        }
+      } catch (e) {
+        console.error('Scheduled payments:', e);
+      }
+
+      if (autoResults.deposited.length > 0 || paid) {
         console.log('🎉 Auto-deposited income on app load:', autoResults.deposited);
         // Reload all data after auto-deposits
         incomeData = await dbOperation('income', 'getAll') || [];

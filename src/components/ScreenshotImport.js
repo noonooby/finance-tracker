@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../utils/supabase';
 import { recordExpense, recordIncome, recordRefund, recordAdjustment } from '../utils/money';
 import { supabase } from '../utils/supabase';
 import { formatCurrency } from '../utils/helpers';
+import { Camera, Image as ImageIcon } from 'lucide-react';
 
 const readFile = (file) => new Promise((resolve, reject) => {
   const r = new FileReader();
@@ -10,6 +11,23 @@ const readFile = (file) => new Promise((resolve, reject) => {
   r.onerror = () => reject(new Error('Could not open that file.'));
   r.readAsDataURL(file);
 });
+
+// Phone photos are large: shrink to at most 2000 px on the long side as JPEG before sending.
+// Small text stays readable at that size. If the browser can't draw the image, the original is sent.
+async function prepare(file) {
+  const original = await readFile(file);
+  try {
+    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = original; });
+    const scale = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+    if (scale === 1 && file.size < 3_000_000 && file.type !== 'image/heic' && file.type !== 'image/heif') return { url: original, type: file.type || 'image/jpeg' };
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return { url: c.toDataURL('image/jpeg', 0.85), type: 'image/jpeg' };
+  } catch {
+    return { url: original, type: file.type || 'image/jpeg' };
+  }
+}
 
 const STATUS_TEXT = {
   record: 'New',
@@ -28,6 +46,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const [rows, setRows] = useState([]);
   const [fixes, setFixes] = useState([]);
   const [done, setDone] = useState(null);
+  const [aiReady, setAiReady] = useState(true);
+  useEffect(() => { supabase.auth.config().then((c) => setAiReady(c.ai !== false)); }, []);
 
   const accountOptions = useMemo(() => [
     ...bankAccounts.map((a) => ({ value: `bank_account:${a.id}`, label: a.name })),
@@ -45,7 +65,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     e.target.value = '';
     if (!file) return;
     setError(''); setProposal(null); setDone(null);
-    try { setImage({ url: await readFile(file), type: file.type, name: file.name }); } catch (err) { setError(err.message); }
+    try { setImage({ ...(await prepare(file)), name: file.name }); } catch (err) { setError(err.message); }
   };
 
   const read = async () => {
@@ -115,20 +135,33 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const chosen = rows.filter((r) => r.on).length + fixes.filter((f) => f.on).length;
 
   return (
-    <div className="max-w-3xl mx-auto p-4 space-y-4">
+    <div className="space-y-4">
       <div>
-        <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Add from a screenshot</h1>
+        <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Scan</h1>
         <p className={`text-sm ${muted}`}>
-          Upload a screenshot of your bank or card app, or a photo of a receipt. The app reads it and lists what it found.
-          Nothing is saved until you choose the lines and press Record.
+          Take a photo of a receipt, or choose a screenshot of your bank or card app. The app reads it and lists what it found.
+          Nothing is saved until you tick the lines you want and tap Record.
         </p>
       </div>
 
       <div className={`border rounded-lg p-4 space-y-3 ${card}`}>
-        <label className="inline-block">
-          <span className="sr-only">Choose a screenshot</span>
-          <input type="file" accept="image/png,image/jpeg,image/webp,image/heic" onChange={pick} className="block text-sm" />
-        </label>
+        {!aiReady && (
+          <p role="status" className="text-sm rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 px-3 py-2">
+            Reading photos is not switched on for this app yet. You can still add transactions with the + button.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <label className="press cursor-pointer flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-blue-300 dark:border-blue-700 py-5 text-blue-700 dark:text-blue-300 font-medium">
+            <Camera size={26} aria-hidden="true" />
+            Take a photo
+            <input type="file" accept="image/*" capture="environment" onChange={pick} className="sr-only" />
+          </label>
+          <label className="press cursor-pointer flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 py-5 font-medium">
+            <ImageIcon size={26} aria-hidden="true" />
+            Choose a screenshot
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" onChange={pick} className="sr-only" />
+          </label>
+        </div>
         {image && (
           <div className="flex flex-col sm:flex-row gap-3 items-start">
             <img src={image.url} alt="The screenshot to read" className="max-h-64 rounded border border-gray-300" />

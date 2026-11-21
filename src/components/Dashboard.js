@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   AlertCircle, 
   Settings as SettingsIcon, 
@@ -61,6 +62,7 @@ export default function Dashboard({
   latestActivities,
   onProcessDuePayments
 }) {
+  const navigate = useNavigate();
   const upcomingDays = alertSettings?.upcomingDays || 30;
   
   // Dashboard preferences
@@ -260,8 +262,36 @@ export default function Dashboard({
     { id: 'latest_updates', label: 'Latest Updates', icon: Activity }
   ];
 
+  const isNew = !(bankAccounts && bankAccounts.length) && !(creditCards && creditCards.length) && !(loans && loans.length) && !Number(cashInHand);
+
   return (
     <div className={compactMode ? 'space-y-1.5' : 'space-y-4'}>
+      {isNew && (
+        <section className={`rounded-2xl border p-5 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <h2 className="text-xl font-semibold">Welcome</h2>
+          <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Three steps and the app keeps your balances for you.</p>
+          <ol className="mt-4 space-y-3">
+            {[
+              ['1', 'Add your bank accounts and cash', 'Enter each balance as your bank app shows it today.', '/bank-accounts', 'Add accounts'],
+              ['2', 'Add your cards and loans', 'For a credit card, enter what you owe.', '/cards', 'Add cards'],
+              ['3', 'Record what you spend', 'Use the + button, or scan a receipt or a screenshot of your bank app.', '/screenshot', 'Scan'],
+            ].map(([n, title, hint, to, label]) => (
+              <li key={n} className="flex items-start gap-3">
+                <span className="shrink-0 w-7 h-7 rounded-full bg-blue-600 text-white text-sm font-semibold flex items-center justify-center">{n}</span>
+                <span className="flex-1">
+                  <span className="block font-medium">{title}</span>
+                  <span className={`block text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{hint}</span>
+                </span>
+                <a href={to} onClick={(e) => { e.preventDefault(); navigate(to); }}
+                  className="shrink-0 text-sm font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/15">{label}</a>
+              </li>
+            ))}
+          </ol>
+          <p className={`text-xs mt-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            More detail in <a href="/help" onClick={(e) => { e.preventDefault(); navigate('/help'); }} className="text-blue-600 dark:text-blue-400">Help</a>.
+          </p>
+        </section>
+      )}
       {/* Dashboard Customization Button */}
       <div className="flex justify-end">
         <button
