@@ -25,7 +25,7 @@ export default function SaveFilterDialog({
       onClick={onCancel}
     >
       <div role="dialog" aria-modal="true" aria-label="Save filter preset"
-        className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full`}
+        className={`bg-surface rounded-2xl p-6 max-w-md w-full`}
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-xl font-bold mb-4">Save Filter Preset</h3>
@@ -39,9 +39,7 @@ export default function SaveFilterDialog({
               onChange={(e) => onFilterNameChange(e.target.value)}
               placeholder="e.g., Monthly Dining Expenses"
               className={`w-full px-3 py-2 border rounded-lg ${
-                darkMode
-                  ? 'bg-gray-700 border-gray-600 text-white'
-                  : 'border-gray-300'
+                'border-line bg-surface-2 text-fg'
               }`}
             />
           </div>
@@ -71,16 +69,14 @@ export default function SaveFilterDialog({
           <button
             onClick={onCancel}
             className={`flex-1 px-4 py-2 rounded-lg ${
-              darkMode
-                ? 'bg-gray-700 hover:bg-gray-600'
-                : 'bg-gray-200 hover:bg-gray-300'
+              'bg-surface-2 hover:bg-line/60'
             }`}
           >
             Cancel
           </button>
           <button
             onClick={onSave}
-            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+            className="flex-1 px-4 py-2 press bg-accent text-accent-contrast rounded-lg hover:bg-green-700"
           >
             Save Filter
           </button>

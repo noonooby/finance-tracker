@@ -62,7 +62,7 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
     switch (trend) {
       case 'increasing': return <TrendingUp size={16} className="text-red-600" />;
       case 'decreasing': return <TrendingDown size={16} className="text-green-600" />;
-      default: return <Minus size={16} className="text-gray-500" />;
+      default: return <Minus size={16} className="text-muted" />;
     }
   };
 
@@ -70,7 +70,7 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
     switch (trend) {
       case 'increasing': return 'text-red-600';
       case 'decreasing': return 'text-green-600';
-      default: return 'text-gray-500';
+      default: return 'text-muted';
     }
   };
 
@@ -86,7 +86,7 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
-        <div className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+        <div className={'text-muted'}>
           Loading budget history...
         </div>
       </div>
@@ -106,13 +106,13 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
       {/* Category Filter */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <label className={`block text-sm font-medium mb-2 text-fg`}>
             Category
           </label>
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+            className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
           >
             <option value="all">All Categories (Overall Budget)</option>
             {categoriesWithBudgets.map(category => (
@@ -124,13 +124,13 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
         </div>
 
         <div>
-          <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <label className={`block text-sm font-medium mb-2 text-fg`}>
             Time Period
           </label>
           <select
             value={monthsToShow}
             onChange={(e) => setMonthsToShow(parseInt(e.target.value))}
-            className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+            className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
           >
             <option value={3}>Last 3 Months</option>
             <option value={6}>Last 6 Months</option>
@@ -191,25 +191,25 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
       {/* Summary Cards */}
       {summary && summary.totalMonths > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-4`}>
-            <div className={`text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Average Spent</div>
+          <div className={`bg-surface border-line border rounded-2xl p-4`}>
+            <div className={`text-sm mb-1 text-muted`}>Average Spent</div>
             <div className="text-2xl font-bold">{formatCurrency(summary.averageSpent)}</div>
           </div>
 
-          <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-4`}>
-            <div className={`text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Average Budget</div>
+          <div className={`bg-surface border-line border rounded-2xl p-4`}>
+            <div className={`text-sm mb-1 text-muted`}>Average Budget</div>
             <div className="text-2xl font-bold">{formatCurrency(summary.averageBudget)}</div>
           </div>
 
-          <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-4`}>
-            <div className={`text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Over Budget</div>
+          <div className={`bg-surface border-line border rounded-2xl p-4`}>
+            <div className={`text-sm mb-1 text-muted`}>Over Budget</div>
             <div className="text-2xl font-bold text-red-600">
               {summary.monthsOverBudget} / {summary.totalMonths}
             </div>
           </div>
 
-          <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-4`}>
-            <div className={`text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Trend</div>
+          <div className={`bg-surface border-line border rounded-2xl p-4`}>
+            <div className={`text-sm mb-1 text-muted`}>Trend</div>
             <div className={`text-2xl font-bold flex items-center gap-2 ${getTrendColor(summary.trend)}`}>
               {getTrendIcon(summary.trend)}
               <span className="capitalize">{summary.trend}</span>
@@ -222,7 +222,7 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
       {chartData.length > 0 ? (
         <div className="space-y-6">
           {/* Budget vs Actual Spending (Bar Chart) */}
-          <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-6`}>
+          <div className={`bg-surface border-line border rounded-2xl p-6`}>
             <h3 className="text-lg font-bold mb-4">Budget vs Actual Spending</h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData}>
@@ -251,7 +251,7 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
           </div>
 
           {/* Spending Trend (Line Chart) */}
-          <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-6`}>
+          <div className={`bg-surface border-line border rounded-2xl p-6`}>
             <h3 className="text-lg font-bold mb-4">Spending Trend Over Time</h3>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData}>
@@ -295,28 +295,28 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
           </div>
 
           {/* Historical Data Table */}
-          <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-6`}>
+          <div className={`bg-surface border-line border rounded-2xl p-6`}>
             <h3 className="text-lg font-bold mb-4">Historical Data</h3>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                    <th className={`text-left py-3 px-2 text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  <tr className={`border-b border-line`}>
+                    <th className={`text-left py-3 px-2 text-sm font-semibold text-fg`}>
                       Month
                     </th>
-                    <th className={`text-right py-3 px-2 text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <th className={`text-right py-3 px-2 text-sm font-semibold text-fg`}>
                       Budget
                     </th>
-                    <th className={`text-right py-3 px-2 text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <th className={`text-right py-3 px-2 text-sm font-semibold text-fg`}>
                       Spent
                     </th>
-                    <th className={`text-right py-3 px-2 text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <th className={`text-right py-3 px-2 text-sm font-semibold text-fg`}>
                       Difference
                     </th>
-                    <th className={`text-right py-3 px-2 text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <th className={`text-right py-3 px-2 text-sm font-semibold text-fg`}>
                       Usage
                     </th>
-                    <th className={`text-center py-3 px-2 text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <th className={`text-center py-3 px-2 text-sm font-semibold text-fg`}>
                       Status
                     </th>
                   </tr>
@@ -329,17 +329,17 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
                     return (
                       <tr 
                         key={index}
-                        className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${
-                          isOver ? (darkMode ? 'bg-red-900/10' : 'bg-red-50') : ''
+                        className={`border-b border-line ${
+                          isOver ? ('bg-negative/10') : ''
                         }`}
                       >
-                        <td className={`py-3 px-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <td className={`py-3 px-2 text-sm text-fg`}>
                           {row.month}
                         </td>
-                        <td className={`py-3 px-2 text-sm text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <td className={`py-3 px-2 text-sm text-right text-fg`}>
                           {formatCurrency(row.budget)}
                         </td>
-                        <td className={`py-3 px-2 text-sm text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <td className={`py-3 px-2 text-sm text-right text-fg`}>
                           {formatCurrency(row.spent)}
                         </td>
                         <td className={`py-3 px-2 text-sm text-right font-semibold ${
@@ -347,7 +347,7 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
                         }`}>
                           {difference >= 0 ? '+' : ''}{formatCurrency(difference)}
                         </td>
-                        <td className={`py-3 px-2 text-sm text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <td className={`py-3 px-2 text-sm text-right text-fg`}>
                           {row.percentage.toFixed(1)}%
                         </td>
                         <td className="py-3 px-2 text-center">
@@ -370,12 +370,12 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
           </div>
         </div>
       ) : (
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-8 text-center`}>
-          <Target size={48} className="mx-auto mb-4 text-gray-400" />
-          <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+        <div className={`bg-surface rounded-lg p-8 text-center`}>
+          <Target size={48} className="mx-auto mb-4 text-muted" />
+          <p className={'text-muted'}>
             No budget history available yet
           </p>
-          <p className={`text-sm mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+          <p className={`text-sm mt-2 text-muted`}>
             {selectedCategory === 'all' 
               ? 'Set category budgets in Settings to start tracking'
               : 'Budget tracking data will appear here as you use the app'
@@ -385,9 +385,9 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
       )}
 
       {/* Help Text */}
-      <div className={`flex items-start gap-3 p-4 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
-        <Calendar size={20} className={darkMode ? 'text-blue-400 mt-0.5' : 'text-blue-600 mt-0.5'} />
-        <div className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-800'}`}>
+      <div className={`flex items-start gap-3 p-4 rounded-lg bg-accent-soft border border-accent/30`}>
+        <Calendar size={20} className={'text-accent mt-0.5'} />
+        <div className={`text-xs text-accent`}>
           <p className="font-semibold mb-1">About Budget Tracking</p>
           <p>
             Budget history is automatically tracked when you set category budgets. 

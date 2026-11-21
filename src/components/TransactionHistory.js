@@ -425,7 +425,7 @@ export default function TransactionHistory({
   if (loading) {
     return (
       <div className="flex justify-center items-center py-8">
-        <div className="text-gray-500">Loading transactions...</div>
+        <div className="text-muted">Loading transactions...</div>
       </div>
     );
   }
@@ -468,17 +468,15 @@ export default function TransactionHistory({
             onClick={() => setShowFiltersPanel(!showFiltersPanel)}
             className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg ${
               showFiltersPanel
-                ? 'bg-blue-600 text-white'
-                : darkMode
-                ? 'bg-gray-700 hover:bg-gray-600 text-white'
-                : 'bg-gray-200 hover:bg-gray-300'
+                ? 'bg-accent text-accent-contrast'
+                : 'bg-surface-2 hover:bg-line/60 text-fg'
             }`}
           >
             <FolderOpen size={18} />
             Saved Filters
             {savedFilters.length > 0 && (
               <span className={`text-xs px-2 py-0.5 rounded-full ${
-                showFiltersPanel ? 'bg-blue-500' : 'bg-blue-600 text-white'
+                showFiltersPanel ? 'bg-blue-500' : 'bg-accent text-accent-contrast'
               }`}>
                 {savedFilters.length}
               </span>
@@ -487,7 +485,7 @@ export default function TransactionHistory({
           
           <button
             onClick={() => setShowSaveDialog(true)}
-            className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-green-600 text-white rounded-lg hover:bg-green-700"
+            className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base press bg-accent text-accent-contrast rounded-lg hover:bg-green-700"
           >
             <Save size={18} />
             Save Filter
@@ -551,8 +549,8 @@ export default function TransactionHistory({
       {/* Transaction List */}
       <div className="space-y-2">
         {filteredTransactions.length === 0 ? (
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-8 text-center`}>
-            <p className="text-gray-500">No transactions found</p>
+          <div className={`bg-surface rounded-lg p-8 text-center`}>
+            <p className="text-muted">No transactions found</p>
           </div>
         ) : (
           filteredTransactions.map((transaction) => (

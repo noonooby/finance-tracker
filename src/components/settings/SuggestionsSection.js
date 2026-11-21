@@ -38,13 +38,13 @@ export default function SuggestionsSection({ darkMode, expanded, onToggle }) {
   return (
     <SettingsSection title="Manage Learned Suggestions" icon={Database} expanded={expanded} onToggle={onToggle} darkMode={darkMode}>
       <div className="flex items-center justify-between">
-        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+        <p className={`text-sm text-muted`}>
           Names the app has learned from your entries.
         </p>
         <button
           onClick={handleLoad}
           disabled={loading}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 ${darkMode ? 'border-blue-500 text-blue-400 hover:bg-blue-900/30' : 'border-blue-600 text-blue-600 hover:bg-blue-50'}`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-accent/30 text-accent hover:bg-accent-soft`}
         >
           <Database size={20} />
           <span>{loading ? 'Loading...' : shown ? 'Refresh' : 'View'}</span>
@@ -60,17 +60,17 @@ export default function SuggestionsSection({ darkMode, expanded, onToggle }) {
                 {entities.map(entity => (
                   <div
                     key={entity.id}
-                    className={`flex items-center justify-between p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}
+                    className={`flex items-center justify-between p-2 rounded bg-surface-2`}
                   >
                     <div className="flex-1">
                       <span className="font-medium">{entity.name}</span>
-                      <span className={`text-sm ml-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <span className={`text-sm ml-2 text-muted`}>
                         (used {entity.usage_count} {entity.usage_count === 1 ? 'time' : 'times'})
                       </span>
                     </div>
                     <button
                       onClick={() => handleDelete(entity.id)}
-                      className={`p-2 rounded ${darkMode ? 'hover:bg-gray-600 text-red-400' : 'hover:bg-gray-200 text-red-600'}`}
+                      className={`p-2 rounded hover:bg-line/60 text-negative`}
                       title="Delete suggestion"
                       aria-label={`Delete suggestion ${entity.name}`}
                     >
@@ -85,10 +85,10 @@ export default function SuggestionsSection({ darkMode, expanded, onToggle }) {
       )}
 
       {shown && !hasEntities && (
-        <div className={`flex items-center gap-3 p-4 rounded-lg border ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
-          <Database size={20} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
+        <div className={`flex items-center gap-3 p-4 rounded-2xl border border-line bg-surface-2`}>
+          <Database size={20} className={'text-muted'} />
           <div className="flex-1">
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <p className={`text-sm text-muted`}>
               No learned suggestions yet. They are added as you enter transactions.
             </p>
           </div>

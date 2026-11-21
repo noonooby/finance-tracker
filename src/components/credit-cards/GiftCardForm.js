@@ -52,7 +52,7 @@ export default function GiftCardForm({
       {/* Quick-Select Buttons for Recent Gift Cards */}
       {recentGiftCards.length > 0 && !editingItem && (
         <div>
-          <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <label className={`block text-sm font-medium mb-2 text-fg`}>
             Recent Gift Cards
           </label>
           <div className="flex gap-2 flex-wrap">
@@ -63,10 +63,8 @@ export default function GiftCardForm({
                 onClick={() => onSelectGiftCard(giftCard)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
                   formData.name === giftCard.card_name
-                    ? 'bg-green-600 text-white'
-                    : darkMode 
-                      ? 'bg-green-900/30 text-green-200 hover:bg-green-800/50 border border-green-700'
-                      : 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
+                    ? 'press bg-accent text-accent-contrast'
+                    : 'bg-positive/10 text-positive hover:bg-positive/10 border border-positive/30'
                 }`}
               >
                 <Gift size={14} />
@@ -79,7 +77,7 @@ export default function GiftCardForm({
 
       {/* Original Gift Card Value */}
       <div>
-        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+        <label className={`block text-sm font-medium mb-1 text-fg`}>
           Original Gift Card Value *
         </label>
         <input
@@ -89,17 +87,17 @@ export default function GiftCardForm({
           placeholder="e.g., 50.00"
           value={formData.purchaseAmount}
           onChange={(e) => handleOriginalValueChange(e.target.value)}
-          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
           required
         />
-        <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+        <p className={`text-xs mt-1 text-muted`}>
           What is this gift card worth?
         </p>
       </div>
 
       {/* Purchase Amount Paid */}
       <div>
-        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+        <label className={`block text-sm font-medium mb-1 text-fg`}>
           Purchase Amount Paid *
         </label>
         <input
@@ -108,17 +106,17 @@ export default function GiftCardForm({
           placeholder="e.g., 45.00"
           value={formData.purchaseAmountPaid}
           onChange={(e) => handlePurchaseAmountPaidChange(e.target.value)}
-          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
           required
         />
-        <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+        <p className={`text-xs mt-1 text-muted`}>
           How much did you actually pay? (defaults to original value)
         </p>
       </div>
 
       {/* Payment Source */}
       <div>
-        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+        <label className={`block text-sm font-medium mb-1 text-fg`}>
           How are you paying for this gift card? *
         </label>
         <select
@@ -142,7 +140,7 @@ export default function GiftCardForm({
               });
             }
           }}
-          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
         >
           <option value="cash_in_hand">Cash in Hand</option>
           
@@ -180,14 +178,14 @@ export default function GiftCardForm({
       
       {/* Purchase Date */}
       <div>
-        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+        <label className={`block text-sm font-medium mb-1 text-fg`}>
           Purchase Date *
         </label>
         <input
           type="date"
           value={formData.purchaseDate}
           onChange={(e) => onFormDataChange({ ...formData, purchaseDate: e.target.value })}
-          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
         />
       </div>
       
@@ -204,7 +202,7 @@ export default function GiftCardForm({
             })}
             className="w-4 h-4"
           />
-          <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          <span className={`text-sm text-muted`}>
             This gift card has an expiry date
           </span>
         </label>
@@ -213,14 +211,14 @@ export default function GiftCardForm({
       {/* Expiry Date Input */}
       {formData.hasExpiry && (
         <div>
-          <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <label className={`block text-sm font-medium mb-1 text-fg`}>
             Expiry Date *
           </label>
           <input
             type="date"
             value={formData.expiryDate}
             onChange={(e) => onFormDataChange({ ...formData, expiryDate: e.target.value })}
-            className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+            className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
             min={localDate()}
           />
         </div>

@@ -255,9 +255,9 @@ export default function Income({
             disabled={checkingDueIncome}
             className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg font-medium ${
               checkingDueIncome
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-green-600 hover:bg-green-700'
-            } text-white relative`}
+                ? 'bg-surface-2 text-muted border border-line cursor-not-allowed'
+                : 'press bg-surface-2 text-fg border border-line hover:bg-line/60'
+            } relative`}
             title="Check for income due today and deposit automatically"
           >
             <Zap size={20} />
@@ -271,7 +271,7 @@ export default function Income({
                 setShowAddForm(true);
               }
             }}
-            className="flex items-center gap-1 sm:gap-2 bg-blue-600 text-white px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg"
+            className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg"
           >
             <Plus size={20} />
             {showAddForm ? 'Cancel' : 'Add Income'}
@@ -281,12 +281,12 @@ export default function Income({
 
       {/* Add/Edit Form */}
       {showAddForm && (
-        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
+        <div className={`bg-surface border-line rounded-2xl border p-4 space-y-3`}>
           <h3 className="font-semibold text-lg">{editingItem ? 'Edit Income' : 'Add Income'}</h3>
           
           {recentSources.length > 0 && !editingItem && (
             <div>
-              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label className={`block text-sm font-medium mb-2 text-fg`}>
                 Recent Sources
               </label>
               <div className="flex gap-2 flex-wrap">
@@ -297,10 +297,8 @@ export default function Income({
                     onClick={() => handleSelectSourceClick(source)}
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                       formData.source === source.source_name
-                        ? 'bg-blue-600 text-white'
-                        : darkMode 
-                          ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
-                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                        ? 'bg-accent text-accent-contrast'
+                        : 'bg-accent-soft text-accent hover:bg-accent-soft border border-accent/30'
                     }`}
                   >
                     {source.source_name}
@@ -312,7 +310,7 @@ export default function Income({
           )}
           
           <div>
-            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-2 text-fg`}>
               {recentSources.length > 0 ? 'Or type new source *' : 'Source *'}
             </label>
             <input
@@ -322,7 +320,7 @@ export default function Income({
               onChange={(e) => handleSourceChange(e.target.value)}
               onBlur={handleSourceBlurEvent}
               placeholder="e.g., Salary, Bonus, Freelance"
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               required
               autoFocus={!editingItem && recentSources.length === 0}
             />
@@ -334,25 +332,25 @@ export default function Income({
             placeholder="Amount Received *"
             value={formData.amount}
             onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-            className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+            className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
           />
           
           <div>
-            <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Date Received *</label>
+            <label className={`block text-sm mb-1 text-muted`}>Date Received *</label>
             <input
               type="date"
               value={formData.date}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+              className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
             />
           </div>
           
           <div>
-            <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Frequency</label>
+            <label className={`block text-sm mb-1 text-muted`}>Frequency</label>
             <select
               value={formData.frequency}
               onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
-              className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+              className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
             >
               <option value="onetime">One-time</option>
               <option value="weekly">Weekly</option>
@@ -362,7 +360,7 @@ export default function Income({
           </div>
           
           <div>
-            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-2 text-fg`}>
               Where is this money going? *
             </label>
             <div className="space-y-2">
@@ -394,13 +392,13 @@ export default function Income({
           
           {formData.depositTarget === 'bank' && bankAccounts && bankAccounts.length > 0 && (
             <div>
-              <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              <label className={`block text-sm mb-1 text-muted`}>
                 Select Account *
               </label>
               <select
                 value={formData.depositAccountId}
                 onChange={(e) => setFormData({ ...formData, depositAccountId: e.target.value })}
-                className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
               >
                 <option value="">Select account</option>
                 {bankAccounts.map(account => (
@@ -415,7 +413,7 @@ export default function Income({
           {formData.frequency !== 'onetime' && (
             <>
               <div>
-                <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                <label className={`block text-sm mb-1 text-muted`}>
                   Recurring Duration
                 </label>
                 <select
@@ -428,7 +426,7 @@ export default function Income({
                       recurringOccurrences: ''
                     })
                   }
-                  className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                  className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
                 >
                   <option value="indefinite">Indefinite (continues forever)</option>
                   <option value="until_date">Until specific date</option>
@@ -438,14 +436,14 @@ export default function Income({
 
               {formData.recurringDurationType === 'until_date' && (
                 <div>
-                  <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <label className={`block text-sm mb-1 text-muted`}>
                     End Date *
                   </label>
                   <input
                     type="date"
                     value={formData.recurringUntilDate}
                     onChange={(e) => setFormData({ ...formData, recurringUntilDate: e.target.value })}
-                    className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                    className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
                     min={localDate()}
                   />
                 </div>
@@ -453,7 +451,7 @@ export default function Income({
 
               {formData.recurringDurationType === 'occurrences' && (
                 <div>
-                  <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <label className={`block text-sm mb-1 text-muted`}>
                     Number of Times *
                   </label>
                   <input
@@ -462,13 +460,13 @@ export default function Income({
                     placeholder="e.g., 12 for 12 months"
                     value={formData.recurringOccurrences}
                     onChange={(e) => setFormData({ ...formData, recurringOccurrences: e.target.value })}
-                    className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+                    className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
                   />
                 </div>
               )}
               
               {/* Auto-Deposit Toggle */}
-              <div className={`border ${darkMode ? 'border-gray-700' : 'border-gray-200'} rounded-lg p-3`}>
+              <div className={`border border-line rounded-lg p-3`}>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
@@ -477,10 +475,10 @@ export default function Income({
                     className="w-4 h-4"
                   />
                   <div className="flex-1">
-                    <div className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <div className={`text-sm font-medium text-fg`}>
                       Enable Auto-Deposit
                     </div>
-                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1`}>
+                    <div className={`text-xs text-muted mt-1`}>
                       Automatically deposit this income when it becomes due
                     </div>
                   </div>
@@ -510,7 +508,7 @@ export default function Income({
 
       {/* Income Schedules Section */}
       {schedules.length > 0 && (
-        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4`}>
+        <div className={`bg-surface border-line rounded-2xl border p-4`}>
           <div className="flex justify-between items-center mb-3">
             <h3 className="font-semibold text-lg flex items-center gap-2">
               <Calendar size={20} />
@@ -518,7 +516,7 @@ export default function Income({
             </h3>
             <button
               onClick={() => setShowSchedules(!showSchedules)}
-              className={`text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
+              className={`text-sm text-accent`}
             >
               {showSchedules ? 'Hide' : 'Show'}
             </button>
@@ -538,7 +536,7 @@ export default function Income({
                 return (
                   <div
                     key={schedule.id}
-                    className={`${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} border rounded-lg p-3 ${
+                    className={`bg-surface-2 border-line border rounded-2xl p-3 ${
                       !schedule.is_active ? 'opacity-60' : ''
                     }`}
                   >
@@ -547,17 +545,17 @@ export default function Income({
                         <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="font-bold">{schedule.source}</h4>
                           {!schedule.is_active && (
-                            <span className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-300 text-gray-700'}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded bg-line text-fg`}>
                               Paused
                             </span>
                           )}
                           {schedule.auto_deposit && schedule.is_active && (
-                            <span className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700'}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded bg-positive/10 text-positive`}>
                               Auto-Deposit
                             </span>
                           )}
                         </div>
-                        <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1`}>
+                        <div className={`text-sm text-muted mt-1`}>
                           <div>
                             {formatCurrency(schedule.amount)} • {formatFrequency(schedule.frequency)}
                           </div>
@@ -579,14 +577,14 @@ export default function Income({
                       <div className="flex gap-1">
                         <button
                           onClick={() => handleToggleSchedule(schedule.id, !schedule.is_active)}
-                          className={`p-2 ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'} rounded`}
+                          className={`p-2 hover:bg-line/60 rounded`}
                           title={schedule.is_active ? 'Pause schedule' : 'Resume schedule'}
                         >
                           {schedule.is_active ? <Pause size={16} /> : <Play size={16} />}
                         </button>
                         <button
                           onClick={() => handleDelete(schedule.id, true)}
-                          className={`p-2 ${darkMode ? 'text-red-400 hover:bg-gray-600' : 'text-red-600 hover:bg-red-50'} rounded`}
+                          className={`p-2 text-negative hover:bg-negative/10 rounded`}
                           title="Delete schedule"
                         >
                           <Trash2 size={16} />
@@ -609,12 +607,12 @@ export default function Income({
             {manualIncome.map(inc => (
               <div
                 key={inc.id}
-                className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4`}
+                className={`bg-surface border-line rounded-2xl border p-4`}
               >
                 <div className="flex justify-between items-center">
                   <div className="flex-1">
                     <h3 className="font-bold">{inc.source}</h3>
-                    <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    <div className={`text-sm text-muted`}>
                       {formatDate(inc.date)}
                     </div>
                   </div>
@@ -623,13 +621,13 @@ export default function Income({
                     <div className="flex gap-1">
                       <button
                         onClick={() => onNavigateToTransactions && onNavigateToTransactions({ incomeSource: inc.id })}
-                        className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
+                        className={`p-2 text-accent hover:bg-accent-soft rounded`}
                       >
                         <ListFilter size={16} />
                       </button>
                       <button
                         onClick={() => handleDelete(inc.id, false)}
-                        className={`p-2 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded`}
+                        className={`p-2 text-negative hover:bg-negative/10 rounded`}
                       >
                         <X size={16} />
                       </button>

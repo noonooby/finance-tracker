@@ -114,8 +114,8 @@ export default function AccountForm({
         <span className="text-sm">Set as primary account</span>
       </label>
 
-      <div className={`pt-3 mt-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <h4 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Overdraft Settings</h4>
+      <div className={`pt-3 mt-3 border-t border-line`}>
+        <h4 className={`text-sm font-semibold mb-3 text-fg`}>Overdraft Settings</h4>
         <label className="flex items-center gap-2 mb-3">
           <input
             type="checkbox"
@@ -140,7 +140,7 @@ export default function AccountForm({
               className={inputClass(darkMode)}
             />
             {!isEdit && (
-              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              <p className={`text-xs mt-1 text-muted`}>
                 Maximum negative balance allowed before transactions are blocked
               </p>
             )}
@@ -155,7 +155,7 @@ export default function AccountForm({
                 <input type="number" step="0.01" inputMode="decimal" placeholder="e.g. 21" value={formData.overdraft_rate} onChange={(e) => set({ overdraft_rate: e.target.value })} className={inputClass(darkMode)} />
               </label>
             </div>
-            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Used to show what the overdraft costs when the balance goes below zero.</p>
+            <p className={`text-xs mt-1 text-muted`}>Used to show what the overdraft costs when the balance goes below zero.</p>
             <div className="mt-2">
               <RateLookup kind="bank_account" name={[formData.institution, formData.name].filter(Boolean).join(' ')} onUse={(r) => set({
                 overdraft_rate: r.overdraft_rate != null ? String(r.overdraft_rate) : formData.overdraft_rate,

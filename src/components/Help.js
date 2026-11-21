@@ -12,6 +12,9 @@ const SECTIONS = [
       <li><b>Set up your pay</b> under More, Income, so it is added on payday by itself.</li>
     </ol>
   )],
+  ['home', 'Home', (
+    <p>Home shows your net worth today, what you can spend, where you will be at the end of the month and what your debts cost each month. Below that: any balance that doesn't add up, payments in the next 30 days (marked autopay or you pay), what each debt costs you, and your latest transactions.</p>
+  )],
   ['adding', 'Adding a purchase or a payment', (
     <>
       <p>Tap the round <b>+</b> button. Choose <b>Expense</b> for something you bought, or <b>Payment</b> for paying a credit card or a loan.</p>
@@ -55,20 +58,31 @@ const SECTIONS = [
   ['accounts', 'Accounts, cash and transfers', (
     <>
       <p>The <Link to="/bank-accounts">Accounts</Link> tab lists your bank accounts and the cash you carry. <b>Transfer</b> moves money between two of your accounts; <b>Withdraw</b> and <b>Deposit</b> move money between a bank account and cash.</p>
-      <p>An account can allow an overdraft up to a limit you set. A purchase that would go past the limit is refused and nothing is saved. Cash and gift cards can't go below zero.</p>
+      <p>An account can allow an overdraft up to a limit you set, with its monthly fee, fee each time it is used and interest rate, so Home can show what it costs. A purchase that would go past the limit is refused and nothing is saved. Cash and gift cards can't go below zero.</p>
       <p>If a balance is wrong, edit the account and enter the right figure. For cash, use the pencil on Cash in hand: that change is kept as a correction in your transactions.</p>
     </>
   )],
   ['cards', 'Credit cards and gift cards', (
     <>
-      <p>Under More, Cards. A credit card's balance is what you owe. A gift card's balance is the value left on it; spending from it lowers it, and it can't go below zero.</p>
-      <p>With a payment account connected, a card's payment is made on its due date. If a date passed while the app was closed, it is paid the next time you open it, never more than what you owe. If the account doesn't have enough, the payment waits and the card shows it as due.</p>
+      <p>Under More, Cards. A credit card's balance is what you owe. A gift card's balance is the value left on it; spending from it lowers it, and it can't go below zero. Buying a gift card takes the price from what you paid with and adds the value to the card in one step.</p>
+      <ul>
+        <li><b>Autopay.</b> Choose whether the card is paid by you or automatically, from which account, and how much: the statement balance, the minimum, or a fixed amount. Automatic payments are made on the due date, once. If a date passed while the app was closed, it is paid the next time you open it, never more than what you owe.</li>
+        <li><b>Rates and fees.</b> Enter the purchase rate, cash advance rate, annual fee and any promotional rate with its end date. <b>Look up rates</b> fills in the card's public rates; only the card's name is sent. If you have a personal rate, type it over.</li>
+      </ul>
     </>
   )],
-  ['loans', 'Loans', (
+  ['loans', 'Loans, mortgages, leases and payment plans', (
     <>
-      <p>Under More, Loans. Enter what you owe, the regular payment and how often it is due. Tap <b>Make Payment</b> on a loan to record a payment. A payment larger than what is left is refused.</p>
-      <p>With a payment account connected, each payment is made on its due date, once.</p>
+      <p>Under More, Loans. Choose the kind: loan, mortgage, line of credit, car lease, buy now pay later (Klarna, Affirm), equal payment plan, or student loan. Enter what you owe, the rate, the regular payment and how often it is due, and any setup fee.</p>
+      <ul>
+        <li>Tap <b>Make Payment</b> to record a payment. A payment larger than what is left is refused. With a payment account connected, each payment is made on its due date, once.</li>
+        <li><b>Equal payment plan inside a card.</b> Choose the card the plan lives on. The plan's balance is already part of the card, so it is not counted twice; each instalment moves from the plan to the card's bill on its date.</li>
+      </ul>
+    </>
+  )],
+  ['statements', 'Statements and older history', (
+    <>
+      <p>On the Scan tab you can also add a PDF statement. The app reads the period, the closing balance and every line. Lines from before your latest balance are kept as history and don't change today's balance. If the statement's closing balance doesn't match what the lines add up to, the difference is shown under Checks, with the day, so you can add what is missing.</p>
     </>
   )],
   ['income', 'Income and pay schedules', (
@@ -107,15 +121,15 @@ const SECTIONS = [
   )],
 ];
 
-export default function Help({ darkMode }) {
+export default function Help() {
   const { hash } = useLocation();
   useEffect(() => {
     if (!hash) return;
     const el = document.getElementById('h-' + hash.slice(1));
     if (el) el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
   }, [hash]);
-  const card = `help rounded-2xl border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`;
-  const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
+  const card = 'help rounded-2xl border border-line bg-surface p-4';
+  const muted = 'text-muted';
 
   return (
     <div className="space-y-4">
@@ -123,7 +137,7 @@ export default function Help({ darkMode }) {
         <h1 className="text-2xl font-bold">Help</h1>
         <p className={`text-sm ${muted}`}>How the app works. Tap a topic.</p>
         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-sm">
-          {SECTIONS.map(([id, title]) => <a key={id} href={`#${id}`} className="text-blue-600 dark:text-blue-400">{title}</a>)}
+          {SECTIONS.map(([id, title]) => <a key={id} href={`#${id}`} className="text-accent">{title}</a>)}
         </div>
       </div>
       {SECTIONS.map(([id, title, body]) => (

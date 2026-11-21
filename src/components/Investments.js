@@ -14,9 +14,9 @@ export default function Investments({ darkMode }) {
   const [form, setForm] = useState({ table: 'investments', name: '', kind: 'TFSA', balance: '' });
   const [move, setMove] = useState({ to: '', from: '', amount: '' });
   const [busy, setBusy] = useState(false);
-  const card = `rounded-2xl border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`;
-  const input = `w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`;
-  const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
+  const card = `rounded-2xl border p-4 bg-surface border-line`;
+  const input = `w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`;
+  const muted = 'text-muted';
   const accounts = { bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments };
 
   const add = async (e) => {
@@ -53,7 +53,7 @@ export default function Investments({ darkMode }) {
     <section className={card}>
       <h2 className="font-semibold">{title}</h2>
       {!rows.length && <p className={`text-sm ${muted}`}>None yet.</p>}
-      <ul className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
+      <ul className={`divide-y divide-line`}>
         {rows.map((r) => {
           const f = freshness(r.balance_as_of);
           return (
@@ -94,7 +94,7 @@ export default function Investments({ darkMode }) {
             <option value="cash_in_hand">Cash in hand</option>
           </select>
           <input className={input} type="number" step="0.01" inputMode="decimal" placeholder="Amount" value={move.amount} onChange={(e) => setMove({ ...move, amount: e.target.value })} required />
-          <button type="submit" disabled={busy} className="w-full bg-blue-600 text-white rounded-lg py-2 font-medium">Record contribution</button>
+          <button type="submit" disabled={busy} className="w-full bg-accent text-accent-contrast rounded-lg py-2 font-medium">Record contribution</button>
         </form>
       )}
 
@@ -109,7 +109,7 @@ export default function Investments({ darkMode }) {
         </select>
         <input className={input} placeholder="Name, for example Wealthsimple TFSA" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         <input className={input} type="number" step="0.01" inputMode="decimal" placeholder="What it is worth today" value={form.balance} onChange={(e) => setForm({ ...form, balance: e.target.value })} />
-        <button type="submit" disabled={busy} className="w-full bg-blue-600 text-white rounded-lg py-2 font-medium">Add</button>
+        <button type="submit" disabled={busy} className="w-full bg-accent text-accent-contrast rounded-lg py-2 font-medium">Add</button>
       </form>
     </div>
   );

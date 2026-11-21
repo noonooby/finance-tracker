@@ -64,7 +64,7 @@ export default function BankAccounts({
 
   const totalBalance = sumBalances(bankAccounts);
   const toggleClass = (open, idle) =>
-    open ? (darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700') : idle;
+    open ? ('bg-surface-2 text-fg') : idle;
 
   return (
     <div className="space-y-4">
@@ -74,7 +74,7 @@ export default function BankAccounts({
             <Building2 size={24} />
             Bank Accounts
           </h2>
-          <div className={`text-sm mt-1 space-y-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <div className={`text-sm mt-1 space-y-1 text-muted`}>
             <div>
               Total Balance: <span className="font-semibold">{formatCurrency(totalBalance)}</span>
             </div>
@@ -91,7 +91,7 @@ export default function BankAccounts({
           <button
             onClick={() => a.setShowCashModal(!a.showCashModal)}
             className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base ${
-              toggleClass(a.showCashModal, 'bg-purple-600 text-white hover:bg-purple-700')
+              toggleClass(a.showCashModal, 'bg-surface-2 text-fg border border-line hover:bg-line/60')
             }`}
           >
             <Wallet size={20} />
@@ -100,7 +100,7 @@ export default function BankAccounts({
           <button
             onClick={() => a.setShowTransferForm(!a.showTransferForm)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
-              toggleClass(a.showTransferForm, 'bg-green-600 text-white hover:bg-green-700')
+              toggleClass(a.showTransferForm, 'bg-surface-2 text-fg border border-line hover:bg-line/60')
             }`}
           >
             <ArrowRightLeft size={20} />
@@ -108,7 +108,7 @@ export default function BankAccounts({
           </button>
           <button
             onClick={() => (a.showAddForm ? a.resetForm() : a.setShowAddForm(true))}
-            className="flex items-center gap-1 sm:gap-2 bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 text-sm sm:text-base"
+            className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 text-sm sm:text-base"
           >
             <Plus size={20} />
             {a.showAddForm ? 'Cancel' : 'Add Account'}
@@ -183,7 +183,7 @@ export default function BankAccounts({
         </div>
 
         {Object.keys(a.groupedAccounts).length === 0 ? (
-          <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          <div className={`text-center py-12 text-muted`}>
             <Building2 size={48} className="mx-auto mb-3 opacity-30" />
             <p>No bank accounts added yet</p>
             <p className="text-sm mt-2">Add your first account to get started</p>
@@ -214,7 +214,7 @@ export default function BankAccounts({
                           ref={(el) => {
                             if (el) accountRefs.current[accountKey] = el;
                           }}
-                          className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${
+                          className={`bg-surface border-line rounded-2xl border p-4 ${
                             isEditing
                               ? 'ring-2 ring-blue-500 shadow-lg'
                               : isHighlighted
@@ -263,9 +263,9 @@ export default function BankAccounts({
       </div>
 
       {bankAccounts.length > 0 && (
-        <div className={`flex items-start gap-2 p-3 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
-          <AlertCircle size={16} className={darkMode ? 'text-blue-400 mt-0.5' : 'text-blue-600 mt-0.5'} />
-          <p className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-800'}`}>
+        <div className={`flex items-start gap-2 p-3 rounded-lg bg-accent-soft border border-accent/30`}>
+          <AlertCircle size={16} className={'text-accent mt-0.5'} />
+          <p className={`text-xs text-accent`}>
             The primary account is used as the default for transactions. Pin your favorite accounts for quick access.
           </p>
         </div>

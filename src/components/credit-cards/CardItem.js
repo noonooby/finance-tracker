@@ -19,7 +19,7 @@ export default function CardItem({
   onAddExpense,
   onMakePayment
 }) {
-  const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
+  const muted = 'text-muted';
   const expiry = card.has_expiry && card.expiry_date ? expiryStatus(card.expiry_date) : null;
   const daysToDue = card.due_date ? getDaysUntil(card.due_date) : null;
 
@@ -34,7 +34,7 @@ export default function CardItem({
             )}
             {card.is_gift_card && (
               <span className={`text-xs px-2 py-0.5 rounded font-medium flex items-center gap-1 ${
-                darkMode ? 'bg-green-900/30 text-green-300 border border-green-700' : 'bg-green-100 text-green-700 border border-green-300'
+                'bg-positive/10 text-positive border border-positive/30'
               }`}>
                 <Gift size={12} />
                 Gift Card
@@ -42,7 +42,7 @@ export default function CardItem({
             )}
             {!card.is_gift_card && card.connected_payment_source && (
               <span className={`text-xs px-2 py-0.5 rounded ${
-                darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700'
+                'bg-positive/10 text-positive'
               }`}>
                 Auto-Pay
               </span>
@@ -53,7 +53,7 @@ export default function CardItem({
               card.balance < 0
                 ? 'text-green-600'
                 : card.balance === 0
-                ? darkMode ? 'text-gray-300' : 'text-gray-600'
+                ? 'text-muted'
                 : 'text-red-600'
             }`}
           >
@@ -93,7 +93,7 @@ export default function CardItem({
             className={`p-1.5 sm:p-2 rounded min-h-[44px] sm:min-h-0 flex items-center justify-center ${
               isPinned
                 ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
-                : darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-400 hover:bg-gray-100'
+                : 'text-muted hover:bg-surface-2'
             }`}
             title={isPinned ? 'Unpin card' : 'Pin card'}
             aria-label={isPinned ? `Unpin ${card.name}` : `Pin ${card.name}`}
@@ -102,7 +102,7 @@ export default function CardItem({
           </button>
           <button
             onClick={onViewTransactions}
-            className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
+            className={`p-2 text-accent hover:bg-accent-soft rounded`}
             title="View transactions"
             aria-label={`View transactions for ${card.name}`}
           >
@@ -110,14 +110,14 @@ export default function CardItem({
           </button>
           <button
             onClick={onEdit}
-            className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}
+            className={`p-2 text-accent hover:bg-accent-soft rounded`}
             aria-label={`Edit ${card.name}`}
           >
             <Edit2 size={16} className="sm:w-[18px] sm:h-[18px]" />
           </button>
           <button
             onClick={onDelete}
-            className={`p-2 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded`}
+            className={`p-2 text-negative hover:bg-negative/10 rounded`}
             aria-label={`Delete ${card.name}`}
           >
             <X size={16} className="sm:w-[18px] sm:h-[18px]" />
@@ -126,8 +126,8 @@ export default function CardItem({
       </div>
 
       {!card.is_gift_card && card.due_date && (
-        <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Due Date:</span>
+        <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b border-line`}>
+          <span className={'text-muted'}>Due Date:</span>
           <div className="text-right">
             <div className="font-medium">{formatDate(card.due_date)}</div>
             {daysToDue >= 0 && (
@@ -140,8 +140,8 @@ export default function CardItem({
       )}
 
       {!card.is_gift_card && card.last_payment_date && card.last_payment_amount && card.last_payment_amount > 0 && (
-        <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Last Paid:</span>
+        <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b border-line`}>
+          <span className={'text-muted'}>Last Paid:</span>
           <div className="text-right">
             <div className="font-medium">{formatCurrency(card.last_payment_amount)}</div>
             <div className={`text-xs ${muted}`}>
@@ -161,7 +161,7 @@ export default function CardItem({
       {card.is_gift_card ? (
         <button
           onClick={onManageGiftCard}
-          className="bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 w-full"
+          className="press bg-accent text-accent-contrast py-2 rounded-xl font-medium hover:opacity-90 w-full"
         >
           Manage Balance
         </button>
@@ -169,14 +169,14 @@ export default function CardItem({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button
             onClick={onAddExpense}
-            className="flex items-center justify-center gap-2 bg-orange-600 text-white py-2 rounded-lg font-medium"
+            className="flex items-center justify-center gap-2 press bg-surface-2 text-fg border border-line hover:bg-line/60 py-2 rounded-xl font-medium"
           >
             <ShoppingBag size={18} />
             Add Expense
           </button>
           <button
             onClick={onMakePayment}
-            className="bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700"
+            className="press bg-accent text-accent-contrast py-2 rounded-xl font-medium hover:opacity-90"
           >
             Make Payment
           </button>

@@ -313,10 +313,10 @@ export default function AddTransaction({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div role="dialog" aria-modal="true" aria-label="Add transaction" className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto`}>
-        <div className={`sticky top-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b p-4 flex justify-between items-center`}>
+      <div role="dialog" aria-modal="true" aria-label="Add transaction" className={`bg-surface rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto`}>
+        <div className={`sticky top-0 bg-surface border-line border-b p-4 flex justify-between items-center`}>
           <h2 className="text-xl font-bold">Add Transaction</h2>
-          <button onClick={onClose} aria-label="Close" className={`${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>
+          <button onClick={onClose} aria-label="Close" className={`text-muted hover:text-fg`}>
             <X size={24} />
           </button>
         </div>
@@ -337,7 +337,7 @@ export default function AddTransaction({
                 className={`p-3 rounded-lg border-2 transition-colors ${
                   formData.type === 'expense'
                     ? 'border-red-500 bg-red-50 text-red-700'
-                    : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                    : 'border-line hover:border-accent'
                 }`}
               >
                 Expense
@@ -348,7 +348,7 @@ export default function AddTransaction({
                 className={`p-3 rounded-lg border-2 transition-colors ${
                   formData.type === 'payment'
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                    : 'border-line hover:border-accent'
                 }`}
               >
                 Payment
@@ -364,7 +364,7 @@ export default function AddTransaction({
               step="0.01"
               value={formData.amount}
               onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               placeholder="0.00"
               required
             />
@@ -377,7 +377,7 @@ export default function AddTransaction({
               type="date"
               value={formData.date}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               required
             />
           </div>
@@ -385,7 +385,7 @@ export default function AddTransaction({
           {/* Quick-Select Expense Buttons (for expenses only) */}
           {formData.type === 'expense' && recentExpenses.length > 0 && (
             <div>
-              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label className={`block text-sm font-medium mb-2 text-fg`}>
                 Recent Expenses
               </label>
               <div className="flex gap-2 flex-wrap">
@@ -396,10 +396,8 @@ export default function AddTransaction({
                     onClick={() => handleSelectExpense(expense)}
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                       formData.description === expense.description
-                        ? 'bg-blue-600 text-white'
-                        : darkMode 
-                          ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
-                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                        ? 'bg-accent text-accent-contrast'
+                        : 'bg-accent-soft text-accent hover:bg-accent-soft border border-accent/30'
                     }`}
                   >
                     {expense.description}
@@ -412,7 +410,7 @@ export default function AddTransaction({
 
           {/* Description Input */}
           <div>
-            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-2 text-fg`}>
               {recentExpenses.length > 0 && formData.type === 'expense' ? 'Or type new expense *' : 'Description *'}
             </label>
             <input
@@ -422,7 +420,7 @@ export default function AddTransaction({
               onChange={(e) => handleDescriptionChange(e.target.value)}
               onBlur={formData.type === 'expense' ? handleDescriptionBlur : undefined}
               placeholder="Coffee, Gas, Groceries, etc."
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               required
               autoFocus={formData.type === 'expense' && recentExpenses.length === 0}
             />
@@ -459,7 +457,7 @@ export default function AddTransaction({
                   className={`p-3 rounded-lg border-2 transition-colors flex items-center justify-center gap-2 ${
                     formData.paymentMethod === 'credit_card'
                       ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/20'
-                      : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                      : 'border-line hover:border-accent'
                   }`}
                 >
                   <CreditCardIcon size={18} />
@@ -471,7 +469,7 @@ export default function AddTransaction({
                   className={`p-3 rounded-lg border-2 transition-colors flex items-center justify-center gap-2 ${
                     formData.paymentMethod === 'loan'
                       ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/20'
-                      : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                      : 'border-line hover:border-accent'
                   }`}
                 >
                   <TrendingUp size={18} />
@@ -496,7 +494,7 @@ export default function AddTransaction({
                     setFormData({ ...formData, paymentSource: source, paymentSourceId: id });
                   }
                 }}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               >
                 <option value="cash_in_hand">Cash in Hand ({formatCurrency(cashInHand || 0)})</option>
                 {bankAccounts && bankAccounts.length > 0 && (
@@ -538,7 +536,7 @@ export default function AddTransaction({
                     setFormData({ ...formData, paymentMethod: method, paymentMethodId: id });
                   }
                 }}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
                 required
               >
                 {recentPaymentMethods.length > 0 && (
@@ -595,7 +593,7 @@ export default function AddTransaction({
               <select
                 value={formData.paymentMethodId || ''}
                 onChange={(e) => setFormData({ ...formData, paymentMethodId: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
                 required
               >
                 <option value="">Select {formData.paymentMethod === 'credit_card' ? 'credit card' : 'loan'}</option>
@@ -619,7 +617,7 @@ export default function AddTransaction({
             <textarea
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               rows="3"
               placeholder="Additional details..."
             />
@@ -630,14 +628,14 @@ export default function AddTransaction({
             <button
               type="button"
               onClick={onClose}
-              className={`flex-1 px-4 py-2 rounded-lg border ${darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-50'}`}
+              className={`flex-1 px-4 py-2 rounded-xl border border-line hover:bg-surface-2`}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={processing}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2 bg-accent text-accent-contrast rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {processing ? 'Saving...' : 'Save Transaction'}
             </button>

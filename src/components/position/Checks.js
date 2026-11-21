@@ -21,9 +21,9 @@ export default function Checks({ darkMode, data, onDone }) {
     setBusy(s.id);
     try { await resolveSnapshot(s.id, action); await onDone(); } catch (e) { showToast.error(e.message); } finally { setBusy(null); }
   };
-  const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
+  const muted = 'text-muted';
   return (
-    <section className={`rounded-2xl border p-4 space-y-3 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+    <section className={`rounded-2xl border p-4 space-y-3 bg-surface border-line`}>
       <h2 className="font-semibold">Checks</h2>
       {open.map((s) => {
         const now = s.app_now;

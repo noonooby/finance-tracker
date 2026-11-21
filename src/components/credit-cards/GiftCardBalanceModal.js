@@ -88,7 +88,7 @@ export default function GiftCardBalanceModal({
         role="dialog"
         aria-modal="true"
         aria-label={`${isAddOperation ? 'Add balance' : 'Use balance'}: ${giftCard.name}`}
-        className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full`}
+        className={`bg-surface rounded-2xl p-6 max-w-md w-full`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -100,7 +100,7 @@ export default function GiftCardBalanceModal({
               <h3 className="text-lg font-bold">
                 {isAddOperation ? 'Add Balance' : 'Use Balance'}
               </h3>
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              <p className={`text-sm text-muted`}>
                 {giftCard.name}
               </p>
             </div>
@@ -108,7 +108,7 @@ export default function GiftCardBalanceModal({
           <button
             onClick={onClose}
             aria-label="Close"
-            className={`text-2xl leading-none ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900'}`}
+            className={`text-2xl leading-none text-muted hover:text-fg`}
           >
             ×
           </button>
@@ -116,8 +116,8 @@ export default function GiftCardBalanceModal({
 
         <div className="space-y-4">
           {/* Current Balance */}
-          <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-1`}>
+          <div className={`p-3 rounded-2xl bg-surface-2`}>
+            <div className={`text-xs text-muted mb-1`}>
               Current Balance
             </div>
             <div className="text-2xl font-bold text-green-600">
@@ -127,7 +127,7 @@ export default function GiftCardBalanceModal({
 
           {/* Amount Added to Card */}
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-1 text-fg`}>
               Amount Added to Card *
             </label>
             <input
@@ -136,7 +136,7 @@ export default function GiftCardBalanceModal({
               placeholder="0.00"
               value={formData.amount}
               onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               autoFocus
             />
           </div>
@@ -144,7 +144,7 @@ export default function GiftCardBalanceModal({
           {/* Amount Paid (optional, for bonus scenarios) */}
           {isAddOperation && (
             <div>
-              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label className={`block text-sm font-medium mb-1 text-fg`}>
                 Amount Paid (optional)
               </label>
               <input
@@ -153,9 +153,9 @@ export default function GiftCardBalanceModal({
                 placeholder="Same as amount added"
                 value={formData.amountPaid}
                 onChange={(e) => setFormData({ ...formData, amountPaid: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               />
-              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              <p className={`text-xs mt-1 text-muted`}>
                 For bonus scenarios: e.g., paid $50 but got $55 loaded
               </p>
             </div>
@@ -163,27 +163,27 @@ export default function GiftCardBalanceModal({
 
           {/* Date */}
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-1 text-fg`}>
               Date *
             </label>
             <input
               type="date"
               value={formData.date}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
             />
           </div>
 
           {/* Payment Source (only for Add Balance) */}
           {isAddOperation && (
             <div>
-              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label className={`block text-sm font-medium mb-1 text-fg`}>
                 Payment Source *
               </label>
               <select
                 value={formData.paymentMethodId ? `${formData.paymentMethod}:${formData.paymentMethodId}` : formData.paymentMethod}
                 onChange={(e) => handlePaymentMethodChange(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               >
                 {getPaymentSources().map(source => (
                   <option key={source.value} value={source.value}>
@@ -197,13 +197,13 @@ export default function GiftCardBalanceModal({
           {/* Category (only for Use Balance) */}
           {!isAddOperation && (
             <div>
-              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label className={`block text-sm font-medium mb-1 text-fg`}>
                 Category *
               </label>
               <select
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               >
                 <option value="">Select category</option>
                 {categories.filter(c => !c.is_income).map(cat => (
@@ -212,7 +212,7 @@ export default function GiftCardBalanceModal({
                   </option>
                 ))}
               </select>
-              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              <p className={`text-xs mt-1 text-muted`}>
                 What did you buy with this gift card?
               </p>
             </div>
@@ -220,7 +220,7 @@ export default function GiftCardBalanceModal({
 
           {/* Notes */}
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-1 text-fg`}>
               Notes (optional)
             </label>
             <input
@@ -228,17 +228,17 @@ export default function GiftCardBalanceModal({
               placeholder={isAddOperation ? 'e.g., Birthday gift' : 'e.g., Coffee at Starbucks'}
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
             />
           </div>
 
           {/* Preview */}
           {formData.amount && parseFloat(formData.amount) > 0 && (
-            <div className={`p-3 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
-              <div className={`text-xs font-medium mb-1 ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>
+            <div className={`p-3 rounded-lg bg-accent-soft border border-accent/30`}>
+              <div className={`text-xs font-medium mb-1 text-accent`}>
                 Preview:
               </div>
-              <div className={`text-sm ${darkMode ? 'text-blue-100' : 'text-blue-900'}`}>
+              <div className={`text-sm text-accent`}>
                 {giftCard.name}: {formatCurrency(giftCard.balance)} → {formatCurrency(
                   giftCard.balance + (isAddOperation ? 1 : -1) * parseFloat(formData.amount)
                 )}

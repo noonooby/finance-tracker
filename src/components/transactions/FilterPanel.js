@@ -18,25 +18,23 @@ export default function FilterPanel({
   onClearFilters
 }) {
   return (
-    <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4 space-y-4`}>
+    <div className={`bg-surface rounded-2xl p-4 space-y-4`}>
       {/* Search and Clear */}
       <div className="flex items-center justify-between">
         <div className="relative flex-1 mr-4">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted" size={20} />
           <input
             type="text"
             placeholder="Search transactions..."
             value={filters.search}
             onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-            className={`w-full pl-10 pr-4 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+            className={`w-full pl-10 pr-4 py-2 border rounded-2xl border-line bg-surface-2 text-fg`}
           />
         </div>
         <button
           onClick={onClearFilters}
           className={`px-4 py-2 rounded-lg text-sm ${
-            darkMode
-              ? 'bg-gray-700 hover:bg-gray-600 text-white'
-              : 'bg-gray-200 hover:bg-gray-300'
+            'bg-surface-2 hover:bg-line/60 text-fg'
           }`}
         >
           Clear All
@@ -49,7 +47,7 @@ export default function FilterPanel({
         <select
           value={filters.type}
           onChange={(e) => onFiltersChange({ ...filters, type: e.target.value })}
-          className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
         >
           <option value="all">All Types</option>
           <option value="expense">Expenses</option>
@@ -61,7 +59,7 @@ export default function FilterPanel({
         <select
           value={filters.category}
           onChange={(e) => onFiltersChange({ ...filters, category: e.target.value })}
-          className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
         >
           <option value="all">All Categories</option>
           {categories.map(cat => (
@@ -73,7 +71,7 @@ export default function FilterPanel({
         <select
           value={filters.paymentMethod}
           onChange={(e) => onFiltersChange({ ...filters, paymentMethod: e.target.value })}
-          className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
         >
           <option value="all">All Methods</option>
           <option value="cash_in_hand">Cash in Hand</option>
@@ -91,7 +89,7 @@ export default function FilterPanel({
         <select
           value={filters.creditCard}
           onChange={(e) => onFiltersChange({ ...filters, creditCard: e.target.value })}
-          className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
         >
           <option value="all">All Cards</option>
           {creditCards && creditCards.filter(c => !c.is_gift_card).length > 0 && (
@@ -118,7 +116,7 @@ export default function FilterPanel({
         <select
           value={filters.loan}
           onChange={(e) => onFiltersChange({ ...filters, loan: e.target.value })}
-          className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
         >
           <option value="all">All Loans</option>
           {loans && loans.map(loan => (
@@ -132,7 +130,7 @@ export default function FilterPanel({
         <select
           value={filters.bankAccount}
           onChange={(e) => onFiltersChange({ ...filters, bankAccount: e.target.value })}
-          className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
         >
           <option value="all">All Accounts</option>
           {bankAccounts && bankAccounts.map(account => (
@@ -146,7 +144,7 @@ export default function FilterPanel({
         <select
           value={filters.reservedFund}
           onChange={(e) => onFiltersChange({ ...filters, reservedFund: e.target.value })}
-          className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
         >
           <option value="all">All Funds</option>
           {reservedFunds && reservedFunds.map(fund => (
@@ -161,7 +159,7 @@ export default function FilterPanel({
           type="date"
           value={filters.dateFrom}
           onChange={(e) => onFiltersChange({ ...filters, dateFrom: e.target.value })}
-          className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
           placeholder="From"
         />
 
@@ -170,7 +168,7 @@ export default function FilterPanel({
           type="date"
           value={filters.dateTo}
           onChange={(e) => onFiltersChange({ ...filters, dateTo: e.target.value })}
-          className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
           placeholder="To"
         />
       </div>

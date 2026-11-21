@@ -13,7 +13,7 @@ function OperationButton({ darkMode, active, onClick, Icon, label }) {
       aria-pressed={active}
       className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${active
         ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
-        : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+        : 'border-line hover:border-accent'
       }`}
     >
       <Icon size={18} />
@@ -92,15 +92,15 @@ export default function CashOperationsForm({
       </div>
 
       {preview && (
-        <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-          <div className={`text-xs font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preview:</div>
-          <div className={`text-sm space-y-1 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+        <div className={`p-3 rounded-2xl bg-surface-2`}>
+          <div className={`text-xs font-medium mb-2 text-muted`}>Preview:</div>
+          <div className={`text-sm space-y-1 text-fg`}>
             <div className="flex items-center gap-2">
-              <Wallet size={14} className="text-gray-500" />
+              <Wallet size={14} className="text-muted" />
               Cash in Hand: {formatCurrency(preview.currentCash)} → {formatCurrency(preview.newCashInHand)}
             </div>
             <div className="flex items-center gap-2">
-              <Building2 size={14} className="text-gray-500" />
+              <Building2 size={14} className="text-muted" />
               {preview.selectedAccount.name}: {formatCurrency(preview.currentBankBalance)} → {formatCurrency(preview.newBankBalance)}
             </div>
           </div>

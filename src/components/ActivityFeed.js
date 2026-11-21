@@ -331,8 +331,8 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       case 'cash_deposit': return 'text-teal-600';
       case 'set_budget': return 'text-green-600';
       case 'delete_budget': return 'text-red-600';
-      case 'setting_change': return 'text-gray-500';
-      default: return 'text-gray-600';
+      case 'setting_change': return 'text-muted';
+      default: return 'text-muted';
     }
   };
 
@@ -420,17 +420,17 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-8">
-        <div className="text-gray-500">Loading activities...</div>
+        <div className="text-muted">Loading activities...</div>
       </div>
     );
   }
 
   if (activities.length === 0) {
     return (
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-8 text-center`}>
-        <Activity size={48} className="mx-auto mb-4 text-gray-400" />
-        <p className="text-gray-500">No recent activities</p>
-        <p className="text-sm text-gray-400 mt-2">Your actions will appear here</p>
+      <div className={`bg-surface rounded-lg p-8 text-center`}>
+        <Activity size={48} className="mx-auto mb-4 text-muted" />
+        <p className="text-muted">No recent activities</p>
+        <p className="text-sm text-muted mt-2">Your actions will appear here</p>
       </div>
     );
   }
@@ -443,15 +443,15 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
           Recent Activity
         </h2>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-muted">
             {filteredActivities.length} of {activities.length} activities
           </span>
           <button
             onClick={() => setShowPreferences(!showPreferences)}
             className={`flex items-center gap-1 sm:gap-2 px-3 py-2 text-sm sm:text-base rounded-lg transition-colors ${
               showPreferences
-                ? darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'
-                : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-surface-2 text-fg'
+                : 'bg-surface-2 text-muted hover:bg-line/60'
             }`}
           >
             <SlidersHorizontal size={16} className="sm:w-[18px] sm:h-[18px]" />
@@ -462,7 +462,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
 
       {/* Preferences Panel */}
       {showPreferences && (
-        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-4 space-y-4`}>
+        <div className={`bg-surface border-line border rounded-2xl p-4 space-y-4`}>
           <h3 className="text-base sm:text-lg font-semibold flex items-center gap-2">
             <SlidersHorizontal size={16} className="sm:w-[18px] sm:h-[18px]" />
             Activity Feed Preferences
@@ -471,7 +471,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
           <div className="space-y-3">
             {/* Activity Type Checkboxes */}
             <div>
-              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label className={`block text-sm font-medium mb-2 text-fg`}>
                 Show Activity Types
               </label>
               <div className="space-y-2">
@@ -519,7 +519,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
             
             {/* Activities Per Page */}
             <div>
-              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label className={`block text-sm font-medium mb-2 text-fg`}>
                 Activities Per Page
               </label>
               <select
@@ -528,7 +528,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
                   handlePreferenceChange({ perPage: parseInt(e.target.value) });
                   setCurrentPage(1); // Reset to first page
                 }}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               >
                 <option value={25}>25 activities</option>
                 <option value={50}>50 activities</option>
@@ -540,7 +540,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       )}
 
       {/* Filter UI */}
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4 space-y-3`}>
+      <div className={`bg-surface rounded-2xl p-4 space-y-3`}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Entity Filter */}
           <select
@@ -549,7 +549,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
               setEntityFilter(e.target.value);
               setCurrentPage(1); // Reset to first page
             }}
-            className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+            className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
           >
             <option value="all">All Entity Types</option>
             <option value="card">Credit Cards</option>
@@ -562,7 +562,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
           </select>
 
           {/* Show All Activities Toggle */}
-          <div className={`flex items-center justify-between px-4 py-2 border rounded-lg ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}>
+          <div className={`flex items-center justify-between px-4 py-2 border rounded-lg border-line`}>
             <div className="flex items-center gap-2">
               {showAllActivities ? <Eye size={18} /> : <EyeOff size={18} />}
               <span className="text-sm font-medium">Show Settings Changes</span>
@@ -574,13 +574,13 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
                 onChange={(e) => handleToggleChange(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+              <div className="w-11 h-6 bg-line peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
             </label>
           </div>
         </div>
 
         {!showAllActivities && viewOnlyCount > 0 && (
-          <p className={`text-xs flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p className={`text-xs flex items-center gap-1 text-muted`}>
             <SettingsIcon size={12} />
             Hiding {viewOnlyCount} settings change{viewOnlyCount !== 1 ? 's' : ''} (toggle above to show)
           </p>
@@ -588,10 +588,10 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       </div>
 
       {filteredActivities.length === 0 && (
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-8 text-center`}>
-          <Activity size={48} className="mx-auto mb-4 text-gray-400" />
-          <p className="text-gray-500">No activities found</p>
-          <p className="text-sm text-gray-400 mt-2">Try adjusting your filters</p>
+        <div className={`bg-surface rounded-lg p-8 text-center`}>
+          <Activity size={48} className="mx-auto mb-4 text-muted" />
+          <p className="text-muted">No activities found</p>
+          <p className="text-sm text-muted mt-2">Try adjusting your filters</p>
         </div>
       )}
 
@@ -607,7 +607,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
           snapshot.fund?.name ||
           snapshot.source ||
           'Untitled';
-        const detailBadgeClass = darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700';
+        const detailBadgeClass = 'bg-surface-2 text-fg';
         
         const activityCanUndo = canUndo(activity);
         const activityIsViewOnly = isViewOnly(activity);
@@ -617,17 +617,17 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
           return (
             <div
               key={activity.id}
-              className={`${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'} border rounded-lg p-3 opacity-75`}
+              className={`bg-surface-2 border-line border rounded-2xl p-3 opacity-75`}
             >
               <div className="flex items-center gap-3">
-                <div className={`p-1.5 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                  <SettingsIcon size={14} className="text-gray-500" />
+                <div className={`p-1.5 rounded bg-surface-2`}>
+                  <SettingsIcon size={14} className="text-muted" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <p className={`text-sm text-muted`}>
                     {activity.description}
                   </p>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-muted">
                     {formatDate(activity.created_at)}
                   </span>
                 </div>
@@ -640,11 +640,11 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
         return (
           <div
             key={activity.id}
-            className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-4 hover:shadow-md transition-shadow`}
+            className={`bg-surface border-line border rounded-2xl p-4 hover:shadow-md transition-shadow`}
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3 flex-1">
-                <div className={`p-2 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <div className={`p-2 rounded-lg bg-surface-2`}>
                   {getEntityIcon(activity.entity_type, activity.action_type)}
                 </div>
 
@@ -653,21 +653,21 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
                     <span className={`font-semibold capitalize ${getActionColor(activity.action_type)}`}>
                       {activity.action_type.replace(/_/g, ' ')}
                     </span>
-                    <span className="text-sm text-gray-500 capitalize">
+                    <span className="text-sm text-muted capitalize">
                       {activity.entity_type.replace(/_/g, ' ')}
                     </span>
                     {isSystemActivity(activity) && (
-                      <span className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700'}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded bg-accent-soft text-accent`}>
                         Auto
                       </span>
                     )}
                   </div>
 
-                  <h3 className={`text-sm font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'} mb-1`}>
+                  <h3 className={`text-sm font-semibold text-fg mb-1`}>
                     {displayName}
                   </h3>
 
-                  <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
+                  <p className={`text-fg mb-2`}>
                     {activity.description}
                   </p>
 
@@ -685,7 +685,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
                     </div>
                   )}
 
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-muted">
                     {formatDate(activity.created_at)}
                   </span>
                 </div>
@@ -703,10 +703,8 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
                     disabled={undoingId === activity.id}
                     className={`flex items-center gap-1 px-3 py-2 text-sm rounded-lg transition-colors ${
                       undoingId === activity.id
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : darkMode
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                        : 'bg-blue-500 hover:bg-blue-600 text-white'
+                        ? 'bg-line text-muted cursor-not-allowed'
+                        : 'bg-accent-soft hover:bg-accent-soft text-white'
                     }`}
                     title="Undo this action"
                   >
@@ -722,20 +720,20 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
 
       {/* Pagination Controls */}
       {totalPages > 1 && (
-        <div className={`flex items-center justify-between px-4 py-3 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg`}>
+        <div className={`flex items-center justify-between px-4 py-3 bg-surface border-line border rounded-2xl`}>
           <button
             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
             disabled={currentPage === 1}
             className={`px-4 py-2 rounded-lg ${
               currentPage === 1
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                ? 'bg-line text-muted cursor-not-allowed'
+                : 'bg-surface-2 text-fg hover:bg-line/60'
             }`}
           >
             Previous
           </button>
           
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-muted">
             Page {currentPage} of {totalPages}
           </span>
           
@@ -744,8 +742,8 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
             disabled={currentPage === totalPages}
             className={`px-4 py-2 rounded-lg ${
               currentPage === totalPages
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                ? 'bg-line text-muted cursor-not-allowed'
+                : 'bg-surface-2 text-fg hover:bg-line/60'
             }`}
           >
             Next

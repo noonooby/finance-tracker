@@ -8,7 +8,7 @@ export default function SummaryCard({ title, value, subtitle, icon: Icon, color 
     red: 'bg-red-500',
     purple: 'bg-purple-500',
     orange: 'bg-orange-500',
-    gray: 'bg-gray-500'
+    gray: 'bg-line'
   };
 
   const bgColorClass = colorClasses[color] || colorClasses.blue;
@@ -27,20 +27,20 @@ export default function SummaryCard({ title, value, subtitle, icon: Icon, color 
   }
 
   return (
-    <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
+    <div className={`bg-surface rounded-2xl p-6`}>
       <div className="flex items-center justify-between mb-2">
-        <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{title}</p>
+        <p className="text-sm font-medium text-muted">{title}</p>
         {Icon && (
           <div className={`${bgColorClass} p-2 rounded-lg`}>
             <Icon size={20} className="text-white" />
           </div>
         )}
       </div>
-      <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} mb-1`}>
+      <p className={`text-2xl font-bold text-fg mb-1`}>
         {displayValue}
       </p>
       {subtitle && (
-        <p className="text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>
+        <p className="text-xs text-muted">{subtitle}</p>
       )}
     </div>
   );

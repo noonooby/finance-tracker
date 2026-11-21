@@ -34,14 +34,14 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
   };
 
   return (
-    <div className={`${darkMode ? 'bg-gray-800 text-white' : 'bg-white'} rounded-lg shadow-lg p-6 space-y-6`}>
+    <div className={`bg-surface text-fg rounded-2xl shadow-lg p-6 space-y-6`}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Filter size={20} className="text-blue-600" />
           <h3 className="text-lg font-semibold">Report Filters</h3>
         </div>
         {onClose && (
-          <button onClick={onClose} aria-label="Close filters" className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
+          <button onClick={onClose} aria-label="Close filters" className="p-1 hover:bg-line/60 rounded">
             <X size={20} />
           </button>
         )}
@@ -67,10 +67,8 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
               onClick={() => handlePresetChange(preset.value)}
               className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 localFilters.preset === preset.value
-                  ? 'bg-blue-600 text-white'
-                  : darkMode 
-                    ? 'bg-gray-700 hover:bg-gray-600' 
-                    : 'bg-gray-100 hover:bg-gray-200'
+                  ? 'bg-accent text-accent-contrast'
+                  : 'bg-surface-2 hover:bg-line/60'
               }`}
             >
               {preset.label}
@@ -88,7 +86,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
             value={localFilters.startDate}
             onChange={(e) => handleFilterChange('startDate', e.target.value)}
             className={`w-full px-3 py-2 border rounded-lg ${
-              darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'
+              'border-line bg-surface-2'
             }`}
           />
         </div>
@@ -99,7 +97,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
             value={localFilters.endDate}
             onChange={(e) => handleFilterChange('endDate', e.target.value)}
             className={`w-full px-3 py-2 border rounded-lg ${
-              darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'
+              'border-line bg-surface-2'
             }`}
           />
         </div>
@@ -112,7 +110,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
           value={localFilters.type}
           onChange={(e) => handleFilterChange('type', e.target.value)}
           className={`w-full px-3 py-2 border rounded-lg ${
-            darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'
+            'border-line bg-surface-2'
           }`}
         >
           <option value="all">All Types</option>
@@ -131,7 +129,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
             value={localFilters.categories}
             onChange={(e) => handleFilterChange('categories', Array.from(e.target.selectedOptions, opt => opt.value))}
             className={`w-full px-3 py-2 border rounded-lg ${
-              darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'
+              'border-line bg-surface-2'
             } h-32`}
           >
             {categories.filter(c => !c.is_income).map(cat => (
@@ -140,7 +138,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
               </option>
             ))}
           </select>
-          <p className="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple</p>
+          <p className="text-xs text-muted mt-1">Hold Ctrl/Cmd to select multiple</p>
         </div>
       )}
 
@@ -152,7 +150,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
           value={localFilters.paymentMethods}
           onChange={(e) => handleFilterChange('paymentMethods', Array.from(e.target.selectedOptions, opt => opt.value))}
           className={`w-full px-3 py-2 border rounded-lg ${
-            darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'
+            'border-line bg-surface-2'
           } h-32`}
         >
           <option value="cash_in_hand">Cash in Hand</option>
@@ -162,7 +160,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
           <option value="reserved_fund">Reserved Fund</option>
           <option value="transfer">Transfer</option>
         </select>
-        <p className="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple</p>
+        <p className="text-xs text-muted mt-1">Hold Ctrl/Cmd to select multiple</p>
       </div>
 
       {/* Amount Range */}
@@ -175,7 +173,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
             onChange={(e) => handleFilterChange('minAmount', e.target.value)}
             placeholder="$0.00"
             className={`w-full px-3 py-2 border rounded-lg ${
-              darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'
+              'border-line bg-surface-2'
             }`}
           />
         </div>
@@ -187,7 +185,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
             onChange={(e) => handleFilterChange('maxAmount', e.target.value)}
             placeholder="No limit"
             className={`w-full px-3 py-2 border rounded-lg ${
-              darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'
+              'border-line bg-surface-2'
             }`}
           />
         </div>
@@ -205,19 +203,17 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
           onChange={(e) => handleFilterChange('search', e.target.value)}
           placeholder="Search transactions..."
           className={`w-full px-3 py-2 border rounded-lg ${
-            darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'
+            'border-line bg-surface-2'
           }`}
         />
       </div>
 
       {/* Action Buttons */}
-      <div className="flex gap-2 pt-4 border-t dark:border-gray-700">
+      <div className="flex gap-2 pt-4 border-t">
         <button
           onClick={handleReset}
           className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
-            darkMode 
-              ? 'bg-gray-700 hover:bg-gray-600' 
-              : 'bg-gray-200 hover:bg-gray-300'
+            'bg-surface-2 hover:bg-line/60'
           }`}
         >
           Reset Filters

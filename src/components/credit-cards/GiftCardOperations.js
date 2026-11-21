@@ -253,7 +253,7 @@ export default function GiftCardOperations({
         role="dialog"
         aria-modal="true"
         aria-label={`Manage balance: ${giftCard.name}`}
-        className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full my-8 max-h-[calc(100vh-4rem)] overflow-y-auto`}
+        className={`bg-surface rounded-2xl p-6 max-w-md w-full my-8 max-h-[calc(100vh-4rem)] overflow-y-auto`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -262,14 +262,14 @@ export default function GiftCardOperations({
           <button
             onClick={onClose}
             aria-label="Close"
-            className={`text-2xl leading-none ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900'}`}
+            className={`text-2xl leading-none text-muted hover:text-fg`}
           >
             <X size={24} />
           </button>
         </div>
 
-        <div className={`p-3 rounded-lg mb-4 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-          <div className="text-sm text-gray-500">Current Balance</div>
+        <div className={`p-3 rounded-2xl mb-4 bg-surface-2`}>
+          <div className="text-sm text-muted">Current Balance</div>
           <div className="text-2xl font-bold text-green-600">{formatCurrency(giftCard.balance)}</div>
         </div>
 
@@ -280,8 +280,8 @@ export default function GiftCardOperations({
             onClick={() => setOperationType('add')}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors font-medium ${
               operationType === 'add'
-                ? 'border-green-600 bg-green-600 text-white'
-                : darkMode ? 'border-gray-600 hover:border-gray-500 text-gray-300' : 'border-gray-300 hover:border-gray-400 text-gray-700'
+                ? 'border-accent bg-accent text-accent-contrast'
+                : 'border-line hover:border-accent text-fg'
             }`}
           >
             <Plus size={18} />
@@ -292,8 +292,8 @@ export default function GiftCardOperations({
             onClick={() => setOperationType('use')}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors font-medium ${
               operationType === 'use'
-                ? 'border-orange-600 bg-orange-600 text-white'
-                : darkMode ? 'border-gray-600 hover:border-gray-500 text-gray-300' : 'border-gray-300 hover:border-gray-400 text-gray-700'
+                ? 'border-accent bg-accent text-accent-contrast'
+                : 'border-line hover:border-accent text-fg'
             }`}
           >
             <Minus size={18} />
@@ -304,7 +304,7 @@ export default function GiftCardOperations({
         {/* Context Loaded Indicator */}
         {contextLoaded && (formData.amount || formData.paymentSource !== 'cash_in_hand' || formData.category) && (
           <div className={`mb-3 p-2 rounded-lg text-xs flex items-center gap-2 ${
-            darkMode ? 'bg-blue-900/20 text-blue-300 border border-blue-800' : 'bg-blue-50 text-blue-700 border border-blue-200'
+            'bg-accent-soft text-accent border border-accent/30'
           }`}>
             <TrendingUp size={14} />
             <span>Pre-filled with your last used values</span>
@@ -314,7 +314,7 @@ export default function GiftCardOperations({
         {/* Recent Expenses Quick Select (Use Balance only) */}
         {operationType === 'use' && recentExpenses.length > 0 && (
           <div className="mb-4">
-            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-2 text-fg`}>
               Recent Expenses
             </label>
             <div className="flex gap-2 flex-wrap">
@@ -325,10 +325,8 @@ export default function GiftCardOperations({
                   onClick={() => handleSelectExpense(expense)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                     formData.notes === expense.description
-                      ? 'bg-blue-600 text-white'
-                      : darkMode 
-                        ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
-                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                      ? 'bg-accent text-accent-contrast'
+                      : 'bg-accent-soft text-accent hover:bg-accent-soft border border-accent/30'
                   }`}
                 >
                   {expense.description}
@@ -342,7 +340,7 @@ export default function GiftCardOperations({
         {/* Description/Notes (Use Balance only) */}
         {operationType === 'use' && (
           <div className="mb-4">
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-1 text-fg`}>
               {recentExpenses.length > 0 ? 'Or type new expense *' : 'What are you buying? *'}
             </label>
             <input
@@ -351,10 +349,10 @@ export default function GiftCardOperations({
               value={formData.notes}
               onChange={(e) => handleExpenseDescriptionChange(e.target.value)}
               onBlur={handleExpenseDescriptionBlur}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               autoFocus={operationType === 'use' && recentExpenses.length === 0 && contextLoaded}
             />
-            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <p className={`text-xs mt-1 text-muted`}>
               This becomes your expense description (like "Coffee" instead of "Purchased with Starbucks")
             </p>
           </div>
@@ -363,14 +361,14 @@ export default function GiftCardOperations({
         <div className="space-y-3">
           {/* Amount */}
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-1 text-fg`}>
               Amount *
             </label>
             
             {/* Recent Amounts Quick Select */}
             {recentAmounts.length > 0 && (
               <div className="mb-2">
-                <div className={`flex items-center gap-1 mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                <div className={`flex items-center gap-1 mb-1 text-muted`}>
                   <TrendingUp size={14} />
                   <span className="text-xs">Recent amounts:</span>
                 </div>
@@ -385,10 +383,8 @@ export default function GiftCardOperations({
                       }}
                       className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                         parseFloat(formData.amount) === amount
-                          ? 'bg-blue-600 text-white'
-                          : darkMode
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
+                          ? 'bg-accent text-accent-contrast'
+                          : 'bg-surface-2 text-fg hover:bg-line/60 border border-line'
                       }`}
                     >
                       {formatCurrency(amount)}
@@ -404,11 +400,11 @@ export default function GiftCardOperations({
               value={smartInputValue}
               onChange={handleSmartAmountChange}
               onBlur={handleSmartAmountBlur}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               autoFocus={contextLoaded}
             />
             {smartInputValue && formData.amount && smartInputValue !== formData.amount && (
-              <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+              <p className={`text-xs mt-1 text-positive`}>
                 = {formatCurrency(formData.amount)}
               </p>
             )}
@@ -417,7 +413,7 @@ export default function GiftCardOperations({
           {/* Amount Paid (only for Add Balance) */}
           {operationType === 'add' && (
             <div>
-              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label className={`block text-sm font-medium mb-1 text-fg`}>
                 Amount Paid (optional)
               </label>
               <input
@@ -425,9 +421,9 @@ export default function GiftCardOperations({
                 placeholder="Same as amount added"
                 value={formData.amountPaid}
                 onChange={(e) => setFormData({ ...formData, amountPaid: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               />
-              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              <p className={`text-xs mt-1 text-muted`}>
                 For bonus scenarios: e.g., paid $50 but got $55 loaded
               </p>
             </div>
@@ -436,13 +432,13 @@ export default function GiftCardOperations({
           {/* Payment Source (only for Add Balance) */}
           {operationType === 'add' && (
             <div>
-              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label className={`block text-sm font-medium mb-1 text-fg`}>
                 Payment Source *
               </label>
               <select
                 value={getCurrentPaymentSourceValue()}
                 onChange={(e) => handlePaymentSourceChange(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               >
                 <option value="cash_in_hand">Cash in Hand</option>
                 
@@ -471,20 +467,20 @@ export default function GiftCardOperations({
 
           {/* Category */}
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-1 text-fg`}>
               Category *
             </label>
             <select
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
             >
               <option value="">Select category</option>
               {categories.map(cat => (
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
             </select>
-            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <p className={`text-xs mt-1 text-muted`}>
               {operationType === 'add' 
                 ? 'Use "Gift Card Purchase" for reloads, or actual category if you know future use'
                 : 'What are you buying with this gift card?'}
@@ -493,21 +489,21 @@ export default function GiftCardOperations({
 
           {/* Date */}
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-1 text-fg`}>
               Date *
             </label>
             <input
               type="date"
               value={formData.date}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
             />
           </div>
 
           {/* Notes (Add Balance only) */}
           {operationType === 'add' && (
             <div>
-              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label className={`block text-sm font-medium mb-1 text-fg`}>
                 Notes (optional)
               </label>
               <input
@@ -515,17 +511,17 @@ export default function GiftCardOperations({
                 placeholder="e.g., Birthday gift reload"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               />
             </div>
           )}
 
           {/* Preview */}
-          <div className={`p-3 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
-            <div className={`text-xs font-medium mb-1 ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>
+          <div className={`p-3 rounded-lg bg-accent-soft border border-accent/30`}>
+            <div className={`text-xs font-medium mb-1 text-accent`}>
               Preview:
             </div>
-            <div className={`text-sm ${darkMode ? 'text-blue-100' : 'text-blue-900'}`}>
+            <div className={`text-sm text-accent`}>
               {operationType === 'add' ? (
                 <>Balance will increase: {formatCurrency(giftCard.balance)} → {formatCurrency(giftCard.balance + (parseFloat(formData.amount) || 0))}</>
               ) : (

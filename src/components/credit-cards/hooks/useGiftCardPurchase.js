@@ -1,4 +1,4 @@
-import { recordExpense } from '../../../utils/money';
+import { recordGiftCardPurchase } from '../../../utils/money';
 import { logActivity } from '../../../utils/activityLogger';
 import { formatCurrency } from '../../../utils/helpers';
 import { showToast } from '../../../utils/toast';
@@ -51,14 +51,17 @@ export function useGiftCardPurchase({
         return null;
       }
 
-      // The gift card was saved with its value already, so only the payment leaves the source here.
+      // One money step: the payment leaves the source and the card gains its value, or neither happens.
       // The server refuses it if the source would go past its floor (bank overdraft, gift card value, cash).
-      const res = await recordExpense({
-        amount: purchaseAmountPaid,
+      const value = parseFloat(formData.balance) || parseFloat(formData.purchaseAmount) || purchaseAmountPaid;
+      const res = await recordGiftCardPurchase({
+        giftCardId: savedCard?.id,
+        amount: value,
+        cost: purchaseAmountPaid,
         source: paymentMethodRaw,
         date: formData.purchaseDate,
         description: `Gift Card Purchase: ${formData.name}`,
-        extra: { gift_card_id: savedCard?.id, payment_method_name: sourceName }
+        extra: { payment_method_name: sourceName }
       }, { bankAccounts, creditCards });
       const transactionId = res.transaction?.id;
       if (onUpdateCash) await onUpdateCash(null, { syncOnly: true });
@@ -103,7 +106,7 @@ export function useGiftCardPurchase({
       
     } catch (error) {
       console.error('Error creating gift card purchase transaction:', error);
-      showToast.error(`Gift card added but its payment was not recorded: ${error.message}`);
+      showToast.error(`Gift card added with no value yet, because the purchase was not recorded: ${error.message}`);
       return null;
     }
   };

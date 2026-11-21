@@ -138,9 +138,9 @@ export default function CreditCards({
             disabled={a.isProcessing}
             className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base ${
               a.isProcessing
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-green-600 hover:bg-green-700'
-            } text-white`}
+                ? 'bg-surface-2 text-muted border border-line cursor-not-allowed'
+                : 'press bg-surface-2 text-fg border border-line hover:bg-line/60'
+            }`}
             title="Process all overdue credit cards from connected payment sources"
           >
             {a.isProcessing ? 'Processing...' : 'Process Due Payments'}
@@ -153,7 +153,7 @@ export default function CreditCards({
                 a.setShowAddForm(true);
               }
             }}
-            className="flex items-center gap-1 sm:gap-2 bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base"
+            className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base"
           >
             <Plus size={20} />
             {a.showAddForm ? 'Cancel' : 'Add Card'}
@@ -162,15 +162,15 @@ export default function CreditCards({
       </div>
 
       {a.processingResults && (
-        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-200'} border rounded-lg p-3 text-sm`}>
-          <div className={darkMode ? 'text-gray-200' : 'text-blue-800'}>
+        <div className={`bg-accent-soft border-accent/30 border rounded-lg p-3 text-sm`}>
+          <div className={'text-accent'}>
             Processed: {a.processingResults.processed.length} • Failed: {a.processingResults.failed.length} • Skipped: {a.processingResults.skipped.length}
           </div>
         </div>
       )}
 
       {a.showAddForm && !editingItem && (
-        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
+        <div className={`bg-surface border-line rounded-2xl border p-4 space-y-3`}>
           <CreditCardForm
             {...formProps}
             mode="add"
@@ -185,7 +185,7 @@ export default function CreditCards({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
         {creditCards.length === 0 ? (
-          <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          <div className={`text-center py-12 text-muted`}>
             <CreditCardIcon size={48} className="mx-auto mb-3 opacity-30" />
             <p>No credit cards added yet</p>
           </div>
@@ -200,7 +200,7 @@ export default function CreditCards({
                 ref={(el) => {
                   if (el) cardRefs.current[key] = el;
                 }}
-                className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${
+                className={`bg-surface border-line rounded-2xl border p-4 ${
                   isEditing
                     ? 'ring-2 ring-blue-500 shadow-lg'
                     : focusTarget?.type === 'card' && normalizeId(focusTarget.id) === normalizeId(card.id)

@@ -43,7 +43,7 @@ export default function DisplaySection({ darkMode, expanded, onToggle, settings,
               type="button"
               aria-pressed={colorMode === m.id}
               onClick={() => setColorMode(m.id)}
-              className={`rounded-lg text-sm font-medium py-2 min-h-[40px] ${colorMode === m.id ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg'}`}
+              className={`rounded-lg text-sm font-medium py-2 min-h-[40px] ${colorMode === m.id ? 'bg-surface text-fg' : 'text-muted hover:text-fg'}`}
             >
               {m.label}
             </button>

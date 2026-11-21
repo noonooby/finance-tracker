@@ -23,14 +23,14 @@ export default function GeminiKeyCard({ darkMode }) {
   };
 
   return (
-    <form onSubmit={save} className={`rounded-2xl border p-4 space-y-2 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-blue-200'}`}>
+    <form onSubmit={save} className={`rounded-2xl border p-4 space-y-2 bg-surface border-accent/30`}>
       <h2 className="font-semibold">Gemini key for reading screenshots</h2>
-      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+      <p className={`text-sm text-muted`}>
         Paste your key from Google AI Studio once. It is checked with Google, then kept on the server only. After that this box goes away and the key can't be seen or changed from the app.
       </p>
       <input type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => setKey(e.target.value)} aria-label="Gemini key" placeholder="Gemini key"
-        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
-      <button type="submit" disabled={busy || !key.trim()} className="w-full bg-blue-600 text-white rounded-lg py-2 font-medium disabled:opacity-50">{busy ? 'Checking...' : 'Check and save'}</button>
+        className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`} />
+      <button type="submit" disabled={busy || !key.trim()} className="w-full bg-accent text-accent-contrast rounded-lg py-2 font-medium disabled:opacity-50">{busy ? 'Checking...' : 'Check and save'}</button>
     </form>
   );
 }

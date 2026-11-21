@@ -94,9 +94,9 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const nameOf = (v) => (accountOptions.find((o) => o.value === v) || {}).label || 'Choose';
   const isCardRef = (v) => v.startsWith('credit_card:') || (v.startsWith('new:') && (drafts.find((d) => d.id === v) || {}).type === 'credit_card');
 
-  const card = darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900';
-  const muted = darkMode ? 'text-gray-400' : 'text-gray-600';
-  const input = `px-2 py-1.5 rounded border text-sm w-full ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`;
+  const card = 'bg-surface border-line text-fg';
+  const muted = 'text-muted';
+  const input = `px-2 py-1.5 rounded border text-sm w-full bg-surface border-line text-fg`;
 
   const pick = async (e) => {
     const file = e.target.files && e.target.files[0];
@@ -297,7 +297,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   return (
     <div className="space-y-4">
       <div>
-        <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Scan</h1>
+        <h1 className={`text-2xl font-bold text-fg`}>Scan</h1>
         <p className={`text-sm ${muted}`}>
           Take a photo of a receipt, or choose a screenshot of your bank or card app, or a statement PDF. The app fills in everything it can: new accounts, the account for each line,
           the kind of line and a category. Check it, change anything with Edit, then tap Confirm. Nothing is saved before that.
@@ -316,7 +316,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             Take a photo
             <input type="file" accept="image/*" capture="environment" onChange={pick} className="sr-only" />
           </label>
-          <label className="press cursor-pointer flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 py-5 font-medium">
+          <label className="press cursor-pointer flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-line py-5 font-medium">
             <ImageIcon size={26} aria-hidden="true" />
             Screenshot or statement
             <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf" onChange={pick} className="sr-only" />
@@ -324,9 +324,9 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         </div>
         {image && (
           <div className="flex flex-col sm:flex-row gap-3 items-start">
-            {image.pdf ? <div className="text-sm font-medium">{image.name}</div> : <img src={image.url} alt="The screenshot to read" className="max-h-64 rounded border border-gray-300" />}
+            {image.pdf ? <div className="text-sm font-medium">{image.name}</div> : <img src={image.url} alt="The screenshot to read" className="max-h-64 rounded border border-line" />}
             <button type="button" onClick={read} disabled={reading}
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50">
+              className="px-4 py-2 rounded-lg bg-accent text-accent-contrast font-medium hover:bg-blue-700 disabled:opacity-50">
               {reading ? 'Reading...' : image.pdf ? 'Read statement' : 'Read screenshot'}
             </button>
           </div>
@@ -363,7 +363,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">New accounts to add</h3>
               {drafts.map((d) => (
-                <div key={d.id} className={`rounded-lg border p-3 space-y-2 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                <div key={d.id} className={`rounded-lg border p-3 space-y-2 border-line`}>
                   <label className="flex items-center gap-2 text-sm font-medium">
                     <input type="checkbox" checked={d.on} onChange={(e) => setDraft(d.id, { on: e.target.checked })} />
                     Add {d.name}{d.last4 ? ` (ending ${d.last4})` : ''}
@@ -401,7 +401,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           <section className="space-y-1">
             <h3 className="text-sm font-semibold">Lines</h3>
             {rows.length === 0 && <p className={`text-sm ${muted}`}>No transactions found in this screenshot.</p>}
-            <ul className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+            <ul className={`divide-y divide-line`}>
               {rows.map((r) => {
                 const need = r.on && missing(r);
                 const cat = catsFor(r.kind).find((c) => String(c.id) === String(r.category_id));
@@ -479,7 +479,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             </section>
           )}
           <button type="button" onClick={save} disabled={saving || !chosen || blocked > 0}
-            className="w-full px-4 py-2.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50">
+            className="w-full px-4 py-2.5 rounded-lg bg-accent text-accent-contrast font-medium hover:bg-blue-700 disabled:opacity-50">
             {saving ? 'Saving...' : blocked ? `Answer ${blocked} ${blocked === 1 ? 'question' : 'questions'} above first` : `Confirm and save ${chosen} ${chosen === 1 ? 'item' : 'items'}`}
           </button>
         </div>

@@ -80,12 +80,12 @@ export default function LoanForm({
   };
 
   return (
-    <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 space-y-3`}>
+    <div className={`bg-surface border-line rounded-2xl border p-4 space-y-3`}>
       
       {/* Recent Loan Templates */}
       {recentLoanNames.length > 0 && !editingItem && (
         <div>
-          <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <label className={`block text-sm font-medium mb-2 text-fg`}>
             Recent Loans
           </label>
           <div className="flex gap-2 flex-wrap">
@@ -96,14 +96,12 @@ export default function LoanForm({
                 onClick={() => handleSelectLoanName(loanTemplate)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   formData.name === loanTemplate.loan_name
-                    ? 'bg-blue-600 text-white'
-                    : darkMode 
-                      ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
-                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                    ? 'bg-accent text-accent-contrast'
+                    : 'bg-accent-soft text-accent hover:bg-accent-soft border border-accent/30'
                 }`}
               >
                 {loanTemplate.loan_name}
-                {loanTemplate.usage_count > 10 && ' ⭐'}
+                {loanTemplate.usage_count > 10 && ' (often used)'}
               </button>
             ))}
           </div>
@@ -112,7 +110,7 @@ export default function LoanForm({
       
       {/* Loan Name */}
       <div>
-        <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+        <label className={`block text-sm font-medium mb-2 text-fg`}>
           {recentLoanNames.length > 0 ? 'Or Type New Loan Name *' : 'Loan Name *'}
         </label>
         <input
@@ -122,7 +120,7 @@ export default function LoanForm({
           onChange={(e) => handleLoanNameChange(e.target.value)}
           onBlur={handleLoanNameBlur}
           placeholder="e.g., Car Loan, Student Loan"
-          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
           required
           autoFocus={!editingItem && recentLoanNames.length === 0}
         />
@@ -134,7 +132,7 @@ export default function LoanForm({
         placeholder="Principal *"
         value={formData.principal}
         onChange={(e) => setFormData({ ...formData, principal: e.target.value })}
-        className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+        className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
       />
 
       {/* Current Balance */}
@@ -143,7 +141,7 @@ export default function LoanForm({
         placeholder="Current Balance *"
         value={formData.balance}
         onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
-        className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+        className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
       />
 
       {/* Interest Rate */}
@@ -152,7 +150,7 @@ export default function LoanForm({
         placeholder="Interest Rate %"
         value={formData.interestRate}
         onChange={(e) => setFormData({ ...formData, interestRate: e.target.value })}
-        className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+        className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
       />
 
       {/* Payment Amount */}
@@ -161,13 +159,13 @@ export default function LoanForm({
         placeholder="Payment Amount *"
         value={formData.paymentAmount}
         onChange={(e) => setFormData({ ...formData, paymentAmount: e.target.value })}
-        className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+        className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
       />
 
       <div className="grid grid-cols-2 gap-2">
-        <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+        <label className={`block text-sm text-muted`}>
           Kind
-          <select value={formData.loanType || 'loan'} onChange={(e) => setFormData({ ...formData, loanType: e.target.value })} className={`mt-1 w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}>
+          <select value={formData.loanType || 'loan'} onChange={(e) => setFormData({ ...formData, loanType: e.target.value })} className={`mt-1 w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}>
             <option value="loan">Loan</option>
             <option value="mortgage">Mortgage</option>
             <option value="line_of_credit">Line of credit</option>
@@ -177,9 +175,9 @@ export default function LoanForm({
             <option value="student">Student loan</option>
           </select>
         </label>
-        <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+        <label className={`block text-sm text-muted`}>
           Interest added
-          <select value={formData.compounding || ''} onChange={(e) => setFormData({ ...formData, compounding: e.target.value })} className={`mt-1 w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}>
+          <select value={formData.compounding || ''} onChange={(e) => setFormData({ ...formData, compounding: e.target.value })} className={`mt-1 w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}>
             <option value="">{formData.loanType === 'mortgage' ? 'Twice a year (usual for mortgages)' : 'Monthly (usual)'}</option>
             <option value="monthly">Monthly</option>
             <option value="semiannual">Twice a year</option>
@@ -189,13 +187,13 @@ export default function LoanForm({
         </label>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+        <label className={`block text-sm text-muted`}>
           Lender or provider
-          <input value={formData.provider || ''} onChange={(e) => setFormData({ ...formData, provider: e.target.value })} placeholder="e.g. Affirm, TD" className={`mt-1 w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`} />
+          <input value={formData.provider || ''} onChange={(e) => setFormData({ ...formData, provider: e.target.value })} placeholder="e.g. Affirm, TD" className={`mt-1 w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`} />
         </label>
-        <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+        <label className={`block text-sm text-muted`}>
           Setup fee
-          <input type="number" step="0.01" inputMode="decimal" value={formData.setupFee || ''} onChange={(e) => setFormData({ ...formData, setupFee: e.target.value })} placeholder="0.00" className={`mt-1 w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`} />
+          <input type="number" step="0.01" inputMode="decimal" value={formData.setupFee || ''} onChange={(e) => setFormData({ ...formData, setupFee: e.target.value })} placeholder="0.00" className={`mt-1 w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`} />
         </label>
       </div>
       {formData.provider && (
@@ -204,26 +202,26 @@ export default function LoanForm({
           setupFee: formData.setupFee || (r.setup_fee != null ? String(r.setup_fee) : '') })} />
       )}
       {(formData.loanType === 'plan' || formData.loanType === 'bnpl') && (
-        <label className={`block text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+        <label className={`block text-sm text-muted`}>
           Where it lives
-          <select value={formData.onCardId || ''} onChange={(e) => setFormData({ ...formData, onCardId: e.target.value })} className={`mt-1 w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}>
+          <select value={formData.onCardId || ''} onChange={(e) => setFormData({ ...formData, onCardId: e.target.value })} className={`mt-1 w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}>
             <option value="">On its own (paid separately)</option>
             {creditCards.filter((c) => !c.is_gift_card).map((c) => <option key={c.id} value={c.id}>Inside {c.name} (billed on the card)</option>)}
           </select>
-          <span className={`block text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>A plan inside a card is part of the card's balance. Each installment is billed on the card, so no separate payment is made.</span>
+          <span className={`block text-xs mt-1 text-muted`}>A plan inside a card is part of the card's balance. Each installment is billed on the card, so no separate payment is made.</span>
         </label>
       )}
-      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>With a rate set, each payment is split into interest and the part that lowers what you owe.</p>
+      <p className={`text-xs text-muted`}>With a rate set, each payment is split into interest and the part that lowers what you owe.</p>
 
       {/* Payment Frequency */}
       <div>
-        <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+        <label className={`block text-sm mb-1 text-muted`}>
           Payment Frequency *
         </label>
         <select
           value={formData.frequency}
           onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
-          className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+          className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
         >
           <option value="weekly">Weekly</option>
           <option value="biweekly">Bi-Weekly</option>
@@ -234,14 +232,14 @@ export default function LoanForm({
       </div>
 
       {/* NEW: Connected Payment Source */}
-      <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700/50' : 'bg-blue-50'}`}>
-        <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+      <div className={`p-3 rounded-lg bg-accent-soft`}>
+        <label className={`block text-sm font-medium mb-2 text-fg`}>
           Auto-Payment Source (Optional)
         </label>
         <select
           value={getCurrentPaymentSourceValue()}
           onChange={(e) => handlePaymentSourceChange(e.target.value)}
-          className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} rounded-lg`}
+          className={`w-full px-3 py-2 border bg-surface border-line text-fg rounded-2xl`}
         >
           {getAvailablePaymentSources().map(source => (
             <option key={source.value} value={source.value}>
@@ -249,14 +247,14 @@ export default function LoanForm({
             </option>
           ))}
         </select>
-        <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+        <p className={`text-xs mt-1 text-muted`}>
           This source will be used when processing overdue payments automatically
         </p>
       </div>
 
       {/* Recurring Duration */}
       <div>
-        <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+        <label className={`block text-sm mb-1 text-muted`}>
           Recurring Duration
         </label>
         <select
@@ -269,7 +267,7 @@ export default function LoanForm({
               recurringOccurrences: ''
             })
           }
-          className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+          className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
         >
           <option value="indefinite">Indefinite (Until Balance Cleared)</option>
           <option value="until_date">Until Specific Date</option>
@@ -280,14 +278,14 @@ export default function LoanForm({
       {/* End Date (conditional) */}
       {formData.recurringDurationType === 'until_date' && (
         <div>
-          <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          <label className={`block text-sm mb-1 text-muted`}>
             End Date *
           </label>
           <input
             type="date"
             value={formData.recurringUntilDate}
             onChange={(e) => setFormData({ ...formData, recurringUntilDate: e.target.value })}
-            className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+            className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
             min={localDate()}
           />
         </div>
@@ -296,7 +294,7 @@ export default function LoanForm({
       {/* Number of Payments (conditional) */}
       {formData.recurringDurationType === 'occurrences' && (
         <div>
-          <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          <label className={`block text-sm mb-1 text-muted`}>
             Number of Payments *
           </label>
           <input
@@ -305,10 +303,10 @@ export default function LoanForm({
             placeholder="e.g., 24 payments"
             value={formData.recurringOccurrences}
             onChange={(e) => setFormData({ ...formData, recurringOccurrences: e.target.value })}
-            className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+            className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
           />
           {editingItem && editingItem.recurring_occurrences_completed > 0 && (
-            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <p className={`text-xs mt-1 text-muted`}>
               Completed: {editingItem.recurring_occurrences_completed} of {editingItem.recurring_occurrences_total || formData.recurringOccurrences || '?'}
             </p>
           )}
@@ -317,14 +315,14 @@ export default function LoanForm({
 
       {/* Next Payment Date */}
       <div>
-        <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+        <label className={`block text-sm mb-1 text-muted`}>
           Next Payment Date *
         </label>
         <input
           type="date"
           value={formData.nextPaymentDate}
           onChange={(e) => setFormData({ ...formData, nextPaymentDate: e.target.value })}
-          className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
+          className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
         />
       </div>
 

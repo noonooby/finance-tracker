@@ -32,15 +32,15 @@ export default function DangerZoneSection({ darkMode, expanded, onToggle, onUpda
       expanded={expanded}
       onToggle={onToggle}
       darkMode={darkMode}
-      bodyClassName="p-6 space-y-3 border-t border-gray-700"
+      bodyClassName="p-6 space-y-3 border-t border-line"
     >
-      <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+      <p className={`text-sm text-muted`}>
         Delete all data associated with this account, including cards, loans, reserved funds, income, transactions, categories, and activity history.
       </p>
       <button
         onClick={handleDeleteAllData}
         disabled={deleting}
-        className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg ${deleting ? 'bg-red-300 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'} text-white`}
+        className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg ${deleting ? 'bg-red-300 cursor-not-allowed' : 'press bg-negative text-white hover:opacity-90 '} text-white`}
       >
         <AlertCircle size={20} />
         <span>{deleting ? 'Deleting...' : 'Delete All Data'}</span>

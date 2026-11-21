@@ -5,7 +5,7 @@ import { formatCurrency } from '../../../utils/reportHelpers';
 export default function ComparisonBarChart({ data, darkMode, dataKeys = [] }) {
   if (!data || data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-500">
+      <div className="flex items-center justify-center h-64 text-muted">
         No data available
       </div>
     );
@@ -14,7 +14,7 @@ export default function ComparisonBarChart({ data, darkMode, dataKeys = [] }) {
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} p-3 rounded-lg shadow-lg border`}>
+        <div className={`bg-surface border-line p-3 rounded-2xl shadow-lg border`}>
           <p className="font-medium mb-2">{label}</p>
           {payload.map((entry, index) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>

@@ -38,7 +38,6 @@ export function FinanceDataProvider({ children }) {
   // Load bank accounts
   const loadBankAccounts = useCallback(async () => {
     try {
-      console.log('🏦 Loading bank accounts...');
       const accounts = await getAllBankAccounts();
       setBankAccounts(accounts);
 
@@ -49,7 +48,6 @@ export function FinanceDataProvider({ children }) {
         setAvailableCash(0);
       }
 
-      console.log('✅ Bank accounts loaded:', accounts?.length ?? 0);
       return accounts || [];
     } catch (error) {
       console.error('❌ Error loading bank accounts:', error);
@@ -95,6 +93,8 @@ export function FinanceDataProvider({ children }) {
 
   // Progressive data loading
   // A load already running is shared, so two callers at startup cause one load.
+  const loadedOnceRef = useRef(false);
+  const lastDueRef = useRef(0);
   const loadDataProgressively = useCallback(() => {
     if (!loadingRef.current) {
       loadingRef.current = runLoad().finally(() => { loadingRef.current = null; });
@@ -104,11 +104,12 @@ export function FinanceDataProvider({ children }) {
   }, [loadBankAccounts, loadCategories]);
 
   async function runLoad() {
-    setDataLoading(true);
+    // Only the first load shows the loading state; later refreshes after an action update quietly.
+    const first = !loadedOnceRef.current;
+    if (first) setDataLoading(true);
     setLoadError(null);
     try {
       // PHASE 1: Load critical settings first
-      console.log('📊 Phase 1: Loading critical settings...');
       const settings = await dbOperation('settings', 'getAll');
       
       const cashInHandSetting = settings?.find(s => s.key === 'cashInHand');
@@ -120,11 +121,9 @@ export function FinanceDataProvider({ children }) {
       setAvailableCash(cashValue);
 
       // PHASE 2: Load categories
-      console.log('📊 Phase 2: Loading categories...');
       await loadCategories();
 
       // PHASE 3: Load financial data in parallel
-      console.log('📊 Phase 3: Loading financial data...');
       const [cards, loansData, incomeDataRaw, transRaw, accounts] = await Promise.all([
         dbOperation('creditCards', 'getAll'),
         dbOperation('loans', 'getAll'),
@@ -150,9 +149,12 @@ export function FinanceDataProvider({ children }) {
       
       // PHASE 4: Scheduled money: pay days, then loan and card payments with a connected account.
       // Each date is recorded once (the server keeps a once-only key), so running this on every load is safe.
-      const autoResults = await processDueIncomeSchedules();
+      // Runs on the first load and then at most every 10 minutes, not after every action.
+      const dueCheck = first || Date.now() - lastDueRef.current > 600000;
+      if (dueCheck) lastDueRef.current = Date.now();
+      const autoResults = dueCheck ? await processDueIncomeSchedules() : { deposited: [] };
       let paid = 0;
-      try {
+      if (dueCheck) try {
         const freshCards = (await dbOperation('creditCards', 'getAll')) || [];
         const freshLoans = (await dbOperation('loans', 'getAll')) || [];
         const loanRes = await processOverdueLoanPayments(freshLoans, freshCards, accounts || [], 0);
@@ -167,7 +169,6 @@ export function FinanceDataProvider({ children }) {
       }
 
       if (autoResults.deposited.length > 0 || paid) {
-        console.log('🎉 Auto-deposited income on app load:', autoResults.deposited);
         // Reload all data after auto-deposits
         incomeData = await dbOperation('income', 'getAll') || [];
         transactionsData = await dbOperation('transactions', 'getAll') || [];
@@ -178,11 +179,11 @@ export function FinanceDataProvider({ children }) {
       setIncome(incomeData);
       setTransactions(transactionsData);
 
-      console.log('✅ All data loaded successfully!');
     } catch (error) {
       console.error('Error loading data:', error);
       setLoadError(error?.message || 'Could not load your data.');
     } finally {
+      loadedOnceRef.current = true;
       setDataLoading(false);
     }
   }

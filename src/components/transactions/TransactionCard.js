@@ -82,7 +82,7 @@ export default function TransactionCard({
       case 'credit_card_payment':
         return <DollarSign className="text-blue-600" size={20} />;
       default:
-        return <DollarSign className="text-gray-600" size={20} />;
+        return <DollarSign className="text-muted" size={20} />;
     }
   };
 
@@ -97,7 +97,7 @@ export default function TransactionCard({
       case 'credit_card_payment':
         return 'text-blue-600 bg-blue-50';
       default:
-        return 'text-gray-600 bg-gray-50';
+        return 'text-muted bg-surface-2';
     }
   };
 
@@ -118,11 +118,11 @@ export default function TransactionCard({
     infoChips.push({ label: 'Status', value: statusLabel });
   }
 
-  const chipClass = darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700';
+  const chipClass = 'bg-surface-2 text-fg';
 
   return (
     <div
-      className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg p-4 hover:shadow-md transition-shadow ${isUndone ? 'opacity-75' : ''}`}
+      className={`bg-surface border-line border rounded-2xl p-4 hover:shadow-md transition-shadow ${isUndone ? 'opacity-75' : ''}`}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3 flex-1">
@@ -132,27 +132,27 @@ export default function TransactionCard({
           
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className={`font-semibold ${isUndone ? 'line-through text-gray-400' : ''}`}>
+              <h3 className={`font-semibold ${isUndone ? 'line-through text-muted' : ''}`}>
                 {formatDescription(transaction)}
               </h3>
               {transaction.category_name && (
-                <span className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <span className={`text-xs px-2 py-1 rounded bg-surface-2`}>
                   {transaction.category_name}
                 </span>
               )}
               {isUndone && (
-                <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">
+                <span className="text-xs px-2 py-1 rounded bg-surface-2 text-muted">
                   Undone
                 </span>
               )}
             </div>
             
-            <div className={`flex items-center gap-3 text-sm ${isUndone ? 'text-gray-400 line-through' : 'text-gray-500'}`}>
+            <div className={`flex items-center gap-3 text-sm ${isUndone ? 'text-muted line-through' : 'text-muted'}`}>
               <span>{formatDate(transaction.date)}</span>
             </div>
             
             {infoChips.length > 0 && (
-              <div className={`flex flex-wrap gap-2 mt-2 text-xs ${isUndone ? 'text-gray-400' : ''}`}>
+              <div className={`flex flex-wrap gap-2 mt-2 text-xs ${isUndone ? 'text-muted' : ''}`}>
                 {infoChips.map((chip, index) => (
                   <span
                     key={`${transaction.id}-${chip.label}-${index}`}
@@ -166,7 +166,7 @@ export default function TransactionCard({
             )}
 
             {transaction.notes && (
-              <p className={`text-sm mt-1 ${isUndone ? 'text-gray-400 line-through' : 'text-gray-500'}`}>
+              <p className={`text-sm mt-1 ${isUndone ? 'text-muted line-through' : 'text-muted'}`}>
                 {transaction.notes}
               </p>
             )}
@@ -178,13 +178,13 @@ export default function TransactionCard({
             transaction.type === 'income' ? 'text-green-600' : 
             transaction.type === 'expense' ? 'text-red-600' : 
             'text-blue-600'
-          } ${isUndone ? 'line-through text-gray-400' : ''}`}>
+          } ${isUndone ? 'line-through text-muted' : ''}`}>
             {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
           </p>
           
           <button
             onClick={() => onDelete(transaction)}
-            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} text-red-600`}
+            className={`p-2 rounded-lg hover:bg-surface-2 text-red-600`}
             title="Delete"
           >
             <Trash2 size={18} />

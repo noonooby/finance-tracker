@@ -5,7 +5,7 @@ import { formatCurrency, formatDate } from '../../utils/helpers';
 // What the next payment does and when the loan is paid off, from the balance, rate and payment.
 export default function PayoffSummary({ loan, darkMode }) {
   const plan = useMemo(() => amortize(loan), [loan]);
-  const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
+  const muted = 'text-muted';
   if (!(Number(loan.balance) > 0) || !(Number(loan.payment_amount) > 0)) return null;
   if (!(periodicRate(loan) > 0)) {
     return plan.payoffDate ? <div className={`text-xs mt-1 ${muted}`}>Paid off around {formatDate(plan.payoffDate)} (no interest rate set)</div> : null;

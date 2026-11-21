@@ -5,7 +5,7 @@ import { formatCurrency } from '../../../utils/reportHelpers';
 export default function CategoryPieChart({ data, darkMode }) {
   if (!data || data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-500">
+      <div className="flex items-center justify-center h-64 text-muted">
         No category data available
       </div>
     );
@@ -23,10 +23,10 @@ export default function CategoryPieChart({ data, darkMode }) {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} p-3 rounded-lg shadow-lg border`}>
+        <div className={`bg-surface border-line p-3 rounded-2xl shadow-lg border`}>
           <p className="font-medium">{data.icon} {data.name}</p>
           <p className="text-sm text-green-600 font-semibold">{formatCurrency(data.value)}</p>
-          <p className="text-xs text-gray-500">{((data.value / chartData.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%</p>
+          <p className="text-xs text-muted">{((data.value / chartData.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%</p>
         </div>
       );
     }

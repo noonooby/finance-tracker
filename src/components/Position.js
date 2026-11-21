@@ -55,8 +55,8 @@ export default function Position({ darkMode }) {
   const hist = useMemo(() => history(points, new Set(d.creditCards.filter((c) => c.is_gift_card).map((c) => String(c.id)))), [points, d.creditCards]);
   const accounts = { bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments };
 
-  const card = `rounded-2xl border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`;
-  const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
+  const card = `rounded-2xl border p-4 bg-surface border-line`;
+  const muted = 'text-muted';
   const Line = ({ x }) => (
     <li className="py-2 flex items-center gap-3">
       <div className="flex-1 min-w-0">
@@ -97,13 +97,13 @@ export default function Position({ darkMode }) {
 
       <section className={card}>
         <h2 className="font-semibold">What you have</h2>
-        <ul className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>{p.have.map((x) => <Line key={x.kind + x.id} x={x} />)}</ul>
+        <ul className={`divide-y divide-line`}>{p.have.map((x) => <Line key={x.kind + x.id} x={x} />)}</ul>
         <Link to="/investments" className="text-sm font-medium text-blue-600 dark:text-blue-400">Add an investment or property</Link>
       </section>
 
       <section className={card}>
         <h2 className="font-semibold">What you owe</h2>
-        {p.owe.length ? <ul className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>{p.owe.map((x) => <Line key={x.kind + x.id} x={x} />)}</ul> : <p className={`text-sm ${muted}`}>Nothing owed.</p>}
+        {p.owe.length ? <ul className={`divide-y divide-line`}>{p.owe.map((x) => <Line key={x.kind + x.id} x={x} />)}</ul> : <p className={`text-sm ${muted}`}>Nothing owed.</p>}
         {p.mortgage > 0 && <p className={`text-sm mt-2 ${muted}`}>Debt without the mortgage: {formatCurrency(p.debtExcludingMortgage)}</p>}
       </section>
       <p className={`text-xs ${muted}`}>See <Link to="/help#position" className="underline">Help</Link> for how this is worked out.</p>

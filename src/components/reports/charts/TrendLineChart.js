@@ -6,7 +6,7 @@ import { formatCurrency } from '../../../utils/reportHelpers';
 export default function TrendLineChart({ data, darkMode, dataKeys = [] }) {
   if (!data || data.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+      <div className="flex flex-col items-center justify-center h-64 text-muted">
         <Activity size={48} className="mb-3 opacity-30" />
         <p className="text-lg font-medium">No data available</p>
         <p className="text-sm">Add more transactions to see trends</p>
@@ -21,7 +21,7 @@ export default function TrendLineChart({ data, darkMode, dataKeys = [] }) {
   
   if (!hasNonZeroData) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+      <div className="flex flex-col items-center justify-center h-64 text-muted">
         <Activity size={48} className="mb-3 opacity-30" />
         <p className="text-lg font-medium">No activity in this period</p>
         <p className="text-sm">Try adjusting your date range or filters</p>
@@ -32,7 +32,7 @@ export default function TrendLineChart({ data, darkMode, dataKeys = [] }) {
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} p-3 rounded-lg shadow-lg border`}>
+        <div className={`bg-surface border-line p-3 rounded-2xl shadow-lg border`}>
           <p className="font-medium mb-2">{label}</p>
           {payload.map((entry, index) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>

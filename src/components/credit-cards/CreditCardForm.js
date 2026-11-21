@@ -29,13 +29,13 @@ export default function CreditCardForm({
   submitting
 }) {
   const isEdit = mode === 'edit';
-  const inputClass = `w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`;
-  const smallLabel = `block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`;
-  const mainLabel = `block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`;
+  const inputClass = `w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`;
+  const smallLabel = `block text-sm mb-1 text-muted`;
+  const mainLabel = `block text-sm font-medium mb-2 text-fg`;
   const typeButton = (active, activeClass) => `flex-1 px-3 py-2 rounded-lg border-2 transition-colors font-medium flex items-center justify-center gap-2 ${
     active
       ? activeClass
-      : darkMode ? 'border-gray-600 hover:border-gray-500 text-gray-300' : 'border-gray-300 hover:border-gray-400 text-gray-700'
+      : 'border-line hover:border-accent text-fg'
   }`;
 
   return (
@@ -55,10 +55,8 @@ export default function CreditCardForm({
                 onClick={() => onSelectCardName(cardEntity)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   formData.name === cardEntity.name
-                    ? 'bg-blue-600 text-white'
-                    : darkMode
-                      ? 'bg-blue-900 text-blue-200 hover:bg-blue-800 border border-blue-700'
-                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                    ? 'bg-accent text-accent-contrast'
+                    : 'bg-accent-soft text-accent hover:bg-accent-soft border border-accent/30'
                 }`}
               >
                 {cardEntity.name}
@@ -70,7 +68,7 @@ export default function CreditCardForm({
       )}
 
       <div>
-        <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+        <label className={`block text-sm font-medium mb-2 text-fg`}>
           {isEdit ? 'Card Name *' : recentCardNames.length > 0 ? 'Or type new card name *' : 'Card Name *'}
         </label>
         <input
@@ -79,7 +77,7 @@ export default function CreditCardForm({
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           placeholder="e.g., Rogers Mastercard"
-          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
+          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
           required={!isEdit}
           autoFocus={isEdit || (!editingItem && recentCardNames.length === 0)}
         />
@@ -91,7 +89,7 @@ export default function CreditCardForm({
           <button
             type="button"
             onClick={() => setFormData({ ...formData, isGiftCard: false })}
-            className={typeButton(!formData.isGiftCard, 'border-blue-600 bg-blue-600 text-white')}
+            className={typeButton(!formData.isGiftCard, 'border-blue-600 bg-accent text-accent-contrast')}
           >
             <CreditCardIcon size={18} />
             Credit Card
@@ -99,7 +97,7 @@ export default function CreditCardForm({
           <button
             type="button"
             onClick={() => setFormData({ ...formData, isGiftCard: true })}
-            className={typeButton(formData.isGiftCard, 'border-green-600 bg-green-600 text-white')}
+            className={typeButton(formData.isGiftCard, 'border-green-600 press bg-accent text-accent-contrast')}
           >
             <Gift size={18} />
             Gift Card
@@ -165,12 +163,12 @@ export default function CreditCardForm({
             />
           </div>
 
-          <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700/50' : 'bg-blue-50'}`}>
+          <div className={`p-3 rounded-lg bg-accent-soft`}>
             <label className={mainLabel}>Auto-Payment Source (Optional)</label>
             <select
               value={paymentSourceValue(formData)}
               onChange={(e) => onPaymentSourceChange(e.target.value)}
-              className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} rounded-lg`}
+              className={`w-full px-3 py-2 border bg-surface border-line text-fg rounded-2xl`}
             >
               {paymentSourceOptions(bankAccounts).map(source => (
                 <option key={source.value} value={source.value}>
@@ -178,7 +176,7 @@ export default function CreditCardForm({
                 </option>
               ))}
             </select>
-            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <p className={`text-xs mt-1 text-muted`}>
               With an account chosen, the card is paid from it on the due date. Leave it on none if you pay it yourself.
             </p>
             {formData.connectedPaymentSource && (

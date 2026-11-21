@@ -8,10 +8,10 @@ export default function InstitutionHeader({ darkMode, institution, accounts, col
     <button
       onClick={onToggle}
       aria-expanded={!collapsed}
-      className={`w-full flex items-center justify-between px-4 py-2 rounded-lg transition-colors ${darkMode ? 'bg-gray-700/50 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'}`}
+      className={`w-full flex items-center justify-between px-4 py-2 rounded-lg transition-colors bg-surface-2 hover:bg-line/60`}
     >
       <div className="flex items-center gap-2">
-        <Building2 size={20} className="text-gray-500" />
+        <Building2 size={20} className="text-muted" />
         <h3 className="font-bold text-lg">{institution}</h3>
       </div>
       <div className="flex items-center gap-3">

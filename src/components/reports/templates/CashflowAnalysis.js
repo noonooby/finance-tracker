@@ -86,7 +86,7 @@ export default function CashflowAnalysis({
   if (!summary) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading report...</div>
+        <div className="text-muted">Loading report...</div>
       </div>
     );
   }
@@ -110,7 +110,7 @@ export default function CashflowAnalysis({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Cashflow Analysis</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm text-muted">
             {new Date(filters.startDate).toLocaleDateString()} - {new Date(filters.endDate).toLocaleDateString()}
           </p>
         </div>
@@ -119,24 +119,22 @@ export default function CashflowAnalysis({
             onClick={() => setShowFilters(!showFilters)}
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
               showFilters
-                ? 'bg-blue-600 text-white'
-                : darkMode
-                ? 'bg-gray-700 hover:bg-gray-600'
-                : 'bg-gray-200 hover:bg-gray-300'
+                ? 'bg-accent text-accent-contrast'
+                : 'bg-surface-2 hover:bg-line/60'
             }`}
           >
             {showFilters ? 'Hide' : 'Show'} Filters
           </button>
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:bg-green-700 transition-colors"
           >
             <FileSpreadsheet size={18} />
             Export Excel
           </button>
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-lg font-medium hover:bg-blue-700 transition-colors"
           >
             <Download size={18} />
             Export CSV
@@ -227,7 +225,7 @@ export default function CashflowAnalysis({
       </div>
 
       {/* Main Cashflow Trend Chart */}
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
+      <div className={`bg-surface rounded-2xl p-6`}>
         <h3 className="text-lg font-semibold mb-4">Cashflow Trend</h3>
         <TrendLineChart
           data={trendData}
@@ -243,7 +241,7 @@ export default function CashflowAnalysis({
 
       {/* Income vs Expenses Comparison */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
+        <div className={`bg-surface rounded-2xl p-6`}>
           <h3 className="text-lg font-semibold mb-4">Income vs Expenses by Period</h3>
           <ComparisonBarChart
             data={trendData.slice(-6).map(trend => ({
@@ -259,7 +257,7 @@ export default function CashflowAnalysis({
           />
         </div>
 
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
+        <div className={`bg-surface rounded-2xl p-6`}>
           <h3 className="text-lg font-semibold mb-4">Net Cashflow by Period</h3>
           <ComparisonBarChart
             data={trendData.slice(-6).map(trend => ({
@@ -275,12 +273,12 @@ export default function CashflowAnalysis({
       </div>
 
       {/* Detailed Period Breakdown */}
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
+      <div className={`bg-surface rounded-2xl p-6`}>
         <h3 className="text-lg font-semibold mb-4">Detailed Period Breakdown</h3>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <tr className={`border-b border-line`}>
                 <th className="text-left py-3 px-4">Period</th>
                 <th className="text-right py-3 px-4">Income</th>
                 <th className="text-right py-3 px-4">Expenses</th>
@@ -291,7 +289,7 @@ export default function CashflowAnalysis({
             </thead>
             <tbody>
               {trendData.map((trend, index) => (
-                <tr key={index} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                <tr key={index} className={`border-b border-line`}>
                   <td className="py-3 px-4 font-medium">{trend.displayName}</td>
                   <td className="text-right py-3 px-4 text-green-600 dark:text-green-400">
                     {formatCurrency(trend.income)}
@@ -309,14 +307,14 @@ export default function CashflowAnalysis({
                   }`}>
                     {formatCurrency(trend.net)}
                   </td>
-                  <td className="text-right py-3 px-4 text-gray-600 dark:text-gray-400">
+                  <td className="text-right py-3 px-4 text-muted">
                     {trend.transactions.length}
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className={`border-t-2 ${darkMode ? 'border-gray-600' : 'border-gray-300'} font-bold`}>
+              <tr className={`border-t-2 border-line font-bold`}>
                 <td className="py-3 px-4">Total</td>
                 <td className="text-right py-3 px-4 text-green-600 dark:text-green-400">
                   {formatCurrency(summary.totalIncome)}
@@ -342,12 +340,12 @@ export default function CashflowAnalysis({
       </div>
 
       {/* All Transactions Table */}
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
+      <div className={`bg-surface rounded-2xl p-6`}>
         <h3 className="text-lg font-semibold mb-4">All Transactions</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <tr className={`border-b border-line`}>
                 <th className="text-left py-3 px-3">Date</th>
                 <th className="text-left py-3 px-3">Type</th>
                 <th className="text-left py-3 px-3">Description</th>
@@ -362,7 +360,7 @@ export default function CashflowAnalysis({
                 .map((transaction) => (
                   <tr
                     key={transaction.id}
-                    className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}
+                    className={`border-b border-line`}
                   >
                     <td className="py-2 px-3 whitespace-nowrap">
                       {parseDay(transaction.date).toLocaleDateString()}
@@ -379,7 +377,7 @@ export default function CashflowAnalysis({
                     <td className="py-2 px-3">
                       {transaction.description || transaction.income_source || 'No description'}
                       {transaction.notes && (
-                        <p className="text-xs text-gray-500 mt-1">{transaction.notes}</p>
+                        <p className="text-xs text-muted mt-1">{transaction.notes}</p>
                       )}
                     </td>
                     <td className="py-2 px-3">{transaction.category_name || '-'}</td>

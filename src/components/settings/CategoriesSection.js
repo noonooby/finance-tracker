@@ -5,7 +5,7 @@ import SettingsSection from './SettingsSection';
 
 export default function CategoriesSection({ darkMode, expanded, onToggle, onCategoriesChanged }) {
   return (
-    <SettingsSection title="Categories" icon={Grid} expanded={expanded} onToggle={onToggle} darkMode={darkMode} bodyClassName="p-6 border-t border-gray-700">
+    <SettingsSection title="Categories" icon={Grid} expanded={expanded} onToggle={onToggle} darkMode={darkMode} bodyClassName="p-6 border-t border-line">
       <CategoryManager darkMode={darkMode} onUpdate={onCategoriesChanged} />
     </SettingsSection>
   );

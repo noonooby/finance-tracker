@@ -27,7 +27,7 @@ export default function UpdateValue({ line, signed, accounts, onDone, darkMode }
   return (
     <form onSubmit={save} className="flex items-center gap-2">
       <input type="number" step="0.01" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} aria-label={`Today's figure for ${line.name}`} autoFocus
-        className={`w-28 px-2 py-1 text-sm border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
+        className={`w-28 px-2 py-1 text-sm border rounded-2xl border-line bg-surface-2 text-fg`} />
       <button type="submit" disabled={busy} className="text-xs font-medium text-white bg-blue-600 rounded-lg px-2 py-1">Save</button>
       <button type="button" onClick={() => setOpen(false)} className="text-xs">Cancel</button>
     </form>

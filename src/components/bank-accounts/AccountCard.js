@@ -16,7 +16,7 @@ function IconButton({ label, onClick, className, children, disabled }) {
 function LinkedAutoPays({ darkMode, linkedLoans, linkedCards }) {
   if (linkedLoans.length === 0 && linkedCards.length === 0) return null;
   return (
-    <div className={`text-xs mt-2 p-2 rounded ${darkMode ? 'bg-blue-900/20 text-blue-300 border border-blue-800' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+    <div className={`text-xs mt-2 p-2 rounded bg-accent-soft text-accent border border-accent/30`}>
       <div className="font-semibold mb-1">Auto-pays:</div>
       {linkedLoans.map(loan => (
         <div key={loan.id} className="ml-2">
@@ -56,7 +56,7 @@ export default function AccountCard({
       <div className="flex justify-between items-start mb-3">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <IconComponent size={20} className="text-gray-500" />
+            <IconComponent size={20} className="text-muted" />
             <h3 className="font-bold text-base sm:text-lg">{account.name}</h3>
             {account.is_primary && (
               <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">
@@ -81,7 +81,7 @@ export default function AccountCard({
           )}
 
           {account.institution && (
-            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1`}>
+            <div className={`text-sm text-muted mt-1`}>
               {account.institution}
             </div>
           )}
@@ -97,7 +97,7 @@ export default function AccountCard({
                 className={`p-1.5 sm:p-2 rounded min-h-[44px] sm:min-h-0 flex items-center justify-center ${
                   isPinned
                     ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
-                    : darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-400 hover:bg-gray-100'
+                    : 'text-muted hover:bg-surface-2'
                 }`}
               >
                 <Star size={16} className={`sm:w-[18px] sm:h-[18px] ${isPinned ? 'fill-current' : ''}`} />
@@ -105,7 +105,7 @@ export default function AccountCard({
               <IconButton
                 label={`Set ${account.name} as primary account`}
                 onClick={onSetPrimary}
-                className={iconBtn('text-yellow-600 hover:bg-yellow-50', 'text-yellow-400 hover:bg-gray-700')}
+                className={iconBtn('text-yellow-600 hover:bg-yellow-50', 'text-yellow-400 hover:bg-surface-2')}
               >
                 <Star size={16} className="sm:w-[18px] sm:h-[18px]" />
               </IconButton>
@@ -114,14 +114,14 @@ export default function AccountCard({
           <IconButton
             label={`View ${account.name} transactions`}
             onClick={onViewTransactions}
-            className={iconBtn('text-purple-600 hover:bg-purple-50', 'text-purple-400 hover:bg-gray-700')}
+            className={iconBtn('text-purple-600 hover:bg-purple-50', 'text-purple-400 hover:bg-surface-2')}
           >
             <ListFilter size={16} className="sm:w-[18px] sm:h-[18px]" />
           </IconButton>
           <IconButton
             label={`Edit ${account.name}`}
             onClick={onEdit}
-            className={iconBtn('text-blue-600 hover:bg-blue-50', 'text-blue-400 hover:bg-gray-700')}
+            className={iconBtn('text-blue-600 hover:bg-blue-50', 'text-blue-400 hover:bg-surface-2')}
           >
             <Edit2 size={16} className="sm:w-[18px] sm:h-[18px]" />
           </IconButton>
@@ -129,7 +129,7 @@ export default function AccountCard({
             label={`Delete ${account.name}`}
             onClick={onDelete}
             disabled={account.is_primary}
-            className={iconBtn('text-red-600 hover:bg-red-50', 'text-red-400 hover:bg-gray-700')}
+            className={iconBtn('text-red-600 hover:bg-red-50', 'text-red-400 hover:bg-surface-2')}
           >
             <X size={16} className="sm:w-[18px] sm:h-[18px]" />
           </IconButton>
@@ -137,7 +137,7 @@ export default function AccountCard({
       </div>
 
       <div className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded mb-3 ${
-        darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
+        'bg-surface-2 text-muted'
       }`}>
         {account.account_type.charAt(0).toUpperCase() + account.account_type.slice(1)} Account
       </div>

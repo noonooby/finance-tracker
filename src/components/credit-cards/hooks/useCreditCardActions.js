@@ -186,6 +186,8 @@ export function useCreditCardActions({
         defaultDays: alertSettings.defaultDays
       });
 
+      // A new gift card starts at zero; its value arrives with the purchase as one money step below.
+      if (formData.isGiftCard && !editingItem) newCard.balance = 0;
       const savedCard = await dbOperation('creditCards', 'put', newCard, { skipActivityLog: true });
       const cardId = savedCard?.id || newCard.id;
       if (!editingItem) {

@@ -11,7 +11,7 @@ export default function FinancialSection({ darkMode, expanded, onToggle, setting
         onChange={(e) => updateSetting(key, e.target.checked)}
         className="w-4 h-4"
       />
-      <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{label}</span>
+      <span className={`text-sm text-fg`}>{label}</span>
     </label>
   );
 
@@ -69,7 +69,7 @@ export default function FinancialSection({ darkMode, expanded, onToggle, setting
             </div>
 
             <div className="space-y-2">
-              <label className={`block text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Budget Alerts</label>
+              <label className={`block text-sm text-muted`}>Budget Alerts</label>
               {alertCheckbox('budgetAlertAt80', 'Alert at 80% of budget')}
               {alertCheckbox('budgetAlertAt90', 'Alert at 90% of budget')}
               {alertCheckbox('budgetAlertAt100', 'Alert when budget exceeded')}

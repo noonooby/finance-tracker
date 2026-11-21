@@ -38,12 +38,12 @@ export default function CategoryBudgetsSection({
 
   return (
     <SettingsSection title="Category Budgets" icon={Target} expanded={expanded} onToggle={onToggle} darkMode={darkMode}>
-      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+      <p className={`text-sm text-muted`}>
         Set a monthly spending limit for each expense category.
       </p>
 
       {expenseCategories.length === 0 ? (
-        <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        <div className={`text-center py-8 text-muted`}>
           <Target size={48} className="mx-auto mb-3 opacity-30" />
           <p>Loading categories...</p>
           <p className="text-sm mt-1">If no categories appear, add them in the Categories section above</p>
@@ -59,13 +59,13 @@ export default function CategoryBudgetsSection({
               <div key={category.id} className={boxClass(darkMode)}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <IconComponent size={20} className="text-gray-500" />
+                    <IconComponent size={20} className="text-muted" />
                     <div>
-                      <div className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                      <div className={`font-medium text-fg`}>
                         {category.name}
                       </div>
                       {hasBudget && (
-                        <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        <div className={`text-xs text-muted`}>
                           Monthly Budget: {formatCurrency(currentBudget)}
                         </div>
                       )}
@@ -74,7 +74,7 @@ export default function CategoryBudgetsSection({
                   {hasBudget && (
                     <button
                       onClick={() => handleRemove(category.id)}
-                      className={`p-2 rounded ${darkMode ? 'hover:bg-gray-600 text-red-400' : 'hover:bg-gray-200 text-red-600'}`}
+                      className={`p-2 rounded hover:bg-line/60 text-negative`}
                       title="Remove budget"
                       aria-label={`Remove ${category.name} budget`}
                       disabled={saving}
@@ -98,7 +98,7 @@ export default function CategoryBudgetsSection({
                     <button
                       onClick={() => handleSet(category.id)}
                       disabled={saving || !inputs[category.id]}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 bg-accent text-accent-contrast rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Set
                     </button>
@@ -110,8 +110,8 @@ export default function CategoryBudgetsSection({
         </div>
       )}
 
-      <div className={`${darkMode ? 'bg-blue-900/20 border-blue-700' : 'bg-blue-50 border-blue-200'} border rounded-lg p-3 mt-4`}>
-        <p className={`text-xs flex items-center gap-2 ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>
+      <div className={`bg-accent-soft border-accent/30 border rounded-lg p-3 mt-4`}>
+        <p className={`text-xs flex items-center gap-2 text-accent`}>
           <Lightbulb size={14} className="flex-shrink-0" />
           <span>Spending against each budget is tracked monthly. See trends in Budget History.</span>
         </p>

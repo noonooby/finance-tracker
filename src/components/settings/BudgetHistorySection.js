@@ -5,7 +5,7 @@ import SettingsSection from './SettingsSection';
 
 export default function BudgetHistorySection({ darkMode, expanded, onToggle, categories, categoryBudgets }) {
   return (
-    <SettingsSection title="Budget History" icon={TrendingUp} expanded={expanded} onToggle={onToggle} darkMode={darkMode} bodyClassName="p-6 border-t border-gray-700">
+    <SettingsSection title="Budget History" icon={TrendingUp} expanded={expanded} onToggle={onToggle} darkMode={darkMode} bodyClassName="p-6 border-t border-line">
       <BudgetHistory darkMode={darkMode} categories={categories} categoryBudgets={categoryBudgets} />
     </SettingsSection>
   );

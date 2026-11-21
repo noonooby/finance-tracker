@@ -43,9 +43,7 @@ export default function Settings({
         <button
           onClick={toggleAllSections}
           className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg border transition-colors ${
-            darkMode
-              ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
-              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+            'border-line text-fg hover:bg-surface-2'
           }`}
         >
           {anyExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}

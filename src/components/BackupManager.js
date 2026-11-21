@@ -212,25 +212,25 @@ export default function BackupManager() {
   return (
     <div className="space-y-6">
       {/* Full Backup Section */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+      <div className="bg-surface rounded-xl border border-line p-6">
         <div className="flex items-start gap-3 mb-4">
           <Database className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 dark:text-white">
+            <h3 className="font-semibold text-fg">
               Complete backup & restore
             </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-sm text-muted mt-1">
               Export or import all your data including transactions, activities, settings, and more
             </p>
           </div>
         </div>
 
         {stats && (
-          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 mb-4">
-            <div className="text-sm text-gray-600 dark:text-gray-400">
-              Current data: <span className="font-semibold text-gray-900 dark:text-white">{stats.total.toLocaleString()}</span> total records
+          <div className="bg-surface-2 rounded-2xl p-4 mb-4">
+            <div className="text-sm text-muted">
+              Current data: <span className="font-semibold text-fg">{stats.total.toLocaleString()}</span> total records
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2 text-xs text-gray-500 dark:text-gray-500">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2 text-xs text-muted">
               <div>{stats.transactions} transactions</div>
               <div>{stats.activities} activities</div>
               <div>{stats.credit_cards} credit cards</div>
@@ -277,14 +277,14 @@ export default function BackupManager() {
       </div>
 
       {/* Bulk Upload New Transactions Section */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+      <div className="bg-surface rounded-xl border border-line p-6">
         <div className="flex items-start gap-3 mb-4">
-          <FileSpreadsheet className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5" />
+          <FileSpreadsheet className="w-5 h-5 text-accent mt-0.5" />
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 dark:text-white">
+            <h3 className="font-semibold text-fg">
               Bulk upload new transactions
             </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-sm text-muted mt-1">
               Download template, fill in multiple transactions at once, then upload to add them all
             </p>
           </div>
@@ -331,14 +331,14 @@ export default function BackupManager() {
       </div>
 
       {/* Bulk Transaction Edit Section */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+      <div className="bg-surface rounded-xl border border-line p-6">
         <div className="flex items-start gap-3 mb-4">
           <FileSpreadsheet className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5" />
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 dark:text-white">
+            <h3 className="font-semibold text-fg">
               Bulk transaction updates
             </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-sm text-muted mt-1">
               Export transactions to Excel, edit multiple records at once, then import back
             </p>
           </div>
@@ -387,19 +387,19 @@ export default function BackupManager() {
       {/* Import Preview Modal */}
       {importPreview && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div role="dialog" aria-modal="true" aria-label="Confirm import" className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+          <div role="dialog" aria-modal="true" aria-label="Confirm import" className="bg-surface rounded-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4 text-fg">
               Confirm import
             </h3>
 
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-600" />
+                <CheckCircle className="w-5 h-5 text-positive" />
                 <div>
-                  <div className="font-semibold text-gray-900 dark:text-white">
+                  <div className="font-semibold text-fg">
                     {importPreview.preview.updates} changes detected
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <div className="text-sm text-muted">
                     Ready to apply
                   </div>
                 </div>
@@ -409,10 +409,10 @@ export default function BackupManager() {
                 <div className="flex items-start gap-2">
                   <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
                   <div>
-                    <div className="font-semibold text-gray-900 dark:text-white">
+                    <div className="font-semibold text-fg">
                       {importPreview.preview.errors} errors found
                     </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                    <div className="text-sm text-muted">
                       These rows will be skipped
                     </div>
                   </div>
@@ -421,17 +421,17 @@ export default function BackupManager() {
 
               {/* Preview sample */}
               {importPreview.preview.preview?.toUpdate?.length > 0 && (
-                <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 text-xs">
-                  <div className="font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                <div className="bg-surface-2 rounded-2xl p-3 text-xs">
+                  <div className="font-semibold text-fg mb-2">
                     Sample changes:
                   </div>
                   {importPreview.preview.preview.toUpdate.slice(0, 3).map((u, i) => (
-                    <div key={i} className="text-gray-600 dark:text-gray-400">
+                    <div key={i} className="text-muted">
                       • {Object.keys(u).filter(k => k !== 'id').join(', ')}
                     </div>
                   ))}
                   {importPreview.preview.updates > 3 && (
-                    <div className="text-gray-500 dark:text-gray-500 mt-1">
+                    <div className="text-muted mt-1">
                       ...and {importPreview.preview.updates - 3} more
                     </div>
                   )}
@@ -462,19 +462,19 @@ export default function BackupManager() {
       {/* Upload Preview Modal */}
       {uploadPreview && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div role="dialog" aria-modal="true" aria-label="Confirm upload" className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+          <div role="dialog" aria-modal="true" aria-label="Confirm upload" className="bg-surface rounded-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4 text-fg">
               Confirm upload
             </h3>
 
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-600" />
+                <CheckCircle className="w-5 h-5 text-positive" />
                 <div>
-                  <div className="font-semibold text-gray-900 dark:text-white">
+                  <div className="font-semibold text-fg">
                     {uploadPreview.preview.valid} valid transactions
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <div className="text-sm text-muted">
                     Ready to add
                   </div>
                 </div>
@@ -484,10 +484,10 @@ export default function BackupManager() {
                 <div className="flex items-start gap-2">
                   <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
                   <div>
-                    <div className="font-semibold text-gray-900 dark:text-white">
+                    <div className="font-semibold text-fg">
                       {uploadPreview.preview.errors} errors found
                     </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                    <div className="text-sm text-muted">
                       These rows will be skipped
                     </div>
                   </div>
@@ -496,19 +496,19 @@ export default function BackupManager() {
 
               {/* Preview sample */}
               {uploadPreview.preview.preview?.transactions?.length > 0 && (
-                <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 text-xs">
-                  <div className="font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                <div className="bg-surface-2 rounded-2xl p-3 text-xs">
+                  <div className="font-semibold text-fg mb-2">
                     Sample transactions:
                   </div>
                   {uploadPreview.preview.preview.transactions.slice(0, 3).map((t, i) => (
-                    <div key={i} className="text-gray-600 dark:text-gray-400 mb-1">
+                    <div key={i} className="text-muted mb-1">
                       • {t.date}: ${t.amount} - {t.description || 'No description'}
-                      {t.autoDetected?.type && <span className="text-purple-600 dark:text-purple-400 ml-1">(type detected)</span>}
-                      {t.autoDetected?.category && <span className="text-purple-600 dark:text-purple-400 ml-1">(category matched)</span>}
+                      {t.autoDetected?.type && <span className="text-accent ml-1">(type detected)</span>}
+                      {t.autoDetected?.category && <span className="text-accent ml-1">(category matched)</span>}
                     </div>
                   ))}
                   {uploadPreview.preview.valid > 3 && (
-                    <div className="text-gray-500 dark:text-gray-500 mt-1">
+                    <div className="text-muted mt-1">
                       ...and {uploadPreview.preview.valid - 3} more
                     </div>
                   )}

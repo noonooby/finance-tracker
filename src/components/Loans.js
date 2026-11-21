@@ -461,16 +461,16 @@ export default function Loans({
             disabled={isProcessing}
             className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base ${
               isProcessing
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-green-600 hover:bg-green-700'
-            } text-white`}
+                ? 'bg-surface-2 text-muted border border-line cursor-not-allowed'
+                : 'press bg-surface-2 text-fg border border-line hover:bg-line/60'
+            }`}
             title="Process all overdue loans from all payment sources"
           >
             {isProcessing ? 'Processing...' : 'Process Due Payments'}
           </button>
           <button
             onClick={() => (showAddForm ? resetForm() : setShowAddForm(true))}
-            className="flex items-center gap-1 sm:gap-2 bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 text-sm sm:text-base"
+            className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 text-sm sm:text-base"
           >
             <Plus size={20} />
             {showAddForm ? 'Cancel' : 'Add Loan'}
@@ -480,8 +480,8 @@ export default function Loans({
 
       {/* Processing Results */}
       {processingResults && (
-        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-200'} border rounded-lg p-3 text-sm`}>
-          <div className={darkMode ? 'text-gray-200' : 'text-blue-800'}>
+        <div className={`bg-accent-soft border-accent/30 border rounded-lg p-3 text-sm`}>
+          <div className={'text-accent'}>
             Processed: {processingResults.processed.length} • Failed: {processingResults.failed.length} • Skipped: {processingResults.skipped.length}
           </div>
           {processingResults.processed.length > 0 && (
@@ -519,7 +519,7 @@ export default function Loans({
       {/* Loans List */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {loans.length === 0 ? (
-          <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          <div className={`text-center py-12 text-muted`}>
             <TrendingUp size={48} className="mx-auto mb-3 opacity-30" />
             <p>No Loans Added Yet</p>
           </div>
@@ -534,7 +534,7 @@ export default function Loans({
                 const key = String(normalizeId(loan.id));
                 if (el) loanRefs.current[key] = el;
               }}
-              className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg border p-4 ${
+              className={`bg-surface border-line rounded-2xl border p-4 ${
                 isEditing
                   ? 'ring-2 ring-blue-500 shadow-lg'
                   : focusTarget?.type === 'loan' && normalizeId(focusTarget.id) === normalizeId(loan.id) 
@@ -577,26 +577,28 @@ export default function Loans({
                     )}
                     {loan.connected_payment_source && (
                       <span className={`text-xs px-2 py-0.5 rounded ${
-                        darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700'
+                        'bg-positive/10 text-positive'
                       }`}>
                         Auto-Pay
                       </span>
                     )}
                   </div>
-                  <div className="text-xl sm:text-2xl font-bold text-orange-600 mt-1">
+                  <div className="text-xl sm:text-2xl font-bold tabular-nums text-negative mt-1">
                     {formatCurrency(loan.balance)}
                   </div>
-                  <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
-                    of {formatCurrency(loan.principal)} ({((loan.balance / loan.principal) * 100).toFixed(1)}% remaining)
-                  </div>
+                  {Number(loan.principal) > 0 && (
+                    <div className="text-xs text-muted mt-1">
+                      of {formatCurrency(loan.principal)} ({((loan.balance / loan.principal) * 100).toFixed(1)}% left)
+                    </div>
+                  )}
                   {loan.payment_amount > 0 && (
-                    <div className={`text-sm font-medium mt-1 ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
+                    <div className={`text-sm font-medium mt-1 text-accent`}>
                       Payment: {formatCurrency(loan.payment_amount)}
                     </div>
                   )}
                   <PayoffSummary loan={loan} darkMode={darkMode} />
                   {loan.frequency && (
-                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
+                    <div className={`text-xs text-muted mt-1`}>
                       <span>Frequency: {formatFrequency(loan.frequency)}</span>
                       {loan.recurring_duration_type && (
                         <span className="ml-2">
@@ -618,7 +620,7 @@ export default function Loans({
                     className={`p-1.5 sm:p-2 rounded min-h-[44px] sm:min-h-0 flex items-center justify-center ${
                       pinnedLoans.includes(loan.id)
                         ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
-                        : darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-400 hover:bg-gray-100'
+                        : 'text-muted hover:bg-surface-2'
                     }`}
                     title={pinnedLoans.includes(loan.id) ? 'Unpin loan' : 'Pin loan'}
                   >
@@ -626,20 +628,20 @@ export default function Loans({
                   </button>
                   <button
                     onClick={() => onNavigateToTransactions && onNavigateToTransactions({ loan: loan.id })}
-                    className={`p-2 ${darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'} rounded`}
+                    className={`p-2 text-accent hover:bg-accent-soft rounded`}
                     title="View transactions"
                   >
                     <ListFilter size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
                   <button 
                     onClick={() => handleEdit(loan)} 
-                    className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded`}
+                    className={`p-2 text-accent hover:bg-accent-soft rounded`}
                   >
                     <Edit2 size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
                   <button 
                     onClick={() => handleDelete(loan.id)} 
-                    className={`p-2 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded`}
+                    className={`p-2 text-negative hover:bg-negative/10 rounded`}
                   >
                     <X size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
@@ -648,8 +650,8 @@ export default function Loans({
 
               {/* Next Payment */}
               {loan.next_payment_date && (
-                <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                  <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Next Payment:</span>
+                <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b border-line`}>
+                  <span className={'text-muted'}>Next Payment:</span>
                   <div className="text-right">
                     <div className="font-medium">{formatDate(loan.next_payment_date)}</div>
                     {getDaysUntil(loan.next_payment_date) !== null && (
@@ -658,7 +660,7 @@ export default function Loans({
                           ? 'text-red-600 font-bold'
                           : getDaysUntil(loan.next_payment_date) <= (loan.alert_days || 7) 
                           ? 'text-red-600 font-semibold' 
-                          : darkMode ? 'text-gray-400' : 'text-gray-500'
+                          : 'text-muted'
                       }`}>
                         {getDaysUntil(loan.next_payment_date) < 0
                           ? `${Math.abs(getDaysUntil(loan.next_payment_date))} days overdue!`
