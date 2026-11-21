@@ -147,7 +147,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       <div className={`border rounded-lg p-4 space-y-3 ${card}`}>
         {!aiReady && (
           <p role="status" className="text-sm rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 px-3 py-2">
-            Reading photos is not switched on for this app yet. You can still add transactions with the + button.
+            Reading photos needs a Gemini key. The owner of the app adds it once in Settings. Until then you can add transactions with the + button.
           </p>
         )}
         <div className="grid grid-cols-2 gap-3">

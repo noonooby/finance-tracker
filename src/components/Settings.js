@@ -12,6 +12,7 @@ import CategoryBudgetsSection from './settings/CategoryBudgetsSection';
 import SuggestionsSection from './settings/SuggestionsSection';
 import BackupSection from './settings/BackupSection';
 import DangerZoneSection from './settings/DangerZoneSection';
+import GeminiKeyCard from './settings/GeminiKeyCard';
 
 export default function Settings({
   darkMode,
@@ -52,6 +53,7 @@ export default function Settings({
         </button>
       </div>
 
+      <GeminiKeyCard darkMode={darkMode} />
       <DisplaySection
         {...sectionProps('appearance')}
         {...settingProps}

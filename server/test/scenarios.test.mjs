@@ -17,6 +17,8 @@ process.env.NODE_ENV = 'development';
 process.env.DEV_USER = 'scenario@test.local';
 process.env.READER_STUB = path.join(tmp, 'reading.json');
 delete process.env.GEMINI_API_KEY;
+delete process.env.ALLOWED_EMAILS;
+process.env.GEMINI_CHECK_STUB = 'GOODKEY_abcdefghijklmnopqrstuvwxyz';
 
 const require = createRequire(import.meta.url);
 const { server } = require(path.join(root, 'server', 'server.js'));
@@ -292,3 +294,39 @@ test('month end: spendable now, plus pay due, minus payments due', async () => {
 });
 
 test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
+
+test('gemini key: owner sets it once, others refused, never returned', async () => {
+  const GOOD = process.env.GEMINI_CHECK_STUB;
+  const call = async (token, method, body) => {
+    const r = await realFetch(base + '/api/gemini-key', { method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: body && JSON.stringify(body) });
+    return { status: r.status, text: await r.text() };
+  };
+  const login = async (email) => (await (await realFetch(base + '/api/dev-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) })).json()).token;
+  const owner = await login('scenario@test.local');
+  const other = await login('someone.else@test.local');
+  const keyFile = path.join(path.dirname(process.env.DB_PATH), 'gemini.key');
+  try { fs.unlinkSync(keyFile); } catch {}
+
+  assert.deepEqual(JSON.parse((await call(owner, 'GET')).text), { set: false, canSet: true });
+  assert.deepEqual(JSON.parse((await call(other, 'GET')).text), { set: false, canSet: false });
+  // Not the owner: refused.
+  assert.equal((await call(other, 'POST', { key: GOOD })).status, 403);
+  // A key Google would not accept: refused, nothing kept.
+  assert.equal((await call(owner, 'POST', { key: 'BADKEY_abcdefghijklmnopqrstuvwxyz' })).status, 400);
+  assert.equal(fs.existsSync(keyFile), false);
+  // The owner sets it once.
+  const ok = await call(owner, 'POST', { key: GOOD });
+  assert.equal(ok.status, 200);
+  assert.equal((fs.statSync(keyFile).mode & 0o777), 0o600);
+  // A second set or change is refused, even by the owner.
+  assert.equal((await call(owner, 'POST', { key: GOOD + 'x' })).status, 409);
+  assert.equal(fs.readFileSync(keyFile, 'utf8'), GOOD);
+  // No response carries the key or a piece of it.
+  const cfg = await (await realFetch(base + '/api/config')).text();
+  for (const t of [ok.text, cfg, (await call(owner, 'GET')).text, (await call(other, 'GET')).text, (await call(owner, 'POST', { key: GOOD })).text]) {
+    assert.ok(!t.includes(GOOD.slice(0, 8)) && !t.includes(GOOD.slice(-8)), t);
+  }
+  assert.deepEqual(JSON.parse(cfg).ai, true);
+  assert.deepEqual(JSON.parse((await call(owner, 'GET')).text), { set: true, canSet: false });
+  fs.unlinkSync(keyFile);
+});

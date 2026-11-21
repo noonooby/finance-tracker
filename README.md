@@ -79,3 +79,13 @@ In the server's deploy folder (the one with `compose.yml`):
 4. DNS: an A record for `finance.nobodystack.com` to the server's address.
 5. Add `finance-data` to the nightly backup in `backup.sh`, and `https://finance.nobodystack.com/api/config` to the uptime check.
 6. `docker compose up -d --build finance caddy`
+
+## Gemini key (screenshot reading)
+
+The owner pastes the key once in Settings. Owner means: anyone in `ALLOWED_EMAILS` when it is set, otherwise the first account that signed in. The server checks the key with Google, saves it to `gemini.key` next to the database (mode 600, outside `finance.db`, so the nightly backup does not copy it), and then refuses any further set or change. No endpoint returns it. `GEMINI_API_KEY` in `.env` also counts as set.
+
+To clear it (for example after revoking the key), on the server:
+
+    cd ~/stack && sudo rm finance-data/gemini.key && docker compose restart finance
+
+The box then shows again in Settings for the owner.

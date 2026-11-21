@@ -29,7 +29,7 @@ const dayDiff = (a, b) => Math.abs((Date.parse(a) - Date.parse(b)) / 864e5);
 
 async function callGemini(mime, b64, today) {
   if (process.env.READER_STUB) return JSON.parse(require('node:fs').readFileSync(process.env.READER_STUB, 'utf8'));
-  const key = process.env.GEMINI_API_KEY;
+  const key = require('./keystore').get();
   if (!key) { const e = new Error('Screenshot reading is not set up on this server (no Gemini key).'); e.status = 503; throw e; }
   const prompt = PROMPT.replace('YEAR_NOW', today.slice(0, 4)).replace('TODAY', today);
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {

@@ -291,7 +291,10 @@ route('POST', '/api/logout', (req) => { const t = (req.headers.authorization || 
 route('POST', '/api/db', (req, b) => runQuery(authUser(req).id, b));
 route('POST', '/api/money', (req, b) => money(authUser(req).id, b));
 route('POST', '/api/transactions/:id/reverse', (req, b, [id]) => reverse(authUser(req).id, id, b));
-route('GET', '/api/config', () => ({ google: !!(G_ID && G_SECRET), dev: !!DEV_USER, ai: !!process.env.GEMINI_API_KEY }));
+route('GET', '/api/config', () => ({ google: !!(G_ID && G_SECRET), dev: !!DEV_USER, ai: require('./keystore').isSet() }));
+// The Gemini key: whether it is set and whether this user may set it. Never the key itself.
+route('GET', '/api/gemini-key', (req) => { const u = authUser(req); const ks = require('./keystore'); return { set: ks.isSet(), canSet: !ks.isSet() && ks.mayManage(db, u) }; });
+route('POST', '/api/gemini-key', async (req, b) => { const u = authUser(req); await require('./keystore').set(db, u, b.key, fail); return { set: true }; });
 route('POST', '/api/read-screenshot', async (req, b) => {
   const uid = authUser(req).id;
   const all = (t) => selectRows(uid, { table: t, filters: [] });
