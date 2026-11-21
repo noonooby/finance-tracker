@@ -12,13 +12,17 @@ const toastConfig = {
   success: {
     duration: 3000,
     style: {
-      background: '#10B981',
-      color: '#fff',
+      background: 'rgb(var(--surface))',
+      color: 'rgb(var(--text))',
+      border: '1px solid rgb(var(--border))',
+      borderRadius: '14px',
+      padding: '10px 14px',
       fontWeight: '500',
+      boxShadow: '0 6px 24px rgb(0 0 0 / 0.08)',
     },
     iconTheme: {
-      primary: '#fff',
-      secondary: '#10B981',
+      primary: 'rgb(var(--positive))',
+      secondary: 'rgb(var(--surface))',
     },
   },
   
@@ -26,13 +30,17 @@ const toastConfig = {
   error: {
     duration: 5000,
     style: {
-      background: '#EF4444',
-      color: '#fff',
+      background: 'rgb(var(--surface))',
+      color: 'rgb(var(--text))',
+      border: '1px solid rgb(var(--border))',
+      borderRadius: '14px',
+      padding: '10px 14px',
       fontWeight: '500',
+      boxShadow: '0 6px 24px rgb(0 0 0 / 0.08)',
     },
     iconTheme: {
-      primary: '#fff',
-      secondary: '#EF4444',
+      primary: 'rgb(var(--negative))',
+      secondary: 'rgb(var(--surface))',
     },
   },
   
@@ -40,22 +48,30 @@ const toastConfig = {
   info: {
     duration: 3000,
     style: {
-      background: '#3B82F6',
-      color: '#fff',
+      background: 'rgb(var(--surface))',
+      color: 'rgb(var(--text))',
+      border: '1px solid rgb(var(--border))',
+      borderRadius: '14px',
+      padding: '10px 14px',
       fontWeight: '500',
+      boxShadow: '0 6px 24px rgb(0 0 0 / 0.08)',
     },
     iconTheme: {
-      primary: '#fff',
-      secondary: '#3B82F6',
+      primary: 'rgb(var(--accent))',
+      secondary: 'rgb(var(--surface))',
     },
   },
   
   // Loading toasts
   loading: {
     style: {
-      background: '#6B7280',
-      color: '#fff',
+      background: 'rgb(var(--surface))',
+      color: 'rgb(var(--text))',
+      border: '1px solid rgb(var(--border))',
+      borderRadius: '14px',
+      padding: '10px 14px',
       fontWeight: '500',
+      boxShadow: '0 6px 24px rgb(0 0 0 / 0.08)',
     },
   },
 };

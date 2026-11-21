@@ -11,7 +11,7 @@ const TABS = [
   { path: '/more', icon: Menu, label: 'More', also: ['/cards', '/loans', '/income', '/activity', '/reports', '/settings', '/help'] },
 ];
 
-export default function BottomNavigation({ darkMode }) {
+export default function BottomNavigation() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const isActive = (t) => (t.path === '/' ? pathname === '/' || pathname === '/dashboard' : pathname.startsWith(t.path) || (t.also || []).some((p) => pathname.startsWith(p)));
@@ -19,7 +19,7 @@ export default function BottomNavigation({ darkMode }) {
   return (
     <nav
       aria-label="Main"
-      className={`fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur ${darkMode ? 'bg-gray-900/90 border-gray-800' : 'bg-white/90 border-gray-200'}`}
+      className="fixed bottom-0 inset-x-0 z-30 border-t border-line/70 bg-background/85 backdrop-blur-md"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)', touchAction: 'manipulation' }}
     >
       <div className="grid grid-cols-5 max-w-3xl mx-auto">
@@ -32,14 +32,16 @@ export default function BottomNavigation({ darkMode }) {
               type="button"
               onClick={() => navigate(t.path)}
               aria-current={active ? 'page' : undefined}
-              className={`tab flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${
-                active ? 'text-blue-600 dark:text-blue-400' : darkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}
+              className={`tab relative flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-[11px] font-medium ${active ? 'text-accent' : 'text-muted hover:text-fg'}`}
             >
-              <span className={`tab-icon px-4 py-1 rounded-full ${active ? (darkMode ? 'bg-blue-500/20' : 'bg-blue-50') : ''}`}>
-                <Icon size={20} />
+              <span className={`tab-icon px-4 py-1 rounded-full ${active ? 'bg-accent-soft' : ''}`}>
+                <Icon size={20} strokeWidth={active ? 2.25 : 1.75} aria-hidden="true" />
               </span>
               {t.label}
+              <span
+                aria-hidden="true"
+                className={`tab-dot absolute top-0 h-0.5 w-6 rounded-full bg-accent ${active ? 'opacity-100 scale-x-100' : 'opacity-0 scale-x-0'}`}
+              />
             </button>
           );
         })}

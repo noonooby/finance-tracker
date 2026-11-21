@@ -15,19 +15,19 @@ export function MainLayout() {
   const { openAddTransaction } = useUI();
   const location = useLocation();
   const navigate = useNavigate();
-  const iconBtn = `p-2 rounded-full ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`;
+  const iconBtn = 'p-2 rounded-xl text-muted hover:bg-surface-2 hover:text-fg';
 
   return (
-    <div className={`h-screen flex flex-col ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-      <header className={`${darkMode ? 'bg-gray-900/90 border-gray-800' : 'bg-white/90 border-gray-200'} backdrop-blur border-b px-4 py-3 flex-shrink-0 z-10`}
-        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
+    <div className="h-screen flex flex-col bg-background text-fg">
+      <header className="bg-background/85 backdrop-blur-md border-b border-line/70 px-4 py-2.5 flex-shrink-0 z-10"
+        style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))' }}>
         <div className="flex justify-between items-center max-w-3xl mx-auto">
-          <button type="button" onClick={() => navigate('/')} className="flex items-center gap-2 text-left">
+          <button type="button" onClick={() => navigate('/')} className="press flex items-center gap-2 text-left rounded-xl" aria-label="Go to Home">
             <img src="/icon.svg" alt="" width="28" height="28" className="rounded-lg" />
             <span className="text-lg font-semibold tracking-tight">Finance</span>
           </button>
           <div className="flex items-center gap-1">
-            {(isMigrating || dataLoading) && <span className="text-xs text-gray-500 mr-2" role="status">Loading</span>}
+            {(isMigrating || dataLoading) && <span className="text-xs text-muted mr-2 flex items-center gap-1.5" role="status"><span className="spinner" aria-hidden="true" />Loading</span>}
             <button type="button" onClick={() => navigate('/help')} className={iconBtn} aria-label="Help">
               <HelpCircle size={22} />
             </button>
@@ -39,7 +39,7 @@ export function MainLayout() {
       </header>
 
       {loadError && (
-        <div role="alert" className="bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-200 text-sm px-4 py-2 flex items-center justify-between gap-3">
+        <div role="alert" className="bg-negative/10 text-negative text-sm px-4 py-2 flex items-center justify-between gap-3">
           <span>Could not load your data. Check your connection.</span>
           <button type="button" onClick={() => loadAllData()} className="font-medium underline">Try again</button>
         </div>
@@ -56,7 +56,7 @@ export function MainLayout() {
       <button
         type="button"
         onClick={openAddTransaction}
-        className="press fixed right-4 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center z-20"
+        className="press fixed right-4 w-14 h-14 bg-accent text-accent-contrast rounded-2xl shadow-md shadow-accent/20 hover:opacity-90 flex items-center justify-center z-20"
         style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))', touchAction: 'manipulation' }}
         aria-label="Add a transaction"
       >

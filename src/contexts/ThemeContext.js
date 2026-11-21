@@ -4,18 +4,83 @@ import { getUserPreferences, setDisplayDensity as saveDisplayDensity } from '../
 
 export const ThemeContext = createContext(null);
 
+// Accent colours, in picker order. Values are the light-mode swatch colours.
+export const THEMES = [
+  { id: 'blue', name: 'Blue', color: '#2563eb' },
+  { id: 'purple', name: 'Purple', color: '#4f46e5' },
+  { id: 'teal', name: 'Teal', color: '#0d9488' },
+  { id: 'green', name: 'Green', color: '#16a34a' },
+  { id: 'orange', name: 'Orange', color: '#ea580c' },
+  { id: 'rose', name: 'Rose', color: '#db2777' },
+  { id: 'graphite', name: 'Graphite', color: '#52525b' },
+];
+const THEME_IDS = THEMES.map((t) => t.id);
+
+const read = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const write = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+const systemDark = () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+// Fade colours briefly while the theme changes, then drop the transition so normal use stays snappy.
+let animTimer;
+const animateThemeChange = () => {
+  const r = document.documentElement;
+  r.classList.add('theme-anim');
+  clearTimeout(animTimer);
+  animTimer = setTimeout(() => r.classList.remove('theme-anim'), 320);
+};
+
 export function ThemeProvider({ children }) {
-  // Until the saved choice loads, follow the phone's setting; remember the last choice on this device to avoid a flash.
-  const [darkMode, setDarkMode] = useState(() => {
-    try { const v = localStorage.getItem('finance_dark'); if (v !== null) return v === '1'; } catch {}
-    return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  // 'light', 'dark' or 'system'. Remembered on this device; the first-paint script in index.html reads the same keys.
+  const [colorMode, setColorModeState] = useState(() => {
+    const m = read('finance_mode');
+    if (m === 'light' || m === 'dark' || m === 'system') return m;
+    const d = read('finance_dark');
+    return d === null ? 'system' : d === '1' ? 'dark' : 'light';
   });
+  const [systemIsDark, setSystemIsDark] = useState(systemDark);
+  const [theme, setThemeState] = useState(() => {
+    const t = read('finance_theme');
+    return THEME_IDS.includes(t) ? t : 'blue';
+  });
+  const darkMode = colorMode === 'system' ? systemIsDark : colorMode === 'dark';
+
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', !!darkMode);
+    if (!window.matchMedia) return undefined;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const on = (e) => setSystemIsDark(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', on); else mq.addListener(on);
+    return () => { if (mq.removeEventListener) mq.removeEventListener('change', on); else mq.removeListener(on); };
+  }, []);
+
+  useEffect(() => {
+    const r = document.documentElement;
+    r.classList.toggle('dark', !!darkMode);
+    r.setAttribute('data-theme', theme);
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', darkMode ? '#111827' : '#ffffff');
-    try { localStorage.setItem('finance_dark', darkMode ? '1' : '0'); } catch {}
-  }, [darkMode]);
+    if (meta) {
+      const bg = getComputedStyle(r).getPropertyValue('--background').trim();
+      meta.setAttribute('content', bg ? `rgb(${bg.split(/\s+/).join(',')})` : (darkMode ? '#101014' : '#f6f6f8'));
+    }
+    write('finance_dark', darkMode ? '1' : '0');
+  }, [darkMode, theme]);
+
+  const setColorMode = useCallback((mode) => {
+    if (!['light', 'dark', 'system'].includes(mode)) return;
+    animateThemeChange();
+    setColorModeState(mode);
+    write('finance_mode', mode);
+    if (mode !== 'system') dbOperation('settings', 'put', { key: 'darkMode', value: mode === 'dark' }).catch(() => {});
+  }, []);
+
+  const setDarkMode = useCallback((on) => setColorMode(on ? 'dark' : 'light'), [setColorMode]);
+
+  const setTheme = useCallback((id) => {
+    if (!THEME_IDS.includes(id)) return;
+    animateThemeChange();
+    setThemeState(id);
+    write('finance_theme', id);
+  }, []);
+
   const [showCashInDashboard, setShowCashInDashboard] = useState(false);
   const [displayDensity, setDisplayDensityState] = useState('comfortable');
   const [alertSettings, setAlertSettings] = useState({ 
@@ -30,7 +95,8 @@ export function ThemeProvider({ children }) {
         const settings = await dbOperation('settings', 'getAll');
         
         const darkModeSetting = settings?.find(s => s.key === 'darkMode');
-        if (darkModeSetting) setDarkMode(!!darkModeSetting.value);
+        // A choice made on this device wins; otherwise use the saved account setting.
+        if (darkModeSetting && !read('finance_mode')) setColorModeState(darkModeSetting.value ? 'dark' : 'light');
         
         const showCashSetting = settings?.find(s => s.key === 'showCashInDashboard');
         setShowCashInDashboard(showCashSetting?.value || false);
@@ -61,11 +127,7 @@ export function ThemeProvider({ children }) {
     loadSettings();
   }, []);
 
-  const toggleDarkMode = useCallback(async () => {
-    const newMode = !darkMode;
-    setDarkMode(newMode);
-    await dbOperation('settings', 'put', { key: 'darkMode', value: newMode });
-  }, [darkMode]);
+  const toggleDarkMode = useCallback(() => setColorMode(darkMode ? 'light' : 'dark'), [darkMode, setColorMode]);
 
   const updateAlertSettings = useCallback(async (updates) => {
     const nextSettings = {
@@ -118,6 +180,11 @@ export function ThemeProvider({ children }) {
     toggleCashDisplay,
     setDisplayDensity,
     setDarkMode,
+    colorMode,
+    setColorMode,
+    theme,
+    setTheme,
+    themes: THEMES,
     setShowCashInDashboard,
     setAlertSettings,
   };

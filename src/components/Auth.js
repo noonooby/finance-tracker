@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { server } from '../utils/server';
 
-export default function Auth({ darkMode }) {
+export default function Auth() {
   const [config, setConfig] = useState(null);
   const [message, setMessage] = useState('');
 
@@ -17,24 +17,25 @@ export default function Auth({ darkMode }) {
     try { await server.auth.devSignIn(); } catch (e) { setMessage(e.message); }
   };
 
-  const muted = darkMode ? 'text-gray-400' : 'text-gray-600';
+  const muted = 'text-muted';
   return (
-    <div className={`min-h-screen flex items-center justify-center px-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      <div className={`max-w-md w-full space-y-6 p-8 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg`}>
-        <div>
-          <h1 className={`text-3xl font-bold text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>Finance Tracker</h1>
+    <div className="min-h-screen flex items-center justify-center px-4 bg-background text-fg">
+      <div className="page-enter max-w-sm w-full"><div className="space-y-6 p-8 bg-surface border border-line rounded-2xl">
+        <div className="flex flex-col items-center">
+          <img src="/icon.svg" alt="" width="48" height="48" className="rounded-2xl mb-4" />
+          <h1 className="text-2xl font-bold tracking-tight text-center">Finance Tracker</h1>
           <p className={`mt-2 text-center ${muted}`}>Sign in with your Google account to see your money.</p>
         </div>
 
-        {message && <div role="alert" className="text-sm text-red-600 text-center">{message}</div>}
+        {message && <div role="alert" className="text-sm text-negative text-center bg-negative/10 rounded-xl px-3 py-2">{message}</div>}
 
         {config === null ? (
-          <p className={`text-center text-sm ${muted}`}>Loading...</p>
+          <div className="skeleton h-11" role="status" aria-label="Loading sign-in options" />
         ) : config.google ? (
           <button
             type="button"
             onClick={() => server.auth.signInWithGoogle()}
-            className="w-full flex items-center justify-center gap-3 border border-gray-300 bg-white text-gray-800 py-2.5 px-4 rounded-lg hover:bg-gray-50 font-medium"
+            className="press w-full flex items-center justify-center gap-3 border border-line bg-surface text-fg py-2.5 px-4 rounded-xl hover:bg-surface-2 font-medium"
           >
             <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
               <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/>
@@ -49,10 +50,11 @@ export default function Auth({ darkMode }) {
         )}
 
         {config && config.dev && (
-          <button type="button" onClick={devSignIn} className="w-full bg-gray-600 text-white py-2 px-4 rounded-lg hover:bg-gray-700 font-medium">
+          <button type="button" onClick={devSignIn} className="press w-full bg-surface-2 text-fg border border-line py-2.5 px-4 rounded-xl hover:bg-line/60 font-medium">
             Sign in as the test user
           </button>
         )}
+      </div>
       </div>
     </div>
   );

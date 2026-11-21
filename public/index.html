@@ -20,13 +20,27 @@
         box-sizing: border-box;
       }
       body {
+        background: #f6f6f8;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
           'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
           sans-serif;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
+      html.dark body { background: #101014; color: #eeeef3; }
     </style>
+    <script>
+      // Apply the saved colour theme and light or dark mode before the first paint.
+      (function () {
+        var r = document.documentElement, mode = null, theme = null, dark = false;
+        try { mode = localStorage.getItem('finance_mode'); theme = localStorage.getItem('finance_theme'); if (!mode) { var d = localStorage.getItem('finance_dark'); if (d !== null) mode = d === '1' ? 'dark' : 'light'; } } catch (e) {}
+        if (mode === 'dark') dark = true; else if (mode !== 'light') dark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) r.classList.add('dark');
+        if (theme) r.setAttribute('data-theme', theme);
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', dark ? '#101014' : '#f6f6f8');
+      })();
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
