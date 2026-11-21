@@ -76,7 +76,6 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
               { key: 'availableCash', value: result.available_cash },
               { key: 'darkMode', value: result.dark_mode },
               { key: 'alertSettings', value: result.alert_settings },
-              { key: 'cashInHand', value: result.cash_in_hand || 0 },
               { key: 'showCashInDashboard', value: result.show_cash_in_dashboard || false }
             ];
           }
@@ -105,9 +104,6 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
           
           if (result && data === 'availableCash') {
             return { key: 'availableCash', value: result.available_cash };
-          }
-          if (result && data === 'cashInHand') {
-            return { key: 'cashInHand', value: result.cash_in_hand || 0 };
           }
           if (result && data === 'showCashInDashboard') {
             return { key: 'showCashInDashboard', value: result.show_cash_in_dashboard || false };
@@ -139,7 +135,6 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
             available_cash: data.key === 'availableCash' ? data.value : undefined,
             dark_mode: data.key === 'darkMode' ? data.value : undefined,
             alert_settings: data.key === 'alertSettings' ? data.value : undefined,
-            cash_in_hand: data.key === 'cashInHand' ? data.value : undefined,
             show_cash_in_dashboard: data.key === 'showCashInDashboard' ? data.value : undefined
           };
           
@@ -346,7 +341,6 @@ export const deleteAllUserData = async () => {
         available_cash: 0,
         dark_mode: false,
         alert_settings: { defaultDays: 7 },
-        cash_in_hand: 0,
         show_cash_in_dashboard: false,
         theme: 'auto',
         currency: 'USD',
@@ -359,10 +353,9 @@ export const deleteAllUserData = async () => {
         loan_alert_days: 7,
         low_balance_alerts: true,
         low_balance_threshold: 100,
-        cash_in_hand_low_threshold: 50,
         email_notifications: false,
         reminder_time: '09:00',
-        default_payment_method: 'cash_in_hand',
+        default_payment_method: '',
         auto_categorization: true,
         round_up_transactions: false,
         monthly_budget_enabled: false,
@@ -555,52 +548,6 @@ export async function transferBetweenAccounts(fromAccountId, toAccountId, amount
   };
 }
 
-export async function getCashInHand() {
-  try {
-    const setting = await dbOperation('settings', 'get', 'cashInHand');
-    return Number(setting?.value) || 0;
-  } catch (error) {
-    console.error('Error getting cash in hand:', error);
-    return 0;
-  }
-}
-
-// The user states how much cash they hold: recorded as a 'Balance correction' so it can be undone.
-export async function updateCashInHand(newAmount) {
-  const current = await getCashInHand();
-  return recordAdjustment({ target: 'cash_in_hand', newBalance: newAmount, current, date: localDate() }, {});
-}
-
-// Bank to cash, or cash to bank, as one step on the server.
-async function moveCash(accountId, amount, toCash) {
-  const bankAccounts = await getAllBankAccounts();
-  const account = bankAccounts.find((a) => String(a.id) === String(accountId));
-  if (!account) throw new Error('Account not found');
-  const currentCash = await getCashInHand();
-  const bank = `bank_account:${accountId}`;
-  const result = await recordTransfer({
-    amount,
-    from: toCash ? bank : 'cash_in_hand',
-    to: toCash ? 'cash_in_hand' : bank,
-    date: localDate(),
-    description: toCash ? `Withdrew cash from ${account.name}` : `Deposited cash to ${account.name}`,
-    extra: { type: toCash ? 'cash_withdrawal' : 'cash_deposit' },
-  }, { bankAccounts });
-  const value = Number(result.transaction?.amount) || Number(amount);
-  const previousBankBalance = Number(account.balance) || 0;
-  return {
-    accountName: account.name,
-    accountId,
-    amount: value,
-    previousBankBalance,
-    newBankBalance: previousBankBalance + (toCash ? -value : value),
-    previousCashInHand: currentCash,
-    newCashInHand: currentCash + (toCash ? value : -value),
-    transactionId: result.transaction?.id
-  };
-}
-
-export const withdrawCashFromBank = (accountId, amount) => moveCash(accountId, amount, true);
 
 export async function getCardTransactions(cardId, limit = 5) {
   try {
@@ -686,4 +633,3 @@ export async function getBankAccountTransactions(accountId, limit = 5) {
   }
 }
 
-export const depositCashToBank = (accountId, amount) => moveCash(accountId, amount, false);

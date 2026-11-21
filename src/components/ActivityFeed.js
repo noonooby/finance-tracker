@@ -312,7 +312,6 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       case 'income': return <DollarSign size={16} />;
       case 'bank_account': return <Building2 size={16} />;
       case 'cash': return <Wallet size={16} />;
-      case 'cash_in_hand': return <Wallet size={16} />;
       case 'category_budget': return <DollarSign size={16} />;
       default: return <Activity size={16} />;
     }
@@ -557,7 +556,6 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
             <option value="bank_account">Bank Accounts</option>
             <option value="income">Income</option>
             <option value="fund">Reserved Funds</option>
-            <option value="cash_in_hand">Cash in Hand</option>
             <option value="category_budget">Category Budgets</option>
           </select>
 

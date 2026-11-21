@@ -34,19 +34,23 @@ const focusBalanceInput = () => {
   }, 50);
 };
 
+// The account remembered for a gift card purchase, or nothing when none was remembered (cash before it was an account),
+// so the form keeps its default account.
+const rememberedSource = (contextData) => (contextData.paymentSourceId
+  ? { giftCardPaymentMethod: contextData.paymentSource, giftCardPaymentMethodId: contextData.paymentSourceId }
+  : {});
+
 export function useCreditCardActions({
   creditCards,
   categories,
   alertSettings,
   onUpdate,
   onUpdateCash,
-  bankAccounts,
-  cashInHand,
-  onUpdateCashInHand
+  bankAccounts
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [formData, setFormData] = useState(() => emptyCardForm(alertSettings.defaultDays));
+  const [formData, setFormData] = useState(() => emptyCardForm(alertSettings.defaultDays, bankAccounts));
   const [processingResults, setProcessingResults] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [pinnedCards, setPinnedCards] = useState([]);
@@ -61,8 +65,6 @@ export function useCreditCardActions({
   const { createGiftCardPurchaseTransaction } = useGiftCardPurchase({
     creditCards,
     bankAccounts,
-    cashInHand,
-    onUpdateCashInHand,
     onUpdateCash
   });
 
@@ -89,8 +91,7 @@ export function useCreditCardActions({
             ...prev,
             purchaseAmount: contextData.originalValue || '',
             purchaseAmountPaid: contextData.purchaseAmount || contextData.originalValue || '',
-            giftCardPaymentMethod: contextData.paymentSource || 'cash_in_hand',
-            giftCardPaymentMethodId: contextData.paymentSourceId || null
+            ...rememberedSource(contextData)
           }));
 
           setTimeout(() => {
@@ -134,8 +135,7 @@ export function useCreditCardActions({
         name: giftCardContext.card_name,
         purchaseAmount: contextData.originalValue || '',
         purchaseAmountPaid: contextData.purchaseAmount || contextData.originalValue || '',
-        giftCardPaymentMethod: contextData.paymentSource || 'cash_in_hand',
-        giftCardPaymentMethodId: contextData.paymentSourceId || null
+        ...rememberedSource(contextData)
       }));
       focusBalanceInput();
     } catch (error) {
@@ -157,7 +157,7 @@ export function useCreditCardActions({
   };
 
   const resetForm = () => {
-    setFormData(emptyCardForm(alertSettings.defaultDays));
+    setFormData(emptyCardForm(alertSettings.defaultDays, bankAccounts));
     setShowAddForm(false);
     setEditingItem(null);
     loadRecentCardNames().catch(console.error);
@@ -165,13 +165,13 @@ export function useCreditCardActions({
   };
 
   const handleEdit = async (card) => {
-    setFormData(formFromCard(card, alertSettings.defaultDays));
+    setFormData(formFromCard(card, alertSettings.defaultDays, bankAccounts));
     setEditingItem(card);
     setShowAddForm(true);
   };
 
   const handleAdd = async () => {
-    const invalid = validateCardForm(formData);
+    const invalid = validateCardForm(formData, !!editingItem);
     if (invalid) {
       showToast.error(invalid);
       return;
@@ -258,7 +258,7 @@ export function useCreditCardActions({
     setProcessingResults(null);
 
     try {
-      const results = await processOverdueCreditCards(creditCards, bankAccounts, cashInHand);
+      const results = await processOverdueCreditCards(creditCards, bankAccounts);
       await onUpdate();
       setProcessingResults(results);
 
@@ -298,7 +298,7 @@ export function useCreditCardActions({
         giftCardId: card.id,
         amount: amountAdded,
         cost: amountPaid,
-        source: sourceType === 'cash_in_hand' ? 'cash_in_hand' : `${sourceType}:${sourceId}`,
+        source: `${sourceType}:${sourceId}`,
         date: opForm.date,
         description: text.description,
         extra: {

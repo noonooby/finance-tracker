@@ -32,7 +32,7 @@ import {
 } from '../utils/reportTemplatesManager';
 import { showToast } from '../utils/toast';
 
-export default function Reports({ darkMode, categories, cashInHand = 0 }) {
+export default function Reports({ darkMode, categories }) {
   const [transactions, setTransactions] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -698,7 +698,6 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
               transactions={transactions}
               categories={categories}
               bankAccounts={bankAccounts}
-              cashInHand={cashInHand}
               onExportExcel={handleExportExcel}
               onExportCSV={handleExportCSV}
             />

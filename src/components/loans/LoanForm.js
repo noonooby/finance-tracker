@@ -27,12 +27,12 @@ export default function LoanForm({
       { value: '', label: 'None (Manual Payment)' }
     ];
 
-    // Add bank accounts (primary payment method)
+    // Add accounts (cash is one of them)
     if (bankAccounts && bankAccounts.length > 0) {
       bankAccounts.forEach(account => {
         sources.push({
           value: `bank_account:${account.id}`,
-          label: `Bank Account: ${account.name}${account.is_primary ? ' (Primary)' : ''}`
+          label: `Account: ${account.name}${account.is_primary ? ' (Primary)' : ''}`
         });
       });
     }
@@ -46,12 +46,6 @@ export default function LoanForm({
         });
       });
     }
-
-    // Add cash in hand
-    sources.push({
-      value: 'cash_in_hand',
-      label: 'Cash in Hand'
-    });
 
     return sources;
   };
@@ -74,8 +68,8 @@ export default function LoanForm({
   };
 
   const getCurrentPaymentSourceValue = () => {
-    if (!formData.connectedPaymentSource) return '';
-    if (formData.connectedPaymentSource === 'cash_in_hand') return 'cash_in_hand';
+    // A source with no account (cash before it was an account) counts as none.
+    if (!formData.connectedPaymentSource || !formData.connectedPaymentSourceId) return '';
     return `${formData.connectedPaymentSource}:${formData.connectedPaymentSourceId}`;
   };
 

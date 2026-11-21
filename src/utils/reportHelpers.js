@@ -218,7 +218,7 @@ export const groupByPaymentMethod = (transactions) => {
  */
 const getPaymentMethodName = (method) => {
   const names = {
-    cash_in_hand: 'Cash in Hand',
+    cash_in_hand: 'Cash', // old records only
     bank_account: 'Bank Account',
     credit_card: 'Credit Card',
     loan: 'Loan',

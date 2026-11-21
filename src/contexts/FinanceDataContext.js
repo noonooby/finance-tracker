@@ -2,8 +2,6 @@ import React, { createContext, useState, useCallback, useMemo, useRef } from 're
 import { 
   dbOperation,
   getAllBankAccounts,
-  getCashInHand,
-  updateCashInHand as recordCashInHand
 } from '../utils/db';
 import { DEFAULT_CATEGORIES, calculateTotalBankBalance } from '../utils/helpers';
 import { processDueIncomeSchedules, processOverdueLoanPayments, processOverdueCreditCardPayments } from '../utils/schedules';
@@ -20,10 +18,8 @@ export function FinanceDataProvider({ children }) {
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [bankAccounts, setBankAccounts] = useState([]);
   
-  // Cash states
+  // Money held in accounts (cash is one of the bank accounts)
   const [availableCash, setAvailableCash] = useState(0);
-  const [cashInHand, setCashInHand] = useState(0);
-  const [cashAsOf, setCashAsOf] = useState(null);
   const [investments, setInvestments] = useState([]);
   const [assets, setAssets] = useState([]);
   
@@ -111,10 +107,6 @@ export function FinanceDataProvider({ children }) {
     try {
       // PHASE 1: Load critical settings first
       const settings = await dbOperation('settings', 'getAll');
-      
-      const cashInHandSetting = settings?.find(s => s.key === 'cashInHand');
-      setCashInHand(Number(cashInHandSetting?.value) || 0);
-      setCashAsOf(cashInHandSetting?.balance_as_of || null);
 
       const cashSetting = settings?.find(s => s.key === 'availableCash');
       const cashValue = Number(cashSetting?.value) || 0;
@@ -157,8 +149,8 @@ export function FinanceDataProvider({ children }) {
       if (dueCheck) try {
         const freshCards = (await dbOperation('creditCards', 'getAll')) || [];
         const freshLoans = (await dbOperation('loans', 'getAll')) || [];
-        const loanRes = await processOverdueLoanPayments(freshLoans, freshCards, accounts || [], 0);
-        const cardRes = await processOverdueCreditCardPayments(freshCards, accounts || [], 0);
+        const loanRes = await processOverdueLoanPayments(freshLoans, freshCards, accounts || []);
+        const cardRes = await processOverdueCreditCardPayments(freshCards, accounts || []);
         paid = (loanRes?.processed?.length || 0) + (cardRes?.processed?.length || 0);
         if (paid) {
           setLoans((await dbOperation('loans', 'getAll')) || []);
@@ -194,23 +186,16 @@ export function FinanceDataProvider({ children }) {
     await loadLatestActivities();
   }, [loadDataProgressively, loadLatestActivities]);
 
-  // Refreshes bank accounts and cash from the server. It never changes a balance: money moves only through utils/money.js.
+  // Refreshes bank accounts (cash included) from the server. It never changes a balance: money moves only through utils/money.js.
   const handleUpdateCash = useCallback(async (newAmount, options = {}) => {
     if (newAmount !== null && newAmount !== undefined && !options?.syncOnly) {
       console.warn('handleUpdateCash no longer sets balances; record the money event through utils/money.js instead. Refreshing only.');
     }
     await loadBankAccounts();
-    setCashInHand(await getCashInHand());
   }, [loadBankAccounts]);
 
-  // The user states how much cash they hold: recorded as a balance correction, then reloaded.
-  const updateCashInHand = useCallback(async (newAmount) => {
-    await recordCashInHand(newAmount);
-    setCashInHand(await getCashInHand());
-  }, []);
-
   // Calculated values
-  const displayAvailableCash = calculateTotalBankBalance(bankAccounts) + (Number(cashInHand) || 0);
+  const displayAvailableCash = calculateTotalBankBalance(bankAccounts);
   const totalCreditCardDebt = creditCards.reduce((sum, card) => sum + (Number(card.balance) || 0), 0);
   const totalLoanDebt = loans.reduce((sum, loan) => sum + (Number(loan.balance) || 0), 0);
 
@@ -223,8 +208,6 @@ export function FinanceDataProvider({ children }) {
     categories,
     bankAccounts,
     availableCash,
-    cashInHand,
-    cashAsOf,
     investments,
     assets,
     setInvestments,
@@ -241,7 +224,6 @@ export function FinanceDataProvider({ children }) {
     setCategories,
     setBankAccounts,
     setAvailableCash,
-    setCashInHand,
     
     // Actions
     loadAllData,
@@ -250,15 +232,14 @@ export function FinanceDataProvider({ children }) {
     loadCategories,
     loadLatestActivities,
     handleUpdateCash,
-    updateCashInHand,
     
     // Calculated values
     displayAvailableCash,
     totalCreditCardDebt,
     totalLoanDebt,
-  }), [creditCards, loans, income, transactions, categories, bankAccounts, availableCash, cashInHand, cashAsOf, investments, assets, dataLoading, loadError,
+  }), [creditCards, loans, income, transactions, categories, bankAccounts, availableCash, investments, assets, dataLoading, loadError,
     latestActivities, loadAllData, loadDataProgressively, loadBankAccounts, loadCategories, loadLatestActivities,
-    handleUpdateCash, updateCashInHand, displayAvailableCash, totalCreditCardDebt, totalLoanDebt]);
+    handleUpdateCash, displayAvailableCash, totalCreditCardDebt, totalLoanDebt]);
 
   return (
     <FinanceDataContext.Provider value={value}>

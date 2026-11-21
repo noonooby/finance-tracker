@@ -45,7 +45,7 @@ export function formatPaymentSource(sourceName, sourceType = null) {
   // Source type prefixes should be lowercase
   const typeMap = {
     'cash': 'cash',
-    'cash_in_hand': 'cash in hand',
+    'cash_in_hand': 'cash', // old records only
     'bank_account': 'bank account',
     'credit_card': 'credit card',
     'reserved_fund': 'reserved fund'

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Minus, X, TrendingUp, Star } from 'lucide-react';
-import { formatCurrency, parseSmartInput } from '../../utils/helpers';
+import { formatCurrency, parseSmartInput, defaultBankAccount } from '../../utils/helpers';
 import ActionButton from '../shared/ActionButton';
 import { showToast } from '../../utils/toast';
 import {
@@ -32,12 +32,15 @@ export default function GiftCardOperations({
   processing
 }) {
   const [operationType, setOperationType] = useState('add'); // 'add' or 'use'
+  const account = defaultBankAccount(bankAccounts);
+  const defaultSource = account ? 'bank_account' : '';
+  const defaultSourceId = account?.id || null;
   const [formData, setFormData] = useState({
     amount: '',
     amountPaid: '', // Different from amount when bonus is applied
     date: localDate(),
-    paymentSource: 'cash_in_hand',
-    paymentSourceId: null,
+    paymentSource: defaultSource,
+    paymentSourceId: defaultSourceId,
     category: '',
     notes: ''
   });
@@ -83,8 +86,8 @@ export default function GiftCardOperations({
             ...prev,
             amount: '',
             amountPaid: '',
-            paymentSource: 'cash_in_hand',
-            paymentSourceId: null,
+            paymentSource: defaultSource,
+            paymentSourceId: defaultSourceId,
             category: getDefaultCategory(),
             notes: ''
           }));
@@ -152,6 +155,11 @@ export default function GiftCardOperations({
       return;
     }
 
+    if (operationType === 'add' && !formData.paymentSourceId) {
+      showToast.error('Choose how you paid');
+      return;
+    }
+
     if (operationType === 'use' && !formData.notes?.trim()) {
       showToast.error('Please enter what you\'re buying');
       return;
@@ -185,13 +193,13 @@ export default function GiftCardOperations({
   };
 
   const handlePaymentSourceChange = (value) => {
-    if (value === 'cash_in_hand') {
+    if (!value.includes(':')) {
       setFormData({
         ...formData,
-        paymentSource: 'cash_in_hand',
+        paymentSource: '',
         paymentSourceId: null
       });
-    } else if (value.includes(':')) {
+    } else {
       const [method, id] = value.split(':');
       setFormData({
         ...formData,
@@ -202,10 +210,9 @@ export default function GiftCardOperations({
   };
 
   const getCurrentPaymentSourceValue = () => {
-    if (formData.paymentSource === 'cash_in_hand') return 'cash_in_hand';
     return formData.paymentSourceId 
       ? `${formData.paymentSource}:${formData.paymentSourceId}`
-      : 'cash_in_hand';
+      : '';
   };
 
   // Handle expense context application (for Use Balance flow)
@@ -302,7 +309,7 @@ export default function GiftCardOperations({
         </div>
         
         {/* Context Loaded Indicator */}
-        {contextLoaded && (formData.amount || formData.paymentSource !== 'cash_in_hand' || formData.category) && (
+        {contextLoaded && (formData.amount || formData.category) && (
           <div className={`mb-3 p-2 rounded-lg text-xs flex items-center gap-2 ${
             'bg-accent-soft text-accent border border-accent/30'
           }`}>
@@ -440,10 +447,10 @@ export default function GiftCardOperations({
                 onChange={(e) => handlePaymentSourceChange(e.target.value)}
                 className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               >
-                <option value="cash_in_hand">Cash in Hand</option>
+                <option value="">Choose how you paid</option>
                 
                 {bankAccounts && bankAccounts.length > 0 && (
-                  <optgroup label="Bank Accounts">
+                  <optgroup label="Accounts">
                     {bankAccounts.map(account => (
                       <option key={account.id} value={`bank_account:${account.id}`}>
                         {account.name} ({formatCurrency(account.balance)})

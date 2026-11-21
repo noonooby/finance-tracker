@@ -23,9 +23,7 @@ export default function Income({
   focusTarget,
   onClearFocus,
   bankAccounts,
-  onNavigateToTransactions,
-  cashInHand,
-  onUpdateCashInHand
+  onNavigateToTransactions
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -125,8 +123,6 @@ export default function Income({
         availableCash,
         onUpdateCash,
         bankAccounts,
-        cashInHand,
-        onUpdateCashInHand,
         onUpdate
       });
     });
@@ -164,8 +160,6 @@ export default function Income({
           availableCash,
           onUpdateCash,
           bankAccounts,
-          cashInHand,
-          onUpdateCashInHand,
           onUpdate
         });
       });
@@ -363,52 +357,23 @@ export default function Income({
             <label className={`block text-sm font-medium mb-2 text-fg`}>
               Where is this money going? *
             </label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="depositTarget"
-                  value="bank"
-                  checked={formData.depositTarget === 'bank'}
-                  onChange={(e) => setFormData({ ...formData, depositTarget: e.target.value })}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm">Deposit to Bank Account</span>
-              </label>
-              
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="depositTarget"
-                  value="cash_in_hand"
-                  checked={formData.depositTarget === 'cash_in_hand'}
-                  onChange={(e) => setFormData({ ...formData, depositTarget: e.target.value })}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm">Keep as Cash in Hand</span>
-              </label>
-            </div>
-          </div>
-          
-          {formData.depositTarget === 'bank' && bankAccounts && bankAccounts.length > 0 && (
-            <div>
-              <label className={`block text-sm mb-1 text-muted`}>
-                Select Account *
-              </label>
+            {bankAccounts && bankAccounts.length > 0 ? (
               <select
                 value={formData.depositAccountId}
-                onChange={(e) => setFormData({ ...formData, depositAccountId: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, depositTarget: 'bank', depositAccountId: e.target.value })}
                 className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
               >
-                <option value="">Select account</option>
+                <option value="">Choose an account</option>
                 {bankAccounts.map(account => (
                   <option key={account.id} value={account.id}>
                     {account.name} {account.is_primary ? '(Primary)' : ''} - {formatCurrency(account.balance)}
                   </option>
                 ))}
               </select>
-            </div>
-          )}
+            ) : (
+              <p className="text-sm text-muted">Add an account under Accounts first (cash is an account too).</p>
+            )}
+          </div>
 
           {formData.frequency !== 'onetime' && (
             <>
@@ -531,7 +496,7 @@ export default function Income({
                 const isDueToday = daysUntil === 0;
                 const depositAccountName = schedule.deposit_account_id
                   ? bankAccounts.find(a => a.id === schedule.deposit_account_id)?.name || 'Unknown Account'
-                  : 'Cash in Hand';
+                  : 'No account';
                 
                 return (
                   <div

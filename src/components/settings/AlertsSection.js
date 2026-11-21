@@ -48,7 +48,6 @@ export default function AlertsSection({ darkMode, expanded, onToggle, settings, 
         {settings.lowBalanceAlerts !== false && (
           <div className="space-y-3 mt-3">
             {thresholdField('lowBalanceThreshold', 'Bank Account Low Balance Threshold', 100)}
-            {thresholdField('cashInHandLowThreshold', 'Cash in Hand Low Threshold', 50)}
           </div>
         )}
       </CheckboxCard>

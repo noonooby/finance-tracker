@@ -91,7 +91,6 @@ export default function Investments({ darkMode }) {
           <select className={input} value={move.from} onChange={(e) => setMove({ ...move, from: e.target.value })} required aria-label="From">
             <option value="">From</option>
             {d.bankAccounts.map((a) => <option key={a.id} value={`bank_account:${a.id}`}>{a.name}</option>)}
-            <option value="cash_in_hand">Cash in hand</option>
           </select>
           <input className={input} type="number" step="0.01" inputMode="decimal" placeholder="Amount" value={move.amount} onChange={(e) => setMove({ ...move, amount: e.target.value })} required />
           <button type="submit" disabled={busy} className="w-full bg-accent text-accent-contrast rounded-lg py-2 font-medium">Record contribution</button>

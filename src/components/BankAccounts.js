@@ -1,13 +1,13 @@
 // ============================================
 // BANK ACCOUNTS PAGE
-// View, add, edit, delete and pin accounts; transfer between them;
-// move cash in and out. State and data access live in
+// View, add, edit, delete and pin accounts (cash is one of them);
+// transfer between them. State and data access live in
 // bank-accounts/useBankAccountActions, pure maths in
 // bank-accounts/calculations, display in the other bank-accounts files.
 // ============================================
 
 import React, { useEffect, useRef } from 'react';
-import { Plus, Building2, ArrowRightLeft, AlertCircle, Wallet } from 'lucide-react';
+import { Plus, Building2, ArrowRightLeft, AlertCircle } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 import useBankAccountActions from './bank-accounts/useBankAccountActions';
 import { normalizeId, sumBalances, getLinkedEntities } from './bank-accounts/calculations';
@@ -15,8 +15,6 @@ import { panelClass } from './bank-accounts/styles';
 import AccountForm from './bank-accounts/AccountForm';
 import AccountCard from './bank-accounts/AccountCard';
 import TransferForm from './bank-accounts/TransferForm';
-import CashOperationsForm from './bank-accounts/CashOperationsForm';
-import CashInHandCard from './bank-accounts/CashInHandCard';
 import InstitutionHeader from './bank-accounts/InstitutionHeader';
 
 /**
@@ -28,9 +26,6 @@ import InstitutionHeader from './bank-accounts/InstitutionHeader';
  * @param {Object} focusTarget - account to highlight and scroll to
  * @param {Function} onClearFocus
  * @param {Function} onNavigateToTransactions - open transaction history with filters
- * @param {number} cashInHand
- * @param {Function} onUpdateCashInHand
- * @param {Function} onReloadAll
  */
 export default function BankAccounts({
   darkMode,
@@ -40,12 +35,9 @@ export default function BankAccounts({
   onUpdate,
   focusTarget,
   onClearFocus,
-  onNavigateToTransactions,
-  cashInHand,
-  onUpdateCashInHand, // eslint-disable-line no-unused-vars
-  onReloadAll
+  onNavigateToTransactions
 }) {
-  const a = useBankAccountActions({ bankAccounts, creditCards, onUpdate, cashInHand, onReloadAll });
+  const a = useBankAccountActions({ bankAccounts, onUpdate });
   const accountRefs = useRef({});
 
   // Scroll to the account chosen from another page, then clear the highlight
@@ -72,31 +64,13 @@ export default function BankAccounts({
         <div>
           <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2">
             <Building2 size={24} />
-            Bank Accounts
+            Accounts
           </h2>
-          <div className={`text-sm mt-1 space-y-1 text-muted`}>
-            <div>
-              Total Balance: <span className="font-semibold">{formatCurrency(totalBalance)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Wallet size={14} />
-              Cash in Hand: <span className="font-semibold text-green-600">{formatCurrency(cashInHand || 0)}</span>
-            </div>
-            <div className="font-bold text-blue-600">
-              Combined Total: {formatCurrency(totalBalance + (cashInHand || 0))}
-            </div>
+          <div className={`text-sm mt-1 text-muted`}>
+            Total: <span className="font-semibold">{formatCurrency(totalBalance)}</span>
           </div>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => a.setShowCashModal(!a.showCashModal)}
-            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base ${
-              toggleClass(a.showCashModal, 'bg-surface-2 text-fg border border-line hover:bg-line/60')
-            }`}
-          >
-            <Wallet size={20} />
-            {a.showCashModal ? 'Cancel' : 'Cash'}
-          </button>
           <button
             onClick={() => a.setShowTransferForm(!a.showTransferForm)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
@@ -129,21 +103,6 @@ export default function BankAccounts({
         />
       )}
 
-      {a.showCashModal && (
-        <CashOperationsForm
-          darkMode={darkMode}
-          bankAccounts={bankAccounts}
-          cashInHand={cashInHand}
-          cashOperation={a.cashOperation}
-          setCashOperation={a.setCashOperation}
-          cashFormData={a.cashFormData}
-          setCashFormData={a.setCashFormData}
-          onSubmit={a.handleCashOperation}
-          onCancel={a.closeCashForm}
-          processing={a.isActionProcessing(`cash-${a.cashOperation}-${a.cashFormData.accountId}`)}
-        />
-      )}
-
       {a.showAddForm && !a.editingItem && (
         <div className={panelClass(darkMode)}>
           <AccountForm
@@ -162,30 +121,10 @@ export default function BankAccounts({
       )}
 
       <div className="space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <CashInHandCard
-            darkMode={darkMode}
-            cashInHand={cashInHand}
-            onOpenCashForm={() => {
-              a.setCashFormData({ accountId: '', amount: '' });
-              a.setShowCashModal(true);
-            }}
-            onEditAmount={a.handleEditCashInHand}
-            onWithdraw={() => {
-              a.setCashOperation('withdraw');
-              a.setShowCashModal(true);
-            }}
-            onDeposit={() => {
-              a.setCashOperation('deposit');
-              a.setShowCashModal(true);
-            }}
-          />
-        </div>
-
         {Object.keys(a.groupedAccounts).length === 0 ? (
           <div className={`text-center py-12 text-muted`}>
             <Building2 size={48} className="mx-auto mb-3 opacity-30" />
-            <p>No bank accounts added yet</p>
+            <p>No accounts added yet</p>
             <p className="text-sm mt-2">Add your first account to get started</p>
           </div>
         ) : (

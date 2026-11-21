@@ -37,5 +37,11 @@ export async function deleteExpenseContext(description) {
 
 export function applyExpenseContext(context) {
   if (!context) return {};
-  return contextToFormData(context, FIELD_MAPPING);
+  const data = contextToFormData(context, FIELD_MAPPING);
+  // A remembered method with no account (cash before it was an account) is dropped, so the form keeps its default account.
+  if (data.paymentMethod && !data.paymentMethodId) {
+    delete data.paymentMethod;
+    delete data.paymentMethodId;
+  }
+  return data;
 }

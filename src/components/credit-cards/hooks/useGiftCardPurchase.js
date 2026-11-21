@@ -21,7 +21,7 @@ export function useGiftCardPurchase({
   
   /**
    * Create purchase transaction when a new gift card is added
-   * This handles payment from various sources (cash, bank, card, etc.)
+   * This handles payment from any account (cash included) or a card
    * 
    * @param {Object} savedCard - The saved gift card from database
    * @param {Object} formData - Form data with purchase details
@@ -39,9 +39,7 @@ export function useGiftCardPurchase({
       
       
       let sourceName;
-      if (paymentMethodRaw === 'cash_in_hand') {
-        sourceName = 'Cash in Hand';
-      } else if (paymentMethodRaw.startsWith('bank_account:')) {
+      if (paymentMethodRaw.startsWith('bank_account:')) {
         sourceName = bankAccounts.find(a => a.id === paymentMethodId)?.name;
       } else if (paymentMethodRaw.startsWith('credit_card:')) {
         sourceName = creditCards.find(c => c.id === paymentMethodId)?.name;

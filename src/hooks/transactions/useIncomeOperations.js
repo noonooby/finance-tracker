@@ -17,8 +17,6 @@ export const useIncomeOperations = () => {
     availableCash,
     onUpdateCash,
     bankAccounts,
-    cashInHand,
-    onUpdateCashInHand,
     onUpdate
   }) => {
     if (!formData.source || !formData.amount || !formData.date) {
@@ -38,6 +36,10 @@ export const useIncomeOperations = () => {
     }
 
     const isEditing = !!editingItem;
+    // Income goes into one of the accounts (cash is one of them).
+    if (!isEditing && !formData.depositAccountId) {
+      throw new Error('Choose the account the income goes into.');
+    }
     const newAmount = parseFloat(formData.amount) || 0;
     
     // NEW: For recurring income (not editing), create a schedule
@@ -50,8 +52,8 @@ export const useIncomeOperations = () => {
           amount: newAmount,
           frequency: formData.frequency,
           startDate: formData.date,
-          depositTarget: formData.depositTarget || 'cash_in_hand',
-          depositAccountId: formData.depositTarget === 'bank' ? formData.depositAccountId : null,
+          depositTarget: 'bank',
+          depositAccountId: formData.depositAccountId,
           autoDeposit: formData.autoDeposit !== false,
           recurringDurationType: formData.recurringDurationType || 'indefinite',
           recurringUntilDate: formData.recurringUntilDate || null,
@@ -63,7 +65,7 @@ export const useIncomeOperations = () => {
         // Save context
         if (formData.source) {
           saveIncomeSourceContext(formData.source, {
-            depositTarget: formData.depositTarget,
+            depositTarget: 'bank',
             depositAccountId: formData.depositAccountId,
             frequency: formData.frequency
           }).catch(err => console.warn('Failed to save income context:', err));
@@ -97,7 +99,7 @@ export const useIncomeOperations = () => {
           ? parseInt(formData.recurringOccurrences, 10) || null
           : null,
       recurring_occurrences_completed: editingItem?.recurring_occurrences_completed || 0,
-      deposit_account_id: formData.depositTarget === 'bank' ? (formData.depositAccountId || null) : null,
+      deposit_account_id: formData.depositAccountId || null,
       auto_deposit: formData.frequency !== 'onetime' ? formData.autoDeposit : false,
       schedule_id: editingItem?.schedule_id || null
     };
@@ -162,16 +164,11 @@ export const useIncomeOperations = () => {
     // Handle new income: the income record, its transaction and the deposit are saved together by the server
     if (!isEditing) {
       const incomeId = incomeEntry.id;
-      let target = 'cash_in_hand';
-      let depositDestination = 'Cash in Hand';
-      let previousBalance = cashInHand || 0;
-      if (formData.depositTarget === 'bank') {
-        const account = bankAccounts.find(a => a.id === formData.depositAccountId);
-        if (!account) throw new Error('Choose the bank account the income goes into.');
-        target = `bank_account:${account.id}`;
-        depositDestination = account.name;
-        previousBalance = Number(account.balance) || 0;
-      }
+      const account = bankAccounts.find(a => String(a.id) === String(formData.depositAccountId));
+      if (!account) throw new Error('Choose the account the income goes into.');
+      const target = `bank_account:${account.id}`;
+      const depositDestination = account.name;
+      const previousBalance = Number(account.balance) || 0;
 
       const res = await recordIncome({
         amount: newAmount,
@@ -201,7 +198,7 @@ export const useIncomeOperations = () => {
           source: formData.source,
           frequency: formData.frequency,
           date: formData.date,
-          depositTarget: formData.depositTarget,
+          depositTarget: 'bank',
           depositAccountId: formData.depositAccountId,
           depositDestination,
           previousBalance,
@@ -213,7 +210,7 @@ export const useIncomeOperations = () => {
       // Save context
       if (formData.source) {
         saveIncomeSourceContext(formData.source, {
-          depositTarget: formData.depositTarget,
+          depositTarget: 'bank',
           depositAccountId: formData.depositAccountId,
           frequency: formData.frequency
         }).catch(err => console.warn('Failed to save income context:', err));
@@ -235,9 +232,7 @@ export const useIncomeOperations = () => {
     availableCash,
     onUpdateCash,
     bankAccounts,
-    onUpdate,
-    cashInHand,
-    onUpdateCashInHand
+    onUpdate
   }) => {
     const inc = income.find(i => String(i.id) === String(incomeId));
     if (!inc) throw new Error('Income entry not found');
@@ -263,7 +258,7 @@ export const useIncomeOperations = () => {
     // Take the income back out by reversing its transactions: the server moves back exactly what each one added.
     const depositDestination = inc.deposit_account_id
       ? (bankAccounts.find(a => a.id === inc.deposit_account_id)?.name || null)
-      : 'Cash in Hand';
+      : null;
     for (const trx of relatedTransactions) {
       await reverseTransaction(trx.id, { remove: true });
     }
@@ -295,7 +290,7 @@ export const useIncomeOperations = () => {
         auto_deposit: inc.auto_deposit,
         auto_added: inc.auto_added,
         created_at: inc.created_at,
-        depositTarget: inc.deposit_account_id ? 'bank' : 'cash_in_hand',
+        depositTarget: 'bank',
         depositAccountId: inc.deposit_account_id,
         depositAccountName: depositDestination,
         linkedTransactions: linkedSnapshots

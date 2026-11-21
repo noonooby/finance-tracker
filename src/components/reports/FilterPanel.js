@@ -153,11 +153,9 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
             'border-line bg-surface-2'
           } h-32`}
         >
-          <option value="cash_in_hand">Cash in Hand</option>
           <option value="bank_account">Bank Account</option>
           <option value="credit_card">Credit Card</option>
           <option value="loan">Loan</option>
-          <option value="reserved_fund">Reserved Fund</option>
           <option value="transfer">Transfer</option>
         </select>
         <p className="text-xs text-muted mt-1">Hold Ctrl/Cmd to select multiple</p>

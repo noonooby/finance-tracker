@@ -84,14 +84,13 @@ export function freshness(asOf, today = new Date()) {
 
 // Where you stand today: what you have, what you owe, net worth, and which figures are out of date.
 // The mortgage is counted in net worth but shown apart from other debt (as the Telegram bot does).
-export function position({ bankAccounts = [], cash = 0, cashAsOf = null, creditCards = [], loans = [], investments = [], assets = [] }, today = new Date()) {
+export function position({ bankAccounts = [], creditCards = [], loans = [], investments = [], assets = [] }, today = new Date()) {
   const line = (kind, row, value) => ({ kind, id: row.id, name: row.name, value: round2(value), asOf: row.balance_as_of || null, ...freshness(row.balance_as_of, today) });
   const have = [], owe = [];
   for (const a of bankAccounts) {
     const v = Number(a.balance) || 0;
-    (v >= 0 ? have : owe).push(line('bank', a, Math.abs(v)));
+    (v >= 0 ? have : owe).push(line(a.account_type === 'cash' ? 'cash' : 'bank', a, Math.abs(v)));
   }
-  if (Number(cash)) have.push({ kind: 'cash', id: 'cash', name: 'Cash in hand', value: round2(cash), asOf: cashAsOf, ...freshness(cashAsOf, today) });
   for (const c of creditCards) {
     const v = Number(c.balance) || 0;
     if (c.is_gift_card) { if (v) have.push(line('gift_card', c, v)); continue; }
@@ -174,7 +173,7 @@ export function upcoming({ creditCards = [], loans = [], bankAccounts = [] }, to
   const t = iso(today), end = iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + days));
   const inWindow = (d) => d && d >= t && d <= end;
   const late = (d) => d && d < t;
-  const nameOf = (src, id) => (src === 'cash_in_hand' ? 'cash' : (bankAccounts.find((b) => String(b.id) === String(id)) || {}).name || 'an account');
+  const nameOf = (src, id) => ((bankAccounts.find((b) => String(b.id) === String(id)) || {}).name || 'an account');
   const out = [];
   for (const c of creditCards) {
     if (c.is_gift_card) continue;

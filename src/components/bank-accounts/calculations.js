@@ -82,25 +82,12 @@ export const groupAccountsByInstitution = (bankAccounts, pinnedAccounts) => {
   return groups;
 };
 
-// Preview of balances after a cash withdraw/deposit, or null when not applicable.
-export const getCashPreview = (bankAccounts, cashFormData, cashOperation, cashInHand) => {
-  if (!cashFormData.accountId || !cashFormData.amount) return null;
-  const selectedAccount = bankAccounts.find(acc => acc.id === cashFormData.accountId);
-  const amount = parseFloat(cashFormData.amount) || 0;
-  if (!selectedAccount || amount <= 0) return null;
-  const currentBankBalance = Number(selectedAccount.balance) || 0;
-  const currentCash = Number(cashInHand) || 0;
-  return {
-    selectedAccount,
-    currentBankBalance,
-    currentCash,
-    newBankBalance: cashOperation === 'withdraw' ? currentBankBalance - amount : currentBankBalance + amount,
-    newCashInHand: cashOperation === 'withdraw' ? currentCash + amount : currentCash - amount
-  };
-};
-
 export const buildAccountPayload = (formData, editingItem, accountId) => {
   const balance = parseFloat(formData.balance) || 0;
+  // Cash has no bank and never goes below zero, so it never allows an overdraft.
+  if (formData.account_type === 'cash') {
+    formData = { ...formData, institution: '', allows_overdraft: false };
+  }
   return {
     id: accountId,
     name: formData.name.trim(),
@@ -175,13 +162,3 @@ export const describeAccountDelete = (account) => {
 export const describeTransfer = (transferResult, transferData) =>
   `Transferred ${formatCurrency(transferResult.amount)} from '${transferResult.fromAccount}' to '${transferResult.toAccount}' on ${formatDate(transferData.date)}${transferData.description !== 'Account Transfer' ? ` - Note: ${transferData.description}` : ''}`;
 
-export const cashLogDetails = (opResult) => ({
-  accountId: opResult.accountId,
-  accountName: opResult.accountName,
-  amount: opResult.amount,
-  previousBankBalance: opResult.previousBankBalance,
-  newBankBalance: opResult.newBankBalance,
-  previousCashInHand: opResult.previousCashInHand,
-  newCashInHand: opResult.newCashInHand,
-  transactionId: opResult.transactionId
-});

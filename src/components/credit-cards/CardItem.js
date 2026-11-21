@@ -40,7 +40,7 @@ export default function CardItem({
                 Gift Card
               </span>
             )}
-            {!card.is_gift_card && card.connected_payment_source && (
+            {!card.is_gift_card && card.connected_payment_source && card.connected_payment_source_id && (
               <span className={`text-xs px-2 py-0.5 rounded ${
                 'bg-positive/10 text-positive'
               }`}>

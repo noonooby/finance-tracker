@@ -5,7 +5,7 @@
 //
 // Signs, per balance:
 //   bank account  balance = money in the account           (money out: negative)
-//   cash in hand  setting cashInHand = money held          (money out: negative)
+//   cash          a bank account of kind 'cash'; never below zero
 //   credit card   balance = amount owed                    (purchase: positive, payment: negative)
 //   gift card     balance = value left on the card         (purchase with it: negative)
 //   loan          balance = amount owed                    (payment: negative)
@@ -22,11 +22,11 @@ export function toAmount(value) {
   return n;
 }
 
-// "bank_account:ID" / "credit_card:ID" / "cash_in_hand" / { type, id } -> { type, id }
+// "bank_account:ID" / "credit_card:ID" / { type, id } -> { type, id }. Cash is a bank account of kind cash.
 export function parseSource(source, id) {
   if (source && typeof source === 'object') return { type: source.type, id: source.id };
   const s = String(source || '');
-  if (s === 'cash_in_hand' || s === 'cash') return { type: 'cash_in_hand', id: null };
+  if (s === 'cash_in_hand' || s === 'cash') throw new Error('Cash is an account now: choose Cash from the list, or add it under Accounts.');
   const i = s.indexOf(':');
   if (i > 0) return { type: s.slice(0, i), id: s.slice(i + 1) };
   return { type: s, id: id ?? null };
@@ -36,7 +36,6 @@ export function parseSource(source, id) {
 // accounts = { bankAccounts, creditCards } so the right limit can be checked.
 export function payFrom(source, amount, { bankAccounts = [], creditCards = [] } = {}) {
   const { type, id } = parseSource(source);
-  if (type === 'cash_in_hand') return { table: 'settings', key: 'cashInHand', delta: -amount, floor: 0 };
   if (type === 'investment') return { table: 'investments', id, delta: -amount, floor: 0 };
   if (type === 'bank_account') {
     const a = bankAccounts.find((x) => String(x.id) === String(id));
@@ -55,7 +54,6 @@ export function payFrom(source, amount, { bankAccounts = [], creditCards = [] } 
 // The leg that puts `amount` into a place money can land (income, refund, transfer in).
 export function payInto(target, amount, { creditCards = [] } = {}) {
   const { type, id } = parseSource(target);
-  if (type === 'cash_in_hand') return { table: 'settings', key: 'cashInHand', delta: amount };
   if (type === 'investment') return { table: 'investments', id, delta: amount };
   if (type === 'bank_account') return { table: 'bank_accounts', id, delta: amount };
   if (type === 'credit_card') {
@@ -68,7 +66,6 @@ export function payInto(target, amount, { creditCards = [] } = {}) {
 
 const sourceName = (source, { bankAccounts = [], creditCards = [], investments = [] }) => {
   const { type, id } = parseSource(source);
-  if (type === 'cash_in_hand') return 'Cash in hand';
   const list = type === 'bank_account' ? bankAccounts : type === 'investment' ? investments : creditCards;
   return (list.find((x) => String(x.id) === String(id)) || {}).name || null;
 };
@@ -143,7 +140,7 @@ export async function recordLoanPayment({ loanId, amount, source, date, descript
   return send(key, [payFrom(source, a, accounts), loanLeg], rows, withUpdates(updates));
 }
 
-// Moving money between two of your own places (bank to bank, bank to cash, cash to bank).
+// Moving money between two of your own places (bank to bank, or to and from the Cash account).
 export async function recordTransfer({ amount, from, to, date, description, key, extra }, accounts) {
   const a = toAmount(amount);
   const f = parseSource(from), t = parseSource(to);
@@ -168,8 +165,7 @@ export async function recordAdjustment({ target, newBalance, current, date, desc
   if (!Number.isFinite(delta)) throw new Error('Enter a number.');
   if (!delta) return Promise.resolve({ legs: [], rows: [] });
   const { type, id } = parseSource(target);
-  const leg = type === 'cash_in_hand' ? { table: 'settings', key: 'cashInHand', delta }
-    : { table: { bank_account: 'bank_accounts', loan: 'loans', investment: 'investments', asset: 'assets' }[type] || 'credit_cards', id, delta };
+  const leg = { table: { bank_account: 'bank_accounts', loan: 'loans', investment: 'investments', asset: 'assets' }[type] || 'credit_cards', id, delta };
   return send(key, [leg], [
     { table: 'transactions', values: txRow({ type: 'adjustment', amount: Math.abs(delta), direction: delta > 0 ? 'up' : 'down', date, description: description || 'Balance correction' }, target, accounts) },
   ]);
@@ -191,7 +187,7 @@ export async function recordSnapshot({ target, value, date, source, apply = true
   const n = Number(value);
   if (!Number.isFinite(n)) throw new Error('Enter a number.');
   const { type, id } = parseSource(target);
-  const where = type === 'cash_in_hand' ? { table: 'settings', key: 'cashInHand' } : { table: SNAP_TABLE[type], id };
+  const where = { table: SNAP_TABLE[type], id };
   if (!where.table) throw new Error('That account can not take a balance.');
   return api('/api/snapshot', { ...where, value: Math.round(n * 100) / 100, date, source, apply });
 }

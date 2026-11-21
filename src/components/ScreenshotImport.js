@@ -93,7 +93,6 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     ...bankAccounts.map((a) => ({ value: `bank_account:${a.id}`, label: a.name })),
     ...creditCards.filter((c) => !c.is_gift_card).map((c) => ({ value: `credit_card:${c.id}`, label: c.name })),
     ...creditCards.filter((c) => c.is_gift_card).map((c) => ({ value: `credit_card:${c.id}`, label: `${c.name} (gift card)` })),
-    { value: 'cash_in_hand', label: 'Cash in hand' },
   ], [drafts, bankAccounts, creditCards]);
   const nameOf = (v) => (accountOptions.find((o) => o.value === v) || {}).label || 'Choose';
   const isCardRef = (v) => v.startsWith('credit_card:') || (v.startsWith('new:') && (drafts.find((d) => d.id === v) || {}).type === 'credit_card');

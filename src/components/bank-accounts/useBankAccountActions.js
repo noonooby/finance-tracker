@@ -1,19 +1,16 @@
 // State and data access for the Bank Accounts page.
 // All money changes go through utils/db and utils/money, as before.
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { formatCurrency, generateId, validateBankAccountData, localDate } from '../../utils/helpers';
+import { formatCurrency, generateId, validateBankAccountData } from '../../utils/helpers';
 import useAsyncAction from '../../hooks/useAsyncAction';
 import { showToast } from '../../utils/toast';
 import {
   upsertBankAccount,
   deleteBankAccount,
   transferBetweenAccounts,
-  withdrawCashFromBank,
-  depositCashToBank,
   dbOperation
 } from '../../utils/db';
 import { logActivity } from '../../utils/activityLogger';
-import { recordAdjustment } from '../../utils/money';
 import { getUserPreferences, togglePinnedBankAccount } from '../../utils/userPreferencesManager';
 import { saveTransferContext, getRecentTransferDescriptions } from '../../utils/formContexts';
 import {
@@ -25,16 +22,12 @@ import {
   describeAccountEdit,
   describeAccountAdd,
   describeAccountDelete,
-  describeTransfer,
-  cashLogDetails
+  describeTransfer
 } from './calculations';
 
 export default function useBankAccountActions({
   bankAccounts,
-  creditCards,
-  onUpdate,
-  cashInHand,
-  onReloadAll
+  onUpdate
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -43,10 +36,6 @@ export default function useBankAccountActions({
   const [pinnedAccounts, setPinnedAccounts] = useState([]);
 
   const { executeAction, isProcessing: isActionProcessing } = useAsyncAction();
-
-  const [showCashModal, setShowCashModal] = useState(false);
-  const [cashOperation, setCashOperation] = useState('withdraw');
-  const [cashFormData, setCashFormData] = useState({ accountId: '', amount: '' });
 
   const [collapsedInstitutions, setCollapsedInstitutions] = useState([]);
   const toggleInstitution = (institution) => {
@@ -141,6 +130,9 @@ export default function useBankAccountActions({
       balance: formData.balance,
       account_type: formData.account_type
     });
+    if (formData.account_type === 'cash' && (parseFloat(formData.balance) || 0) < 0) {
+      errors.push("Cash can't go below zero");
+    }
     if (errors.length > 0) {
       showToast.error(errors.join('\n'));
       return;
@@ -168,8 +160,7 @@ export default function useBankAccountActions({
               `Manual balance changes may cause discrepancies in your records.\n\n` +
               `Consider:\n` +
               `- Adding income if you received money\n` +
-              `- Using Transfer if moving between accounts\n` +
-              `- Using Cash Operations if withdrawing/depositing\n\n` +
+              `- Using Transfer if moving between accounts (cash included)\n\n` +
               `Continue with manual balance change?`
             );
             if (!proceed) return;
@@ -232,97 +223,6 @@ export default function useBankAccountActions({
     } else {
       showToast.error(`Failed to save account: ${result.error.message}`);
     }
-  };
-
-  const handleCashOperation = async () => {
-    if (!cashFormData.accountId || !cashFormData.amount) {
-      showToast.error('Please select an account and enter an amount');
-      return;
-    }
-    const amount = parseFloat(cashFormData.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      showToast.error('Please enter a valid amount');
-      return;
-    }
-
-    const actionId = `cash-${cashOperation}-${cashFormData.accountId}`;
-
-    const actionResult = await executeAction(actionId, async () => {
-      let opResult;
-      if (cashOperation === 'withdraw') {
-        opResult = await withdrawCashFromBank(cashFormData.accountId, amount);
-        await logActivity(
-          'cash_withdrawal',
-          'bank_account',
-          opResult.accountId,
-          opResult.accountName,
-          `Withdrew ${formatCurrency(opResult.amount)} from '${opResult.accountName}' to cash in hand`,
-          cashLogDetails(opResult)
-        );
-      } else {
-        opResult = await depositCashToBank(cashFormData.accountId, amount);
-        await logActivity(
-          'cash_deposit',
-          'bank_account',
-          opResult.accountId,
-          opResult.accountName,
-          `Deposited ${formatCurrency(opResult.amount)} from cash in hand to '${opResult.accountName}'`,
-          cashLogDetails(opResult)
-        );
-      }
-
-      if (onReloadAll) await onReloadAll();
-
-      setCashFormData({ accountId: '', amount: '' });
-      setShowCashModal(false);
-
-      return { operation: cashOperation, accountName: opResult.accountName, amount: opResult.amount };
-    });
-
-    if (actionResult.success) {
-      const operationText = actionResult.data.operation === 'withdraw' ? 'withdrawn from' : 'deposited to';
-      showToast.success(
-        `${formatCurrency(actionResult.data.amount)} ${operationText} ${actionResult.data.accountName}`
-      );
-    } else {
-      showToast.error(`Cash operation failed: ${actionResult.error.message}`);
-    }
-  };
-
-  // Correct the cash-in-hand figure; recorded as an adjustment so it shows in history and can be undone.
-  const handleEditCashInHand = async () => {
-    const newAmount = prompt(`Enter new cash in hand amount:`, (cashInHand || 0).toString());
-    if (newAmount === null) return;
-
-    const amount = parseFloat(newAmount);
-    if (isNaN(amount) || amount < 0) {
-      showToast.error('Please enter a valid amount');
-      return;
-    }
-
-    const oldAmount = Number(cashInHand) || 0;
-    try {
-      const res = await recordAdjustment(
-        { target: 'cash_in_hand', newBalance: amount, current: oldAmount, date: localDate(), description: 'Cash in hand correction' },
-        { bankAccounts, creditCards }
-      );
-      if (res.transaction) {
-        await logActivity(
-          'cash_adjustment',
-          'cash_in_hand',
-          'cash-in-hand',
-          'Cash in Hand',
-          `Updated cash in hand from ${formatCurrency(oldAmount)} to ${formatCurrency(amount)}`,
-          { previousValue: oldAmount, newValue: amount, transactionId: res.transaction.id }
-        );
-      }
-      if (onReloadAll) await onReloadAll(); else await onUpdate();
-    } catch (err) {
-      showToast.error(err.message || 'Could not update cash in hand');
-      return;
-    }
-
-    showToast.success('Cash in hand updated');
   };
 
   const handleDelete = async (accountId) => {
@@ -472,20 +372,12 @@ export default function useBankAccountActions({
     }
   };
 
-  const closeCashForm = () => {
-    setCashFormData({ accountId: '', amount: '' });
-    setShowCashModal(false);
-  };
-
   return {
     // state
     showAddForm, setShowAddForm,
     editingItem, setEditingItem,
     showTransferForm, setShowTransferForm,
     pinnedAccounts,
-    showCashModal, setShowCashModal,
-    cashOperation, setCashOperation,
-    cashFormData, setCashFormData,
     collapsedInstitutions, toggleInstitution,
     formData, setFormData,
     recentAccountNames, accountNameInputRef,
@@ -499,12 +391,9 @@ export default function useBankAccountActions({
     resetForm,
     handleEdit,
     handleAdd,
-    handleCashOperation,
-    handleEditCashInHand,
     handleDelete,
     handleSetPrimary,
     handleTransfer,
-    resetTransferForm,
-    closeCashForm
+    resetTransferForm
   };
 }

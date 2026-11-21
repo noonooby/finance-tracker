@@ -18,7 +18,6 @@ export default function CashflowAnalysis({
   transactions, 
   categories,
   bankAccounts = [],
-  cashInHand = 0,
   onExportExcel,
   onExportCSV 
 }) {
@@ -91,9 +90,9 @@ export default function CashflowAnalysis({
     );
   }
 
-  // Calculate current balances
-  const totalBankBalance = bankAccounts.reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
-  const totalAvailable = totalBankBalance + cashInHand;
+  // Current balances: the sum of all accounts (cash is one of them)
+  const totalAvailable = bankAccounts.reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+  const totalCash = bankAccounts.filter((acc) => acc.account_type === 'cash').reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
 
   // Calculate cashflow metrics
   const savingsRate = summary.totalIncome > 0 
@@ -193,7 +192,7 @@ export default function CashflowAnalysis({
         <SummaryCard
           title="Current Cash Available"
           value={totalAvailable}
-          subtitle={`Bank: ${formatCurrency(totalBankBalance)} • Cash: ${formatCurrency(cashInHand)}`}
+          subtitle={`Bank: ${formatCurrency(totalAvailable - totalCash)} • Cash: ${formatCurrency(totalCash)}`}
           icon={DollarSign}
           color="purple"
           darkMode={darkMode}

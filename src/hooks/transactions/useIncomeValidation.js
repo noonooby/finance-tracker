@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { localDate } from '../../utils/helpers';
+import { localDate, defaultBankAccount } from '../../utils/helpers';
 
 /**
  * Hook for income form validation
@@ -38,8 +38,8 @@ export const useIncomeValidation = () => {
     }
 
     // Deposit target validation
-    if (formData.depositTarget === 'bank' && !formData.depositAccountId) {
-      errors.push('Please select a bank account for deposit');
+    if (!formData.depositAccountId) {
+      errors.push('Choose the account the income goes into');
     }
 
     return {
@@ -49,7 +49,7 @@ export const useIncomeValidation = () => {
   }, []);
 
   const getDefaultFormData = useCallback((bankAccounts = []) => {
-    const primaryAccount = bankAccounts.find(acc => acc.is_primary);
+    const primaryAccount = defaultBankAccount(bankAccounts);
     
     return {
       source: '',

@@ -41,9 +41,7 @@ export default function TransactionHistory({
   onUpdateCash,
   showAddModal,
   onCloseAddModal,
-  bankAccounts,
-  cashInHand = 0,
-  onUpdateCashInHand
+  bankAccounts
 }) {
   // === STATE MANAGEMENT ===
   const [transactions, setTransactions] = useState([]);
@@ -448,8 +446,6 @@ export default function TransactionHistory({
           availableCash={availableCash}
           onUpdateCash={onUpdateCash}
           bankAccounts={bankAccounts}
-          cashInHand={cashInHand}
-          onUpdateCashInHand={onUpdateCashInHand}
         />
       )}
 

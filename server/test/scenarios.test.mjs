@@ -42,7 +42,9 @@ await client.auth.devSignIn();
 
 const db = client;
 const get = async (t, id) => (await db.from(t).select('*').eq('id', id).single()).data;
-const cash = async () => Number(((await db.from('settings').select('*').eq('key', 'cashInHand').maybeSingle()).data || {}).value || 0);
+let cashAcct;
+const cash = async () => Number((await get('bank_accounts', cashAcct.id)).balance);
+const CASH = () => `bank_account:${cashAcct.id}`;
 async function accounts() {
   const [b, c, l] = await Promise.all(['bank_accounts', 'credit_cards', 'loans'].map((t) => db.from(t).select('*')));
   return { bankAccounts: b.data, creditCards: c.data, loans: l.data };
@@ -55,8 +57,9 @@ test('setup: accounts with opening balances', async () => {
   sav = await add('bank_accounts', { name: 'Savings', balance: 5000, allows_overdraft: false });
   card = await add('credit_cards', { name: 'Visa', balance: 0, credit_limit: 3000, last4: '4321' });
   gift = await add('credit_cards', { name: 'Coffee gift card', balance: 25, is_gift_card: true });
+  cashAcct = await add('bank_accounts', { name: 'Cash', account_type: 'cash', balance: 0 });
   loan = await add('loans', { name: 'Car loan', balance: 8000, payment_amount: 400, frequency: 'monthly', next_payment_date: '2026-11-01' });
-  await M.recordAdjustment({ target: 'cash_in_hand', newBalance: 60, current: 0, date: '2026-11-01' }, await accounts());
+  await M.recordAdjustment({ target: CASH(), newBalance: 60, current: 0, date: '2026-11-01' }, await accounts());
   assert.equal(await cash(), 60);
 });
 
@@ -108,9 +111,13 @@ test('savings without overdraft refuses going below zero', async () => {
 
 test('cash: spend, cannot go below zero', async () => {
   const a = await accounts();
-  await M.recordExpense({ amount: 15, source: 'cash_in_hand', date: '2026-11-07', description: 'Lunch' }, a);
+  await M.recordExpense({ amount: 15, source: CASH(), date: '2026-11-07', description: 'Lunch' }, a);
   assert.equal(await cash(), 45);
-  await assert.rejects(M.recordExpense({ amount: 50, source: 'cash_in_hand', date: '2026-11-07' }, a), /below its limit/);
+  await assert.rejects(M.recordExpense({ amount: 50, source: CASH(), date: '2026-11-07' }, a), /below its limit/);
+  // The server keeps cash at zero or more even when the request carries no limit.
+  await assert.rejects(api('/api/money', { legs: [{ table: 'bank_accounts', id: cashAcct.id, delta: -500 }], rows: [] }), /below its limit/);
+  // The old cash setting is gone as a way to move money.
+  assert.throws(() => M.parseSource('cash_in_hand'), /Cash is an account now/);
 });
 
 test('income into a bank account, and the same scheduled occurrence twice deposits once', async () => {
@@ -160,14 +167,14 @@ test('editing an amount reverses the old one and records the new one in one step
   await M.replaceTransaction(r.transaction.id, () => M.recordExpense({ amount: 45, source: `bank_account:${sav.id}`, date: '2026-11-19', description: 'Dinner' }, a));
   assert.equal((await get('bank_accounts', sav.id)).balance, 4855);
   // A refused edit leaves the old transaction in place.
-  const r2 = await M.recordExpense({ amount: 10, source: 'cash_in_hand', date: '2026-11-19' }, a);
-  await assert.rejects(M.replaceTransaction(r2.transaction.id, () => M.recordExpense({ amount: 999, source: 'cash_in_hand', date: '2026-11-19' }, a)));
+  const r2 = await M.recordExpense({ amount: 10, source: CASH(), date: '2026-11-19' }, a);
+  await assert.rejects(M.replaceTransaction(r2.transaction.id, () => M.recordExpense({ amount: 999, source: CASH(), date: '2026-11-19' }, a)));
   assert.equal((await get('transactions', r2.transaction.id)).status, 'active');
   assert.equal(await cash(), 35);
 });
 
 test('a transaction that moved money cannot be deleted without undoing it', async () => {
-  const r = await M.recordExpense({ amount: 1, source: 'cash_in_hand', date: '2026-11-19' }, await accounts());
+  const r = await M.recordExpense({ amount: 1, source: CASH(), date: '2026-11-19' }, await accounts());
   const { error } = await db.from('transactions').delete().eq('id', r.transaction.id);
   assert.match(error.message, /Undo this transaction first/);
 });
@@ -273,7 +280,7 @@ test('where you stand: net worth, mortgage apart from other debt, out-of-date fi
   await add('assets', { name: 'House', kind: 'property', balance: 650000, balance_as_of: '2026-06-01' });
   const a = await accounts();
   const [inv, as] = await Promise.all(['investments', 'assets'].map((t) => db.from(t).select('*')));
-  const p = F.position({ ...a, cash: await cash(), cashAsOf: '2026-11-21', investments: inv.data, assets: as.data }, new Date(2026, 10, 21));
+  const p = F.position({ ...a, investments: inv.data, assets: as.data }, new Date(2026, 10, 21));
   const owed = a.loans.reduce((s, l) => s + l.balance, 0) + a.creditCards.filter((c) => !c.is_gift_card && c.balance > 0).reduce((s, c) => s + c.balance, 0)
     + a.bankAccounts.filter((b) => b.balance < 0).reduce((s, b) => s - b.balance, 0);
   assert.equal(Math.round(p.totalOwe * 100), Math.round(owed * 100));
@@ -419,7 +426,7 @@ test('snapshots: the balance you saw is fixed; older lines are history; gaps are
   const w = await db.from('snapshots').insert({ account_id: acct.id, value: 1 });
   assert.ok(w.error);
   // Cash works the same way.
-  const c = await M.recordSnapshot({ target: 'cash_in_hand', value: 75, date: T, source: 'counted' });
+  const c = await M.recordSnapshot({ target: CASH(), value: 75, date: T, source: 'counted' });
   assert.equal(c.snapshot.status, 'corrected');
   assert.equal(await cash(), 75);
 });

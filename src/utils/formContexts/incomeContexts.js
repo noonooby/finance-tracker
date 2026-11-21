@@ -37,5 +37,10 @@ export async function deleteIncomeSourceContext(sourceName) {
 
 export function applyIncomeContext(context) {
   if (!context) return {};
-  return contextToFormData(context, FIELD_MAPPING);
+  const data = contextToFormData(context, FIELD_MAPPING);
+  // Income always goes into an account. A remembered destination with no account (cash before it was an account) is dropped,
+  // so the form keeps its default account.
+  delete data.depositTarget;
+  if (!data.depositAccountId) delete data.depositAccountId;
+  return data;
 }

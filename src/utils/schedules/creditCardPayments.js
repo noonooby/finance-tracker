@@ -49,7 +49,7 @@ async function freshAccounts() {
  * The arguments are kept for callers; balances are read fresh from the server.
  */
 // eslint-disable-next-line no-unused-vars
-export async function processOverdueCreditCardPayments(creditCards, bankAccounts = [], cashInHand = 0) {
+export async function processOverdueCreditCardPayments(creditCards, bankAccounts = []) {
   const todayString = localDate();
   const results = { processed: [], failed: [], skipped: [] };
   const accounts = await freshAccounts();
@@ -61,7 +61,8 @@ export async function processOverdueCreditCardPayments(creditCards, bankAccounts
   for (const start of due) {
     let card = start;
     const sourceType = card.connected_payment_source;
-    if (!sourceType || (sourceType !== 'cash_in_hand' && !card.connected_payment_source_id)) {
+    // An old source with no account (cash before it was an account) counts as none.
+    if (!sourceType || !card.connected_payment_source_id) {
       results.skipped.push({ card: card.name, reason: 'No connected payment source' });
       continue;
     }
@@ -118,9 +119,8 @@ export async function createCreditCardPayment(paymentData, card, paymentSource, 
     const amount = round2(Number(paymentData.amount) || 0);
     const balanceBefore = round2(Number(current.balance) || 0);
     const balanceAfter = round2(balanceBefore - amount);
-    const source = paymentData.paymentSource === 'cash_in_hand' ? 'cash_in_hand' : `${paymentData.paymentSource}:${paymentData.paymentSourceId}`;
-    const sourceName = paymentData.paymentSource === 'cash_in_hand' ? 'Cash in Hand'
-      : (acc.bankAccounts.find((x) => String(x.id) === String(paymentData.paymentSourceId)) || {}).name || paymentData.paymentSourceName;
+    const source = `${paymentData.paymentSource}:${paymentData.paymentSourceId}`;
+    const sourceName = (acc.bankAccounts.find((x) => String(x.id) === String(paymentData.paymentSourceId)) || {}).name || paymentData.paymentSourceName;
     const dueDate = String(paymentData.dueDate || current.due_date).split('T')[0];
     const nextDate = paymentData.nextDate || nextDue(dueDate);
     const txId = newTxId();

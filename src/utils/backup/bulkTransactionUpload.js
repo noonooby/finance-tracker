@@ -9,6 +9,7 @@ import { server } from '../server';
 import { format } from 'date-fns';
 import { fetchCategories } from '../categories';
 import { getAllSettings } from '../settingsManager';
+import { defaultBankAccount } from '../helpers';
 
 /**
  * Download a blank template for bulk transaction upload
@@ -23,7 +24,7 @@ export async function downloadTransactionTemplate() {
         'Description': 'Grocery Store',
         'Type': 'expense',
         'Category': 'Food',
-        'Payment Method': 'Cash in Hand',
+        'Payment Method': 'Cash',
         'Notes': 'Weekly groceries'
       },
       {
@@ -56,9 +57,9 @@ export async function downloadTransactionTemplate() {
       ['Optional Fields:'],
       ['- Description: Brief description of transaction'],
       ['- Category: Category name (matched from the description when left empty)'],
-      ['- Payment Method: "Cash in Hand", or the exact name of one of your bank accounts or cards.'],
+      ['- Payment Method: the exact name of one of your accounts or cards. "Cash" means your Cash account.'],
       ['  "Bank Account" works when you have only one bank account. Empty uses your default payment method.'],
-      ['  Income can only go to cash or a bank account.'],
+      ['  Income can only go to an account (cash included), not a card.'],
       ['- Notes: Additional details'],
       [''],
       ['Rows that cannot be read clearly are listed back to you and not added.'],
@@ -150,14 +151,20 @@ function resolveSource(cell, type, defaultSource, accounts) {
   const lower = text.toLowerCase();
   let source = null;
   if (!text) {
-    const d = parseSource(defaultSource);
-    if (d.type === 'cash_in_hand') source = 'cash_in_hand';
+    let d = { type: '', id: null };
+    try { d = parseSource(defaultSource); } catch { /* an old default with no account counts as none */ }
+    const fallback = defaultBankAccount(bankAccounts);
+    if (!d.type && fallback) source = `bank_account:${fallback.id}`;
     else if (d.type === 'bank_account' && d.id && bankAccounts.some((b) => String(b.id) === String(d.id))) source = `bank_account:${d.id}`;
     else if (d.type === 'credit_card' && d.id && creditCards.some((c) => String(c.id) === String(d.id))) source = `credit_card:${d.id}`;
     else if (d.type === 'bank_account' && bankAccounts.length === 1) source = `bank_account:${bankAccounts[0].id}`;
     else return { error: 'Payment Method is empty and your default payment method is not one account: name the account' };
-  } else if (lower === 'cash in hand' || lower === 'cash') {
-    source = 'cash_in_hand';
+  } else if (lower === 'cash' || lower === 'cash in hand') {
+    // "Cash" (or the older wording) means the account of kind cash.
+    const cash = bankAccounts.filter((b) => b.account_type === 'cash');
+    if (!cash.length) return { error: 'Add a Cash account first' };
+    const named = cash.filter((b) => String(b.name || '').trim().toLowerCase() === 'cash');
+    source = `bank_account:${(named.length === 1 ? named[0] : cash[0]).id}`;
   } else if (lower === 'bank account' || lower === 'bank') {
     if (bankAccounts.length !== 1) return { error: `"${text}" is not clear: you have ${bankAccounts.length} bank accounts, use the account name` };
     source = `bank_account:${bankAccounts[0].id}`;
@@ -168,7 +175,7 @@ function resolveSource(cell, type, defaultSource, accounts) {
     if (banks.length + cards.length > 1) return { error: `More than one account or card is named "${text}"` };
     source = banks.length ? `bank_account:${banks[0].id}` : `credit_card:${cards[0].id}`;
   }
-  if (type === 'income' && source.startsWith('credit_card:')) return { error: 'Income can only go to cash or a bank account' };
+  if (type === 'income' && source.startsWith('credit_card:')) return { error: 'Income can only go to an account, not a card' };
   return { source };
 }
 
@@ -185,7 +192,7 @@ async function parseTransactionRows(data, userId) {
   const categories = await fetchCategories();
   const settings = await getAllSettings();
   const accounts = await loadAccounts(userId);
-  const defaultSource = settings.defaultPaymentMethod || 'cash_in_hand';
+  const defaultSource = settings.defaultPaymentMethod || '';
 
   const validTransactions = [];
   const errors = [];

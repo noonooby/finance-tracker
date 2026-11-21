@@ -74,15 +74,10 @@ export default function FilterPanel({
           className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
         >
           <option value="all">All Methods</option>
-          <option value="cash_in_hand">Cash in Hand</option>
-          <option value="bank_account">Bank Account</option>
-          <option value="cash">Cash (Legacy)</option>
+          <option value="bank_account">Account (cash included)</option>
           <option value="credit_card">Credit Card</option>
           <option value="loan">Loan</option>
-          <option value="reserved_fund">Reserved Fund</option>
           <option value="transfer">Transfer</option>
-          <option value="cash_withdrawal">Cash Withdrawal</option>
-          <option value="cash_deposit">Cash Deposit</option>
         </select>
         
         {/* Credit Card Filter */}
@@ -136,20 +131,6 @@ export default function FilterPanel({
           {bankAccounts && bankAccounts.map(account => (
             <option key={account.id} value={account.id}>
               {account.name}
-            </option>
-          ))}
-        </select>
-
-        {/* Reserved Fund Filter */}
-        <select
-          value={filters.reservedFund}
-          onChange={(e) => onFiltersChange({ ...filters, reservedFund: e.target.value })}
-          className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
-        >
-          <option value="all">All Funds</option>
-          {reservedFunds && reservedFunds.map(fund => (
-            <option key={fund.id} value={fund.id}>
-              {fund.name}
             </option>
           ))}
         </select>

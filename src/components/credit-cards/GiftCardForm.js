@@ -122,16 +122,12 @@ export default function GiftCardForm({
         <select
           value={formData.giftCardPaymentMethodId 
             ? `${formData.giftCardPaymentMethod}:${formData.giftCardPaymentMethodId}` 
-            : formData.giftCardPaymentMethod}
+            : ''}
           onChange={(e) => {
             const value = e.target.value;
-            if (value === 'cash_in_hand') {
-              onFormDataChange({ 
-                ...formData, 
-                giftCardPaymentMethod: 'cash_in_hand',
-                giftCardPaymentMethodId: null
-              });
-            } else if (value.includes(':')) {
+            if (!value.includes(':')) {
+              onFormDataChange({ ...formData, giftCardPaymentMethod: '', giftCardPaymentMethodId: null });
+            } else {
               const [method, id] = value.split(':');
               onFormDataChange({ 
                 ...formData, 
@@ -142,10 +138,10 @@ export default function GiftCardForm({
           }}
           className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
         >
-          <option value="cash_in_hand">Cash in Hand</option>
+          <option value="">Choose how you paid</option>
           
           {bankAccounts && bankAccounts.length > 0 && (
-            <optgroup label="Bank Accounts">
+            <optgroup label="Accounts">
               {bankAccounts.map(account => (
                 <option key={account.id} value={`bank_account:${account.id}`}>
                   {account.name} ({formatCurrency(account.balance)} available)

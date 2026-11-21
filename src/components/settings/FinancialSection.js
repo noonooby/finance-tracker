@@ -20,12 +20,11 @@ export default function FinancialSection({ darkMode, expanded, onToggle, setting
       <div>
         <label className={labelClass(darkMode)}>Default Payment Method</label>
         <select
-          value={settings.defaultPaymentMethod || 'cash_in_hand'}
+          value={settings.defaultPaymentMethod === 'credit_card' ? 'credit_card' : 'bank_account'}
           onChange={(e) => updateSetting('defaultPaymentMethod', e.target.value)}
           className={inputClass(darkMode)}
         >
-          <option value="cash_in_hand">Cash in Hand</option>
-          <option value="bank_account">Bank Account</option>
+          <option value="bank_account">Account (cash included)</option>
           <option value="credit_card">Credit Card</option>
         </select>
       </div>

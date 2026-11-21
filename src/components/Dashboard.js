@@ -30,7 +30,7 @@ export default function Dashboard() {
   }, [d.bankAccounts, d.creditCards, d.loans, d.transactions]);
 
   const today = useMemo(() => new Date(), []);
-  const p = useMemo(() => position({ bankAccounts: d.bankAccounts, cash: d.cashInHand, cashAsOf: d.cashAsOf, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets }, today), [d, today]);
+  const p = useMemo(() => position({ bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets }, today), [d, today]);
   const m = useMemo(() => monthEnd({ liquid: p.liquid, incomeSchedules: schedules, loans: d.loans, creditCards: d.creditCards }, today), [p.liquid, schedules, d.loans, d.creditCards, today]);
   const cost = useMemo(() => monthlyCost({ creditCards: d.creditCards, loans: d.loans, bankAccounts: d.bankAccounts }, today), [d.creditCards, d.loans, d.bankAccounts, today]);
   const due = useMemo(() => upcoming({ creditCards: d.creditCards, loans: d.loans, bankAccounts: d.bankAccounts }, today, 30), [d.creditCards, d.loans, d.bankAccounts, today]);
@@ -42,7 +42,7 @@ export default function Dashboard() {
   const owedOnCards = cards.reduce((s, c) => s + Math.max(0, Number(c.balance) || 0), 0);
   const youPay = due.filter((x) => x.amount != null && !x.auto).reduce((s, x) => s + x.amount, 0);
 
-  const isNew = !d.dataLoading && !(d.bankAccounts || []).length && !cards.length && !(d.loans || []).length && !Number(d.cashInHand);
+  const isNew = !d.dataLoading && !(d.bankAccounts || []).length && !cards.length && !(d.loans || []).length;
   if (isNew) {
     return (
       <div className="space-y-4">

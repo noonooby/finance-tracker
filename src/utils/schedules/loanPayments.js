@@ -28,7 +28,7 @@ async function freshAccounts() {
  * The arguments are kept for callers; balances are read fresh from the server.
  */
 // eslint-disable-next-line no-unused-vars
-export async function processOverdueLoanPayments(loans, creditCards = [], bankAccounts = [], cashInHand = 0) {
+export async function processOverdueLoanPayments(loans, creditCards = [], bankAccounts = []) {
   const todayString = localDate();
   const results = { processed: [], failed: [], skipped: [] };
   const accounts = await freshAccounts();
@@ -64,7 +64,8 @@ export async function processOverdueLoanPayments(loans, creditCards = [], bankAc
       continue;
     }
     const sourceType = loan.connected_payment_source;
-    if (!sourceType || (sourceType !== 'cash_in_hand' && !loan.connected_payment_source_id)) {
+    // An old source with no account (cash before it was an account) counts as none.
+    if (!sourceType || !loan.connected_payment_source_id) {
       results.skipped.push({ loan: loan.name, reason: 'No connected payment source' });
       continue;
     }
@@ -119,10 +120,9 @@ export async function createLoanPayment(paymentData, loan, paymentSource, accoun
     const amount = round2(Number(paymentData.amount) || 0);
     const balanceBefore = round2(Number(current.balance) || 0);
     const balanceAfter = round2(balanceBefore - amount);
-    const source = paymentData.paymentSource === 'cash_in_hand' ? 'cash_in_hand' : `${paymentData.paymentSource}:${paymentData.paymentSourceId}`;
+    const source = `${paymentData.paymentSource}:${paymentData.paymentSourceId}`;
     const list = paymentData.paymentSource === 'bank_account' ? acc.bankAccounts : acc.creditCards;
-    const sourceName = paymentData.paymentSource === 'cash_in_hand' ? 'Cash in Hand'
-      : (list.find((x) => String(x.id) === String(paymentData.paymentSourceId)) || {}).name || paymentData.paymentSourceName;
+    const sourceName = (list.find((x) => String(x.id) === String(paymentData.paymentSourceId)) || {}).name || paymentData.paymentSourceName;
     const dueDate = paymentData.dueDate || current.next_payment_date;
     const nextDate = paymentData.nextDate || predictNextDate(String(dueDate).split('T')[0], current.frequency || 'monthly', dayOf(current.start_date));
     const txId = newTxId();

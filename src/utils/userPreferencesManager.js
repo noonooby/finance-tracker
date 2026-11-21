@@ -47,7 +47,6 @@ function getDefaultPreferences() {
     dashboard_compact_mode: false,
     display_density: 'comfortable', // 'comfortable' | 'cozy' | 'compact'
     visible_dashboard_widgets: [
-      'cash_balance',
       'upcoming_obligations',
       'next_income',
       'recent_activity',
@@ -349,7 +348,7 @@ export async function addRecentCategory(categoryId) {
 
 /**
  * Add payment method to recent payment methods (max 10)
- * Payment method is stored as "type:id" (e.g., "credit_card:123", "bank_account:456", "cash_in_hand")
+ * Payment method is stored as "type:id" (e.g., "credit_card:123", "bank_account:456"; cash is a bank account)
  */
 export async function addRecentPaymentMethod(paymentMethodString) {
   try {
@@ -487,7 +486,6 @@ export async function getDashboardConfig() {
       layout: 'grid',
       compactMode: false,
       visibleWidgets: [
-        'cash_balance',
         'upcoming_obligations',
         'next_income',
         'recent_activity',

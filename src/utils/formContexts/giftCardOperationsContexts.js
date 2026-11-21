@@ -26,8 +26,11 @@ class GiftCardAddBalanceContextManager extends BaseContextManager {
   applyContext(context) {
     return {
       amount: context.purchase_amount || '',
-      paymentSource: context.payment_source || 'cash_in_hand',
-      paymentSourceId: context.payment_source_id || null,
+      // Only a remembered account is reused; one with no account (cash before it was an account) is left out,
+      // so the form keeps its default account.
+      ...(context.payment_source_id
+        ? { paymentSource: context.payment_source, paymentSourceId: context.payment_source_id }
+        : {}),
       category: context.metadata?.category_id || ''
     };
   }

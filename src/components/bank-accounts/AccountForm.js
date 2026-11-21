@@ -24,12 +24,17 @@ export default function AccountForm({
   const isEdit = mode === 'edit';
   const showRecent = !isEdit && recentAccountNames.length > 0;
   const set = (patch) => setFormData({ ...formData, ...patch });
+  const isCash = formData.account_type === 'cash';
+  // Choosing Cash: no bank and no overdraft; the name defaults to Cash.
+  const setKind = (kind) => set(kind === 'cash'
+    ? { account_type: kind, name: formData.name || 'Cash', institution: '', allows_overdraft: false, overdraft_limit: '' }
+    : { account_type: kind });
 
   return (
     <>
       {isEdit
-        ? <h3 className="font-semibold text-lg mb-3">Edit Bank Account</h3>
-        : <h3 className="font-semibold">Add Bank Account</h3>}
+        ? <h3 className="font-semibold text-lg mb-3">Edit Account</h3>
+        : <h3 className="font-semibold">Add Account</h3>}
 
       {showRecent && (
         <div>
@@ -79,10 +84,10 @@ export default function AccountForm({
           />
         </div>
         <div>
-          <label className={labelClass(darkMode)}>Account Type *</label>
+          <label className={labelClass(darkMode)}>Kind *</label>
           <select
             value={formData.account_type}
-            onChange={(e) => set({ account_type: e.target.value })}
+            onChange={(e) => setKind(e.target.value)}
             className={inputClass(darkMode)}
           >
             <option value="checking">Checking</option>
@@ -93,6 +98,11 @@ export default function AccountForm({
         </div>
       </div>
 
+      {isCash && (
+        <p className="text-xs text-muted">Cash can't go below zero. Move money in or out with Transfer.</p>
+      )}
+
+      {!isCash && (
       <div>
         <label className={labelClass(darkMode)}>Institution (Optional)</label>
         <input
@@ -103,6 +113,7 @@ export default function AccountForm({
           className={inputClass(darkMode)}
         />
       </div>
+      )}
 
       <label className="flex items-center gap-2">
         <input
@@ -114,6 +125,7 @@ export default function AccountForm({
         <span className="text-sm">Set as primary account</span>
       </label>
 
+      {!isCash && (
       <div className={`pt-3 mt-3 border-t border-line`}>
         <h4 className={`text-sm font-semibold mb-3 text-fg`}>Overdraft Settings</h4>
         <label className="flex items-center gap-2 mb-3">
@@ -165,6 +177,7 @@ export default function AccountForm({
           </div>
         )}
       </div>
+      )}
 
       <div className="flex gap-2">
         <ActionButton

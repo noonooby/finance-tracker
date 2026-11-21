@@ -27,11 +27,6 @@ export const SETTING_METADATA = {
     formatDescription: (oldVal, newVal) => `Updated bank account low balance threshold from ${formatCurrency(oldVal)} to ${formatCurrency(newVal)}`,
     displayName: 'Low Balance Threshold'
   },
-  cashInHandLowThreshold: {
-    undoable: true,
-    formatDescription: (oldVal, newVal) => `Updated cash in hand low threshold from ${formatCurrency(oldVal)} to ${formatCurrency(newVal)}`,
-    displayName: 'Cash Low Threshold'
-  },
 
   dateFormat: {
     undoable: false,
@@ -51,7 +46,7 @@ export const SETTING_METADATA = {
   defaultPaymentMethod: {
     undoable: false,
     formatDescription: (oldVal, newVal) => {
-      const labels = { cash_in_hand: 'Cash in Hand', bank_account: 'Bank Account', credit_card: 'Credit Card' };
+      const labels = { bank_account: 'Account', credit_card: 'Credit Card' };
       return `Changed default payment method from ${labels[oldVal] || oldVal} to ${labels[newVal] || newVal}`;
     },
     displayName: 'Default Payment Method'

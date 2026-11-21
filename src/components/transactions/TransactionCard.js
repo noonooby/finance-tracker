@@ -42,8 +42,8 @@ export default function TransactionCard({
     if (methodName) return methodName;
     
     switch (method) {
-      case 'cash_in_hand':
-        return 'Cash in Hand';
+      case 'cash_in_hand': // old records, before cash became an account
+        return 'Cash';
       case 'bank_account':
         return 'Bank Account';
       case 'credit_card':

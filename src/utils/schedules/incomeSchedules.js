@@ -23,7 +23,7 @@ export async function createIncomeSchedule(scheduleData) {
       frequency: scheduleData.frequency,
       start_date: scheduleData.startDate,
       next_date: scheduleData.startDate,
-      deposit_target: scheduleData.depositTarget || 'cash_in_hand',
+      deposit_target: 'bank',
       deposit_account_id: scheduleData.depositAccountId || null,
       auto_deposit: scheduleData.autoDeposit !== false,
       recurring_duration_type: scheduleData.recurringDurationType || 'indefinite',
@@ -289,6 +289,11 @@ export async function processDueIncomeSchedules() {
       results.skipped.push({ source: schedule.source, reason: 'Auto-deposit disabled' });
       continue;
     }
+    // Money goes into one of the accounts (cash is one of them). A schedule with no account to pay into is left alone.
+    if (!depositAccountFor(schedule, accounts)) {
+      results.skipped.push({ source: schedule.source, reason: 'No account to deposit into' });
+      continue;
+    }
     const anchorDay = dayOf(schedule.start_date) || dayOf(schedule.next_date);
     let date = String(schedule.next_date).split('T')[0];
     let completed = schedule.recurring_occurrences_completed || 0;
@@ -325,15 +330,21 @@ export async function processDueIncomeSchedules() {
   return results;
 }
 
+// The account a schedule pays into, or null (an old schedule that kept the money as cash before cash was an account,
+// or an account that was removed).
+function depositAccountFor(schedule, accounts) {
+  if (schedule.deposit_target !== 'bank' || !schedule.deposit_account_id) return null;
+  return accounts.bankAccounts.find((a) => String(a.id) === String(schedule.deposit_account_id)) || null;
+}
+
 /**
  * Deposit one occurrence of a schedule in a single server step.
  */
 async function processIncomeOccurrence(schedule, date, schedUpdate, accounts) {
-  const bank = schedule.deposit_target === 'bank' && schedule.deposit_account_id
-    ? accounts.bankAccounts.find((a) => String(a.id) === String(schedule.deposit_account_id))
-    : null;
-  const target = bank ? `bank_account:${bank.id}` : 'cash_in_hand';
-  const depositAccountName = bank ? bank.name : 'Cash in Hand';
+  const bank = depositAccountFor(schedule, accounts);
+  if (!bank) throw new Error('No account to deposit into');
+  const target = `bank_account:${bank.id}`;
+  const depositAccountName = bank.name;
   const txId = newTxId();
 
   const r = await recordIncome({
@@ -348,7 +359,7 @@ async function processIncomeOccurrence(schedule, date, schedUpdate, accounts) {
       frequency: schedule.frequency,
       schedule_id: schedule.id,
       is_manual: false,
-      deposit_account_id: bank ? bank.id : null,
+      deposit_account_id: bank.id,
       auto_deposit: true,
       auto_added: true,
       transaction_id: txId,
@@ -364,10 +375,10 @@ async function processIncomeOccurrence(schedule, date, schedUpdate, accounts) {
     incomeRecord.id,
     schedule.source,
     `Income: ${formatCurrency(schedule.amount)} from ${schedule.source} -> ${depositAccountName}`,
-    { scheduleId: schedule.id, amount: schedule.amount, source: schedule.source, depositTarget: bank ? 'bank' : 'cash_in_hand',
-      depositAccountId: bank ? bank.id : null, depositAccountName, transactionId: txId, incomeId: incomeRecord.id, isAutoDeposit: true }
+    { scheduleId: schedule.id, amount: schedule.amount, source: schedule.source, depositTarget: 'bank',
+      depositAccountId: bank.id, depositAccountName, transactionId: txId, incomeId: incomeRecord.id, isAutoDeposit: true }
   );
-  return { depositTarget: bank ? 'bank' : 'cash_in_hand', depositAccountName };
+  return { depositTarget: 'bank', depositAccountName };
 }
 
 /**

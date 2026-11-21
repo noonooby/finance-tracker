@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, CreditCard as CreditCardIcon, TrendingUp } from 'lucide-react';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, defaultBankAccount } from '../utils/helpers';
 import { useTransactionOperations } from '../hooks/transactions';
 import { showToast } from '../utils/toast';
 import CategorySelect from './shared/CategorySelect';
@@ -28,13 +28,11 @@ export default function AddTransaction({
   preselectedCard = null,
   preselectedLoan = null,
   preselectedType = 'expense',
-  preselectedAmount = '',
-  cashInHand = 0,
-  onUpdateCashInHand = null
+  preselectedAmount = ''
 }) {
-  // Get primary bank account for default selection
-  const primaryBank = bankAccounts?.find(acc => acc.is_primary);
-  const defaultPaymentMethod = preselectedCard ? 'credit_card' : preselectedLoan ? 'loan' : (primaryBank ? 'bank_account' : 'cash_in_hand');
+  // Default account (primary, else the first; cash is one of the accounts)
+  const primaryBank = defaultBankAccount(bankAccounts);
+  const defaultPaymentMethod = preselectedCard ? 'credit_card' : preselectedLoan ? 'loan' : (primaryBank ? 'bank_account' : '');
   const defaultPaymentMethodId = preselectedCard?.id || preselectedLoan?.id || (primaryBank?.id || null);
   
   // Validate preselectedType
@@ -50,8 +48,8 @@ export default function AddTransaction({
     categoryId: '',
     paymentMethod: defaultPaymentMethod,
     paymentMethodId: defaultPaymentMethodId,
-    paymentSource: 'cash_in_hand',
-    paymentSourceId: null,
+    paymentSource: primaryBank ? 'bank_account' : '',
+    paymentSourceId: primaryBank?.id || null,
     amountMode: 'recommended',
     category: 'other'
   });
@@ -68,8 +66,6 @@ export default function AddTransaction({
     creditCards,
     loans,
     bankAccounts,
-    cashInHand,
-    onUpdateCashInHand,
     availableCash,
     onUpdateCash,
     categories: localCategories,
@@ -194,9 +190,7 @@ export default function AddTransaction({
       
       const parsed = recentPMs
         .map(pm => {
-          if (pm === 'cash_in_hand') {
-            return { type: 'cash_in_hand', id: null, name: 'Cash in Hand' };
-          } else if (pm.startsWith('credit_card:')) {
+          if (pm.startsWith('credit_card:')) {
             const id = pm.replace('credit_card:', '');
             const card = creditCards?.find(c => c.id === id);
             if (card) {
@@ -331,7 +325,7 @@ export default function AddTransaction({
                 onClick={() => setFormData({ 
                   ...formData, 
                   type: 'expense', 
-                  paymentMethod: primaryBank ? 'bank_account' : 'cash_in_hand', 
+                  paymentMethod: primaryBank ? 'bank_account' : '', 
                   paymentMethodId: primaryBank?.id || null 
                 })}
                 className={`p-3 rounded-lg border-2 transition-colors ${
@@ -484,21 +478,22 @@ export default function AddTransaction({
             <div>
               <label className="block text-sm font-medium mb-2">Pay From *</label>
               <select
-                value={formData.paymentSourceId ? `${formData.paymentSource}:${formData.paymentSourceId}` : formData.paymentSource}
+                value={formData.paymentSourceId ? `${formData.paymentSource}:${formData.paymentSourceId}` : ''}
                 onChange={(e) => {
                   const value = e.target.value;
-                  if (value === 'cash_in_hand') {
-                    setFormData({ ...formData, paymentSource: 'cash_in_hand', paymentSourceId: null });
-                  } else if (value.includes(':')) {
+                  if (value.includes(':')) {
                     const [source, id] = value.split(':');
                     setFormData({ ...formData, paymentSource: source, paymentSourceId: id });
+                  } else {
+                    setFormData({ ...formData, paymentSource: '', paymentSourceId: null });
                   }
                 }}
                 className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+                required
               >
-                <option value="cash_in_hand">Cash in Hand ({formatCurrency(cashInHand || 0)})</option>
+                <option value="">Choose an account</option>
                 {bankAccounts && bankAccounts.length > 0 && (
-                  <optgroup label="Bank Accounts">
+                  <optgroup label="Accounts">
                     {bankAccounts.map(account => (
                       <option key={account.id} value={`bank_account:${account.id}`}>
                         {account.name} ({formatCurrency(account.balance)})
@@ -526,25 +521,26 @@ export default function AddTransaction({
             <div>
               <label className="block text-sm font-medium mb-2">Payment Method *</label>
               <select
-                value={formData.paymentMethodId ? `${formData.paymentMethod}:${formData.paymentMethodId}` : formData.paymentMethod}
+                value={formData.paymentMethodId ? `${formData.paymentMethod}:${formData.paymentMethodId}` : ''}
                 onChange={(e) => {
                   const value = e.target.value;
-                  if (value === 'cash_in_hand') {
-                    setFormData({ ...formData, paymentMethod: 'cash_in_hand', paymentMethodId: null });
-                  } else if (value.includes(':')) {
+                  if (value.includes(':')) {
                     const [method, id] = value.split(':');
                     setFormData({ ...formData, paymentMethod: method, paymentMethodId: id });
+                  } else {
+                    setFormData({ ...formData, paymentMethod: '', paymentMethodId: null });
                   }
                 }}
                 className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
                 required
               >
+                <option value="">Choose how it was paid</option>
                 {recentPaymentMethods.length > 0 && (
                   <optgroup label="Recent">
                     {recentPaymentMethods.map(pm => (
                       <option 
-                        key={pm.id || 'cash_in_hand'} 
-                        value={pm.type === 'cash_in_hand' ? 'cash_in_hand' : `${pm.type}:${pm.id}`}
+                        key={pm.id} 
+                        value={`${pm.type}:${pm.id}`}
                       >
                         {pm.name}
                         {pm.type === 'bank_account' && pm.balance !== undefined && ` ($${pm.balance.toFixed(2)} available)`}
@@ -554,8 +550,7 @@ export default function AddTransaction({
                   </optgroup>
                 )}
                 
-                <optgroup label="Cash & Bank Accounts">
-                  <option value="cash_in_hand">Cash in Hand (${(cashInHand || 0).toFixed(2)} available)</option>
+                <optgroup label="Accounts">
                   {bankAccounts && bankAccounts.length > 0 && bankAccounts.map(account => (
                     <option key={account.id} value={`bank_account:${account.id}`}>
                       {account.name} (${account.balance.toFixed(2)} available){account.is_primary ? ' (primary)' : ''}

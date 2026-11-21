@@ -3,7 +3,7 @@ import { recordSnapshot } from '../../utils/money';
 import { localDate } from '../../utils/helpers';
 import { showToast } from '../../utils/toast';
 
-const TARGET = { bank: 'bank_account', card: 'credit_card', card_credit: 'credit_card', gift_card: 'credit_card', loan: 'loan', mortgage: 'loan', investment: 'investment', asset: 'asset', cash: 'cash_in_hand' };
+const TARGET = { bank: 'bank_account', card: 'credit_card', card_credit: 'credit_card', gift_card: 'credit_card', loan: 'loan', mortgage: 'loan', investment: 'investment', asset: 'asset', cash: 'bank_account' };
 
 // Inline "Update": states today's figure; saved as a balance correction so it can be undone.
 export default function UpdateValue({ line, signed, accounts, onDone, darkMode }) {
@@ -19,7 +19,7 @@ export default function UpdateValue({ line, signed, accounts, onDone, darkMode }
     try {
       const type = TARGET[line.kind];
       // Recorded as a snapshot: the difference is an undoable adjustment, and older lines added later stay history.
-      await recordSnapshot({ target: type === 'cash_in_hand' ? 'cash_in_hand' : `${type}:${line.id}`, value: Number(value), date: localDate(), source: 'you' });
+      await recordSnapshot({ target: `${type}:${line.id}`, value: Number(value), date: localDate(), source: 'you' });
       setOpen(false);
       await onDone();
     } catch (err) { showToast.error(err.message); } finally { setBusy(false); }

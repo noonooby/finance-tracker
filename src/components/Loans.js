@@ -36,9 +36,7 @@ export default function Loans({
   bankAccounts,
   creditCards,
   hasMigratedToBankAccounts,
-  onNavigateToTransactions,
-  cashInHand,
-  onUpdateCashInHand
+  onNavigateToTransactions
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -329,7 +327,6 @@ export default function Loans({
     console.log('📊 Loans data:', loans);
     console.log('💰 Available cash:', availableCash);
     console.log('🏦 Bank accounts:', bankAccounts);
-    console.log('💵 Cash in hand:', cashInHand);
 
     if (!window.confirm('Process all overdue loan payments?')) {
       return;
@@ -341,7 +338,7 @@ export default function Loans({
     try {
       console.log('🔄 Starting loan payment processing...');
       
-      const results = await processOverdueLoans(loans, creditCards, bankAccounts, cashInHand);
+      const results = await processOverdueLoans(loans, creditCards, bankAccounts);
       
       console.log('📊 Processing results:', results);
       
@@ -575,7 +572,7 @@ export default function Loans({
                     {pinnedLoans.includes(loan.id) && (
                       <Star size={16} className="text-yellow-500 fill-current" title="Pinned" />
                     )}
-                    {loan.connected_payment_source && (
+                    {loan.connected_payment_source && loan.connected_payment_source_id && (
                       <span className={`text-xs px-2 py-0.5 rounded ${
                         'bg-positive/10 text-positive'
                       }`}>
@@ -715,8 +712,6 @@ export default function Loans({
           preselectedLoan={paymentLoan}
           preselectedType="payment"
           preselectedAmount={(paymentLoan.payment_amount || paymentLoan.balance).toString()}
-          cashInHand={cashInHand}
-          onUpdateCashInHand={onUpdateCashInHand}
         />
       )}
     </div>

@@ -19,9 +19,7 @@ export default function CreditCards({
   focusTarget,
   onClearFocus,
   bankAccounts,
-  onNavigateToTransactions,
-  cashInHand,
-  onUpdateCashInHand
+  onNavigateToTransactions
 }) {
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
@@ -36,9 +34,7 @@ export default function CreditCards({
     alertSettings,
     onUpdate,
     onUpdateCash,
-    bankAccounts,
-    cashInHand,
-    onUpdateCashInHand
+    bankAccounts
   });
   const { editingItem, formData } = a;
 
@@ -90,8 +86,6 @@ export default function CreditCards({
           preselectedCard={paymentCard}
           preselectedType="payment"
           preselectedAmount={paymentCard.balance.toString()}
-          cashInHand={cashInHand}
-          onUpdateCashInHand={onUpdateCashInHand}
         />
       )}
 
@@ -111,8 +105,6 @@ export default function CreditCards({
           bankAccounts={bankAccounts}
           preselectedCard={selectedCard}
           preselectedType="expense"
-          cashInHand={cashInHand}
-          onUpdateCashInHand={onUpdateCashInHand}
         />
       )}
 

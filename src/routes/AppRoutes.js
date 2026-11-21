@@ -66,13 +66,11 @@ const DashboardRoute = React.memo(() => {
     loans,
     income,
     bankAccounts,
-    cashInHand,
     displayAvailableCash,
     totalCreditCardDebt,
     totalLoanDebt,
     latestActivities,
     loadAllData,
-    updateCashInHand,
   } = useFinanceData();
   
   const {
@@ -98,8 +96,7 @@ const DashboardRoute = React.memo(() => {
       const results = await processOverdueLoanPayments(
         loans,
         creditCards,
-        bankAccounts,
-        cashInHand
+        bankAccounts
       );
       
       await loadAllData();
@@ -135,9 +132,7 @@ const DashboardRoute = React.memo(() => {
       onNavigate={handleNavigate}
       onUpdateAlertSettings={updateAlertSettings}
       bankAccounts={bankAccounts}
-      cashInHand={cashInHand}
       showCashInDashboard={showCashInDashboard}
-      onUpdateCashInHand={updateCashInHand}
       onToggleCashDisplay={toggleCashDisplay}
       onReloadAll={loadAllData}
       latestActivities={latestActivities}
@@ -161,7 +156,6 @@ const CreditCardsRoute = React.memo(() => {
       onNavigateToTransactions={navigateToTransactionHistory}
       onUpdate={financeData.loadAllData}
       onUpdateCash={financeData.handleUpdateCash}
-      onUpdateCashInHand={financeData.updateCashInHand}
     />
   );
 });
@@ -181,7 +175,6 @@ const LoansRoute = React.memo(() => {
       onNavigateToTransactions={navigateToTransactionHistory}
       onUpdate={financeData.loadAllData}
       onUpdateCash={financeData.handleUpdateCash}
-      onUpdateCashInHand={financeData.updateCashInHand}
     />
   );
 });
@@ -202,7 +195,6 @@ const IncomeRoute = React.memo(() => {
       onNavigateToTransactions={navigateToTransactionHistory}
       onUpdate={financeData.loadAllData}
       onUpdateCash={financeData.handleUpdateCash}
-      onUpdateCashInHand={financeData.updateCashInHand}
     />
   );
 });
@@ -218,13 +210,10 @@ const BankAccountsRoute = React.memo(() => {
       bankAccounts={financeData.bankAccounts}
       loans={financeData.loans}
       creditCards={financeData.creditCards}
-      cashInHand={financeData.cashInHand}
       focusTarget={focusTarget}
       onClearFocus={clearFocusTarget}
       onNavigateToTransactions={navigateToTransactionHistory}
       onUpdate={financeData.loadAllData}
-      onUpdateCashInHand={financeData.updateCashInHand}
-      onReloadAll={financeData.loadAllData}
     />
   );
 });
@@ -242,7 +231,6 @@ const TransactionsRoute = React.memo(() => {
       onCloseAddModal={closeAddTransaction}
       onUpdate={financeData.loadAllData}
       onUpdateCash={financeData.handleUpdateCash}
-      onUpdateCashInHand={financeData.updateCashInHand}
     />
   );
 });
@@ -282,20 +270,19 @@ const ActivityRoute = React.memo(() => {
 
 const ReportsRoute = React.memo(() => {
   const { darkMode } = useTheme();
-  const { categories, cashInHand } = useFinanceData();
+  const { categories } = useFinanceData();
   
   return (
     <Reports
       darkMode={darkMode}
       categories={categories}
-      cashInHand={cashInHand}
     />
   );
 });
 
 const SettingsRoute = React.memo(() => {
   const { darkMode, displayDensity, setDisplayDensity } = useTheme();
-  const { loadAllData, loadCategories, cashInHand, updateCashInHand, categories } = useFinanceData();
+  const { loadAllData, loadCategories, categories } = useFinanceData();
   const { showCashInDashboard, toggleCashDisplay } = useTheme();
   
   return (
@@ -305,10 +292,8 @@ const SettingsRoute = React.memo(() => {
       onDisplayDensityChange={setDisplayDensity}
       onUpdate={loadAllData}
       onReloadCategories={loadCategories}
-      cashInHand={cashInHand}
       showCashInDashboard={showCashInDashboard}
       categories={categories}
-      onUpdateCashInHand={updateCashInHand}
       onToggleCashDisplay={toggleCashDisplay}
     />
   );

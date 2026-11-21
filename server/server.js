@@ -24,9 +24,12 @@ const SESSION_MS = 30 * 864e5;
 
 const TABLES = new Set(['snapshots', 'activities', 'alert_history', 'bank_accounts', 'budget_tracking', 'categories', 'credit_card_payments', 'credit_cards',
   'income', 'income_schedules', 'known_entities', 'loan_payments', 'loans', 'report_templates', 'saved_filters', 'scheduled_payments',
-  'settings', 'transactions', 'user_preferences', 'uploads', 'investments', 'assets', 'balance_points']);
+  'settings', 'transactions', 'user_preferences', 'uploads', 'investments', 'assets', 'balance_points',
+  // remembered form entries (descriptions, sources), used for suggestions
+  'card_payment_contexts', 'expense_description_contexts', 'gift_card_purchase_contexts', 'income_source_contexts',
+  'loan_creation_contexts', 'loan_payment_contexts', 'transfer_description_contexts']);
 // Tables whose balance /api/money may change, and the fields it may change.
-const MONEY_FIELDS = { bank_accounts: ['balance'], credit_cards: ['balance'], loans: ['balance'], investments: ['balance'], assets: ['balance'], settings: ['value'] };
+const MONEY_FIELDS = { bank_accounts: ['balance'], credit_cards: ['balance'], loans: ['balance'], investments: ['balance'], assets: ['balance'] };
 // Tables only the server writes.
 const SERVER_ONLY = new Set(['balance_points', 'snapshots']);
 // The user's calendar day (balances are dated by it). APP_TZ defaults to Toronto, like the Telegram bot.
@@ -114,9 +117,8 @@ function selectRows(uid, q) {
 // investment snapshots; the date tells the user how current each figure is.
 function stamp(uid, tbl, row, field, day) {
   if (!MONEY_FIELDS[tbl] || !MONEY_FIELDS[tbl].includes(field)) return row;
-  if (tbl === 'settings' && row.key !== 'cashInHand') return row;
   const d = isDay(day) ? day : today();
-  const acct = tbl === 'settings' ? 'cash' : tbl;
+  const acct = tbl;
   row.balance_as_of = d;
   db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(row), tbl, String(row.id), uid);
   const pid = `${acct}:${row.id}:${d}`;
@@ -199,18 +201,14 @@ function runQuery(uid, q) {
 // ---------- money: one step, all or nothing ----------
 // body: { key?, legs: [{ table, id? | key?, field?, delta, floor? }], rows: [{ table, values }], note? }
 //  - a leg adds delta to one balance; floor (optional) refuses the whole step if the new balance would fall below it
-//  - settings legs name the setting by key (cashInHand)
+//  - cash is an ordinary bank account (account_type 'cash'); the server never lets it go below zero
 //  - rows are inserted in the same transaction; a 'transactions' row gets _legs, the record used to reverse it exactly
 //  - key makes the step happen once: the same key again returns the first result and changes nothing (schedules, double clicks)
 function legTarget(uid, l) {
   if (!MONEY_FIELDS[l.table]) fail(400, 'That table has no balance');
   const field = l.field || MONEY_FIELDS[l.table][0];
   if (!MONEY_FIELDS[l.table].includes(field)) fail(400, 'That field is not a balance');
-  let r;
-  if (l.table === 'settings') {
-    r = selectRows(uid, { table: 'settings', filters: [['key', 'eq', String(l.key || '')]], limit: 1 })[0];
-    if (!r) r = insertRow(uid, 'settings', { key: String(l.key), value: 0 });
-  } else r = selectRows(uid, { table: l.table, filters: [['id', 'eq', l.id]], limit: 1 })[0];
+  const r = selectRows(uid, { table: l.table, filters: [['id', 'eq', l.id]], limit: 1 })[0];
   if (!r) fail(404, 'That account no longer exists');
   return { r, field };
 }
@@ -219,6 +217,7 @@ function legTarget(uid, l) {
 // only when it says it was part of that snapshot (in_snapshot); anything you add for today by hand still counts.
 const coveredBySnapshot = (r, line) => !!(line && isDay(line.date) && isDay(r.snapshot_date) && line.type !== 'adjustment'
   && (line.date < r.snapshot_date || (line.date === r.snapshot_date && line.in_snapshot)));
+const isCash = (table, r) => table === 'bank_accounts' && r && r.account_type === 'cash';
 function applyLegs(uid, legs, line) {
   const done = [];
   for (const l of legs || []) {
@@ -227,7 +226,7 @@ function applyLegs(uid, legs, line) {
     if (!d) continue;
     const { r, field } = legTarget(uid, l);
     if (coveredBySnapshot(r, line)) {
-      done.push({ table: l.table, id: r.id, key: l.table === 'settings' ? r.key : undefined, field, delta: 0, history_only: fromCents(d), before: fromCents(cents(r[field])), after: fromCents(cents(r[field])) });
+      done.push({ table: l.table, id: r.id, field, delta: 0, history_only: fromCents(d), before: fromCents(cents(r[field])), after: fromCents(cents(r[field])) });
       continue;
     }
     const before = cents(r[field]);
@@ -242,13 +241,15 @@ function applyLegs(uid, legs, line) {
       delta = -(pay - interest);
     }
     const after = before + delta;
-    if (l.floor != null && after < cents(l.floor)) {
-      fail(409, `${r.name || 'Cash in hand'} would go to ${(after / 100).toFixed(2)}, below its limit of ${Number(l.floor).toFixed(2)}`);
+    // Cash can't go below zero, whatever the browser sent; only a stated balance (adjustment) may set it.
+    const floor = isCash(l.table, r) && delta < 0 && !(line && line.type === 'adjustment') ? Math.max(Number(l.floor ?? 0), 0) : l.floor;
+    if (floor != null && after < cents(floor)) {
+      fail(409, `${r.name || 'This account'} would go to ${(after / 100).toFixed(2)}, below its limit of ${Number(floor).toFixed(2)}`);
     }
     const n = { ...r, [field]: fromCents(after), updated_at: now() };
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), l.table, String(r.id), uid);
     stamp(uid, l.table, n, field, l.as_of);
-    done.push({ table: l.table, id: r.id, key: l.table === 'settings' ? r.key : undefined, field, delta: fromCents(delta), before: fromCents(before), after: fromCents(after),
+    done.push({ table: l.table, id: r.id, field, delta: fromCents(delta), before: fromCents(before), after: fromCents(after),
       ...(interest ? { interest: fromCents(interest), principal: fromCents(-delta) } : {}) });
   }
   return done;
@@ -305,10 +306,10 @@ const reverse = (uid, id, b) => tx(() => reverseInner(uid, id, b));
 // The balance an account had at the end of a day, worked back from today: today's balance minus everything dated after
 // that day, including lines kept as history (a later snapshot already counted them).
 function balanceAt(uid, table, id, day) {
-  const r = legTarget(uid, { table, id: table === 'settings' ? undefined : id, key: table === 'settings' ? 'cashInHand' : undefined }).r;
+  const r = legTarget(uid, { table, id }).r;
   const field = MONEY_FIELDS[table][0];
   let c = cents(r[field]);
-  const acctId = table === 'settings' ? r.id : String(id);
+  const acctId = String(id);
   for (const t of selectRows(uid, { table: 'transactions', filters: [['date', 'gt', day]] })) {
     if (t.status === 'undone' || t.status === 'deleted') continue;
     for (const l of t._legs || []) if (l.table === table && String(l.id) === String(acctId)) c -= cents(l.delta);
@@ -321,19 +322,19 @@ function snapshot(uid, b) {
     const day = isDay(b.date) ? b.date : today();
     const value = cents(b.value);
     if (!Number.isFinite(value)) fail(400, 'Enter a number');
-    const { r, field } = legTarget(uid, { table: b.table, id: b.id, key: b.key });
+    const { r, field } = legTarget(uid, { table: b.table, id: b.id });
     const current = cents(r[field]);
     const newer = isDay(r.snapshot_date) && r.snapshot_date > day;
     // An older balance (a past statement) is compared with the app's history for that day, never applied to today.
-    const atDay = balanceAt(uid, b.table, b.table === 'settings' ? 'cash' : r.id, day);
+    const atDay = balanceAt(uid, b.table, r.id, day);
     const gap = value - atDay;
     let adjustment = null, status = gap ? 'open' : 'ok';
     if (!newer && b.apply && gap) {
-      const legs = applyLegs(uid, [{ table: b.table, id: r.id, key: b.key, delta: fromCents(gap), as_of: day }]);
+      const legs = applyLegs(uid, [{ table: b.table, id: r.id, delta: fromCents(gap), as_of: day }]);
       const t = insertRow(uid, 'transactions', { type: 'adjustment', amount: Math.abs(fromCents(gap)), direction: gap > 0 ? 'up' : 'down', date: day,
-        description: `Balance from ${b.source || 'a snapshot'}`, status: 'active', payment_method: b.table === 'settings' ? 'cash_in_hand' : ({ bank_accounts: 'bank_account', credit_cards: 'credit_card', loans: 'loan', investments: 'investment', assets: 'asset' }[b.table]),
-        payment_method_id: b.table === 'settings' ? null : r.id, payment_method_name: r.name || 'Cash in hand' });
-      t._legs = legs.map(({ table, id, key, field, delta }) => ({ table, id, key, field, delta }));
+        description: `Balance from ${b.source || 'a snapshot'}`, status: 'active', payment_method: ({ bank_accounts: 'bank_account', credit_cards: 'credit_card', loans: 'loan', investments: 'investment', assets: 'asset' }[b.table]),
+        payment_method_id: r.id, payment_method_name: r.name || '' });
+      t._legs = legs.map(({ table, id, field, delta }) => ({ table, id, field, delta }));
       db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ?').run(JSON.stringify(t), 'transactions', String(t.id));
       adjustment = t; status = 'corrected';
     }
@@ -343,7 +344,7 @@ function snapshot(uid, b) {
       db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), b.table, String(r.id), uid);
       stamp(uid, b.table, n, field, day);
     }
-    const snap = insertRow(uid, 'snapshots', { account_table: b.table, account_id: b.table === 'settings' ? 'cash' : r.id, name: r.name || 'Cash in hand', date: day,
+    const snap = insertRow(uid, 'snapshots', { account_table: b.table, account_id: r.id, name: r.name || '', date: day,
       value: fromCents(value), app_value: fromCents(atDay), gap: fromCents(gap), status: newer ? (gap ? 'open_history' : 'ok_history') : status, source: String(b.source || '').slice(0, 60),
       adjustment_id: adjustment ? adjustment.id : null, created_at: now() });
     return { snapshot: snap, adjustment };
@@ -379,7 +380,7 @@ route('POST', '/api/snapshots/:id/resolve', (req, b, [id]) => {
   }
   if (s.status !== 'open') return { snapshot: s };
   if (b.action === 'correct') {
-    const out = snapshot(uid, { table: s.account_table, id: s.account_id === 'cash' ? undefined : s.account_id, key: s.account_table === 'settings' ? 'cashInHand' : undefined, value: s.value, date: s.date, source: s.source || 'a snapshot', apply: true });
+    const out = snapshot(uid, { table: s.account_table, id: s.account_id, value: s.value, date: s.date, source: s.source || 'a snapshot', apply: true });
     db.prepare("UPDATE rows SET data = json_set(data, '$.status', 'replaced') WHERE tbl = 'snapshots' AND id = ? AND user_id = ?").run(String(id), uid);
     return out;
   }
@@ -471,5 +472,20 @@ const server = http.createServer(async (req, res) => {
     send(e.status || 500, { error: e instanceof HttpError ? e.message : 'Server error' });
   }
 });
+// Cash used to be a setting (cashInHand). Any amount still held there becomes a Cash account, once.
+function moveCashSettingToAccount() {
+  const rows = db.prepare("SELECT user_id, id, data FROM rows WHERE tbl = 'settings' AND json_extract(data, '$.key') = 'cashInHand' AND json_extract(data, '$.moved_to_account') IS NULL").all();
+  for (const row of rows) {
+    const v = JSON.parse(row.data);
+    const amount = Number(v.value) || 0;
+    tx(() => {
+      const has = selectRows(row.user_id, { table: 'bank_accounts', filters: [['account_type', 'eq', 'cash']], limit: 1 })[0];
+      if (!has && amount) insertRow(row.user_id, 'bank_accounts', { name: 'Cash', account_type: 'cash', balance: amount, institution: '', balance_as_of: v.balance_as_of || today(), created_at: now() });
+      db.prepare("UPDATE rows SET data = json_set(data, '$.value', 0, '$.moved_to_account', 1) WHERE tbl = 'settings' AND id = ? AND user_id = ?").run(String(row.id), row.user_id);
+    });
+  }
+}
+moveCashSettingToAccount();
+
 if (require.main === module) server.listen(PORT, () => console.log(`Finance tracker running on http://localhost:${PORT}`));
 module.exports = { server, db, money, reverse, runQuery };

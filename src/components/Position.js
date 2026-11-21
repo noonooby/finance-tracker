@@ -12,8 +12,7 @@ const KIND = { bank: 'Bank', cash: 'Cash', card: 'Credit card', card_credit: 'Ca
 // The figure as stored (signed), so a correction starts from the real balance.
 function storedValue(line, d) {
   const find = (list) => (list.find((x) => String(x.id) === String(line.id)) || {}).balance;
-  if (line.kind === 'cash') return Number(d.cashInHand) || 0;
-  if (line.kind === 'bank') return Number(find(d.bankAccounts)) || 0;
+  if (line.kind === 'bank' || line.kind === 'cash') return Number(find(d.bankAccounts)) || 0;
   if (['card', 'card_credit', 'gift_card'].includes(line.kind)) return Number(find(d.creditCards)) || 0;
   if (line.kind === 'loan' || line.kind === 'mortgage') return Number(find(d.loans)) || 0;
   return Number(find(line.kind === 'investment' ? d.investments : d.assets)) || 0;
@@ -48,9 +47,9 @@ export default function Position({ darkMode }) {
   useEffect(() => {
     server.from('income_schedules').select('*').then((r) => setSchedules(r.data || []));
     server.from('balance_points').select('*').then((r) => setPoints(r.data || []));
-  }, [d.bankAccounts, d.loans, d.creditCards, d.investments, d.assets, d.cashInHand]);
+  }, [d.bankAccounts, d.loans, d.creditCards, d.investments, d.assets]);
 
-  const p = useMemo(() => position({ bankAccounts: d.bankAccounts, cash: d.cashInHand, cashAsOf: d.cashAsOf, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets }), [d]);
+  const p = useMemo(() => position({ bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets }), [d]);
   const m = useMemo(() => monthEnd({ liquid: p.liquid, incomeSchedules: schedules, loans: d.loans, creditCards: d.creditCards }), [p.liquid, schedules, d.loans, d.creditCards]);
   const hist = useMemo(() => history(points, new Set(d.creditCards.filter((c) => c.is_gift_card).map((c) => String(c.id)))), [points, d.creditCards]);
   const accounts = { bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments };

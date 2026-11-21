@@ -104,8 +104,7 @@ export default function PaymentMethodAnalysis({
     .map(method => ({
       name: method.name,
       value: method.total,
-      color: method.method === 'cash_in_hand' ? '#10B981' : 
-             method.method === 'bank_account' ? '#3B82F6' :
+      color: method.method === 'bank_account' ? '#3B82F6' :
              method.method === 'credit_card' ? '#F59E0B' :
              method.method === 'loan' ? '#EF4444' : '#6B7280'
     }));

@@ -17,12 +17,11 @@ export const DEFAULT_SETTINGS = {
   loanAlertDays: 7,
   lowBalanceAlerts: true,
   lowBalanceThreshold: 100,
-  cashInHandLowThreshold: 50,
   emailNotifications: false,
   reminderTime: '09:00',
   
   // Financial Preferences
-  defaultPaymentMethod: 'cash_in_hand',
+  defaultPaymentMethod: 'bank_account',
   autoCategorization: true,
   roundUpTransactions: false,
   monthlyBudgetEnabled: false,
@@ -67,7 +66,6 @@ const SETTINGS_COLUMN_MAP = {
   loanAlertDays: 'loan_alert_days',
   lowBalanceAlerts: 'low_balance_alerts',
   lowBalanceThreshold: 'low_balance_threshold',
-  cashInHandLowThreshold: 'cash_in_hand_low_threshold',
   emailNotifications: 'email_notifications',
   reminderTime: 'reminder_time',
   defaultPaymentMethod: 'default_payment_method',

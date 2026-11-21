@@ -58,6 +58,9 @@ export default function AccountCard({
           <div className="flex items-center gap-2 mb-1">
             <IconComponent size={20} className="text-muted" />
             <h3 className="font-bold text-base sm:text-lg">{account.name}</h3>
+            {account.account_type === 'cash' && (
+              <span className="text-xs px-2 py-0.5 rounded bg-surface-2 text-muted border border-line">Cash</span>
+            )}
             {account.is_primary && (
               <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">
                 <Star size={12} fill="currentColor" />

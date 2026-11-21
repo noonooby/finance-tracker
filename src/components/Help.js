@@ -6,7 +6,7 @@ import { OTHER_APPS } from '../utils/apps';
 const SECTIONS = [
   ['start', 'Getting started', (
     <ol>
-      <li><b>Add your accounts</b> on the <Link to="/bank-accounts">Accounts</Link> tab: chequing, savings, and how much cash you carry. Enter each balance as your bank app shows it today.</li>
+      <li><b>Add your accounts</b> on the <Link to="/bank-accounts">Accounts</Link> tab: chequing, savings, and an account of kind <b>Cash</b> for the cash you carry. Enter each balance as your bank app shows it today, and count your cash.</li>
       <li><b>Add your cards and loans</b> from <Link to="/more">More</Link>: Cards and Loans. For a credit card, the balance is what you owe.</li>
       <li><b>Record money as it moves</b>: tap the round <b>+</b> button for a purchase or a payment, or the <Link to="/screenshot">Scan</Link> tab to add lines from a screenshot of your bank or card app.</li>
       <li><b>Set up your pay</b> under More, Income, so it is added on payday by itself.</li>
@@ -19,7 +19,7 @@ const SECTIONS = [
     <>
       <p>Tap the round <b>+</b> button. Choose <b>Expense</b> for something you bought, or <b>Payment</b> for paying a credit card or a loan.</p>
       <ul>
-        <li>Pick what you paid with: a bank account, a card, or cash in hand. That balance changes at once.</li>
+        <li>Pick what you paid with: one of your accounts (Cash is one of them) or a card. That balance changes at once.</li>
         <li>A purchase on a credit card adds to what you owe on it. Paying the card lowers both the card and the account you paid from.</li>
         <li>Paying more than a card's balance leaves a credit on the card, as your bank would show it.</li>
       </ul>
@@ -57,9 +57,10 @@ const SECTIONS = [
   )],
   ['accounts', 'Accounts, cash and transfers', (
     <>
-      <p>The <Link to="/bank-accounts">Accounts</Link> tab lists your bank accounts and the cash you carry. <b>Transfer</b> moves money between two of your accounts; <b>Withdraw</b> and <b>Deposit</b> move money between a bank account and cash.</p>
-      <p>An account can allow an overdraft up to a limit you set, with its monthly fee, fee each time it is used and interest rate, so Home can show what it costs. A purchase that would go past the limit is refused and nothing is saved. Cash and gift cards can't go below zero.</p>
-      <p>If a balance is wrong, edit the account and enter the right figure. For cash, use the pencil on Cash in hand: that change is kept as a correction in your transactions.</p>
+      <p>The <Link to="/bank-accounts">Accounts</Link> tab lists all your accounts in one list. Cash is one of them: tap <b>Add Account</b> and choose the kind <b>Cash</b>. It works like any other account; you pay with it, receive money into it and see it in your totals.</p>
+      <p><b>Transfer</b> moves money between two of your accounts. Taking cash out of the bank is a transfer from the bank account to Cash; putting cash in is a transfer from Cash to the bank account.</p>
+      <p>A bank account can allow an overdraft up to a limit you set, with its monthly fee, fee each time it is used and interest rate, so Home can show what it costs. A purchase that would go past the limit is refused and nothing is saved. Cash and gift cards can't go below zero: a purchase with more than the cash you have is refused.</p>
+      <p>If a balance is wrong, edit the account and enter the right figure. This works the same for Cash: count it and enter what you have.</p>
     </>
   )],
   ['cards', 'Credit cards and gift cards', (

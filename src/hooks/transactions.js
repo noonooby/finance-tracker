@@ -24,8 +24,6 @@ export function useTransactionOperations({
   loans,
   reservedFunds,
   bankAccounts,
-  cashInHand,
-  onUpdateCashInHand,
   availableCash,
   onUpdateCash,
   categories,
@@ -81,7 +79,7 @@ async function processExpense(formData, { creditCards, bankAccounts, categories 
   const amount = parseFloat(formData.amount);
   const category = categories?.find(c => c.id === formData.categoryId);
   const method = formData.paymentMethod;
-  const source = method === 'cash_in_hand' ? 'cash_in_hand' : `${method}:${formData.paymentMethodId}`;
+  const source = `${method}:${formData.paymentMethodId}`;
 
   let entity;
   if (method === 'credit_card') {
@@ -92,8 +90,6 @@ async function processExpense(formData, { creditCards, bankAccounts, categories 
     const account = bankAccounts?.find(a => a.id === formData.paymentMethodId);
     if (!account) throw new Error('Bank account not found');
     entity = { type: 'bank_account', id: account.id, name: account.name, snap: { accountId: account.id, previousBalance: Number(account.balance) || 0 } };
-  } else if (method === 'cash_in_hand') {
-    entity = { type: 'cash', id: 'cash-in-hand', name: 'Cash in Hand', snap: {} };
   } else {
     throw new Error('Choose how it was paid.');
   }
@@ -106,8 +102,7 @@ async function processExpense(formData, { creditCards, bankAccounts, categories 
     description: formData.description,
     notes: formData.notes,
     category_id: formData.categoryId || null,
-    category_name: category?.name || null,
-    extra: method === 'cash_in_hand' ? { payment_method_name: 'Cash in Hand' } : undefined
+    category_name: category?.name || null
   }, { bankAccounts, creditCards });
   const transactionId = res.transaction?.id;
 
@@ -147,7 +142,7 @@ async function processExpense(formData, { creditCards, bankAccounts, categories 
 function paymentSourceOf(formData, { bankAccounts, creditCards }) {
   const [sourceType, sourceId] = formData.paymentSource?.includes(':')
     ? formData.paymentSource.split(':')
-    : [formData.paymentSource || 'cash_in_hand', null];
+    : [formData.paymentSource || '', null];
   if (sourceType === 'bank_account' && sourceId) {
     const account = bankAccounts?.find(a => a.id === sourceId);
     if (!account) throw new Error('Bank account not found');
@@ -160,9 +155,9 @@ function paymentSourceOf(formData, { bankAccounts, creditCards }) {
   }
   if (sourceType === 'reserved_fund') {
     // Reserved funds have no table on the server, so there is no balance to pay from.
-    throw new Error('Paying from a reserved fund is not available. Choose a bank account or cash.');
+    throw new Error('Paying from a reserved fund is not available. Choose an account.');
   }
-  return { sourceType: 'cash_in_hand', sourceId: null, source: 'cash_in_hand', sourceName: 'Cash in Hand' };
+  throw new Error('Choose the account it is paid from.');
 }
 
 // Card payment processing

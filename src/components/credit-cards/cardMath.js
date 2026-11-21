@@ -1,7 +1,8 @@
 // Pure helpers for the credit cards page: no state, no data access.
-import { formatCurrency, formatDate, getDaysUntil, localDate } from '../../utils/helpers';
+import { formatCurrency, formatDate, getDaysUntil, localDate, defaultBankAccount } from '../../utils/helpers';
 
-export function emptyCardForm(defaultDays) {
+export function emptyCardForm(defaultDays, bankAccounts) {
+  const account = defaultBankAccount(bankAccounts);
   return {
     name: '',
     balance: '',
@@ -14,8 +15,8 @@ export function emptyCardForm(defaultDays) {
     purchaseDate: localDate(),
     purchaseAmount: '',
     purchaseAmountPaid: '',
-    giftCardPaymentMethod: 'cash_in_hand',
-    giftCardPaymentMethodId: null,
+    giftCardPaymentMethod: account ? 'bank_account' : '',
+    giftCardPaymentMethodId: account?.id || null,
     hasExpiry: false,
     expiryDate: '',
     connectedPaymentSource: null,
@@ -32,7 +33,8 @@ export function emptyCardForm(defaultDays) {
   };
 }
 
-export function formFromCard(card, defaultDays) {
+export function formFromCard(card, defaultDays, bankAccounts) {
+  const account = defaultBankAccount(bankAccounts);
   return {
     name: card.name,
     balance: (parseFloat(card.balance) || 0).toFixed(2),
@@ -45,8 +47,8 @@ export function formFromCard(card, defaultDays) {
     purchaseDate: card.purchase_date || localDate(),
     purchaseAmount: card.purchase_amount ? (parseFloat(card.purchase_amount)).toFixed(2) : '',
     purchaseAmountPaid: card.purchase_amount_paid ? (parseFloat(card.purchase_amount_paid)).toFixed(2) : card.purchase_amount ? (parseFloat(card.purchase_amount)).toFixed(2) : '',
-    giftCardPaymentMethod: 'cash_in_hand',
-    giftCardPaymentMethodId: null,
+    giftCardPaymentMethod: account ? 'bank_account' : '',
+    giftCardPaymentMethodId: account?.id || null,
     hasExpiry: card.has_expiry || false,
     expiryDate: card.expiry_date || '',
     connectedPaymentSource: card.connected_payment_source || null,
@@ -64,11 +66,12 @@ export function formFromCard(card, defaultDays) {
 }
 
 // Returns an error message, or null when the form can be saved.
-export function validateCardForm(formData) {
+export function validateCardForm(formData, isEditing = false) {
   if (!formData.name || !formData.balance) return 'Please fill in required fields: Name and Balance';
   if (!formData.isGiftCard && !formData.dueDate) return 'Credit cards require a Due Date';
   if (formData.isGiftCard && !formData.purchaseAmount) return 'Gift cards require an Original Value';
   if (formData.isGiftCard && !formData.purchaseAmountPaid) return 'Gift cards require a Purchase Amount Paid';
+  if (formData.isGiftCard && !isEditing && !formData.giftCardPaymentMethodId) return 'Choose how you paid for the gift card';
   if (formData.isGiftCard && formData.hasExpiry && !formData.expiryDate) {
     return 'Please specify the expiry date or uncheck "has expiry"';
   }
@@ -187,17 +190,16 @@ export function paymentSourceOptions(bankAccounts) {
     bankAccounts.forEach(account => {
       sources.push({
         value: `bank_account:${account.id}`,
-        label: `Bank Account: ${account.name}${account.is_primary ? ' (Primary)' : ''}`
+        label: `Account: ${account.name}${account.is_primary ? ' (Primary)' : ''}`
       });
     });
   }
-  sources.push({ value: 'cash_in_hand', label: 'Cash in Hand' });
   return sources;
 }
 
 export function paymentSourceValue(formData) {
-  if (!formData.connectedPaymentSource) return '';
-  if (formData.connectedPaymentSource === 'cash_in_hand') return 'cash_in_hand';
+  // A source with no account (cash before it was an account) counts as none.
+  if (!formData.connectedPaymentSource || !formData.connectedPaymentSourceId) return '';
   return `${formData.connectedPaymentSource}:${formData.connectedPaymentSourceId}`;
 }
 

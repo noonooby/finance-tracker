@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Minus } from 'lucide-react';
-import { formatCurrency } from '../../utils/helpers';
+import { formatCurrency, defaultBankAccount } from '../../utils/helpers';
 import ActionButton from '../shared/ActionButton';
 import { showToast } from '../../utils/toast';
 import { localDate } from '../../utils/helpers';
@@ -18,15 +18,15 @@ export default function GiftCardBalanceModal({
   processing,
   bankAccounts = [],
   creditCards = [],
-  cashInHand = 0,
   categories = []
 }) {
+  const account = defaultBankAccount(bankAccounts);
   const [formData, setFormData] = useState({
     amount: '',
     amountPaid: '', // Different from amount when bonus is applied
     date: localDate(),
-    paymentMethod: 'cash_in_hand',
-    paymentMethodId: null,
+    paymentMethod: account ? 'bank_account' : '',
+    paymentMethodId: account?.id || null,
     category: operation === 'add' ? 'gift_card_purchase' : '',
     notes: ''
   });
@@ -35,7 +35,7 @@ export default function GiftCardBalanceModal({
   
   const getPaymentSources = () => {
     const sources = [
-      { value: 'cash_in_hand', label: `Cash in Hand (${formatCurrency(cashInHand)})` }
+      { value: '', label: 'Choose how you paid' }
     ];
     
     if (bankAccounts.length > 0) {
@@ -60,8 +60,8 @@ export default function GiftCardBalanceModal({
   };
 
   const handlePaymentMethodChange = (value) => {
-    if (value === 'cash_in_hand') {
-      setFormData({ ...formData, paymentMethod: 'cash_in_hand', paymentMethodId: null });
+    if (!value.includes(':')) {
+      setFormData({ ...formData, paymentMethod: '', paymentMethodId: null });
     } else {
       const [method, id] = value.split(':');
       setFormData({ ...formData, paymentMethod: method, paymentMethodId: id });
@@ -76,6 +76,11 @@ export default function GiftCardBalanceModal({
     
     if (operation === 'use' && !formData.category) {
       showToast.error('Please select a category for this expense');
+      return;
+    }
+
+    if (operation === 'add' && !formData.paymentMethodId) {
+      showToast.error('Choose how you paid');
       return;
     }
     
@@ -181,7 +186,7 @@ export default function GiftCardBalanceModal({
                 Payment Source *
               </label>
               <select
-                value={formData.paymentMethodId ? `${formData.paymentMethod}:${formData.paymentMethodId}` : formData.paymentMethod}
+                value={formData.paymentMethodId ? `${formData.paymentMethod}:${formData.paymentMethodId}` : ''}
                 onChange={(e) => handlePaymentMethodChange(e.target.value)}
                 className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
               >
