@@ -7,7 +7,7 @@ Live at https://finance.nobodystack.com (once deployed).
 
 ## How it works
 
-- `server/server.js`: plain Node `http` server with the built-in SQLite (`node:sqlite`), no dependencies (same pattern as Evenly).
+- `server/server.js`: plain Node `http` server with the built-in SQLite (`node:sqlite`), no dependencies.
   Sign-in is Google only. Every row belongs to one user and the server sets and checks that itself.
 - Every balance change goes through `/api/money`: the balance changes and the records of one money event are saved
   together or not at all. Amounts are added up in cents. A once-only key stops a schedule or a double click from
@@ -50,9 +50,9 @@ transfers, loans, undo, edits, two users, screenshots) against a throwaway datab
 | `PUBLIC_URL` | Default `https://finance.nobodystack.com`. |
 | `DB_PATH` | SQLite file. Default `/data/finance.db` in the container. |
 
-## Deploy (next to Evenly and ResumeTailor on the Oracle server)
+## Deploy (Oracle server, Docker Compose and Caddy)
 
-In the server's deploy folder (the one with Evenly's `compose.yml`):
+In the server's deploy folder (the one with `compose.yml`):
 
 1. Clone this repo as `./finance` and create `./finance/.env` with the settings above.
 2. Add to `compose.yml`:

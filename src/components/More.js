@@ -1,10 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, Users, FileText, Scale, PiggyBank } from 'lucide-react';
+import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, FileText, Scale, PiggyBank } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { OTHER_APPS } from '../utils/apps';
 
-const APP_ICONS = { split: Users, resume: FileText };
+const APP_ICONS = { resume: FileText };
 
 export default function More({ darkMode }) {
   const navigate = useNavigate();

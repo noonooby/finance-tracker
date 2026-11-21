@@ -51,7 +51,7 @@ button, .btn {
   min-width: 44px;
 }
 
-/* ---------- Motion: small and quick, same curves as Evenly; off when the phone asks for reduced motion ---------- */
+/* ---------- Motion: small and quick; off when the phone asks for reduced motion ---------- */
 :root { --ease: cubic-bezier(.32, .72, 0, 1); --spring: cubic-bezier(.34, 1.56, .64, 1); }
 @keyframes viewIn { from { opacity: 0; transform: translateY(8px); } }
 @keyframes fadeIn { from { opacity: 0; } }

@@ -1,5 +1,5 @@
 // Finance tracker server. Run: node --experimental-sqlite server/server.js
-// Plain Node http + built-in SQLite, no dependencies (same pattern as Evenly).
+// Plain Node http + built-in SQLite, no dependencies.
 // Every row belongs to one user; the server sets and checks user_id itself, the browser cannot choose it.
 // Every balance change goes through /api/money, which applies all of its changes and its records in one database transaction.
 const http = require('node:http');
