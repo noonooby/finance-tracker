@@ -14,6 +14,7 @@ import {
   formatCurrency
 } from '../../../utils/reportHelpers';
 import { startOfYear, endOfYear, subYears, format } from 'date-fns';
+import { parseDay } from '../../../utils/helpers';
 
 export default function AnnualReview({ 
   darkMode, 
@@ -44,7 +45,7 @@ export default function AnnualReview({
   const [yearComparison, setYearComparison] = useState(null);
 
   // Get available years from transactions
-  const availableYears = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))].sort((a, b) => b - a);
+  const availableYears = [...new Set(transactions.map(t => parseDay(t.date).getFullYear()))].sort((a, b) => b - a);
 
   useEffect(() => {
     // Filter transactions for selected year

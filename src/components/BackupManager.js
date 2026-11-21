@@ -50,7 +50,7 @@ export default function BackupManager() {
   const handleDownloadTemplate = async () => {
     setLoading(true);
     try {
-      const result = await downloadTransactionTemplate();
+      await downloadTransactionTemplate();
       toast.success(
         'Template downloaded\nFill in your transactions and upload back',
         { duration: 4000 }
@@ -116,7 +116,7 @@ export default function BackupManager() {
     if (!file) return;
 
     const confirmed = window.confirm(
-      '⚠️ WARNING: This will replace ALL your current data.\n\n' +
+      'WARNING: This will replace ALL your current data.\n\n' +
       'Current data will be permanently deleted.\n' +
       'Make sure you have a backup before proceeding.\n\n' +
       'Continue?'
@@ -323,7 +323,7 @@ export default function BackupManager() {
               <div>1. Download blank template Excel file</div>
               <div>2. Fill in: Date, Amount, Description (Type & Category auto-detected)</div>
               <div>3. Upload the file to add all transactions at once</div>
-              <div className="mt-2 text-purple-700 dark:text-purple-300">✨ Smart auto-detection learns from your descriptions!</div>
+              <div className="mt-2 text-purple-700 dark:text-purple-300">Smart auto-detection learns from your descriptions!</div>
             </div>
           </div>
         </div>

@@ -6,6 +6,14 @@ export const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(amount || 0);
 };
 
+// A stored date ("2026-11-21") as a local date. new Date("2026-11-21") would be UTC midnight: the day before, west of UTC.
+export const parseDay = (value) => {
+  if (value instanceof Date) return value;
+  const s = String(value || '');
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s);
+};
+
 export const formatDate = (date) => {
   if (!date) return '';
   // Parse date string as local date (YYYY-MM-DD) without timezone conversion
@@ -104,7 +112,7 @@ export const recalculateAvailableCash = async () => {
 
     const transactions = await dbOperation('transactions', 'getAll');
     const sortedTransactions = transactions.sort((a, b) =>
-      new Date(a.date) - new Date(b.date)
+      parseDay(a.date) - parseDay(b.date)
     );
 
     let calculatedCash = 0;
@@ -153,7 +161,7 @@ export const validateAvailableCash = async () => {
   try {
     const transactions = await dbOperation('transactions', 'getAll');
     const sortedTransactions = transactions.sort((a, b) => 
-      new Date(a.date) - new Date(b.date)
+      parseDay(a.date) - parseDay(b.date)
     );
 
     let expectedCash = 0;

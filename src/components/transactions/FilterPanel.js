@@ -65,7 +65,7 @@ export default function FilterPanel({
         >
           <option value="all">All Categories</option>
           {categories.map(cat => (
-            <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
+            <option key={cat.id} value={cat.id}>{cat.name}</option>
           ))}
         </select>
 
@@ -76,10 +76,10 @@ export default function FilterPanel({
           className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
         >
           <option value="all">All Methods</option>
-          <option value="cash_in_hand">💵 Cash in Hand</option>
-          <option value="bank_account">🏦 Bank Account</option>
+          <option value="cash_in_hand">Cash in Hand</option>
+          <option value="bank_account">Bank Account</option>
           <option value="cash">Cash (Legacy)</option>
-          <option value="credit_card">💳 Credit Card</option>
+          <option value="credit_card">Credit Card</option>
           <option value="loan">Loan</option>
           <option value="reserved_fund">Reserved Fund</option>
           <option value="transfer">Transfer</option>
@@ -95,7 +95,7 @@ export default function FilterPanel({
         >
           <option value="all">All Cards</option>
           {creditCards && creditCards.filter(c => !c.is_gift_card).length > 0 && (
-            <optgroup label="💳 Credit Cards">
+            <optgroup label="Credit Cards">
               {creditCards.filter(c => !c.is_gift_card).map(card => (
                 <option key={card.id} value={card.id}>
                   {card.name}
@@ -104,7 +104,7 @@ export default function FilterPanel({
             </optgroup>
           )}
           {creditCards && creditCards.filter(c => c.is_gift_card).length > 0 && (
-            <optgroup label="🎁 Gift Cards">
+            <optgroup label="Gift Cards">
               {creditCards.filter(c => c.is_gift_card).map(card => (
                 <option key={card.id} value={card.id}>
                   {card.name}

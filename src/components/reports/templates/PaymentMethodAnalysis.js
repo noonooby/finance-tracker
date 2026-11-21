@@ -13,6 +13,7 @@ import {
   getDateRangePreset,
   formatCurrency
 } from '../../../utils/reportHelpers';
+import { parseDay } from '../../../utils/helpers';
 
 export default function PaymentMethodAnalysis({ 
   darkMode, 
@@ -101,13 +102,13 @@ export default function PaymentMethodAnalysis({
   // Prepare chart data with icons
   const getPaymentMethodIcon = (method) => {
     switch(method) {
-      case 'cash_in_hand': return '💵';
-      case 'bank_account': return '🏦';
-      case 'credit_card': return '💳';
-      case 'loan': return '📊';
-      case 'reserved_fund': return '🎯';
+      case 'cash_in_hand': return '';
+      case 'bank_account': return '';
+      case 'credit_card': return '';
+      case 'loan': return '';
+      case 'reserved_fund': return '';
       case 'transfer': return '↔️';
-      default: return '📝';
+      default: return '';
     }
   };
 
@@ -316,14 +317,14 @@ export default function PaymentMethodAnalysis({
                       </thead>
                       <tbody>
                         {method.transactions
-                          .sort((a, b) => new Date(b.date) - new Date(a.date))
+                          .sort((a, b) => parseDay(b.date) - parseDay(a.date))
                           .map((transaction, idx) => (
                             <tr
                               key={transaction.id}
                               className={`border-b ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}
                             >
                               <td className="py-2 px-3 whitespace-nowrap">
-                                {new Date(transaction.date).toLocaleDateString()}
+                                {parseDay(transaction.date).toLocaleDateString()}
                               </td>
                               <td className="py-2 px-3">
                                 <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${

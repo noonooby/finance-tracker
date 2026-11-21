@@ -117,7 +117,7 @@ export default function BudgetHistory({ darkMode, categories, categoryBudgets })
             <option value="all">All Categories (Overall Budget)</option>
             {categoriesWithBudgets.map(category => (
               <option key={category.id} value={category.id}>
-                {category.icon} {category.name}
+                {category.name}
               </option>
             ))}
           </select>

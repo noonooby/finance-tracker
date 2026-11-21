@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Plus, DollarSign, Edit2, X, ListFilter, AlertCircle, Zap, CheckCircle, Calendar, Pause, Play, Trash2 } from 'lucide-react';
-import { formatCurrency, formatDate, getDaysUntil, getPrimaryAccountFromArray, predictNextDate } from '../utils/helpers';
+import { Plus, X, ListFilter, Zap, Calendar, Pause, Play, Trash2 } from 'lucide-react';
+import { formatCurrency, formatDate, getDaysUntil } from '../utils/helpers';
 import { formatFrequency } from '../utils/sentenceCase';
-import { processDueIncomeSchedules, getIncomeSchedules, toggleIncomeSchedule, deleteIncomeSchedule, updateIncomeSchedule } from '../utils/schedules';
+import { processDueIncomeSchedules, getIncomeSchedules, toggleIncomeSchedule, deleteIncomeSchedule } from '../utils/schedules';
 import useAsyncAction from '../hooks/useAsyncAction';
 import ActionButton from './shared/ActionButton';
 import { showToast } from '../utils/toast';
@@ -31,10 +31,8 @@ export default function Income({
   const [editingItem, setEditingItem] = useState(null);
   const sourceInputRef = useRef(null);
   const incomeRefs = useRef({});
-  const [predictionCount, setPredictionCount] = useState(8);
+  const predictionCount = 8;
   const [checkingDueIncome, setCheckingDueIncome] = useState(false);
-  const [showDepositConfirmation, setShowDepositConfirmation] = useState(false);
-  const [pendingDeposits, setPendingDeposits] = useState([]);
   
   // New: Income schedules state
   const [schedules, setSchedules] = useState([]);
@@ -44,7 +42,7 @@ export default function Income({
   const { addIncome, deleteIncome } = useIncomeOperations();
   const { recentSources, handleSelectSource, handleSourceBlur } = useIncomeContexts(editingItem);
   const { getDefaultFormData, validateIncomeForm } = useIncomeValidation();
-  const { predictedIncome, pendingDeposits: pendingDepositsFromHook, pendingTodayCount } = useIncomePredictions(income, predictionCount);
+  useIncomePredictions(income, predictionCount);
   
   const [formData, setFormData] = useState(() => getDefaultFormData(bankAccounts));
   
@@ -142,25 +140,6 @@ export default function Income({
     } else if (result?.error) {
       showToast.error(`Failed to save income: ${result.error.message}`);
     }
-  };
-
-  const handleEdit = (inc) => {
-    const primaryAccount = getPrimaryAccountFromArray(bankAccounts);
-    setFormData({
-      source: inc.source,
-      amount: (parseFloat(inc.amount) || 0).toFixed(2),
-      date: inc.date,
-      frequency: inc.frequency,
-      reservedAmount: '',
-      recurringDurationType: inc.recurring_duration_type || 'indefinite',
-      recurringUntilDate: inc.recurring_until_date || '',
-      recurringOccurrences: inc.recurring_occurrences_total?.toString() || '',
-      depositTarget: inc.deposit_account_id ? 'bank' : 'cash_in_hand',
-      depositAccountId: inc.deposit_account_id || primaryAccount?.id || '',
-      autoDeposit: inc.auto_deposit !== false
-    });
-    setEditingItem(inc);
-    setShowAddForm(true);
   };
 
   const handleDelete = async (id, isSchedule = false) => {
@@ -265,7 +244,6 @@ export default function Income({
 
   // Separate manual income from schedule occurrences
   const manualIncome = income.filter(inc => inc.is_manual || inc.frequency === 'onetime');
-  const scheduleOccurrences = income.filter(inc => inc.schedule_id);
 
   return (
     <div className="space-y-4">

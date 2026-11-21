@@ -168,7 +168,7 @@ export const groupByCategory = (transactions, categories) => {
         grouped[t.category_id] = {
           id: t.category_id,
           name: removeEmojis(rawName), // Clean name without emojis
-          icon: category?.icon || '📦',
+          icon: category?.icon || 'Package',
           color: category?.color || '#6B7280',
           total: 0,
           count: 0,

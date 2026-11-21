@@ -1,20 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, CreditCard as CreditCardIcon, TrendingUp } from 'lucide-react';
-import { dbOperation } from '../utils/db';
-import { logActivity } from '../utils/activityLogger';
 import { formatCurrency } from '../utils/helpers';
 import { useTransactionOperations } from '../hooks/transactions';
 import { showToast } from '../utils/toast';
 import CategorySelect from './shared/CategorySelect';
 import {
-  addRecentTransaction,
-  addRecentCategory,
-  addRecentPaymentMethod,
   getUserPreferences
 } from '../utils/userPreferencesManager';
 import {
   getExpenseContext,
-  saveExpenseContext,
   getRecentExpenseDescriptions,
   getLastUsedExpenseContext,
   applyExpenseContext
@@ -64,7 +58,7 @@ export default function AddTransaction({
 
   const [localCategories, setLocalCategories] = useState(categoriesProp);
   const [saving, setSaving] = useState(false);
-  const [recentCategories, setRecentCategories] = useState([]);
+  const [, setRecentCategories] = useState([]);
   const [recentPaymentMethods, setRecentPaymentMethods] = useState([]);
   const [recentExpenses, setRecentExpenses] = useState([]);
   const descriptionInputRef = useRef(null);
@@ -562,7 +556,7 @@ export default function AddTransaction({
                       >
                         {pm.name}
                         {pm.type === 'bank_account' && pm.balance !== undefined && ` ($${pm.balance.toFixed(2)} available)`}
-                        {pm.isPrimary && ' ★'}
+                        {pm.isPrimary && ' (primary)'}
                       </option>
                     ))}
                   </optgroup>
@@ -572,7 +566,7 @@ export default function AddTransaction({
                   <option value="cash_in_hand">Cash in Hand (${(cashInHand || 0).toFixed(2)} available)</option>
                   {bankAccounts && bankAccounts.length > 0 && bankAccounts.map(account => (
                     <option key={account.id} value={`bank_account:${account.id}`}>
-                      {account.name} (${account.balance.toFixed(2)} available){account.is_primary ? ' ★' : ''}
+                      {account.name} (${account.balance.toFixed(2)} available){account.is_primary ? ' (primary)' : ''}
                     </option>
                   ))}
                 </optgroup>

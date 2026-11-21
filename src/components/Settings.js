@@ -5,7 +5,6 @@ import {
   Trash2, 
   Database, 
   Wallet, 
-  Edit2,
   Palette, 
   Bell, 
   DollarSign, 

@@ -14,6 +14,7 @@ import {
   getDateRangePreset,
   formatCurrency
 } from '../../../utils/reportHelpers';
+import { parseDay } from '../../../utils/helpers';
 
 export default function CategoryAnalysis({ 
   darkMode, 
@@ -289,14 +290,14 @@ export default function CategoryAnalysis({
                       </thead>
                       <tbody>
                         {cat.transactions
-                          .sort((a, b) => new Date(b.date) - new Date(a.date))
+                          .sort((a, b) => parseDay(b.date) - parseDay(a.date))
                           .map((transaction, idx) => (
                             <tr
                               key={transaction.id}
                               className={`border-b ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}
                             >
                               <td className="py-2 px-3 whitespace-nowrap">
-                                {new Date(transaction.date).toLocaleDateString()}
+                                {parseDay(transaction.date).toLocaleDateString()}
                               </td>
                               <td className="py-2 px-3">
                                 {transaction.description || 'No description'}

@@ -71,9 +71,6 @@ export default function GiftCardForm({
               >
                 <Gift size={14} />
                 {giftCard.card_name}
-                {giftCard.usage_count > 10 && (
-                  <span className="text-yellow-500">★</span>
-                )}
               </button>
             ))}
           </div>

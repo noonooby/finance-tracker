@@ -11,6 +11,7 @@ import {
   getDateRangePreset,
   formatCurrency
 } from '../../../utils/reportHelpers';
+import { parseDay } from '../../../utils/helpers';
 
 export default function CashflowAnalysis({ 
   darkMode, 
@@ -357,14 +358,14 @@ export default function CashflowAnalysis({
             </thead>
             <tbody>
               {filteredData
-                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                .sort((a, b) => parseDay(b.date) - parseDay(a.date))
                 .map((transaction) => (
                   <tr
                     key={transaction.id}
                     className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}
                   >
                     <td className="py-2 px-3 whitespace-nowrap">
-                      {new Date(transaction.date).toLocaleDateString()}
+                      {parseDay(transaction.date).toLocaleDateString()}
                     </td>
                     <td className="py-2 px-3">
                       <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${

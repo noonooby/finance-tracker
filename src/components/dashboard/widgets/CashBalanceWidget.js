@@ -34,8 +34,8 @@ export default function CashBalanceWidget({
       
       {showCashInDashboard && (
         <div className={`${compactMode ? 'text-[10px]' : 'text-sm'} opacity-90 ${compactMode ? 'mt-0.5 space-y-0' : 'mt-2 space-y-1'}`}>
-          <div className="flex items-center gap-1">💵 Cash in Hand: {formatCurrency(cashInHand || 0)}</div>
-          <div className="flex items-center gap-1">🏦 Bank Accounts: {formatCurrency(calculateTotalBankBalance(bankAccounts || []))}</div>
+          <div className="flex items-center gap-1">Cash in Hand: {formatCurrency(cashInHand || 0)}</div>
+          <div className="flex items-center gap-1">Bank Accounts: {formatCurrency(calculateTotalBankBalance(bankAccounts || []))}</div>
         </div>
       )}
     </div>

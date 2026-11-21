@@ -1,5 +1,6 @@
 import React from 'react';
 import { Trash2, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { parseDay } from '../../utils/helpers';
 
 /**
  * Transaction Card Component
@@ -30,7 +31,7 @@ export default function TransactionCard({
   };
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
+    const date = parseDay(dateString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 

@@ -136,7 +136,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
           >
             {categories.filter(c => !c.is_income).map(cat => (
               <option key={cat.id} value={cat.id}>
-                {cat.icon} {cat.name}
+                {cat.name}
               </option>
             ))}
           </select>
@@ -155,9 +155,9 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
             darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'
           } h-32`}
         >
-          <option value="cash_in_hand">💵 Cash in Hand</option>
-          <option value="bank_account">🏦 Bank Account</option>
-          <option value="credit_card">💳 Credit Card</option>
+          <option value="cash_in_hand">Cash in Hand</option>
+          <option value="bank_account">Bank Account</option>
+          <option value="credit_card">Credit Card</option>
           <option value="loan">Loan</option>
           <option value="reserved_fund">Reserved Fund</option>
           <option value="transfer">Transfer</option>

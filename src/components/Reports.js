@@ -103,7 +103,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
       setSaveAsFavorite(false);
       setShowSaveDialog(false);
       
-      alert(`✅ Template "${templateData.name}" saved successfully!`);
+      alert(`Template "${templateData.name}" saved successfully!`);
     } catch (error) {
       console.error('Error saving template:', error);
       setSaveError(error.message || 'Failed to save template');
@@ -144,7 +144,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
     try {
       await deleteReportTemplate(template.id);
       await loadSavedTemplates();
-      alert('🗑️ Template deleted successfully');
+      alert('Template deleted successfully');
     } catch (error) {
       console.error('Error deleting template:', error);
       alert('Failed to delete template');
@@ -155,7 +155,7 @@ export default function Reports({ darkMode, categories, cashInHand = 0 }) {
     try {
       await duplicateReportTemplate(template.id);
       await loadSavedTemplates();
-      alert(`✅ Template duplicated successfully!`);
+      alert(`Template duplicated successfully!`);
     } catch (error) {
       console.error('Error duplicating template:', error);
       alert('Failed to duplicate template');

@@ -148,7 +148,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       setFormData({
         name: '',
         color: '#6b7280',
-        icon: '📦',
+        icon: 'Package',
         is_income: false
       });
     } catch (error) {
