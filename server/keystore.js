@@ -24,20 +24,35 @@ function mayManage(db, user) {
 
 // One cheap call (list one model) to check the key works before it is kept.
 async function check(key) {
-  if (process.env.GEMINI_CHECK_STUB) return key === process.env.GEMINI_CHECK_STUB;
+  if (process.env.GEMINI_CHECK_STUB) return key === process.env.GEMINI_CHECK_STUB || { reason: 'API_KEY_INVALID' };
   try {
     const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1', { headers: { 'x-goog-api-key': key }, signal: AbortSignal.timeout(15000) });
-    return r.ok;
-  } catch { return false; }
+    if (r.ok) return true;
+    const j = await r.json().catch(() => ({}));
+    const reason = (j.error && j.error.details || []).map((d) => d.reason).find(Boolean) || j.error && j.error.status || String(r.status);
+    return { reason };
+  } catch { return { reason: 'NETWORK' }; }
 }
 
 // -> throws { status, message } on refusal; never echoes the key.
 async function set(db, user, key, fail) {
   if (!mayManage(db, user)) fail(403, 'Only the owner of this app can set the Gemini key.');
   if (isSet()) fail(409, 'The Gemini key is already set. It can only be changed on the server.');
-  const k = String(key || '').trim();
-  if (!/^[A-Za-z0-9_-]{20,200}$/.test(k)) fail(400, 'That does not look like a Gemini key.');
-  if (!(await check(k))) fail(400, 'Google did not accept that key. Check it and try again.');
+  // Copying from a web page can bring spaces, line breaks or quotes along; those are never part of a key.
+  const k = String(key || '').replace(/[\s"'`]/g, '');
+  if (k.length < 20 || k.length > 300 || /[^\x21-\x7e]/.test(k)) fail(400, `That does not look like a Gemini key (it has ${k.length} characters; a key is usually 39 and starts with AIza).`);
+  const ok = await check(k);
+  if (ok !== true) {
+    const why = {
+      API_KEY_INVALID: 'Google says this key is not valid. Copy it again from Google AI Studio (aistudio.google.com/apikey) with its copy button.',
+      SERVICE_DISABLED: 'This key is from a Google Cloud project where the Gemini API is not turned on. Create the key in Google AI Studio instead, or turn on the Generative Language API for that project.',
+      API_KEY_SERVICE_BLOCKED: 'This key is restricted to other Google APIs. Allow the Generative Language API for it, or create a new key in Google AI Studio.',
+      API_KEY_HTTP_REFERRER_BLOCKED: 'This key only works from certain websites. Remove the website restriction, or create a new key in Google AI Studio.',
+      API_KEY_IP_ADDRESS_BLOCKED: 'This key only works from certain IP addresses. Remove that restriction, or create a new key in Google AI Studio.',
+      NETWORK: 'Could not reach Google to check the key. Try again in a minute.',
+    }[ok.reason] || `Google did not accept that key (${ok.reason}). Check it and try again.`;
+    fail(400, why);
+  }
   if (isSet()) fail(409, 'The Gemini key is already set. It can only be changed on the server.');
   try { fs.writeFileSync(file(), k, { mode: 0o600, flag: 'wx' }); } catch { fail(409, 'The Gemini key is already set. It can only be changed on the server.'); }
   return { ok: true };
