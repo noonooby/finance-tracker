@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, Edit2, X, TrendingUp, ListFilter, Star } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId } from '../utils/helpers';
 import { formatFrequency } from '../utils/sentenceCase';
@@ -18,7 +18,7 @@ import {
   getLastUsedLoanContext,
   applyLoanCreationContext
 } from '../utils/formContexts';
-import { LoanForm, useLoanPayment } from './loans/index';
+import { LoanForm } from './loans/index';
 import AddTransaction from './AddTransaction';
 import { localDate } from '../utils/helpers';
 
@@ -66,54 +66,8 @@ export default function Loans({
   const [isProcessing, setIsProcessing] = useState(false);
   const [pinnedLoans, setPinnedLoans] = useState([]);
   
-  // Payment form state (not currently used in UI but needed for handlePayment function)
-  const [paymentForm, setPaymentForm] = useState({
-    amount: '',
-    amountMode: 'recommended',
-    date: localDate(),
-    category: 'other',
-    source: 'cash_in_hand'
-  });
-  
-  const resetPaymentFormState = () => {
-    setPaymentForm({
-      amount: '',
-      amountMode: 'recommended',
-      date: localDate(),
-      category: 'other',
-      source: 'cash_in_hand'
-    });
-  };
-  
-  // Get recommended payment amount for a loan
-  const getRecommendedAmountForSource = (loan) => {
-    const loanBalance = Number(loan.balance);
-    const paymentAmount = Number(loan.payment_amount);
-    
-    // Return the regular payment amount, or balance if less
-    if (Number.isFinite(paymentAmount) && paymentAmount > 0) {
-      return Number.isFinite(loanBalance) && loanBalance < paymentAmount 
-        ? loanBalance 
-        : paymentAmount;
-    }
-    
-    // Fallback to balance if no payment amount set
-    return Number.isFinite(loanBalance) && loanBalance > 0 ? loanBalance : null;
-  };
-  
   const { executeAction, isProcessing: isActionProcessing } = useAsyncAction();
   
-  const { processPayment, processing: paymentProcessing } = useLoanPayment({
-    loans,
-    bankAccounts,
-    creditCards,
-    availableCash,
-    cashInHand,
-    onUpdateCash,
-    onUpdateCashInHand,
-    hasMigratedToBankAccounts
-  });
-
   useEffect(() => {
     loadPinnedLoans();
     loadRecentLoanNames();
@@ -444,51 +398,6 @@ export default function Loans({
     setShowAddForm(true);
   };
 
-  const handlePayment = async (loanId) => {
-    const loan = loans.find((l) => l.id === loanId);
-    if (!loan) {
-      showToast.error('Loan not found');
-      return;
-    }
-
-    const sourceValue = paymentForm.source;
-    const recommendedAmount = getRecommendedAmountForSource(loan);
-    const paymentAmount = paymentForm.amountMode === 'recommended' 
-      ? recommendedAmount 
-      : parseFloat(paymentForm.amount);
-
-    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
-      showToast.error('Please enter a valid payment amount');
-      return;
-    }
-
-    const paymentDate = paymentForm.date;
-    if (!paymentDate) {
-      showToast.error('Please select a payment date');
-      return;
-    }
-
-    const result = await processPayment({
-      loanId,
-      paymentAmount,
-      paymentDate,
-      sourceValue,
-      categoryId: paymentForm.category,
-      amountMode: paymentForm.amountMode
-    });
-
-    if (result.success) {
-      await onUpdate();
-      setPaymentLoan(null);
-      resetPaymentFormState();
-      showToast.success(
-        `Payment of ${formatCurrency(result.data.amount)} processed for ${result.data.loanName}`
-      );
-    } else {
-      showToast.error(`Payment failed: ${result.error}`);
-    }
-  };
-
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this loan?')) {
       return;
@@ -559,7 +468,7 @@ export default function Loans({
             <div className="mt-2 space-y-1">
               {processingResults.processed.map((item, i) => (
                 <div key={i} className="text-xs">
-                  ✅ {item.loan} - {formatCurrency(item.amount)} from {item.source}
+                  {item.loan} - {formatCurrency(item.amount)} from {item.source}
                 </div>
               ))}            
             </div>

@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState } from 'react';
-import { predictNextDate, getDaysUntil } from '../../utils/helpers';
+import { predictNextDate, getDaysUntil, parseDay } from '../../utils/helpers';
 import { getIncomeSchedules } from '../../utils/schedules';
 
 /**
@@ -48,7 +48,7 @@ export const useIncomePredictions = (income = [], predictionCount = 8) => {
           }
 
           if (schedule.recurring_duration_type === 'until_date' && schedule.recurring_until_date) {
-            const endDate = new Date(schedule.recurring_until_date);
+            const endDate = parseDay(schedule.recurring_until_date);
             const predictionDate = new Date(currentDate);
             if (predictionDate > endDate) {
               break;

@@ -1,4 +1,4 @@
-import { dbOperation, updateBankAccountBalance } from '../../../utils/db';
+import { recordExpense } from '../../../utils/money';
 import { logActivity } from '../../../utils/activityLogger';
 import { formatCurrency } from '../../../utils/helpers';
 import { showToast } from '../../../utils/toast';
@@ -11,15 +11,11 @@ import { saveGiftCardPurchaseContext } from '../../../utils/formContexts';
  * @param {Object} params
  * @param {Array} params.creditCards - All credit cards
  * @param {Array} params.bankAccounts - All bank accounts
- * @param {number} params.cashInHand - Current cash in hand balance
- * @param {Function} params.onUpdateCashInHand - Update cash in hand callback
  * @param {Function} params.onUpdateCash - Update total cash callback
  */
 export function useGiftCardPurchase({
   creditCards,
   bankAccounts,
-  cashInHand,
-  onUpdateCashInHand,
   onUpdateCash
 }) {
   
@@ -39,7 +35,7 @@ export function useGiftCardPurchase({
       // Reconstruct payment method from type + ID
       const paymentMethodType = formData.giftCardPaymentMethod;
       const paymentMethodId = formData.giftCardPaymentMethodId;
-      const paymentMethodRaw = paymentMethodId ? `${paymentMethodType}:${paymentMethodId}` : paymentMethodType;
+      const paymentMethodRaw = String(paymentMethodId ? `${paymentMethodType}:${paymentMethodId}` : (paymentMethodType || ''));
       
       console.log('🎁 Creating gift card purchase transaction:');
       console.log('  Payment method type:', paymentMethodType);
@@ -47,143 +43,47 @@ export function useGiftCardPurchase({
       console.log('  Payment method (combined):', paymentMethodRaw);
       console.log('  Amount paid:', purchaseAmountPaid);
       
-      const transaction = {
-        id: crypto.randomUUID(),
-        type: 'expense',
+      let sourceName;
+      if (paymentMethodRaw === 'cash_in_hand') {
+        sourceName = 'Cash in Hand';
+      } else if (paymentMethodRaw.startsWith('bank_account:')) {
+        sourceName = bankAccounts.find(a => a.id === paymentMethodId)?.name;
+      } else if (paymentMethodRaw.startsWith('credit_card:')) {
+        sourceName = creditCards.find(c => c.id === paymentMethodId)?.name;
+      }
+      if (!sourceName) {
+        showToast.error('Selected payment method not found');
+        return null;
+      }
+
+      // The gift card was saved with its value already, so only the payment leaves the source here.
+      // The server refuses it if the source would go past its floor (bank overdraft, gift card value, cash).
+      const res = await recordExpense({
         amount: purchaseAmountPaid,
+        source: paymentMethodRaw,
         date: formData.purchaseDate,
         description: `Gift Card Purchase: ${formData.name}`,
-        status: 'active',
-        undone_at: null
-      };
-      
-      // Handle different payment sources
-      let sourceBalanceDetails = null;
-      
-      if (paymentMethodRaw === 'cash_in_hand') {
-        transaction.payment_method = 'cash_in_hand';
-        transaction.payment_method_id = null;
-        transaction.payment_method_name = 'Cash in Hand';
-        
-        const currentCash = cashInHand || 0;
-        if (purchaseAmountPaid > currentCash) {
-          showToast.error(`Insufficient cash in hand. Available: ${formatCurrency(currentCash)}`);
-          return null;
-        }
-        const newCash = currentCash - purchaseAmountPaid;
-        if (onUpdateCashInHand) await onUpdateCashInHand(newCash);
-        
-        sourceBalanceDetails = {
-          sourceName: 'Cash in Hand',
-          previousBalance: currentCash,
-          newBalance: newCash
-        };
-        
-      } else if (paymentMethodRaw.startsWith('bank_account:')) {
-        const bankAccountId = paymentMethodRaw.replace('bank_account:', '');
-        const paymentAccount = bankAccounts.find(a => a.id === bankAccountId);
-        
-        if (!paymentAccount) {
-          showToast.error('Selected bank account not found');
-          return null;
-        }
-        
-        const previousBalance = parseFloat(paymentAccount.balance) || 0;
-        if (previousBalance < purchaseAmountPaid) {
-          showToast.error(`Insufficient balance in ${paymentAccount.name}. Available: ${formatCurrency(paymentAccount.balance)}`);
-          return null;
-        }
-        
-        transaction.payment_method = 'bank_account';
-        transaction.payment_method_id = bankAccountId;
-        transaction.payment_method_name = paymentAccount.name;
-        
-        const newBalance = previousBalance - purchaseAmountPaid;
-        await updateBankAccountBalance(bankAccountId, newBalance);
-        await onUpdateCash(null, { syncOnly: true });
-        
-        sourceBalanceDetails = {
-          sourceName: paymentAccount.name,
-          previousBalance,
-          newBalance
-        };
-        
-      } else if (paymentMethodRaw.startsWith('credit_card:')) {
-        const cardIdToCharge = paymentMethodRaw.replace('credit_card:', '');
-        const paymentCard = creditCards.find(c => c.id === cardIdToCharge);
-        
-        if (!paymentCard) {
-          showToast.error('Selected payment card not found');
-          return null;
-        }
-        
-        const previousBalance = parseFloat(paymentCard.balance) || 0;
-        
-        // If it's a gift card, check sufficient balance
-        if (paymentCard.is_gift_card && previousBalance < purchaseAmountPaid) {
-          showToast.error(`Insufficient balance on ${paymentCard.name}. Available: ${formatCurrency(paymentCard.balance)}`);
-          return null;
-        }
-        
-        transaction.payment_method = 'credit_card';
-        transaction.payment_method_id = cardIdToCharge;
-        transaction.payment_method_name = paymentCard.name;
-        transaction.card_id = cardIdToCharge;
-        
-        // Gift cards: SUBTRACT. Credit cards: ADD
-        const newBalance = paymentCard.is_gift_card
-          ? previousBalance - purchaseAmountPaid
-          : previousBalance + purchaseAmountPaid;
-        
-        await dbOperation('creditCards', 'put', {
-          ...paymentCard,
-          balance: Math.max(0, newBalance)
-        }, { skipActivityLog: true });
-        
-        sourceBalanceDetails = {
-          sourceName: paymentCard.name,
-          previousBalance,
-          newBalance,
-          isGiftCard: paymentCard.is_gift_card
-        };
-      } else {
-        // Fallback: Invalid payment method
-        console.error('Invalid payment method:', paymentMethodRaw);
-        showToast.error('Invalid payment method selected');
-        return null;
-      }
-      
-      // Validate transaction has required fields before saving
-      if (!transaction.payment_method) {
-        console.error('Transaction missing payment_method:', transaction);
-        showToast.error('Transaction creation failed - missing payment method');
-        return null;
-      }
-      
-      // Save transaction to database
-      const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+        extra: { gift_card_id: savedCard?.id, payment_method_name: sourceName }
+      }, { bankAccounts, creditCards });
+      const transactionId = res.transaction?.id;
+      if (onUpdateCash) await onUpdateCash(null, { syncOnly: true });
 
       // Log activity with enhanced description including source balance changes
       const originalValue = parseFloat(formData.purchaseAmount) || 0;
-      const balanceDetails = sourceBalanceDetails 
-        ? ` - ${sourceBalanceDetails.sourceName} ${formatCurrency(sourceBalanceDetails.previousBalance)} → ${formatCurrency(sourceBalanceDetails.newBalance)}`
-        : '';
-      
       await logActivity(
         'add',
         'card',
         savedCard?.id,
         formData.name,
-        `Purchased gift card '${formData.name}' for ${formatCurrency(purchaseAmountPaid)} using ${transaction.payment_method_name}${balanceDetails}`,
+        `Purchased gift card '${formData.name}' for ${formatCurrency(purchaseAmountPaid)} using ${sourceName}`,
         {
           amount: purchaseAmountPaid,
           originalValue,
           currentBalance: parseFloat(formData.balance) || 0,
-          paymentMethod: transaction.payment_method_name,
-          paymentMethodId: transaction.payment_method_id,
-          paymentMethodType: transaction.payment_method,
-          sourceBalanceDetails,
-          transactionId: savedTransaction?.id,
+          paymentMethod: sourceName,
+          paymentMethodId: paymentMethodId || null,
+          paymentMethodType: paymentMethodType,
+          transactionId,
           giftCardId: savedCard?.id,
           isGiftCard: true
         }
@@ -202,14 +102,14 @@ export function useGiftCardPurchase({
       console.log('✅ Gift card purchase transaction created');
       
       return {
-        transactionId: savedTransaction?.id,
+        transactionId,
         amount: purchaseAmountPaid,
-        paymentMethod: transaction.payment_method_name
+        paymentMethod: sourceName
       };
       
     } catch (error) {
       console.error('Error creating gift card purchase transaction:', error);
-      showToast.error('Gift card added but transaction creation failed');
+      showToast.error(`Gift card added but its payment was not recorded: ${error.message}`);
       return null;
     }
   };

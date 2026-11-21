@@ -1,8 +1,7 @@
 import { supabase } from '../supabase';
-import { predictNextDate, formatCurrency } from '../helpers';
-import { dbOperation, updateBankAccountBalance, getCashInHand, updateCashInHand } from '../db';
+import { predictNextDate, formatCurrency, localDate, generateId } from '../helpers';
+import { recordIncome, reverseTransaction } from '../money';
 import { logActivity } from '../activityLogger';
-import { localDate } from '../helpers';
 
 /**
  * Income Schedule Management
@@ -261,386 +260,145 @@ export async function toggleIncomeSchedule(scheduleId, pause = true) {
   }
 }
 
+// A new id for a transaction, chosen here so the matching income/payment row can point at it in the same step.
+const newTxId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : generateId());
+
+const dayOf = (iso) => (iso ? Number(String(iso).split('T')[0].split('-')[2]) || undefined : undefined);
+
 /**
- * Process all due income schedules (replaces autoDepositDueIncome)
+ * Process all due income schedules: every missed occurrence up to today, each once.
+ * Each occurrence is one server step (balance, income row, transaction and the schedule's next date together),
+ * keyed income-schedule:<scheduleId>:<date>, so running it twice at once cannot deposit twice.
  */
 export async function processDueIncomeSchedules() {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+  const todayString = localDate();
+  const results = { deposited: [], skipped: [] };
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayString = localDate(today);
+  const { data: dueSchedules, error: fetchError } = await supabase
+    .from('income_schedules')
+    .select('*')
+    .eq('is_active', true)
+    .lte('next_date', todayString);
+  if (fetchError) throw fetchError;
+  if (!dueSchedules || dueSchedules.length === 0) return results;
 
-    console.log('🔄 Processing due income schedules...');
+  const { data: bankAccounts } = await supabase.from('bank_accounts').select('*');
+  const accounts = { bankAccounts: bankAccounts || [], creditCards: [] };
 
-    // Get all active schedules where next_date <= today
-    const { data: dueSchedules, error: fetchError } = await supabase
-      .from('income_schedules')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .lte('next_date', todayString);
-
-    if (fetchError) throw fetchError;
-
-    if (!dueSchedules || dueSchedules.length === 0) {
-      console.log('✅ No due income schedules');
-      return { deposited: [], skipped: [] };
+  for (const schedule of dueSchedules) {
+    if (!schedule.auto_deposit) {
+      results.skipped.push({ source: schedule.source, reason: 'Auto-deposit disabled' });
+      continue;
     }
+    const anchorDay = dayOf(schedule.start_date) || dayOf(schedule.next_date);
+    let date = String(schedule.next_date).split('T')[0];
+    let completed = schedule.recurring_occurrences_completed || 0;
 
-    console.log(`📊 Found ${dueSchedules.length} due schedule(s)`);
-
-    const results = {
-      deposited: [],
-      skipped: []
-    };
-
-    for (const schedule of dueSchedules) {
-      try {
-        // Check if schedule should still process
-        if (!schedule.auto_deposit) {
-          results.skipped.push({
-            source: schedule.source,
-            reason: 'Auto-deposit disabled'
-          });
-          continue;
-        }
-
-        // Check recurrence limits
-        if (schedule.recurring_duration_type === 'until_date' && schedule.recurring_until_date) {
-          const endDate = new Date(schedule.recurring_until_date);
-          if (today > endDate) {
-            // Mark schedule as completed
-            await supabase
-              .from('income_schedules')
-              .update({
-                is_active: false,
-                completed_at: new Date().toISOString()
-              })
-              .eq('id', schedule.id);
-
-            results.skipped.push({
-              source: schedule.source,
-              reason: 'Schedule ended (reached end date)'
-            });
-            continue;
-          }
-        }
-
-        if (schedule.recurring_duration_type === 'occurrences') {
-          const completed = schedule.recurring_occurrences_completed || 0;
-          const total = schedule.recurring_occurrences_total || 0;
-          
-          if (total && completed >= total) {
-            // Mark schedule as completed
-            await supabase
-              .from('income_schedules')
-              .update({
-                is_active: false,
-                completed_at: new Date().toISOString()
-              })
-              .eq('id', schedule.id);
-
-            results.skipped.push({
-              source: schedule.source,
-              reason: `Schedule completed (${completed}/${total} occurrences)`
-            });
-            continue;
-          }
-        }
-
-        // Process the income
-        const result = await processIncomeOccurrence(schedule, todayString);
-        
-        if (result.success) {
-          results.deposited.push({
-            source: schedule.source,
-            amount: schedule.amount,
-            date: todayString,
-            depositTarget: result.depositTarget,
-            depositAccountName: result.depositAccountName
-          });
-        } else {
-          results.skipped.push({
-            source: schedule.source,
-            reason: result.error || 'Processing failed'
-          });
-        }
-
-      } catch (error) {
-        console.error(`❌ Error processing schedule ${schedule.source}:`, error);
-        results.skipped.push({
-          source: schedule.source,
-          reason: error.message || 'Unknown error'
-        });
+    while (date && date <= todayString) {
+      const ended =
+        (schedule.recurring_duration_type === 'until_date' && schedule.recurring_until_date && date > String(schedule.recurring_until_date).split('T')[0]) ||
+        (schedule.recurring_duration_type === 'occurrences' && schedule.recurring_occurrences_total && completed >= schedule.recurring_occurrences_total);
+      if (ended) {
+        await supabase.from('income_schedules').update({ is_active: false, completed_at: new Date().toISOString() }).eq('id', schedule.id);
+        results.skipped.push({ source: schedule.source, reason: 'Schedule ended' });
+        break;
       }
+
+      const nextDate = predictNextDate(date, schedule.frequency, anchorDay);
+      const schedUpdate = { next_date: nextDate, recurring_occurrences_completed: completed + 1 };
+      try {
+        const r = await processIncomeOccurrence(schedule, date, schedUpdate, accounts);
+        if (r.repeated) {
+          // Already deposited (another run, or undone since). Only make sure the schedule has moved past it.
+          await supabase.from('income_schedules').update({ next_date: nextDate }).eq('id', schedule.id).eq('next_date', date);
+        } else {
+          completed += 1;
+          results.deposited.push({ source: schedule.source, amount: schedule.amount, date, depositTarget: r.depositTarget, depositAccountName: r.depositAccountName });
+        }
+      } catch (error) {
+        console.error(`Error processing schedule ${schedule.source}:`, error);
+        results.skipped.push({ source: schedule.source, date, reason: error.message || 'Unknown error' });
+        break;
+      }
+      date = nextDate;
     }
-
-    console.log('✅ Income schedule processing complete');
-    console.log(`   Deposited: ${results.deposited.length}`);
-    console.log(`   Skipped: ${results.skipped.length}`);
-
-    return results;
-
-  } catch (error) {
-    console.error('❌ Error processing due income schedules:', error);
-    throw error;
   }
+  return results;
 }
 
 /**
- * Process a single income occurrence from a schedule
+ * Deposit one occurrence of a schedule in a single server step.
  */
-async function processIncomeOccurrence(schedule, date) {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+async function processIncomeOccurrence(schedule, date, schedUpdate, accounts) {
+  const bank = schedule.deposit_target === 'bank' && schedule.deposit_account_id
+    ? accounts.bankAccounts.find((a) => String(a.id) === String(schedule.deposit_account_id))
+    : null;
+  const target = bank ? `bank_account:${bank.id}` : 'cash_in_hand';
+  const depositAccountName = bank ? bank.name : 'Cash in Hand';
+  const txId = newTxId();
 
-    const amount = parseFloat(schedule.amount) || 0;
-    
-    // Determine deposit target
-    let depositTarget = schedule.deposit_target || 'cash_in_hand';
-    let depositAccountId = schedule.deposit_account_id;
-    let depositAccountName = 'Cash in Hand';
-    let previousBalance = 0;
-    let newBalance = 0;
-    
-    if (depositTarget === 'bank' && depositAccountId) {
-      // Deposit to bank account
-      const { data: account } = await supabase
-        .from('bank_accounts')
-        .select('*')
-        .eq('id', depositAccountId)
-        .eq('user_id', user.id)
-        .single();
-
-      if (!account) {
-        console.warn(`⚠️ Deposit account ${depositAccountId} not found, using cash in hand`);
-        depositTarget = 'cash_in_hand';
-        depositAccountId = null;
-      } else {
-        depositAccountName = account.name;
-        previousBalance = Number(account.balance) || 0;
-        newBalance = previousBalance + amount;
-        
-        await updateBankAccountBalance(depositAccountId, newBalance);
-        console.log(`💰 Deposited ${formatCurrency(amount)} to ${depositAccountName}`);
-      }
-    }
-    
-    // Handle cash in hand deposit
-    if (depositTarget === 'cash_in_hand') {
-      const currentCash = await getCashInHand();
-      const newCash = currentCash + amount;
-      await updateCashInHand(newCash);
-      
-      previousBalance = currentCash;
-      newBalance = newCash;
-      console.log(`💵 Kept ${formatCurrency(amount)} as cash in hand`);
-    }
-
-    // Create income occurrence record
-    const incomeOccurrence = {
-      user_id: user.id,
-      source: schedule.source,
-      amount: schedule.amount,
-      date: date,
+  const r = await recordIncome({
+    amount: schedule.amount,
+    target,
+    date,
+    source_name: schedule.source,
+    description: `${schedule.source} (from schedule)`,
+    key: `income-schedule:${schedule.id}:${date}`,
+    extra: { id: txId, income_source: schedule.source, auto_generated: true, schedule_id: schedule.id },
+    incomeRow: {
       frequency: schedule.frequency,
       schedule_id: schedule.id,
       is_manual: false,
-      deposit_account_id: depositAccountId,
+      deposit_account_id: bank ? bank.id : null,
       auto_deposit: true,
       auto_added: true,
-      created_at: new Date().toISOString()
-    };
+      transaction_id: txId,
+    },
+    updates: [{ table: 'income_schedules', id: schedule.id, values: schedUpdate }],
+  }, accounts);
+  if (r.repeated) return { repeated: true };
 
-    const { data: incomeRecord, error: incomeError } = await supabase
-      .from('income')
-      .insert(incomeOccurrence)
-      .select()
-      .single();
-
-    if (incomeError) throw incomeError;
-
-    // Create transaction
-    const transaction = {
-      type: 'income',
-      amount: schedule.amount,
-      date: date,
-      income_source: schedule.source,
-      payment_method: depositTarget === 'bank' ? 'bank_account' : 'cash_in_hand',
-      payment_method_id: depositAccountId || incomeRecord.id,
-      payment_method_name: depositAccountName,
-      description: `${schedule.source} (Auto-deposited from schedule)`,
-      status: 'active',
-      auto_generated: true,
-      created_at: new Date().toISOString()
-    };
-
-    const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
-
-    // Update schedule
-    const nextDate = predictNextDate(schedule.next_date, schedule.frequency);
-    const completedCount = (schedule.recurring_occurrences_completed || 0) + 1;
-
-    await supabase
-      .from('income_schedules')
-      .update({
-        next_date: nextDate,
-        recurring_occurrences_completed: completedCount,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', schedule.id);
-
-    // Log activity
-    const activityDescription = depositTarget === 'bank'
-      ? `Income: ${formatCurrency(amount)} from ${schedule.source} → ${depositAccountName} (${formatCurrency(previousBalance)} → ${formatCurrency(newBalance)})`
-      : `Income: ${formatCurrency(amount)} from ${schedule.source} → Cash in Hand (${formatCurrency(previousBalance)} → ${formatCurrency(newBalance)})`;
-    
-    await logActivity(
-      'income_occurrence',
-      'income',
-      incomeRecord.id,
-      schedule.source,
-      activityDescription,
-      {
-        scheduleId: schedule.id,
-        amount,
-        source: schedule.source,
-        depositTarget,
-        depositAccountId,
-        depositAccountName,
-        previousBalance,
-        newBalance,
-        transactionId: savedTransaction?.id,
-        incomeId: incomeRecord.id,
-        isAutoDeposit: true
-      }
-    );
-
-    console.log(`✅ Processed: ${schedule.source} - ${formatCurrency(amount)} → ${depositAccountName}`);
-
-    return {
-      success: true,
-      depositTarget,
-      depositAccountName
-    };
-
-  } catch (error) {
-    console.error('Error processing income occurrence:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
+  const incomeRecord = (r.rows || []).find((x) => x.schedule_id === schedule.id && !x.type) || {};
+  await logActivity(
+    'income_occurrence',
+    'income',
+    incomeRecord.id,
+    schedule.source,
+    `Income: ${formatCurrency(schedule.amount)} from ${schedule.source} -> ${depositAccountName}`,
+    { scheduleId: schedule.id, amount: schedule.amount, source: schedule.source, depositTarget: bank ? 'bank' : 'cash_in_hand',
+      depositAccountId: bank ? bank.id : null, depositAccountName, transactionId: txId, incomeId: incomeRecord.id, isAutoDeposit: true }
+  );
+  return { depositTarget: bank ? 'bank' : 'cash_in_hand', depositAccountName };
 }
 
 /**
- * Undo an income occurrence (reverses deposit, doesn't delete schedule)
+ * Undo an income occurrence: reverses its transaction (exact amounts, same account), then rolls the schedule back.
  */
 export async function undoIncomeOccurrence(incomeId) {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+  const { data: income, error: fetchError } = await supabase.from('income').select('*').eq('id', incomeId).single();
+  if (fetchError) throw fetchError;
+  if (!income) throw new Error('Income not found');
+  if (!income.schedule_id) throw new Error('This is manual income, not from a schedule');
 
-    // Get income record
-    const { data: income, error: fetchError } = await supabase
-      .from('income')
-      .select('*')
-      .eq('id', incomeId)
-      .eq('user_id', user.id)
-      .single();
-
-    if (fetchError) throw fetchError;
-    if (!income) throw new Error('Income not found');
-
-    if (!income.schedule_id) {
-      throw new Error('This is manual income, not from a schedule');
-    }
-
-    const amount = Number(income.amount) || 0;
-
-    // Reverse the deposit
-    if (income.deposit_account_id) {
-      // Reverse bank deposit
-      const { data: account } = await supabase
-        .from('bank_accounts')
-        .select('*')
-        .eq('id', income.deposit_account_id)
-        .eq('user_id', user.id)
-        .single();
-
-      if (account) {
-        const currentBalance = Number(account.balance) || 0;
-        const restoredBalance = Math.max(0, currentBalance - amount);
-        await updateBankAccountBalance(income.deposit_account_id, restoredBalance);
-        console.log('✅ Reversed bank deposit');
-      }
-    } else {
-      // Reverse cash in hand
-      const currentCash = await getCashInHand();
-      const restoredCash = Math.max(0, currentCash - amount);
-      await updateCashInHand(restoredCash);
-      console.log('✅ Reversed cash in hand deposit');
-    }
-
-    // Mark transaction as undone
-    const { data: transactions } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('income_source', income.source)
-      .eq('date', income.date)
-      .eq('status', 'active');
-
-    if (transactions && transactions.length > 0) {
-      for (const txn of transactions) {
-        await supabase
-          .from('transactions')
-          .update({
-            status: 'undone',
-            undone_at: new Date().toISOString()
-          })
-          .eq('id', txn.id);
-      }
-    }
-
-    // Roll back schedule
-    const { data: schedule } = await supabase
-      .from('income_schedules')
-      .select('*')
-      .eq('id', income.schedule_id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (schedule) {
-      await supabase
-        .from('income_schedules')
-        .update({
-          next_date: income.date, // Roll back to this date
-          recurring_occurrences_completed: Math.max(0, (schedule.recurring_occurrences_completed || 0) - 1),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', schedule.id);
-      console.log('✅ Schedule rolled back');
-    }
-
-    // Delete income occurrence
-    const { error: deleteError } = await supabase
-      .from('income')
-      .delete()
-      .eq('id', incomeId)
-      .eq('user_id', user.id);
-
-    if (deleteError) throw deleteError;
-
-    console.log('✅ Income occurrence undone successfully');
-    return true;
-
-  } catch (error) {
-    console.error('Error undoing income occurrence:', error);
-    throw error;
+  let txId = income.transaction_id;
+  if (!txId) {
+    // Older rows: find the matching active transaction.
+    const { data: txs } = await supabase.from('transactions').select('*')
+      .eq('type', 'income').eq('income_source', income.source).eq('date', income.date).eq('status', 'active');
+    txId = txs && txs[0] ? txs[0].id : null;
   }
+  if (!txId) throw new Error('The transaction for this income was not found.');
+  await reverseTransaction(txId);
+
+  const { data: schedule } = await supabase.from('income_schedules').select('*').eq('id', income.schedule_id).single();
+  if (schedule) {
+    await supabase.from('income_schedules').update({
+      next_date: income.date,
+      recurring_occurrences_completed: Math.max(0, (schedule.recurring_occurrences_completed || 0) - 1),
+    }).eq('id', schedule.id);
+  }
+
+  const { error: deleteError } = await supabase.from('income').delete().eq('id', incomeId);
+  if (deleteError) throw deleteError;
+  return true;
 }

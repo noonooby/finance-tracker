@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, Edit2, X, CreditCard as CreditCardIcon, ShoppingBag, ListFilter, Star, Gift } from 'lucide-react';
-import { formatCurrency, formatDate, getDaysUntil, generateId, calculateTotalBankBalance } from '../utils/helpers';
-import { dbOperation, getBankAccount, updateBankAccountBalance } from '../utils/db';
+import { formatCurrency, formatDate, getDaysUntil, generateId } from '../utils/helpers';
+import { dbOperation } from '../utils/db';
+import { recordExpense, recordGiftCardPurchase, reverseTransaction } from '../utils/money';
 import AddTransaction from './AddTransaction';
 import { logActivity } from '../utils/activityLogger';
 import { upsertKnownEntity } from '../utils/knownEntities';
@@ -508,84 +509,33 @@ export default function CreditCards({
       const amountAdded = parseFloat(formData.amount);
       const amountPaid = formData.amountPaid ? parseFloat(formData.amountPaid) : amountAdded;
       const currentBalance = parseFloat(card.balance) || 0;
-      const newBalance = currentBalance + amountAdded;
-      
       const sourceType = formData.paymentMethod;
       const sourceId = formData.paymentMethodId;
-      
-      if (sourceType === 'bank_account') {
-        const account = bankAccounts.find(a => a.id === sourceId);
-        if (!account) {
-          showToast.error('Selected bank account not found');
-          setGiftCardOpProcessing(false);
-          return;
-        }
-        const accountBalance = parseFloat(account.balance) || 0;
-        if (amountPaid > accountBalance) {
-          showToast.error(`Insufficient funds in ${account.name}. Available: ${formatCurrency(accountBalance)}`);
-          setGiftCardOpProcessing(false);
-          return;
-        }
-      } else if (sourceType === 'cash_in_hand') {
-        const currentCash = cashInHand || 0;
-        if (amountPaid > currentCash) {
-          showToast.error(`Insufficient cash in hand. Available: ${formatCurrency(currentCash)}`);
-          setGiftCardOpProcessing(false);
-          return;
-        }
-      }
-      
-      await dbOperation('creditCards', 'put', {
-        ...card,
-        balance: newBalance
-      }, { skipActivityLog: true });
-      
-      if (sourceType === 'credit_card') {
-        const paymentCard = creditCards.find(c => c.id === sourceId);
-        if (paymentCard) {
-          await dbOperation('creditCards', 'put', {
-            ...paymentCard,
-            balance: (parseFloat(paymentCard.balance) || 0) + amountPaid
-          }, { skipActivityLog: true });
-        }
-      } else if (sourceType === 'bank_account') {
-        const account = bankAccounts.find(a => a.id === sourceId);
-        if (account) {
-          const currentAccountBalance = parseFloat(account.balance) || 0;
-          const newAccountBalance = currentAccountBalance - amountPaid;
-          await updateBankAccountBalance(sourceId, newAccountBalance);
-          
-          const updatedBankTotal = calculateTotalBankBalance(
-            bankAccounts.map(acc => 
-              acc.id === sourceId ? { ...acc, balance: newAccountBalance } : acc
-            )
-          );
-          await onUpdateCash(updatedBankTotal);
-        }
-      } else if (sourceType === 'cash_in_hand') {
-        await onUpdateCashInHand((cashInHand || 0) - amountPaid);
-      }
-      
-      const transaction = {
-        type: 'expense',
-        amount: amountPaid,
+
+      // Value goes onto the gift card and the payment leaves the source in one step; the server refuses it
+      // if the source would pass its floor, and that message is shown below.
+      const res = await recordGiftCardPurchase({
+        giftCardId: card.id,
+        amount: amountAdded,
+        cost: amountPaid,
+        source: sourceType === 'cash_in_hand' ? 'cash_in_hand' : `${sourceType}:${sourceId}`,
         date: formData.date,
-        description: amountPaid !== amountAdded 
+        description: amountPaid !== amountAdded
           ? `Gift Card Reload: ${card.name} (${formatCurrency(amountPaid)} paid, ${formatCurrency(amountAdded)} loaded)`
           : `Gift Card Reload: ${card.name}`,
-        notes: formData.notes || (amountPaid !== amountAdded
-          ? `Added ${formatCurrency(amountAdded)} to ${card.name} (paid ${formatCurrency(amountPaid)})`
-          : `Added ${formatCurrency(amountAdded)} to ${card.name}`),
-        category_id: formData.category,
-        payment_method: sourceType,
-        payment_method_id: sourceId,
-        card_id: card.id,
-        status: 'active',
-        undone_at: null
-      };
-      
-      const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
-      
+        extra: {
+          notes: formData.notes || (amountPaid !== amountAdded
+            ? `Added ${formatCurrency(amountAdded)} to ${card.name} (paid ${formatCurrency(amountPaid)})`
+            : `Added ${formatCurrency(amountAdded)} to ${card.name}`),
+          category_id: formData.category,
+          card_id: card.id
+        }
+      }, { bankAccounts, creditCards });
+      const transactionId = res.transaction?.id;
+      const giftLeg = (res.legs || []).find(l => l.table === 'credit_cards' && String(l.id) === String(card.id));
+      const newBalance = giftLeg ? giftLeg.after : currentBalance + amountAdded;
+      if (onUpdateCash) await onUpdateCash(null, { syncOnly: true });
+
       const activityDesc = amountPaid !== amountAdded
         ? `Added ${formatCurrency(amountAdded)} to gift card '${card.name}' (paid ${formatCurrency(amountPaid)}) - Balance ${formatCurrency(currentBalance)} → ${formatCurrency(newBalance)}`
         : `Added ${formatCurrency(amountAdded)} to gift card '${card.name}' - Balance ${formatCurrency(currentBalance)} → ${formatCurrency(newBalance)}`;
@@ -604,7 +554,7 @@ export default function CreditCards({
           newBalance,
           source: sourceType,
           sourceId,
-          transactionId: savedTransaction?.id,
+          transactionId,
           date: formData.date,
           category: formData.category
         }
@@ -633,40 +583,24 @@ export default function CreditCards({
       const card = activeGiftCardOp;
       const amount = parseFloat(formData.amount);
       const currentBalance = parseFloat(card.balance) || 0;
-      
-      if (amount > currentBalance) {
-        showToast.error(`Insufficient balance. Available: ${formatCurrency(currentBalance)}`);
-        setGiftCardOpProcessing(false);
-        return;
-      }
-      
-      const newBalance = Math.max(0, currentBalance - amount);
-      
-      await dbOperation('creditCards', 'put', {
-        ...card,
-        balance: newBalance
-      }, { skipActivityLog: true });
-      
       const category = categories.find(c => c.id === formData.category);
-      
-      const transaction = {
-        type: 'expense',
+      const description = formData.notes || (category?.name !== 'Gift Card Purchase' ? category?.name || 'Purchase' : 'Purchase');
+
+      // The server keeps a gift card from going below zero and refuses the spend if it would.
+      const res = await recordExpense({
         amount,
+        source: `credit_card:${card.id}`,
         date: formData.date,
-        description: formData.notes || (category?.name !== 'Gift Card Purchase' ? category?.name || 'Purchase' : 'Purchase'),
+        description,
         notes: formData.notes,
         category_id: formData.category,
-        category_name: category?.name || null,
-        payment_method: 'credit_card',
-        payment_method_id: card.id,
-        payment_method_name: card.name,
-        card_id: card.id,
-        status: 'active',
-        undone_at: null
-      };
-      
-      const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
-      
+        category_name: category?.name || null
+      }, { bankAccounts, creditCards });
+      const transactionId = res.transaction?.id;
+      const giftLeg = (res.legs || []).find(l => l.table === 'credit_cards');
+      const newBalance = giftLeg ? giftLeg.after : currentBalance - amount;
+      const transaction = { description };
+
       await logActivity(
         'expense',
         'card',
@@ -681,7 +615,7 @@ export default function CreditCards({
           previousBalance: currentBalance,
           paymentMethodName: card.name,
           isGiftCard: card.is_gift_card,
-          transactionId: savedTransaction?.id
+          transactionId
         }
       );
       
@@ -719,44 +653,9 @@ export default function CreditCards({
           );
           
           if (purchaseTransaction) {
-            const amount = Number(purchaseTransaction.amount) || 0;
-            const paymentMethod = purchaseTransaction.payment_method;
-            const paymentMethodId = purchaseTransaction.payment_method_id;
-            
-            if (paymentMethod === 'cash_in_hand') {
-              const { getCashInHand, updateCashInHand } = await import('../utils/db');
-              const currentCash = await getCashInHand();
-              await updateCashInHand(currentCash + amount);
-              
-            } else if (paymentMethod === 'bank_account' && paymentMethodId) {
-              const { getBankAccount, updateBankAccountBalance } = await import('../utils/db');
-              const bankAccount = await getBankAccount(paymentMethodId);
-              if (bankAccount) {
-                const currentBalance = Number(bankAccount.balance) || 0;
-                await updateBankAccountBalance(paymentMethodId, currentBalance + amount);
-                await onUpdateCash(null, { syncOnly: true });
-              }
-              
-            } else if (paymentMethod === 'credit_card' && paymentMethodId) {
-              const paymentCard = await dbOperation('creditCards', 'get', paymentMethodId);
-              if (paymentCard) {
-                const currentBalance = Number(paymentCard.balance) || 0;
-                const newBalance = paymentCard.is_gift_card
-                  ? currentBalance + amount
-                  : Math.max(0, currentBalance - amount);
-                  
-                await dbOperation('creditCards', 'put', {
-                  ...paymentCard,
-                  balance: newBalance
-                }, { skipActivityLog: true });
-              }
-            }
-            
-            await dbOperation('transactions', 'put', {
-              ...purchaseTransaction,
-              status: 'undone',
-              undone_at: new Date().toISOString()
-            }, { skipActivityLog: true });
+            // Put back exactly what the purchase moved, on the accounts it moved.
+            await reverseTransaction(purchaseTransaction.id);
+            if (onUpdateCash) await onUpdateCash(null, { syncOnly: true });
           }
         } catch (error) {
           console.error('⚠️ Error refunding gift card purchase:', error);
@@ -1328,9 +1227,9 @@ export default function CreditCards({
                             : darkMode ? 'text-gray-400' : 'text-gray-500'
                         }`}>
                           {getDaysUntil(card.expiry_date) < 0 
-                            ? '⚠️ EXPIRED' 
+                            ? 'EXPIRED' 
                             : getDaysUntil(card.expiry_date) < 30
-                            ? `⚠️ Expires in ${getDaysUntil(card.expiry_date)} days`
+                            ? `Expires in ${getDaysUntil(card.expiry_date)} days`
                             : `Expires: ${formatDate(card.expiry_date)}`
                           }
                         </div>

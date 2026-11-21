@@ -1,8 +1,7 @@
 // Unified Transaction Hooks - Routes to specialized business logic based on transaction type
 
 import { useState, useCallback } from 'react';
-import { supabase } from '../utils/supabase';
-import { dbOperation } from '../utils/db';
+import { recordExpense, recordCardPayment, recordLoanPayment } from '../utils/money';
 import { logActivity } from '../utils/activityLogger';
 import { formatCurrency } from '../utils/helpers';
 import {
@@ -18,26 +17,6 @@ import {
 
 // Re-export income hooks from the transactions folder
 export { useIncomeOperations, useIncomeContexts, useIncomeValidation, useIncomePredictions } from './transactions/index';
-
-// Helper function to update bank account balance inline
-async function updateBankAccountBalance(accountId, newBalance) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-
-  const { data, error } = await supabase
-    .from('bank_accounts')
-    .update({
-      balance: newBalance,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', accountId)
-    .eq('user_id', user.id)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
 
 // Transaction operations for AddTransaction modal
 export function useTransactionOperations({
@@ -60,25 +39,18 @@ export function useTransactionOperations({
       let result;
       
       if (formData.type === 'expense') {
-        result = await processExpense(formData, {
-          creditCards, bankAccounts, cashInHand, onUpdateCashInHand,
-          availableCash, onUpdateCash, categories
-        });
+        result = await processExpense(formData, { creditCards, bankAccounts, categories });
       } else if (formData.type === 'payment') {
         if (formData.paymentMethod === 'credit_card') {
-          result = await processCardPayment(formData, {
-            creditCards, reservedFunds, bankAccounts, cashInHand, 
-            onUpdateCashInHand, availableCash, onUpdateCash
-          });
+          result = await processCardPayment(formData, { creditCards, bankAccounts, loans });
         } else if (formData.paymentMethod === 'loan') {
-          result = await processLoanPayment(formData, {
-            loans, reservedFunds, bankAccounts, creditCards, cashInHand,
-            onUpdateCashInHand, availableCash, onUpdateCash
-          });
+          result = await processLoanPayment(formData, { loans, bankAccounts, creditCards });
         }
       }
 
       if (result?.success) {
+        // Balances changed on the server; reload them rather than setting figures here.
+        if (onUpdateCash) await onUpdateCash(null, { syncOnly: true });
         await onUpdate();
         
         if (result.transactionId) {
@@ -99,158 +71,61 @@ export function useTransactionOperations({
     } finally {
       setProcessing(false);
     }
-  }, [creditCards, loans, reservedFunds, bankAccounts, cashInHand, onUpdateCashInHand, availableCash, onUpdateCash, categories, onUpdate]);
+  }, [creditCards, loans, bankAccounts, onUpdateCash, categories, onUpdate]);
 
   return { processTransaction, processing };
 }
 
 // Expense processing
-async function processExpense(formData, { creditCards, bankAccounts, cashInHand, onUpdateCashInHand, categories }) {
+async function processExpense(formData, { creditCards, bankAccounts, categories }) {
   const amount = parseFloat(formData.amount);
   const category = categories?.find(c => c.id === formData.categoryId);
-  
-  const transaction = {
-    type: 'expense',
+  const method = formData.paymentMethod;
+  const source = method === 'cash_in_hand' ? 'cash_in_hand' : `${method}:${formData.paymentMethodId}`;
+
+  let entity;
+  if (method === 'credit_card') {
+    const card = creditCards?.find(c => c.id === formData.paymentMethodId);
+    if (!card) throw new Error('Credit card not found');
+    entity = { type: 'card', id: card.id, name: card.name, snap: { cardId: card.id, previousBalance: card.balance, isGiftCard: card.is_gift_card } };
+  } else if (method === 'bank_account') {
+    const account = bankAccounts?.find(a => a.id === formData.paymentMethodId);
+    if (!account) throw new Error('Bank account not found');
+    entity = { type: 'bank_account', id: account.id, name: account.name, snap: { accountId: account.id, previousBalance: Number(account.balance) || 0 } };
+  } else if (method === 'cash_in_hand') {
+    entity = { type: 'cash', id: 'cash-in-hand', name: 'Cash in Hand', snap: {} };
+  } else {
+    throw new Error('Choose how it was paid.');
+  }
+
+  // The server applies the change and refuses it if it would pass the account's floor (overdraft, gift card value, cash).
+  const res = await recordExpense({
     amount,
+    source,
     date: formData.date,
     description: formData.description,
     notes: formData.notes,
     category_id: formData.categoryId || null,
     category_name: category?.name || null,
-    payment_method: formData.paymentMethod,
-    payment_method_id: formData.paymentMethodId,
-    payment_method_name: null,
-    card_id: null,
-    status: 'active',
-    undone_at: null
-  };
+    extra: method === 'cash_in_hand' ? { payment_method_name: 'Cash in Hand' } : undefined
+  }, { bankAccounts, creditCards });
+  const transactionId = res.transaction?.id;
 
-  let activityDetails = null;
-  let paymentMethodString = null;
-
-  if (formData.paymentMethod === 'credit_card') {
-    const card = creditCards?.find(c => c.id === formData.paymentMethodId);
-    if (!card) throw new Error('Credit card not found');
-
-    const previousBalance = card.balance;
-    const newBalance = card.is_gift_card 
-      ? Math.max(0, card.balance - amount)
-      : card.balance + amount;
-
-    await dbOperation('creditCards', 'put', {
-      ...card,
-      balance: newBalance
-    }, { skipActivityLog: true });
-
-    transaction.card_id = card.id;
-    transaction.payment_method_name = card.name;
-    paymentMethodString = `credit_card:${card.id}`;
-
-    activityDetails = {
-      actionType: 'expense',
-      entityType: 'card',
-      entityId: card.id,
-      entityName: card.name,
-      description: `Expense '${formData.description}' for ${formatCurrency(amount)} using '${card.name}' - Balance ${formatCurrency(previousBalance)} → ${formatCurrency(newBalance)}`,
-      snapshot: {
-        amount,
-        category: category?.name,
-        description: formData.description,
-        cardId: card.id,
-        previousBalance: previousBalance,
-        paymentMethodName: card.name,
-        isGiftCard: card.is_gift_card
-      }
-    };
-
-  } else if (formData.paymentMethod === 'bank_account') {
-    const account = bankAccounts?.find(a => a.id === formData.paymentMethodId);
-    if (!account) throw new Error('Bank account not found');
-    
-    const currentBalance = Number(account.balance) || 0;
-    const newBalance = currentBalance - amount;
-    
-    if (newBalance < 0) {
-      if (!account.allows_overdraft) {
-        throw new Error(
-          `Insufficient funds in '${account.name}'.\nAvailable: ${formatCurrency(currentBalance)}\nRequired: ${formatCurrency(amount)}\n\nThis account does not allow overdraft.`
-        );
-      }
-      
-      const overdraftAmount = Math.abs(newBalance);
-      if (overdraftAmount > (account.overdraft_limit || 0)) {
-        throw new Error(
-          `Insufficient funds in '${account.name}'.\nThis would exceed your overdraft limit.\n\nAvailable: ${formatCurrency(currentBalance)}\nOverdraft: ${formatCurrency(account.overdraft_limit)}\nTotal: ${formatCurrency(currentBalance + account.overdraft_limit)}\nRequired: ${formatCurrency(amount)}`
-        );
-      }
+  await logActivity(
+    'expense',
+    entity.type,
+    entity.id,
+    entity.name,
+    `Expense '${formData.description}' for ${formatCurrency(amount)} using '${entity.name}'`,
+    {
+      amount,
+      category: category?.name,
+      description: formData.description,
+      paymentMethodName: entity.name,
+      ...entity.snap,
+      transactionId
     }
-    
-    await updateBankAccountBalance(account.id, newBalance);
-    transaction.payment_method_name = account.name;
-    paymentMethodString = `bank_account:${account.id}`;
-    
-    activityDetails = {
-      actionType: 'expense',
-      entityType: 'bank_account',
-      entityId: account.id,
-      entityName: account.name,
-      description: `Expense '${formData.description}' for ${formatCurrency(amount)} using '${account.name}' - Balance ${formatCurrency(currentBalance)} → ${formatCurrency(newBalance)}`,
-      snapshot: {
-        amount,
-        category: category?.name,
-        description: formData.description,
-        accountId: account.id,
-        previousBalance: currentBalance,
-        newBalance,
-        paymentMethodName: account.name
-      }
-    };
-
-  } else if (formData.paymentMethod === 'cash_in_hand') {
-    const currentCash = cashInHand || 0;
-    if (amount > currentCash) {
-      throw new Error(`Insufficient cash in hand.\nAvailable: ${formatCurrency(currentCash)}\nRequired: ${formatCurrency(amount)}`);
-    }
-    
-    const newCash = currentCash - amount;
-    await onUpdateCashInHand(newCash);
-    
-    transaction.payment_method_name = 'Cash in Hand';
-    paymentMethodString = 'cash_in_hand';
-
-    activityDetails = {
-      actionType: 'expense',
-      entityType: 'cash',
-      entityId: 'cash-in-hand',
-      entityName: 'Cash in Hand',
-      description: `Expense '${formData.description}' for ${formatCurrency(amount)} using Cash in Hand - Balance ${formatCurrency(currentCash)} → ${formatCurrency(newCash)}`,
-      snapshot: {
-        amount,
-        category: category?.name,
-        description: formData.description,
-        previousCash: currentCash,
-        newCash,
-        paymentMethodName: 'Cash in Hand'
-      }
-    };
-  }
-
-  const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
-
-  if (activityDetails) {
-    const snapshotWithTransaction = {
-      ...(activityDetails.snapshot || {}),
-      transactionId: savedTransaction?.id
-    };
-    await logActivity(
-      activityDetails.actionType,
-      activityDetails.entityType,
-      activityDetails.entityId,
-      activityDetails.entityName,
-      activityDetails.description,
-      snapshotWithTransaction
-    );
-  }
+  );
 
   if (formData.description) {
     saveExpenseContext(formData.description, {
@@ -260,114 +135,76 @@ async function processExpense(formData, { creditCards, bankAccounts, cashInHand,
     }).catch(console.warn);
   }
 
-  return { 
-    success: true, 
-    transactionId: savedTransaction?.id,
-    paymentMethodString,
-    description: formData.description 
+  return {
+    success: true,
+    transactionId,
+    paymentMethodString: source,
+    description: formData.description
   };
 }
 
+// Where a payment comes from: the money.js source and its display name.
+function paymentSourceOf(formData, { bankAccounts, creditCards }) {
+  const [sourceType, sourceId] = formData.paymentSource?.includes(':')
+    ? formData.paymentSource.split(':')
+    : [formData.paymentSource || 'cash_in_hand', null];
+  if (sourceType === 'bank_account' && sourceId) {
+    const account = bankAccounts?.find(a => a.id === sourceId);
+    if (!account) throw new Error('Bank account not found');
+    return { sourceType, sourceId, source: `bank_account:${sourceId}`, sourceName: account.name };
+  }
+  if (sourceType === 'credit_card' && sourceId) {
+    const card = creditCards?.find(c => c.id === sourceId);
+    if (!card) throw new Error('Payment card not found');
+    return { sourceType, sourceId, source: `credit_card:${sourceId}`, sourceName: card.name };
+  }
+  if (sourceType === 'reserved_fund') {
+    // Reserved funds have no table on the server, so there is no balance to pay from.
+    throw new Error('Paying from a reserved fund is not available. Choose a bank account or cash.');
+  }
+  return { sourceType: 'cash_in_hand', sourceId: null, source: 'cash_in_hand', sourceName: 'Cash in Hand' };
+}
+
 // Card payment processing
-async function processCardPayment(formData, { creditCards, reservedFunds, bankAccounts, cashInHand, onUpdateCashInHand, onUpdateCash }) {
+async function processCardPayment(formData, { creditCards, bankAccounts, loans }) {
   const card = creditCards?.find(c => c.id === formData.paymentMethodId);
   if (!card) throw new Error('Credit card not found');
 
   const amount = parseFloat(formData.amount);
-  const [sourceType, sourceId] = formData.paymentSource?.includes(':') 
-    ? formData.paymentSource.split(':') 
-    : [formData.paymentSource || 'cash_in_hand', null];
+  const { sourceType, sourceId, source, sourceName } = paymentSourceOf(formData, { bankAccounts, creditCards });
 
-  const previousBalance = card.balance;
-  const newBalance = Math.max(0, card.balance - amount);
-  
-  await dbOperation('creditCards', 'put', {
-    ...card,
-    balance: newBalance,
-    last_payment_date: formData.date,
-    last_payment_amount: amount
-  }, { skipActivityLog: true });
-
-  let sourceName = 'Cash in Hand';
-  let paymentMethod = 'cash_in_hand';
-  let paymentMethodId = null;
-
-  if (sourceType === 'cash_in_hand') {
-    const currentCash = cashInHand || 0;
-    if (amount > currentCash) {
-      throw new Error(`Insufficient cash in hand. Available: ${formatCurrency(currentCash)}`);
-    }
-    const newCash = currentCash - amount;
-    await onUpdateCashInHand(newCash);
-    sourceName = 'Cash in Hand';
-
-  } else if (sourceType === 'bank_account' && sourceId) {
-    const account = bankAccounts?.find(a => a.id === sourceId);
-    if (!account) throw new Error('Bank account not found');
-    
-    const currentBalance = Number(account.balance) || 0;
-    if (amount > currentBalance) {
-      throw new Error(`Insufficient funds in ${account.name}. Available: ${formatCurrency(currentBalance)}`);
-    }
-    
-    await updateBankAccountBalance(account.id, currentBalance - amount);
-    await onUpdateCash(null, { syncOnly: true });
-    sourceName = account.name;
-    paymentMethod = 'bank_account';
-    paymentMethodId = account.id;
-
-  } else if (sourceType === 'reserved_fund' && sourceId) {
-    const fund = reservedFunds?.find(f => f.id === sourceId);
-    if (!fund) throw new Error('Reserved fund not found');
-    
-    const fundAmount = Number(fund.amount) || 0;
-    if (amount > fundAmount) {
-      throw new Error(`Insufficient funds in ${fund.name}. Available: ${formatCurrency(fundAmount)}`);
-    }
-    
-    await dbOperation('reservedFunds', 'put', {
-      ...fund,
-      amount: fundAmount - amount,
-      last_paid_date: formData.date
-    }, { skipActivityLog: true });
-    sourceName = fund.name;
-    paymentMethod = 'reserved_fund';
-    paymentMethodId = fund.id;
-  }
-
-  const transaction = {
-    type: 'payment',
-    card_id: card.id,
+  const res = await recordCardPayment({
+    cardId: card.id,
     amount,
+    source,
     date: formData.date,
-    category_id: formData.category || 'credit_card_payment',
-    category_name: 'Credit Card Payment',
-    payment_method: paymentMethod,
-    payment_method_id: paymentMethodId,
-    payment_method_name: sourceName,
     description: `Payment for '${card.name}' from ${sourceName}`,
-    status: 'active',
-    undone_at: null
-  };
-
-  const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+    updates: [{ table: 'credit_cards', id: card.id, values: { last_payment_date: formData.date, last_payment_amount: amount } }],
+    extra: {
+      type: 'payment',
+      category_id: formData.category || 'credit_card_payment',
+      category_name: 'Credit Card Payment',
+      payment_method_name: sourceName
+    }
+  }, { bankAccounts, creditCards, loans });
+  const transactionId = res.transaction?.id;
 
   await logActivity(
     'payment',
     'card',
     card.id,
     card.name,
-    `Made payment of ${formatCurrency(amount)} for '${card.name}' from ${sourceName} - Balance ${formatCurrency(previousBalance)} → ${formatCurrency(newBalance)}`,
+    `Made payment of ${formatCurrency(amount)} for '${card.name}' from ${sourceName}`,
     {
       entity: { ...card, id: card.id, name: card.name },
       paymentAmount: amount,
       date: formData.date,
-      previousBalance: previousBalance,
+      previousBalance: card.balance,
       paymentSource: sourceType,
       paymentSourceId: sourceId,
       paymentSourceName: sourceName,
       paymentMethodName: card.name,
-      transactionId: savedTransaction?.id,
+      transactionId,
       isManualPayment: true
     }
   );
@@ -378,149 +215,72 @@ async function processCardPayment(formData, { creditCards, reservedFunds, bankAc
     amountMode: formData.amountMode
   }).catch(console.warn);
 
-  return { 
-    success: true, 
-    transactionId: savedTransaction?.id,
-    cardName: card.name,
-    amount 
-  };
+  return { success: true, transactionId, cardName: card.name, amount };
 }
 
 // Loan payment processing
-async function processLoanPayment(formData, { loans, reservedFunds, bankAccounts, creditCards, cashInHand, onUpdateCashInHand, onUpdateCash }) {
+async function processLoanPayment(formData, { loans, bankAccounts, creditCards }) {
   const loan = loans?.find(l => l.id === formData.paymentMethodId);
   if (!loan) throw new Error('Loan not found');
 
   const amount = parseFloat(formData.amount);
-  const [sourceType, sourceId] = formData.paymentSource?.includes(':') 
-    ? formData.paymentSource.split(':') 
-    : [formData.paymentSource || 'cash_in_hand', null];
+  const { sourceType, sourceId, source, sourceName } = paymentSourceOf(formData, { bankAccounts, creditCards });
 
-  const previousBalance = loan.balance;
-  const newBalance = Math.max(0, loan.balance - amount);
-  
   const { predictNextDate } = await import('../utils/helpers');
+  const recurring = loan.frequency && loan.frequency !== 'onetime';
   let nextPaymentDate = loan.next_payment_date;
-  if (loan.frequency && loan.frequency !== 'onetime') {
+  if (recurring) {
     nextPaymentDate = predictNextDate(loan.next_payment_date, loan.frequency);
-    
-    let occurrencesCompleted = (loan.recurring_occurrences_completed || 0) + 1;
-    if (loan.recurring_duration_type === 'occurrences' && 
-        loan.recurring_occurrences_total && 
+    const occurrencesCompleted = (loan.recurring_occurrences_completed || 0) + 1;
+    if (loan.recurring_duration_type === 'occurrences' &&
+        loan.recurring_occurrences_total &&
         occurrencesCompleted >= loan.recurring_occurrences_total) {
       nextPaymentDate = null;
     }
   }
-  
-  await dbOperation('loans', 'put', {
-    ...loan,
-    balance: newBalance,
-    next_payment_date: nextPaymentDate,
-    last_payment_date: formData.date,
-    last_payment_amount: amount,
-    recurring_occurrences_completed: loan.frequency && loan.frequency !== 'onetime' 
-      ? (loan.recurring_occurrences_completed || 0) + 1 
-      : loan.recurring_occurrences_completed
-  }, { skipActivityLog: true });
 
-  let sourceName = 'Cash in Hand';
-  let paymentMethod = 'cash_in_hand';
-  let paymentMethodId = null;
-
-  if (sourceType === 'cash_in_hand') {
-    const currentCash = cashInHand || 0;
-    if (amount > currentCash) {
-      throw new Error(`Insufficient cash in hand. Available: ${formatCurrency(currentCash)}`);
-    }
-    const newCash = currentCash - amount;
-    await onUpdateCashInHand(newCash);
-    sourceName = 'Cash in Hand';
-
-  } else if (sourceType === 'bank_account' && sourceId) {
-    const account = bankAccounts?.find(a => a.id === sourceId);
-    if (!account) throw new Error('Bank account not found');
-    
-    const currentBalance = Number(account.balance) || 0;
-    if (amount > currentBalance) {
-      throw new Error(`Insufficient funds in ${account.name}. Available: ${formatCurrency(currentBalance)}`);
-    }
-    
-    await updateBankAccountBalance(account.id, currentBalance - amount);
-    await onUpdateCash(null, { syncOnly: true });
-    sourceName = account.name;
-    paymentMethod = 'bank_account';
-    paymentMethodId = account.id;
-
-  } else if (sourceType === 'reserved_fund' && sourceId) {
-    const fund = reservedFunds?.find(f => f.id === sourceId);
-    if (!fund) throw new Error('Reserved fund not found');
-    
-    const fundAmount = Number(fund.amount) || 0;
-    if (amount > fundAmount) {
-      throw new Error(`Insufficient funds in ${fund.name}. Available: ${formatCurrency(fundAmount)}`);
-    }
-    
-    await dbOperation('reservedFunds', 'put', {
-      ...fund,
-      amount: fundAmount - amount,
-      last_paid_date: formData.date
-    }, { skipActivityLog: true });
-    sourceName = fund.name;
-    paymentMethod = 'reserved_fund';
-    paymentMethodId = fund.id;
-
-  } else if (sourceType === 'credit_card' && sourceId) {
-    const paymentCard = creditCards?.find(c => c.id === sourceId);
-    if (!paymentCard) throw new Error('Payment card not found');
-    
-    const cardPreviousBalance = paymentCard.balance;
-    const cardNewBalance = paymentCard.balance + amount;
-    
-    await dbOperation('creditCards', 'put', {
-      ...paymentCard,
-      balance: cardNewBalance
-    }, { skipActivityLog: true });
-    
-    sourceName = paymentCard.name;
-    paymentMethod = 'credit_card';
-    paymentMethodId = paymentCard.id;
-  }
-
-  const transaction = {
-    type: 'payment',
-    loan_id: loan.id,
+  const res = await recordLoanPayment({
+    loanId: loan.id,
     amount,
+    source,
     date: formData.date,
-    category_id: formData.category || 'loan_payment',
-    category_name: 'Loan Payment',
-    payment_method: paymentMethod,
-    payment_method_id: paymentMethodId,
-    payment_method_name: sourceName,
     description: `Payment for '${loan.name}' from ${sourceName}`,
-    status: 'active',
-    undone_at: null
-  };
-
-  const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
+    updates: [{
+      table: 'loans', id: loan.id, values: {
+        next_payment_date: nextPaymentDate,
+        last_payment_date: formData.date,
+        last_payment_amount: amount,
+        recurring_occurrences_completed: recurring
+          ? (loan.recurring_occurrences_completed || 0) + 1
+          : loan.recurring_occurrences_completed
+      }
+    }],
+    extra: {
+      type: 'payment',
+      category_id: formData.category || 'loan_payment',
+      category_name: 'Loan Payment',
+      payment_method_name: sourceName
+    }
+  }, { bankAccounts, creditCards, loans });
+  const transactionId = res.transaction?.id;
 
   await logActivity(
     'payment',
     'loan',
     loan.id,
     loan.name,
-    `Made payment of ${formatCurrency(amount)} for '${loan.name}' from ${sourceName} - Balance ${formatCurrency(previousBalance)} → ${formatCurrency(newBalance)}`,
+    `Made payment of ${formatCurrency(amount)} for '${loan.name}' from ${sourceName}`,
     {
       entity: { ...loan, id: loan.id, name: loan.name },
       paymentAmount: amount,
       date: formData.date,
-      previousBalance: previousBalance,
-      newBalance: newBalance,
+      previousBalance: loan.balance,
       paymentSource: sourceType,
       paymentSourceId: sourceId,
       paymentSourceName: sourceName,
       paymentMethodName: loan.name,
-      transactionId: savedTransaction?.id,
-      nextPaymentDate: nextPaymentDate
+      transactionId,
+      nextPaymentDate
     }
   );
 
@@ -530,10 +290,5 @@ async function processLoanPayment(formData, { loans, reservedFunds, bankAccounts
     amountMode: formData.amountMode
   }).catch(console.warn);
 
-  return { 
-    success: true, 
-    transactionId: savedTransaction?.id,
-    loanName: loan.name,
-    amount 
-  };
+  return { success: true, transactionId, loanName: loan.name, amount };
 }

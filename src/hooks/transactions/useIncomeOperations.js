@@ -1,32 +1,10 @@
 import { useCallback } from 'react';
-import { supabase } from '../../utils/supabase';
 import { dbOperation } from '../../utils/db';
+import { recordIncome, reverseTransaction } from '../../utils/money';
 import { logActivity } from '../../utils/activityLogger';
 import { formatCurrency, formatDate, generateId } from '../../utils/helpers';
 import { formatFrequency } from '../../utils/sentenceCase';
 import { saveIncomeSourceContext } from '../../utils/formContexts';
-
-/**
- * Helper to update bank account balance directly
- */
-async function updateBankAccountBalance(accountId, newBalance) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-
-  const { data, error } = await supabase
-    .from('bank_accounts')
-    .update({
-      balance: newBalance,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', accountId)
-    .eq('user_id', user.id)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
 
 /**
  * Hook for income operations (add, edit, delete)
@@ -124,11 +102,10 @@ export const useIncomeOperations = () => {
       schedule_id: editingItem?.schedule_id || null
     };
     
-    const savedIncome = await dbOperation('income', 'put', incomeEntry, { skipActivityLog: true });
-    const incomeId = savedIncome?.id || editingItem?.id;
-    
-    // Handle editing
+    // Handle editing: only the income record changes, no balance moves
     if (isEditing) {
+      const savedIncome = await dbOperation('income', 'put', incomeEntry, { skipActivityLog: true });
+      const incomeId = savedIncome?.id || editingItem?.id;
       const oldSource = editingItem.source || '';
       const newSource = savedIncome?.source || incomeEntry.source || '';
       const oldAmount = parseFloat(editingItem.amount) || 0;
@@ -182,54 +159,34 @@ export const useIncomeOperations = () => {
       );
     }
 
-    // Handle new income
+    // Handle new income: the income record, its transaction and the deposit are saved together by the server
     if (!isEditing) {
-      const transaction = {
-        type: 'income',
-        amount: newAmount,
-        date: formData.date,
-        income_source: formData.source,
-        payment_method: 'cash',
-        payment_method_id: incomeId,
-        status: 'active',
-        undone_at: null
-      };
-      const savedTransaction = await dbOperation('transactions', 'put', transaction, { skipActivityLog: true });
-      
-      // Handle income deposit
-      let depositDestination = null;
-      let previousBalance = 0;
-      let newBalance = 0;
-      
-      if (formData.depositTarget === 'cash_in_hand') {
-        previousBalance = cashInHand || 0;
-        newBalance = previousBalance + newAmount;
-        if (onUpdateCashInHand) await onUpdateCashInHand(newBalance);
-        depositDestination = 'Cash in Hand';
-      } else if (formData.depositTarget === 'bank' && formData.depositAccountId) {
+      const incomeId = incomeEntry.id;
+      let target = 'cash_in_hand';
+      let depositDestination = 'Cash in Hand';
+      let previousBalance = cashInHand || 0;
+      if (formData.depositTarget === 'bank') {
         const account = bankAccounts.find(a => a.id === formData.depositAccountId);
-        if (account) {
-          previousBalance = Number(account.balance) || 0;
-          newBalance = previousBalance + newAmount;
-          await updateBankAccountBalance(formData.depositAccountId, newBalance);
-          depositDestination = account.name;
-          if (onUpdateCash) await onUpdateCash(null, { syncOnly: true });
-        }
+        if (!account) throw new Error('Choose the bank account the income goes into.');
+        target = `bank_account:${account.id}`;
+        depositDestination = account.name;
+        previousBalance = Number(account.balance) || 0;
       }
-      
-      // Handle reserved amount (if any)
-      if (formData.reservedAmount && parseFloat(formData.reservedAmount) > 0) {
-        if (onUpdateCash) {
-          await onUpdateCash(null, {
-            delta: -parseFloat(formData.reservedAmount)
-          });
-        }
-      }
+
+      const res = await recordIncome({
+        amount: newAmount,
+        target,
+        date: formData.date,
+        source_name: formData.source,
+        incomeRow: incomeEntry,
+        extra: { income_source: formData.source, income_id: incomeId, payment_method_name: depositDestination }
+      }, { bankAccounts });
+      const transactionId = res.transaction?.id;
+      if (onUpdateCash) await onUpdateCash(null, { syncOnly: true });
 
       let description = `Income of ${formatCurrency(newAmount)} from '${formData.source}'`;
       if (depositDestination) {
         description += ` deposited to ${depositDestination}`;
-        description += ` • Balance ${formatCurrency(previousBalance)} → ${formatCurrency(newBalance)}`;
       }
       description += ` • ${formatFrequency(formData.frequency)} • ${formatDate(formData.date)}`;
 
@@ -248,8 +205,7 @@ export const useIncomeOperations = () => {
           depositAccountId: formData.depositAccountId,
           depositDestination,
           previousBalance,
-          newBalance,
-          transactionId: savedTransaction?.id,
+          transactionId,
           incomeId
         }
       );
@@ -291,7 +247,8 @@ export const useIncomeOperations = () => {
     try {
       const transactions = await dbOperation('transactions', 'getAll');
       relatedTransactions = (transactions || []).filter(
-        (t) => t.type === 'income' && (String(t.payment_method_id) === String(incomeId))
+        (t) => t.type === 'income' && t.status !== 'undone' && t.status !== 'deleted' &&
+          (String(t.income_id) === String(incomeId) || String(t.payment_method_id) === String(incomeId))
       );
     } catch (error) {
       console.warn('Unable to fetch linked transactions for income deletion:', error);
@@ -303,32 +260,18 @@ export const useIncomeOperations = () => {
       undone_at: null
     }));
 
-    // Remove income from bank account or cash in hand
-    let previousBalance = 0;
-    let newBalance = 0;
-    let depositDestination = null;
-    
-    if (inc.deposit_account_id) {
-      const account = bankAccounts.find(a => a.id === inc.deposit_account_id);
-      if (account) {
-        previousBalance = Number(account.balance) || 0;
-        newBalance = Math.max(0, previousBalance - inc.amount);
-        await updateBankAccountBalance(inc.deposit_account_id, newBalance);
-        depositDestination = account.name;
-        if (onUpdateCash) await onUpdateCash(null, { syncOnly: true });
-      }
-    } else {
-      const currentCashInHand = cashInHand || 0;
-      previousBalance = currentCashInHand;
-      newBalance = Math.max(0, currentCashInHand - inc.amount);
-      if (onUpdateCashInHand) await onUpdateCashInHand(newBalance);
-      depositDestination = 'Cash in Hand';
+    // Take the income back out by reversing its transactions: the server moves back exactly what each one added.
+    const depositDestination = inc.deposit_account_id
+      ? (bankAccounts.find(a => a.id === inc.deposit_account_id)?.name || null)
+      : 'Cash in Hand';
+    for (const trx of relatedTransactions) {
+      await reverseTransaction(trx.id, { remove: true });
     }
+    if (onUpdateCash) await onUpdateCash(null, { syncOnly: true });
 
     let description = `Deleted income of ${formatCurrency(inc.amount)} from '${inc.source}'`;
     if (depositDestination) {
       description += ` • Was in ${depositDestination}`;
-      description += ` • Balance ${formatCurrency(previousBalance)} → ${formatCurrency(newBalance)}`;
     }
     description += ` • ${formatFrequency(inc.frequency) || 'One Time'}`;
 
@@ -355,21 +298,11 @@ export const useIncomeOperations = () => {
         depositTarget: inc.deposit_account_id ? 'bank' : 'cash_in_hand',
         depositAccountId: inc.deposit_account_id,
         depositAccountName: depositDestination,
-        previousBalance,
-        newBalance,
         linkedTransactions: linkedSnapshots
       }
     );
 
     await dbOperation('income', 'delete', incomeId, { skipActivityLog: true });
-
-    for (const trx of relatedTransactions) {
-      try {
-        await dbOperation('transactions', 'delete', trx.id, { skipActivityLog: true });
-      } catch (error) {
-        console.warn('Unable to remove linked transaction during income deletion:', error);
-      }
-    }
 
     await onUpdate();
     
