@@ -1,4 +1,5 @@
-import { server } from './server';
+import { server, api } from './server';
+import { loadPrefs, savePrefs } from './prefs';
 import { logActivity } from './activityLogger';
 import { localDate } from './helpers';
 import { recordTransfer, recordAdjustment } from './money';
@@ -63,23 +64,11 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
     switch (operation) {
       case 'getAll': {
         if (tableName === 'settings') {
-          const { data: result, error } = await server
-            .from(tableName)
-            .select('*')
-            .eq('user_id', user.id)
-            .single();
-          
-          if (error && error.code !== 'PGRST116') throw error;
-          
-          if (result) {
-            return [
-              { key: 'availableCash', value: result.available_cash },
-              { key: 'darkMode', value: result.dark_mode },
-              { key: 'alertSettings', value: result.alert_settings },
-              { key: 'showCashInDashboard', value: result.show_cash_in_dashboard || false }
-            ];
-          }
-          return [];
+          const p = await loadPrefs();
+          return [
+            { key: 'darkMode', value: p.dark_mode },
+            { key: 'alertSettings', value: p.alert_settings },
+          ];
         }
         
         const { data: results, error } = await server
@@ -94,21 +83,8 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
 
       case 'get': {
         if (tableName === 'settings') {
-          const { data: result, error } = await server
-            .from(tableName)
-            .select('*')
-            .eq('user_id', user.id)
-            .single();
-          
-          if (error && error.code !== 'PGRST116') throw error;
-          
-          if (result && data === 'availableCash') {
-            return { key: 'availableCash', value: result.available_cash };
-          }
-          if (result && data === 'showCashInDashboard') {
-            return { key: 'showCashInDashboard', value: result.show_cash_in_dashboard || false };
-          }
-          return null;
+          const p = await loadPrefs();
+          return data === 'darkMode' ? { key: 'darkMode', value: p.dark_mode } : data === 'alertSettings' ? { key: 'alertSettings', value: p.alert_settings } : null;
         }
         
         const { data: result, error } = await server
@@ -124,38 +100,9 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
 
       case 'put': {
         if (tableName === 'settings') {
-          const { data: existing } = await server
-            .from(tableName)
-            .select('user_id')
-            .eq('user_id', user.id)
-            .single();
-          
-          const settingsData = {
-            user_id: user.id,
-            available_cash: data.key === 'availableCash' ? data.value : undefined,
-            dark_mode: data.key === 'darkMode' ? data.value : undefined,
-            alert_settings: data.key === 'alertSettings' ? data.value : undefined,
-            show_cash_in_dashboard: data.key === 'showCashInDashboard' ? data.value : undefined
-          };
-          
-          Object.keys(settingsData).forEach(key => 
-            settingsData[key] === undefined && delete settingsData[key]
-          );
-          
-          if (existing) {
-            const { error } = await server
-              .from(tableName)
-              .update(settingsData)
-              .eq('user_id', user.id);
-            
-            if (error) throw error;
-          } else {
-            const { error } = await server
-              .from(tableName)
-              .insert(settingsData);
-            
-            if (error) throw error;
-          }
+          const col = { darkMode: 'dark_mode', alertSettings: 'alert_settings' }[data.key];
+          if (!col) throw new Error(`Unknown setting: ${data.key}`);
+          await savePrefs({ [col]: data.value });
           return data;
         }
         
@@ -299,90 +246,8 @@ export const initDB = async () => {
   return Promise.resolve();
 };
 
-export const deleteAllUserData = async () => {
-  const { data: { user } } = await server.auth.getUser();
-  if (!user) {
-    throw new Error('Not authenticated');
-  }
-
-  const tables = [
-    'activities',
-    'transactions',
-    'budgets',
-    'income',
-    'credit_cards',
-    'loans',
-    'categories',
-    'known_entities',
-    'bank_accounts'
-  ];
-
-  for (const table of tables) {
-    try {
-      const { error } = await server
-        .from(table)
-        .delete()
-        .eq('user_id', user.id);
-
-      if (error && error.code !== 'PGRST116') {
-        console.error(`Error deleting from ${table}:`, error);
-        throw error;
-      }
-    } catch (tableError) {
-      console.error(`Failed to delete from ${table}:`, tableError);
-      throw tableError;
-    }
-  }
-
-  try {
-    await server
-      .from('settings')
-      .update({
-        available_cash: 0,
-        dark_mode: false,
-        alert_settings: { defaultDays: 7 },
-        show_cash_in_dashboard: false,
-        theme: 'auto',
-        currency: 'USD',
-        currency_symbol: '$',
-        date_format: 'MM/DD/YYYY',
-        first_day_of_week: 'sunday',
-        number_format: 'comma',
-        default_alert_days: 7,
-        credit_card_alert_days: 7,
-        loan_alert_days: 7,
-        low_balance_alerts: true,
-        low_balance_threshold: 100,
-        email_notifications: false,
-        reminder_time: '09:00',
-        default_payment_method: '',
-        auto_categorization: true,
-        round_up_transactions: false,
-        monthly_budget_enabled: false,
-        monthly_budget_amount: 0,
-        budget_alert_at_80: true,
-        budget_alert_at_90: true,
-        budget_alert_at_100: true,
-        default_overdraft_allowed: false,
-        default_overdraft_limit: 0,
-        category_budgets: {},
-        auto_process_due_payments: true,
-        auto_mark_cleared_days: 0,
-        smart_suggestions: true,
-        default_transaction_time: 'now',
-        custom_transaction_time: '12:00',
-        require_notes_for_expenses_over: 0,
-        require_notes_for_payments: false,
-        confirm_large_transactions: true,
-        large_transaction_threshold: 500,
-        transaction_templates: [],
-        updated_at: new Date().toISOString()
-      })
-      .eq('user_id', user.id);
-  } catch (settingsError) {
-    console.error('Error resetting settings:', settingsError);
-  }
-};
+// Deletes everything recorded for this account in one server step. The sign-in stays.
+export const deleteAllUserData = () => api('/api/reset', { confirm: 'DELETE ALL MY DATA' });
 
 export async function getAllBankAccounts() {
   try {

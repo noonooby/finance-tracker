@@ -11,6 +11,7 @@ const crypto = require('node:crypto');
 
 const TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif', 'application/pdf']);
 const MAX_BYTES = 8_000_000;
+const HOME = (process.env.HOME_CURRENCY || 'CAD').toUpperCase();
 
 const PROMPT = `You read one screenshot or statement (PDF) from a banking app, credit card app, or a receipt. Report only what is visible; never guess.
 Return JSON:
@@ -18,7 +19,7 @@ Return JSON:
  "statement":{"account_name":"","last4":"or null","period_start":"YYYY-MM-DD","period_end":"YYYY-MM-DD","opening_balance":number,"closing_balance":number} or null (only for a statement),
  "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null,"statement_balance":number or null,"autopay":true|false|null}],
  "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null",
-   "type":"purchase|income|refund|card_payment|transfer|fee|interest","other_account":"for card_payment or transfer: the other account's name or last 4 digits as shown, else null",
+   "type":"purchase|income|refund|card_payment|transfer|fee|interest","currency":"3-letter code only when the line shows a currency other than the account's (e.g. USD), else null","original_amount":"the amount in that other currency when the line also shows the converted amount, else null","other_account":"for card_payment or transfer: the other account's name or last 4 digits as shown, else null",
    "category":"one short category: for a purchase or fee (Groceries, Dining, Transport, Fuel, Bills, Utilities, Phone, Shopping, Entertainment, Health, Travel, Subscriptions, Rent, Insurance, Education, Personal care, Gifts, Fees); for income (Salary, Freelance, Interest, Government, Refund, Other income); else null"}],
  "receipt":{"merchant":"","date":"YYYY-MM-DD","total":number,"items":[{"name":"","amount":number}]} or null,
  "notes":"anything unclear, short"}
@@ -105,6 +106,13 @@ function plan(reading, ctx, sourceId) {
       kind, other: other ? { type: other._type, id: other.id, name: other.name } : null, other_hint: l.other_account || null,
       category_guess: (kind === 'purchase' || kind === 'income') && l.category ? String(l.category).slice(0, 40) : null,
     };
+    // Another currency: when the converted amount is shown too, amount is that; otherwise read() converts it at the day's rate.
+    const cur = String(l.currency || '').toUpperCase();
+    if (/^[A-Z]{3}$/.test(cur) && cur !== HOME) {
+      const orig = Math.round(Math.abs(Number(l.original_amount)) * 100) / 100;
+      out.original_currency = cur;
+      if (orig > 0) out.original_amount = orig; else { out.original_amount = amount; out.needs_fx = true; }
+    }
     if (!(amount > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(String(l.date || ''))) { out.action = 'skip'; out.why = 'No clear amount or date'; return out; }
     if (!acct) { out.action = 'choose_account'; out.why = 'Choose which account this is'; }
     // Already recorded by hand (same account, amount, merchant, within a day): offered unticked.
@@ -168,7 +176,17 @@ async function read(uid, body, ctx) {
   const today = ctx.today || new Date().toLocaleDateString('en-CA');
   const note = cleanNote(body.note);
   const reading = await callGemini(mime, b64, today, note);
-  return plan(reading, ctx, sourceId);
+  const p = plan(reading, ctx, sourceId);
+  // Lines shown only in another currency are converted at that day's published rate; the original is kept on the line.
+  for (const l of p.lines.filter((x) => x.needs_fx && x.action !== 'skip')) {
+    try {
+      const r = await require('./fx').rate(ctx.db, l.original_currency, HOME, l.date);
+      l.amount = require('./fx').convert(l.original_amount, r.rate); l.fx_rate = r.rate;
+      l.fx_note = `${l.original_currency} ${l.original_amount.toFixed(2)} at ${r.rate} (${r.date}); the card may charge a little more`;
+    } catch (e) { l.fx_note = `${l.original_currency} ${l.original_amount.toFixed(2)}: ${e.message}`; l.fx_failed = true; }
+    delete l.needs_fx;
+  }
+  return p;
 }
 
 module.exports = { read, plan, resolveAccount, mkey, cleanNote };

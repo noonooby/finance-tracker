@@ -6,6 +6,8 @@ import {
 import { DEFAULT_CATEGORIES, calculateTotalBankBalance } from '../utils/helpers';
 import { processDueIncomeSchedules, processOverdueLoanPayments, processOverdueCreditCardPayments } from '../utils/schedules';
 import { server } from '../utils/server';
+import { loadPrefs } from '../utils/prefs';
+import { getLocal, setLocal } from '../utils/localStore';
 
 export const FinanceDataContext = createContext(null);
 
@@ -24,6 +26,11 @@ export function FinanceDataProvider({ children }) {
   const [assets, setAssets] = useState([]);
   const [incomeSchedules, setIncomeSchedules] = useState([]);
   const [categoryRules, setCategoryRules] = useState([]);
+  const [bills, setBills] = useState([]);
+  const [budgets, setBudgets] = useState({});
+  // When the figures shown are the copy saved on this device (no connection): the time they were saved.
+  const [offlineAt, setOfflineAt] = useState(null);
+  const extraRef = useRef({});
   
   // Loading states
   const [dataLoading, setDataLoading] = useState(false);
@@ -59,6 +66,7 @@ export function FinanceDataProvider({ children }) {
       const cats = await dbOperation('categories', 'getAll');
       if (cats && cats.length > 0) {
         setCategories(cats);
+        return cats;
       } else {
         for (const cat of DEFAULT_CATEGORIES) {
           await dbOperation('categories', 'put', cat);
@@ -107,17 +115,10 @@ export function FinanceDataProvider({ children }) {
     if (first) setDataLoading(true);
     setLoadError(null);
     try {
-      // PHASE 1: Load critical settings first
-      const settings = await dbOperation('settings', 'getAll');
+      // Categories first (a new account gets the default ones), then everything else at once.
+      const cats = await loadCategories();
 
-      const cashSetting = settings?.find(s => s.key === 'availableCash');
-      const cashValue = Number(cashSetting?.value) || 0;
-      setAvailableCash(cashValue);
-
-      // PHASE 2: Load categories
-      await loadCategories();
-
-      // PHASE 3: Load financial data in parallel
+      // Everything else in parallel
       const [cards, loansData, incomeDataRaw, transRaw, accounts] = await Promise.all([
         dbOperation('creditCards', 'getAll'),
         dbOperation('loans', 'getAll'),
@@ -128,7 +129,13 @@ export function FinanceDataProvider({ children }) {
         server.from('assets').select('*').then((r) => r.data || []),
         server.from('income_schedules').select('*').then((r) => r.data || []),
         server.from('category_rules').select('*').then((r) => r.data || []),
-      ]).then(([c, l, i, t, a, inv, as, sch, rules]) => { setInvestments(inv); setAssets(as); setIncomeSchedules(sch); setCategoryRules(rules); return [c, l, i, t, a]; });
+        server.from('bills').select('*').then((r) => r.data || []),
+        loadPrefs().catch(() => ({})),
+      ]).then(([c, l, i, t, a, inv, as, sch, rules, bl, prefs]) => {
+        setInvestments(inv); setAssets(as); setIncomeSchedules(sch); setCategoryRules(rules); setBills(bl); setBudgets(prefs.category_budgets || {});
+        extraRef.current = { investments: inv, assets: as, incomeSchedules: sch, categoryRules: rules, bills: bl, budgets: prefs.category_budgets || {} };
+        return [c, l, i, t, a];
+      });
       
       let incomeData = incomeDataRaw || [];
       let transactionsData = transRaw || [];
@@ -143,7 +150,7 @@ export function FinanceDataProvider({ children }) {
         setAvailableCash(totalBalance);
       }
       
-      // PHASE 4: Scheduled money: pay days, then loan and card payments with a connected account.
+      // Scheduled money: pay days, then loan and card payments with a connected account.
       // Each date is recorded once (the server keeps a once-only key), so running this on every load is safe.
       // Runs on the first load and then at most every 10 minutes, not after every action.
       const dueCheck = first || Date.now() - lastDueRef.current > 600000;
@@ -173,10 +180,28 @@ export function FinanceDataProvider({ children }) {
       
       setIncome(incomeData);
       setTransactions(transactionsData);
+      setOfflineAt(null);
+
+      // The figures just loaded are kept on this device, so the app can open without a connection.
+      const { data: { user } } = await server.auth.getUser();
+      if (user) setLocal(`figures:${user.id}`, { savedAt: new Date().toISOString(), creditCards: cards || [], loans: loansData || [], income: incomeData,
+        transactions: transactionsData, bankAccounts: accounts || [], categories: cats || null, extra: extraRef.current });
 
     } catch (error) {
-      console.error('Error loading data:', error);
-      setLoadError(error?.message || 'Could not load your data.');
+      // No connection: show the figures last saved on this device, read only, until the connection is back.
+      const offline = (typeof navigator !== 'undefined' && navigator.onLine === false) || /fetch|network|load failed/i.test(String(error?.message || ''));
+      const { data: { user } } = offline ? await server.auth.getUser() : { data: {} };
+      const saved = user ? await getLocal(`figures:${user.id}`) : null;
+      if (saved) {
+        setCreditCards(saved.creditCards || []); setLoans(saved.loans || []); setIncome(saved.income || []); setTransactions(saved.transactions || []);
+        setBankAccounts(saved.bankAccounts || []); if (saved.categories && saved.categories.length) setCategories(saved.categories);
+        if (saved.extra) { setInvestments(saved.extra.investments || []); setAssets(saved.extra.assets || []); setIncomeSchedules(saved.extra.incomeSchedules || []);
+          setCategoryRules(saved.extra.categoryRules || []); setBills(saved.extra.bills || []); setBudgets(saved.extra.budgets || {}); }
+        setOfflineAt(saved.savedAt);
+      } else {
+        console.error('Error loading data:', error);
+        setLoadError(offline ? 'No connection, and nothing is saved on this device yet. Connect once and the app keeps a copy here.' : (error?.message || 'Could not load your data.'));
+      }
     } finally {
       loadedOnceRef.current = true;
       setDataLoading(false);
@@ -216,6 +241,11 @@ export function FinanceDataProvider({ children }) {
     incomeSchedules,
     categoryRules,
     setCategoryRules,
+    bills,
+    setBills,
+    budgets,
+    setBudgets,
+    offlineAt,
     setInvestments,
     setAssets,
     dataLoading,
@@ -243,7 +273,7 @@ export function FinanceDataProvider({ children }) {
     displayAvailableCash,
     totalCreditCardDebt,
     totalLoanDebt,
-  }), [creditCards, loans, income, transactions, categories, bankAccounts, availableCash, investments, assets, incomeSchedules, categoryRules, dataLoading, loadError,
+  }), [creditCards, loans, income, transactions, categories, bankAccounts, availableCash, investments, assets, incomeSchedules, categoryRules, bills, budgets, offlineAt, dataLoading, loadError,
     latestActivities, loadAllData, loadDataProgressively, loadBankAccounts, loadCategories, loadLatestActivities,
     handleUpdateCash, displayAvailableCash, totalCreditCardDebt, totalLoanDebt]);
 

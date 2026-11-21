@@ -18,6 +18,8 @@ process.env.DEV_USER = 'scenario@test.local';
 process.env.READER_STUB = path.join(tmp, 'reading.json');
 delete process.env.GEMINI_API_KEY;
 delete process.env.ALLOWED_EMAILS;
+process.env.FX_STUB = '1.4';
+process.env.PUSH_STUB = '1';
 process.env.GEMINI_CHECK_STUB = 'GOODKEY_abcdefghijklmnopqrstuvwxyz';
 
 const require = createRequire(import.meta.url);
@@ -31,13 +33,14 @@ globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v
 const realFetch = globalThis.fetch;
 globalThis.fetch = (u, o) => realFetch(String(u).startsWith('/') ? base + u : u, o);
 const lib = path.join(tmp, 'lib'); fs.mkdirSync(lib);
-for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js']) {
+for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js']) {
   const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
   fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
 }
 const { server: client, api } = await import(pathToFileURL(path.join(lib, 'server.mjs')));
 const M = await import(pathToFileURL(path.join(lib, 'money.mjs')));
 const F = await import(pathToFileURL(path.join(lib, 'finance.mjs')));
+const S = await import(pathToFileURL(path.join(lib, 'spending.mjs')));
 await client.auth.devSignIn();
 
 const db = client;
@@ -519,4 +522,148 @@ test('categories are learned per merchant; a rule you fixed stays; learning can 
   rules = (await db.from('category_rules').select('*')).data;
   assert.ok(!rules.some((x) => x.key === 'secondcup'));
   await db.from('settings').upsert({ key: 'learn_categories', value: true }, { onConflict: 'key' });
+});
+
+test('a split purchase moves the money once, counts each part in its category, and must add up', async () => {
+  const a = await accounts();
+  const before = Number((await get('bank_accounts', chq.id)).balance);
+  const splits = [{ category_id: 'groceries', category_name: 'Groceries', amount: 60.25 }, { category_id: 'household', category_name: 'Household', amount: 19.75 }];
+  const res = await M.recordExpense({ amount: 80, source: `bank_account:${chq.id}`, date: '2026-11-21', description: 'Costco', category_id: 'groceries', extra: { splits } }, a);
+  assert.equal(Number((await get('bank_accounts', chq.id)).balance), Math.round((before - 80) * 100) / 100);
+  const t = res.rows.find((x) => x.description === 'Costco');
+  assert.deepEqual(t.splits.map((p) => p.amount), [60.25, 19.75]);
+  const spent = S.spentByCategory([t], '2026-11-01', '2026-11-30');
+  assert.deepEqual([spent.groceries, spent.household], [60.25, 19.75]);
+  // Parts that do not add up are refused and nothing moves.
+  await assert.rejects(M.recordExpense({ amount: 80, source: `bank_account:${chq.id}`, date: '2026-11-21', description: 'Costco', extra: { splits: [{ category_id: 'groceries', amount: 50 }, { category_id: 'household', amount: 20 }] } }, a), /add up to 70.00, not the amount of 80.00/);
+  assert.equal(Number((await get('bank_accounts', chq.id)).balance), Math.round((before - 80) * 100) / 100);
+  await assert.rejects(db.from('transactions').update({ splits: [{ category_id: 'x', amount: 80 }] }).eq('id', t.id).then((r) => { if (r.error) throw new Error(r.error.message); }), /2 to 20 parts/);
+});
+
+test('budgets count purchases minus refunds for the month, ignore undone lines, and show the pace', () => {
+  const tx = [
+    { type: 'expense', amount: 120, date: '2026-11-03', category_id: 'dining' },
+    { type: 'refund', amount: 20, date: '2026-11-04', category_id: 'dining' },
+    { type: 'expense', amount: 500, date: '2026-11-05', category_id: 'dining', status: 'undone' },
+    { type: 'expense', amount: 90, date: '2026-10-30', category_id: 'dining' },
+    { type: 'expense', amount: 300, date: '2026-11-10', category_id: 'groceries' },
+  ];
+  const b = S.budgetMonth(tx, { dining: 200, groceries: 250, travel: 0 }, [{ id: 'dining', name: 'Dining' }, { id: 'groceries', name: 'Groceries' }], '2026-11', new Date(2026, 10, 15));
+  assert.deepEqual(b.map((x) => [x.category_id, x.spent, x.left, x.over]), [['groceries', 300, -50, true], ['dining', 100, 100, false]]);
+  assert.equal(b[1].pace, 0.5);
+});
+
+test('bills that repeat are found from history; one-offs, uneven ones and stopped ones are not', () => {
+  const mk = (d, desc, amt) => ({ type: 'expense', date: d, description: desc, amount: amt, payment_method: 'credit_card', payment_method_name: 'Visa' });
+  const tx = [
+    mk('2026-08-03', 'NETFLIX.COM', 16.49), mk('2026-09-03', 'NETFLIX.COM', 16.49), mk('2026-10-03', 'NETFLIX.COM', 16.49), mk('2026-11-03', 'NETFLIX.COM', 18.99),
+    mk('2026-09-10', 'Rogers', 85), mk('2026-10-11', 'Rogers', 85.4), mk('2026-11-09', 'Rogers', 85),
+    mk('2026-09-01', 'Costco', 40), mk('2026-10-01', 'Costco', 210), mk('2026-11-01', 'Costco', 75),
+    mk('2026-01-05', 'Gym', 30), mk('2026-02-05', 'Gym', 30), mk('2026-03-05', 'Gym', 30),
+    mk('2026-11-12', 'Shell', 50),
+  ];
+  const r = S.findRecurring(tx, [], new Date(2026, 10, 21));
+  assert.deepEqual(r.map((x) => [x.name, x.frequency, x.next_date]).sort(), [['NETFLIX.COM', 'monthly', '2026-12-03'], ['Rogers', 'monthly', '2026-12-09']]);
+  assert.equal(r.find((x) => x.name === 'NETFLIX.COM').amount, 18.99);
+  // A bill you already track or turned down is not offered again.
+  assert.equal(S.findRecurring(tx, [{ key: 'netflixcom' }], new Date(2026, 10, 21)).length, 1);
+  // Tracked bills appear in the next 30 days, marked recorded when their purchase is there.
+  const bills = [{ status: 'active', key: 'rogers', name: 'Rogers', amount: 85, frequency: 'monthly', next_date: '2026-10-09', payment_method: 'bank_account' }];
+  const up = F.upcoming({ bills, transactions: tx }, new Date(2026, 10, 8), 30);
+  assert.deepEqual(up.map((x) => [x.date, x.paid]), [['2026-11-09', true]]);
+  assert.deepEqual(F.upcoming({ bills, transactions: [] }, new Date(2026, 10, 10), 30).map((x) => [x.date, x.paid]), [['2026-11-09', false], ['2026-12-09', false]]); // a day late and not recorded: still shown
+  // A bill on a card is not a separate payment (the card payment covers it); one from a bank account is.
+  const cardBill = F.upcoming({ bills: [{ ...bills[0], payment_method: 'credit_card' }], transactions: [] }, new Date(2026, 10, 8), 30)[0];
+  assert.equal(cardBill.auto, true);
+  const me = F.monthEnd({ liquid: 1000, bills, transactions: [] }, new Date(2026, 10, 8));
+  assert.equal(me.going, 85);
+});
+
+test('another currency: the rate for the day converts, and a scan line shown only in USD is converted', async () => {
+  const r = await api('/api/fx?from=usd&date=2026-11-20', null, 'GET');
+  assert.deepEqual([r.from, r.to, r.rate], ['USD', 'CAD', 1.4]);
+  await assert.rejects(api('/api/fx?from=US&date=2026-11-20', null, 'GET'), /Choose a currency/);
+  fs.writeFileSync(process.env.READER_STUB, JSON.stringify({ kind: 'transactions', accounts: [{ name: 'Visa', last4: '4321', type: 'credit_card' }], lines: [
+    { date: '2026-11-19', merchant: 'AMAZON.COM', amount: 10, direction: 'out', type: 'purchase', currency: 'USD' },
+    { date: '2026-11-19', merchant: 'STEAM', amount: 14.3, original_amount: 10, direction: 'out', type: 'purchase', currency: 'USD' },
+  ] }));
+  const p = await api('/api/read-screenshot', { image: 'data:image/png;base64,iVBORw0KGgo=', today: '2026-11-21' });
+  const [amz, steam] = p.lines;
+  assert.deepEqual([amz.amount, amz.original_amount, amz.original_currency, amz.fx_rate], [14, 10, 'USD', 1.4]);
+  assert.deepEqual([steam.amount, steam.original_amount, steam.fx_rate], [14.3, 10, undefined]);
+});
+
+test('reminders: a browser subscribes; payments you make yourself are reminded once, two days before and on the day', async () => {
+  const { runReminders } = require(path.join(root, 'server', 'server.js'));
+  const k = await api('/api/push/key', null, 'GET');
+  assert.equal(Buffer.from(k.key, 'base64url').length, 65);
+  await assert.rejects(api('/api/push/subscribe', { subscription: { endpoint: 'http://x' } }), /usable subscription/);
+  await api('/api/push/subscribe', { subscription: { endpoint: 'https://push.example.test/abc', keys: { p256dh: k.key, auth: 'AAAAAAAAAAAAAAAAAAAAAA' } } });
+  // The browser cannot write subscriptions through the data API.
+  assert.ok((await db.from('push_subscriptions').insert({ endpoint: 'https://evil.test' })).error);
+  await add('credit_cards', { name: 'Remind Visa', balance: 120, due_date: '2026-11-23' });
+  await add('credit_cards', { name: 'Auto Visa', balance: 120, due_date: '2026-11-23', connected_payment_source: 'bank_account', connected_payment_source_id: chq.id });
+  await add('bills', { name: 'Hydro', key: 'hydro', amount: 60, frequency: 'monthly', next_date: '2026-10-21', status: 'active' });
+  global.__pushed = [];
+  const at = new Date('2026-11-21T15:00:00Z'); // 10:00 in Toronto
+  await runReminders(at);
+  const titles = global.__pushed.map((x) => x.message.title).sort();
+  assert.deepEqual(titles, ['Hydro due today', 'Remind Visa payment due in 2 days']);
+  await runReminders(at); // never twice
+  assert.equal(global.__pushed.length, 2);
+  global.__pushed = [];
+  await runReminders(new Date('2026-11-21T03:00:00Z')); // 22:00 the day before in Toronto: quiet hours
+  assert.equal(global.__pushed.length, 0);
+});
+
+test('reminder messages are encrypted so only the subscribed browser can read them', () => {
+  const push = require(path.join(root, 'server', 'push.js'));
+  const crypto = require('node:crypto');
+  const ua = crypto.createECDH('prime256v1'); ua.generateKeys();
+  const auth = crypto.randomBytes(16);
+  const sub = { keys: { p256dh: ua.getPublicKey().toString('base64url'), auth: auth.toString('base64url') } };
+  const body = push.encrypt(sub, '{"title":"hi"}');
+  const salt = body.subarray(0, 16), idlen = body.readUInt8(20), asPub = body.subarray(21, 21 + idlen), ct = body.subarray(21 + idlen);
+  assert.equal(body.readUInt32BE(16), 4096);
+  const shared = ua.computeSecret(asPub);
+  const ikm = Buffer.from(crypto.hkdfSync('sha256', shared, auth, Buffer.concat([Buffer.from('WebPush: info\0'), ua.getPublicKey(), asPub]), 32));
+  const cek = Buffer.from(crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: aes128gcm\0'), 16));
+  const nonce = Buffer.from(crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: nonce\0'), 12));
+  const d = crypto.createDecipheriv('aes-128-gcm', cek, nonce); d.setAuthTag(ct.subarray(ct.length - 16));
+  const plain = Buffer.concat([d.update(ct.subarray(0, ct.length - 16)), d.final()]);
+  assert.equal(plain.subarray(0, -1).toString(), '{"title":"hi"}');
+  assert.equal(plain.at(-1), 2);
+  // The VAPID token is signed with the server key and verifies against the public key the browser was given.
+  const { db: sdb } = require(path.join(root, 'server', 'server.js'));
+  const h = push.vapid(sdb, 'https://fcm.googleapis.com/fcm/send/x', 'https://finance.example.test');
+  const [, jwt, kk] = h.match(/^vapid t=([^,]+), k=(.+)$/);
+  const [hh, pp, sg] = jwt.split('.');
+  const pub = Buffer.from(kk, 'base64url');
+  const key = crypto.createPublicKey({ format: 'jwk', key: { kty: 'EC', crv: 'P-256', x: pub.subarray(1, 33).toString('base64url'), y: pub.subarray(33).toString('base64url') } });
+  assert.ok(crypto.verify('sha256', Buffer.from(`${hh}.${pp}`), { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(sg, 'base64url')));
+  assert.equal(JSON.parse(Buffer.from(pp, 'base64url')).aud, 'https://fcm.googleapis.com');
+});
+
+test('delete all data: needs the exact phrase, removes only this person\'s rows, keeps the sign-in', async () => {
+  const other = await fetch(`${base}/api/dev-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'other@test.local' }) }).then((r) => r.json());
+  const call = (p, body, token) => fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+  await call('/api/db', { table: 'bank_accounts', action: 'insert', values: { name: 'Throwaway', balance: 5 } }, other.token);
+  assert.equal((await call('/api/reset', { confirm: 'yes' }, other.token)).status, 400);
+  const r = await call('/api/reset', { confirm: 'DELETE ALL MY DATA' }, other.token);
+  assert.ok(r.body.rows >= 1);
+  assert.equal((await call('/api/db', { table: 'bank_accounts', action: 'select', filters: [] }, other.token)).body.data.length, 0);
+  assert.equal((await call('/api/me', {}, other.token)).status, 404); // /api/me is GET; the token itself still works below
+  assert.ok((await fetch(`${base}/api/me`, { headers: { Authorization: `Bearer ${other.token}` } })).ok);
+  // The main test user's data is untouched.
+  assert.ok((await db.from('bank_accounts').select('*')).data.length > 0);
+});
+
+test('reminder encryption matches the Web Push standard example byte for byte (RFC 8291, appendix A)', () => {
+  const push = require(path.join(root, 'server', 'push.js'));
+  const crypto = require('node:crypto');
+  const b = (s) => Buffer.from(s, 'base64url');
+  const as = crypto.createECDH('prime256v1'); as.setPrivateKey(b('yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw'));
+  const sub = { keys: { p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4', auth: 'BTBZMqHH6r4Tts7J_aSIgg' } };
+  const out = push.encrypt(sub, 'When I grow up, I want to be a watermelon', { salt: b('DGv6ra1nlYgDCS1FRnbzlw'), server: as }).toString('base64url');
+  assert.equal(out, 'DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN');
 });

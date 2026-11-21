@@ -1,401 +1,47 @@
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Minus, Target, Calendar } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import {
-  getBudgetSummary,
-  getBudgetChartData,
-  getCurrentBudgetStatus
-} from '../utils/budgetTrackingManager';
+import React, { useMemo } from 'react';
+import { useFinanceData } from '../hooks/useFinanceData';
+import { budgetMonth, monthOf, prevMonth } from '../utils/spending';
 import { formatCurrency } from '../utils/helpers';
 
-/**
- * BudgetHistory Component
- * Visualizes budget tracking history with charts and trends
- */
-export default function BudgetHistory({ darkMode, categories, categoryBudgets }) {
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [chartData, setChartData] = useState([]);
-  const [summary, setSummary] = useState(null);
-  const [currentStatus, setCurrentStatus] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [monthsToShow, setMonthsToShow] = useState(6);
+// Each budget over the last six months, worked out from the transactions themselves (split purchases count per part,
+// refunds count back), so the history is always current, even for months before the budget was set.
+const label = (m) => new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1, 1).toLocaleDateString(undefined, { month: 'short' });
 
-  useEffect(() => {
-    loadBudgetData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, monthsToShow, categoryBudgets]);
+export default function BudgetHistory({ categories = [], categoryBudgets = {} }) {
+  const { transactions } = useFinanceData();
+  const months = useMemo(() => { const now = monthOf(); return [5, 4, 3, 2, 1, 0].map((b) => prevMonth(now, b)); }, []);
+  const rows = useMemo(() => {
+    const per = months.map((m) => budgetMonth(transactions, categoryBudgets, categories, m));
+    return Object.keys(categoryBudgets).filter((id) => Number(categoryBudgets[id]) > 0).map((id) => {
+      const cells = per.map((list) => list.find((x) => x.category_id === String(id)) || { spent: 0, limit: Number(categoryBudgets[id]), pct: 0 });
+      const past = cells.slice(0, -1);
+      return { id, name: cells[0].name || (categories.find((c) => String(c.id) === String(id)) || {}).name || 'Deleted category', limit: Number(categoryBudgets[id]),
+        cells, overCount: past.filter((c) => c.spent > c.limit).length, avg: past.reduce((s, c) => s + c.spent, 0) / past.length };
+    });
+  }, [transactions, categoryBudgets, categories, months]);
 
-  const loadBudgetData = async () => {
-    setLoading(true);
-    try {
-      const categoryId = selectedCategory === 'all' ? null : selectedCategory;
-      const budgetLimit = categoryId ? categoryBudgets[categoryId] : null;
-
-      // Load chart data
-      const data = await getBudgetChartData(categoryId, monthsToShow);
-      setChartData(data);
-
-      // Load summary
-      const summaryData = await getBudgetSummary(categoryId, monthsToShow);
-      setSummary(summaryData);
-
-      // Load current status if budget exists
-      if (budgetLimit && budgetLimit > 0) {
-        const status = await getCurrentBudgetStatus(categoryId, budgetLimit);
-        setCurrentStatus(status);
-      } else {
-        setCurrentStatus(null);
-      }
-    } catch (error) {
-      console.error('Error loading budget data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const expenseCategories = categories.filter(cat => !cat.is_income);
-  const categoriesWithBudgets = expenseCategories.filter(cat => 
-    categoryBudgets[cat.id] && categoryBudgets[cat.id] > 0
-  );
-
-  const getTrendIcon = (trend) => {
-    switch (trend) {
-      case 'increasing': return <TrendingUp size={16} className="text-red-600" />;
-      case 'decreasing': return <TrendingDown size={16} className="text-green-600" />;
-      default: return <Minus size={16} className="text-muted" />;
-    }
-  };
-
-  const getTrendColor = (trend) => {
-    switch (trend) {
-      case 'increasing': return 'text-red-600';
-      case 'decreasing': return 'text-green-600';
-      default: return 'text-muted';
-    }
-  };
-
-  const getAlertColor = (alertLevel) => {
-    switch (alertLevel) {
-      case 'exceeded': return 'bg-red-100 text-red-800 border-red-200';
-      case 'danger': return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'warning': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      default: return 'bg-green-100 text-green-800 border-green-200';
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className={'text-muted'}>
-          Loading budget history...
-        </div>
-      </div>
-    );
-  }
-
+  if (!rows.length) return <p className="text-sm text-muted">Set a budget for a category below and its last six months show here.</p>;
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Target size={24} />
-          Budget History
-        </h2>
-      </div>
-
-      {/* Category Filter */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className={`block text-sm font-medium mb-2 text-fg`}>
-            Category
-          </label>
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
-          >
-            <option value="all">All Categories (Overall Budget)</option>
-            {categoriesWithBudgets.map(category => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
+    <div className="space-y-4">
+      {rows.map((r) => (
+        <div key={r.id} className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="font-medium">{r.name}</span>
+            <span className="text-xs text-muted">{formatCurrency(r.limit)} a month · average {formatCurrency(r.avg)} · over in {r.overCount} of 5</span>
+          </div>
+          <div className="grid grid-cols-6 gap-2 items-end h-20" role="img" aria-label={`${r.name}: ${r.cells.map((c, i) => `${label(months[i])} ${formatCurrency(c.spent)}`).join(', ')}`}>
+            {r.cells.map((c, i) => (
+              <div key={i} className="flex flex-col items-center gap-1 h-full justify-end">
+                <div className={`w-full rounded-t ${c.spent > c.limit ? 'bg-negative' : 'bg-accent'}`} style={{ height: `${Math.max(2, Math.min(100, (c.spent / (r.limit * 1.5)) * 100))}%` }} />
+              </div>
             ))}
-          </select>
-        </div>
-
-        <div>
-          <label className={`block text-sm font-medium mb-2 text-fg`}>
-            Time Period
-          </label>
-          <select
-            value={monthsToShow}
-            onChange={(e) => setMonthsToShow(parseInt(e.target.value))}
-            className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
-          >
-            <option value={3}>Last 3 Months</option>
-            <option value={6}>Last 6 Months</option>
-            <option value={12}>Last 12 Months</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Current Month Status */}
-      {currentStatus && (
-        <div className={`border-2 rounded-lg p-6 ${getAlertColor(currentStatus.alertLevel)}`}>
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-bold mb-1">Current Month Status</h3>
-              <p className="text-sm opacity-80">
-                {new Date(currentStatus.periodStart).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold">
-                {currentStatus.percentageUsed.toFixed(1)}%
-              </div>
-              <div className="text-sm opacity-80">of budget used</div>
-            </div>
           </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <div className="text-sm opacity-80 mb-1">Budget</div>
-              <div className="text-xl font-bold">{formatCurrency(currentStatus.budgetLimit)}</div>
-            </div>
-            <div>
-              <div className="text-sm opacity-80 mb-1">Spent</div>
-              <div className="text-xl font-bold">{formatCurrency(currentStatus.actualSpent)}</div>
-            </div>
-            <div>
-              <div className="text-sm opacity-80 mb-1">Remaining</div>
-              <div className="text-xl font-bold">{formatCurrency(Math.max(0, currentStatus.remaining))}</div>
-            </div>
-            <div>
-              <div className="text-sm opacity-80 mb-1">Days Left</div>
-              <div className="text-xl font-bold">{currentStatus.daysRemaining}</div>
-            </div>
-          </div>
-
-          {currentStatus.willExceed && !currentStatus.exceeded && (
-            <div className="flex items-start gap-2 p-3 bg-white/20 rounded-lg">
-              <TrendingUp size={16} className="mt-0.5" />
-              <div className="text-sm">
-                <strong>Projection:</strong> At current rate, you may spend {formatCurrency(currentStatus.projectedTotal)} this month (
-                {((currentStatus.projectedTotal / currentStatus.budgetLimit) * 100).toFixed(1)}% of budget)
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Summary Cards */}
-      {summary && summary.totalMonths > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className={`bg-surface border-line border rounded-2xl p-4`}>
-            <div className={`text-sm mb-1 text-muted`}>Average Spent</div>
-            <div className="text-2xl font-bold">{formatCurrency(summary.averageSpent)}</div>
-          </div>
-
-          <div className={`bg-surface border-line border rounded-2xl p-4`}>
-            <div className={`text-sm mb-1 text-muted`}>Average Budget</div>
-            <div className="text-2xl font-bold">{formatCurrency(summary.averageBudget)}</div>
-          </div>
-
-          <div className={`bg-surface border-line border rounded-2xl p-4`}>
-            <div className={`text-sm mb-1 text-muted`}>Over Budget</div>
-            <div className="text-2xl font-bold text-red-600">
-              {summary.monthsOverBudget} / {summary.totalMonths}
-            </div>
-          </div>
-
-          <div className={`bg-surface border-line border rounded-2xl p-4`}>
-            <div className={`text-sm mb-1 text-muted`}>Trend</div>
-            <div className={`text-2xl font-bold flex items-center gap-2 ${getTrendColor(summary.trend)}`}>
-              {getTrendIcon(summary.trend)}
-              <span className="capitalize">{summary.trend}</span>
-            </div>
+          <div className="grid grid-cols-6 gap-2 text-center text-[11px] text-muted tabular-nums">
+            {r.cells.map((c, i) => <div key={i}><div>{label(months[i])}</div><div className={c.spent > c.limit ? 'text-negative' : ''}>{formatCurrency(c.spent).replace(/\.\d\d$/, '')}</div></div>)}
           </div>
         </div>
-      )}
-
-      {/* Charts */}
-      {chartData.length > 0 ? (
-        <div className="space-y-6">
-          {/* Budget vs Actual Spending (Bar Chart) */}
-          <div className={`bg-surface border-line border rounded-2xl p-6`}>
-            <h3 className="text-lg font-bold mb-4">Budget vs Actual Spending</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#374151' : '#e5e7eb'} />
-                <XAxis 
-                  dataKey="month" 
-                  stroke={darkMode ? '#9ca3af' : '#6b7280'}
-                  style={{ fontSize: '12px' }}
-                />
-                <YAxis 
-                  stroke={darkMode ? '#9ca3af' : '#6b7280'}
-                  style={{ fontSize: '12px' }}
-                />
-                <Tooltip 
-                  contentStyle={{
-                    backgroundColor: darkMode ? '#1f2937' : '#ffffff',
-                    border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
-                    borderRadius: '8px'
-                  }}
-                />
-                <Legend />
-                <Bar dataKey="budget" fill="#3b82f6" name="Budget" />
-                <Bar dataKey="spent" fill="#ef4444" name="Spent" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Spending Trend (Line Chart) */}
-          <div className={`bg-surface border-line border rounded-2xl p-6`}>
-            <h3 className="text-lg font-bold mb-4">Spending Trend Over Time</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#374151' : '#e5e7eb'} />
-                <XAxis 
-                  dataKey="month" 
-                  stroke={darkMode ? '#9ca3af' : '#6b7280'}
-                  style={{ fontSize: '12px' }}
-                />
-                <YAxis 
-                  stroke={darkMode ? '#9ca3af' : '#6b7280'}
-                  style={{ fontSize: '12px' }}
-                />
-                <Tooltip 
-                  contentStyle={{
-                    backgroundColor: darkMode ? '#1f2937' : '#ffffff',
-                    border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
-                    borderRadius: '8px'
-                  }}
-                />
-                <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="spent" 
-                  stroke="#ef4444" 
-                  strokeWidth={2}
-                  name="Actual Spending"
-                  dot={{ fill: '#ef4444', r: 4 }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="budget" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  name="Budget Limit"
-                  dot={{ fill: '#3b82f6', r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Historical Data Table */}
-          <div className={`bg-surface border-line border rounded-2xl p-6`}>
-            <h3 className="text-lg font-bold mb-4">Historical Data</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className={`border-b border-line`}>
-                    <th className={`text-left py-3 px-2 text-sm font-semibold text-fg`}>
-                      Month
-                    </th>
-                    <th className={`text-right py-3 px-2 text-sm font-semibold text-fg`}>
-                      Budget
-                    </th>
-                    <th className={`text-right py-3 px-2 text-sm font-semibold text-fg`}>
-                      Spent
-                    </th>
-                    <th className={`text-right py-3 px-2 text-sm font-semibold text-fg`}>
-                      Difference
-                    </th>
-                    <th className={`text-right py-3 px-2 text-sm font-semibold text-fg`}>
-                      Usage
-                    </th>
-                    <th className={`text-center py-3 px-2 text-sm font-semibold text-fg`}>
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {chartData.map((row, index) => {
-                    const difference = row.budget - row.spent;
-                    const isOver = row.exceeded;
-                    
-                    return (
-                      <tr 
-                        key={index}
-                        className={`border-b border-line ${
-                          isOver ? ('bg-negative/10') : ''
-                        }`}
-                      >
-                        <td className={`py-3 px-2 text-sm text-fg`}>
-                          {row.month}
-                        </td>
-                        <td className={`py-3 px-2 text-sm text-right text-fg`}>
-                          {formatCurrency(row.budget)}
-                        </td>
-                        <td className={`py-3 px-2 text-sm text-right text-fg`}>
-                          {formatCurrency(row.spent)}
-                        </td>
-                        <td className={`py-3 px-2 text-sm text-right font-semibold ${
-                          difference >= 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {difference >= 0 ? '+' : ''}{formatCurrency(difference)}
-                        </td>
-                        <td className={`py-3 px-2 text-sm text-right text-fg`}>
-                          {row.percentage.toFixed(1)}%
-                        </td>
-                        <td className="py-3 px-2 text-center">
-                          {isOver ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-red-100 text-red-800">
-                              Over
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-green-100 text-green-800">
-                              Under
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className={`bg-surface rounded-lg p-8 text-center`}>
-          <Target size={48} className="mx-auto mb-4 text-muted" />
-          <p className={'text-muted'}>
-            No budget history available yet
-          </p>
-          <p className={`text-sm mt-2 text-muted`}>
-            {selectedCategory === 'all' 
-              ? 'Set category budgets in Settings to start tracking'
-              : 'Budget tracking data will appear here as you use the app'
-            }
-          </p>
-        </div>
-      )}
-
-      {/* Help Text */}
-      <div className={`flex items-start gap-3 p-4 rounded-lg bg-accent-soft border border-accent/30`}>
-        <Calendar size={20} className={'text-accent mt-0.5'} />
-        <div className={`text-xs text-accent`}>
-          <p className="font-semibold mb-1">About Budget Tracking</p>
-          <p>
-            Budget history is automatically tracked when you set category budgets. 
-            Data is recorded at the end of each month and whenever budgets are changed. 
-            Use this to identify spending patterns and adjust your budgets accordingly.
-          </p>
-        </div>
-      </div>
+      ))}
+      <p className="text-xs text-muted">Bars turn red in a month the budget was passed. The last bar is this month so far.</p>
     </div>
   );
 }

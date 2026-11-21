@@ -1,3 +1,4 @@
+import { nextBillDate, billPaid } from './spending';
 // Money arithmetic that does not change anything: interest, amortization, how current each figure is, and where you stand.
 // Pure functions, so the screens and the scenario tests use the same rules.
 
@@ -120,14 +121,16 @@ export function position({ bankAccounts = [], creditCards = [], loans = [], inve
 }
 
 // The month ahead, as the bot works it out: money you can spend now, plus pay due before the end of the month,
-// minus scheduled loan and card payments due before then.
-export function monthEnd({ liquid, incomeSchedules = [], loans = [], creditCards = [] }, today = new Date()) {
+// minus scheduled loan and card payments due before then, and tracked bills paid from a bank account that are not recorded yet
+// (a bill on a card is counted when the card is paid).
+export function monthEnd({ liquid, incomeSchedules = [], loans = [], creditCards = [], bills = [], transactions = [] }, today = new Date()) {
   const end = iso(new Date(today.getFullYear(), today.getMonth() + 1, 0));
   const t = iso(today);
   const due = (d) => d && d >= t && d <= end;
   const coming = incomeSchedules.filter((s) => s.is_active !== false && due(s.next_date)).reduce((s, x) => s + (Number(x.amount) || 0), 0);
   const going = loans.filter((l) => !l.on_card_id && due(l.next_payment_date)).reduce((s, l) => s + (Number(l.payment_amount) || 0), 0)
-    + creditCards.filter((c) => !c.is_gift_card && Number(c.balance) > 0 && due(c.due_date)).reduce((s, c) => s + (Number(c.minimum_payment || c.payment_amount) || Number(c.balance) || 0), 0);
+    + creditCards.filter((c) => !c.is_gift_card && Number(c.balance) > 0 && due(c.due_date)).reduce((s, c) => s + (Number(c.minimum_payment || c.payment_amount) || Number(c.balance) || 0), 0)
+    + billDates(bills, transactions, today, end).filter((x) => !x.paid && x.bill.payment_method !== 'credit_card').reduce((s, x) => s + (Number(x.bill.amount) || 0), 0);
   return { end, now: round2(liquid), coming: round2(coming), going: round2(going), atEnd: round2(liquid + coming - going) };
 }
 
@@ -169,7 +172,7 @@ export function monthlyCost({ creditCards = [], loans = [], bankAccounts = [] },
 
 // Everything due in the next `days` days, soonest first, and whether it pays itself or you pay it.
 // -> [{ date, name, amount, kind: 'card'|'loan'|'plan'|'promo_end', auto, from, note }]
-export function upcoming({ creditCards = [], loans = [], bankAccounts = [] }, today = new Date(), days = 30) {
+export function upcoming({ creditCards = [], loans = [], bankAccounts = [], bills = [], transactions = [] }, today = new Date(), days = 30) {
   const t = iso(today), end = iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + days));
   const inWindow = (d) => d && d >= t && d <= end;
   const late = (d) => d && d < t;
@@ -203,5 +206,25 @@ export function upcoming({ creditCards = [], loans = [], bankAccounts = [] }, to
         from: l.connected_payment_source ? nameOf(l.connected_payment_source, l.connected_payment_source_id) : null, note: late(d) ? 'past due' : null });
     }
   }
+  for (const { bill: b, date, paid } of billDates(bills, transactions, today, end)) {
+    // A bill charged to a card is paid when the card is paid, so it is not another payment you make.
+    const onCard = b.payment_method === 'credit_card';
+    out.push({ date, name: b.name, amount: round2(Number(b.amount) || 0), kind: 'bill', auto: !!paid || onCard, paid: !!paid, from: b.payment_method_name || null,
+      note: paid ? 'recorded' : onCard ? `charged to the card, repeats ${b.frequency}` : `repeats ${b.frequency}` });
+  }
   return out.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+
+// Each due day of the tracked bills from today to `end`, and whether its purchase is already recorded.
+export function billDates(bills, transactions, today, end) {
+  const t = iso(today), out = [];
+  for (const b of bills || []) {
+    if (b.status !== 'active' || !b.next_date) continue;
+    // the last due day before today counts when it is not recorded yet (it may be a day or two late)
+    let d = String(b.next_date).slice(0, 10), prev = null;
+    for (let i = 0; d < t && i < 600; i++) { prev = d; d = nextBillDate(d, b.frequency); }
+    if (prev && (today - parse(prev)) / dayMs <= 3 && !billPaid(b, transactions, prev)) out.push({ bill: b, date: prev, paid: null });
+    for (let i = 0; d && d <= end && i < 60; i++) { out.push({ bill: b, date: d, paid: billPaid(b, transactions, d) }); d = nextBillDate(d, b.frequency); }
+  }
+  return out;
 }

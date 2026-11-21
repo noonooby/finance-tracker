@@ -147,6 +147,20 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     }
   };
 
+  // Receipt items given their own categories become a split purchase: items are grouped by category (an item with no
+  // category of its own goes with the purchase's category) and anything the items do not cover (tax, discounts)
+  // goes to the largest part, so the parts always add up to what was charged.
+  function receiptSplits(r) {
+    if (!r.items || !r.items.some((x) => x.category_id && String(x.category_id) !== String(r.category_id))) return {};
+    const groups = new Map();
+    for (const x of r.items) { const c = String(x.category_id || r.category_id || ''); groups.set(c, (groups.get(c) || 0) + Math.round(x.amount * 100)); }
+    const list = [...groups.entries()].map(([c, v]) => ({ c, v })).sort((a, b) => b.v - a.v);
+    list[0].v += Math.round(Number(r.amount) * 100) - list.reduce((s, x) => s + x.v, 0);
+    if (list.length < 2 || list.some((x) => x.v <= 0)) return {};
+    const name = (id) => (categories.find((c) => String(c.id) === id) || {}).name || null;
+    return { splits: list.map((x) => ({ category_id: x.c || null, category_name: name(x.c), amount: x.v / 100 })) };
+  }
+
   // Shows a reading (fresh, or kept from before) as editable lines.
   function applyProposal(p) {
       setProposal(p);
@@ -163,6 +177,13 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           r.card = acctIsCard ? acct : oth; r.source = acctIsCard ? oth : acct;
         }
         return r;
+      }).map((r, _, all) => {
+        // A receipt's items go with its purchase line (the one with the receipt's total, or the only purchase).
+        const items = (p.receipt && Array.isArray(p.receipt.items) ? p.receipt.items : []).filter((x) => x && x.name && Number(x.amount) > 0);
+        if (!items.length || r.kind !== 'purchase') return r;
+        const buys = all.filter((x) => x.kind === 'purchase');
+        const mine = buys.find((x) => Math.abs(Number(x.amount) - Number(p.receipt.total)) < 0.02) || (buys.length === 1 ? buys[0] : null);
+        return mine === r ? { ...r, items: items.map((x) => ({ name: String(x.name).slice(0, 60), amount: Math.round(Number(x.amount) * 100) / 100, category_id: '' })) } : r;
       }));
       setFixes(p.balances.map((b) => ({ ...b, on: true })));
       setRemovals({});
@@ -260,7 +281,10 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           const id = (realRef[String(r0.account.id)] || '').split(':')[1];
           if (id) key = 'shot:' + await sha32(`${id}|${r.key_rest}`);
         }
-        const common = { amount: Number(r.amount), date: r.date, description: r.merchant, key, extra: { pending: r.pending, from_screenshot: proposal.source_id, in_snapshot: true } };
+        const common = { amount: Number(r.amount), date: r.date, description: r.merchant, key, extra: { pending: r.pending, from_screenshot: proposal.source_id, in_snapshot: true,
+          ...(r.original_currency ? { original_amount: r.original_amount, original_currency: r.original_currency, fx_rate: r.fx_rate || null } : {}),
+          ...(r.items ? { items: r.items.map(({ name, amount }) => ({ name, amount })) } : {}),
+          ...(r.kind === 'purchase' ? receiptSplits(r) : {}) } };
         let res;
         if (r.kind === 'purchase') {
           const cat = categories.find((c) => String(c.id) === String(r.category_id));
@@ -482,6 +506,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                         {r.action !== 'record' && r.action !== 'choose_account' && <div className={`text-xs ${muted}`}>{r.why || STATUS_TEXT[r.action]}</div>}
                         {need && <div className="text-xs text-amber-600">{need}</div>}
                         {historyOnly(r) && <div className={`text-xs ${muted}`}>Before your snapshot of {historyOnly(r)}: kept as history, today's balance does not change</div>}
+                        {r.fx_note && <div className={`text-xs ${r.fx_failed ? 'text-warning' : muted}`}>{r.fx_note}</div>}
+                        {r.items && <div className={`text-xs ${muted}`}>{r.items.length} items from the receipt{receiptSplits(r).splits ? `, split into ${receiptSplits(r).splits.length} categories` : ''}. Open Edit to give items their own category.</div>}
                       </div>
                       <div className="text-right">
                         <div className={r.kind === 'purchase' ? 'font-medium' : 'font-medium text-green-600'}>{formatCurrency(r.amount)}</div>
@@ -510,6 +536,22 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                         </>)}
                         {!['transfer', 'card_payment'].includes(r.kind) && (
                           <Select label={r.kind === 'purchase' ? 'Paid with' : 'Into'} value={r.target} onChange={(v) => setRow(r.i, { target: v })} />
+                        )}
+                        {r.items && (
+                          <div className="col-span-2 space-y-1">
+                            <div className={`text-xs ${muted}`}>Items on the receipt. Give an item a category to split this purchase; tax and other differences go to the largest part.</div>
+                            {r.items.map((x, k) => (
+                              <div key={k} className="flex items-center gap-2 text-xs">
+                                <span className="flex-1 min-w-0 truncate">{x.name}</span>
+                                <span className="tabular-nums">{formatCurrency(x.amount)}</span>
+                                <select aria-label={`Category for ${x.name}`} className={`${input} w-32`} value={x.category_id}
+                                  onChange={(e) => setRow(r.i, { items: r.items.map((y, j) => (j === k ? { ...y, category_id: e.target.value } : y)) })}>
+                                  <option value="">Same as purchase</option>
+                                  {catsFor('purchase').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                              </div>
+                            ))}
+                          </div>
                         )}
                         {catsFor(r.kind).length > 0 && (
                           <label className="block text-xs"><span className={muted}>Category</span>

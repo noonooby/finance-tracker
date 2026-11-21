@@ -98,6 +98,37 @@ const SECTIONS = [
       <p>Settings, Learned categories, lists everything it has learned. You can change a category, fix a rule so learning leaves it alone, delete a rule, add your own, or turn learning off.</p>
     </>
   )],
+  ['budgets', 'Budgets', (
+    <>
+      <p>Set a monthly amount for a category under Settings, Category budgets. The app shows what the last three months cost on average as a starting point.</p>
+      <p>Home shows each budget for this month: what you spent, what is left, and a mark for how far through the month you are. The bar turns amber when spending runs ahead of the month and red when the budget is passed. Refunds count back, and each part of a split purchase counts in its own category.</p>
+      <p>Budget History in Settings shows the last six months, worked out from your transactions, so it is always current.</p>
+    </>
+  )],
+  ['bills', 'Bills that repeat', (
+    <>
+      <p>When the same merchant is paid at a steady interval and amount (three times, or twice a year apart), the app offers it as a bill on Home and under More, <Link to="/bills">Bills</Link>. Track it, or say it is not a bill and it is not offered again.</p>
+      <p>Tracked bills show in the next 30 days on Home, marked when the payment is recorded. A bill paid from a bank account counts in the month end; one charged to a card is paid when the card is. The app never pays a bill: you record the payment as usual. You can change the name, amount, how often and the next date, or stop tracking.</p>
+    </>
+  )],
+  ['split', 'Splitting a purchase', (
+    <>
+      <p>On the + button, under the category, choose Split across categories and give each part a category and amount. The parts must add up to the purchase. The money moves once; reports and budgets count each part.</p>
+      <p>When Scan reads a receipt, its items are kept with the purchase. Give an item its own category to split the purchase; tax and other differences go to the largest part.</p>
+    </>
+  )],
+  ['currency', 'Other currencies', (
+    <>
+      <p>On the + button, choose the currency next to the amount and enter what it cost there. The app fills in the dollars from the published rate for that day; your card may charge a little more, so change it to what the card charged if you know it. The original amount and currency stay on the line.</p>
+      <p>Scan does the same for a line shown only in another currency.</p>
+    </>
+  )],
+  ['reminders', 'Reminders and using it offline', (
+    <>
+      <p>Settings, Reminders, turns on notifications for the device you are using: two days before and on the day a payment is due, for cards and loans you pay yourself and bills you track. On iPhone and iPad, add the app to the Home Screen first (Share, Add to Home Screen) and turn reminders on from there.</p>
+      <p>The app keeps a copy of your figures on the device. Without a connection it still opens and shows them, with the time they were saved. Changes need a connection.</p>
+    </>
+  )],
   ['undo', 'Fixing mistakes', (
     <>
       <p>Delete a transaction from <Link to="/transactions">Transactions</Link>, or undo it from <Link to="/activity">Activity</Link>. The money goes back to exactly the account it came from.</p>

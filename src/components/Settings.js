@@ -4,10 +4,7 @@ import LearnedCategoriesSection from './settings/LearnedCategoriesSection';
 import { Settings as SettingsIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import useSettingsData from './settings/useSettingsData';
 import DisplaySection from './settings/DisplaySection';
-import AlertsSection from './settings/AlertsSection';
-import FinancialSection from './settings/FinancialSection';
-import AutomationSection from './settings/AutomationSection';
-import TransactionDefaultsSection from './settings/TransactionDefaultsSection';
+import RemindersSection from './settings/RemindersSection';
 import CategoriesSection from './settings/CategoriesSection';
 import BudgetHistorySection from './settings/BudgetHistorySection';
 import CategoryBudgetsSection from './settings/CategoryBudgetsSection';
@@ -34,14 +31,20 @@ export default function Settings({
     setLearnOn(on);
     await server.from('settings').upsert({ key: 'learn_categories', value: on }, { onConflict: 'key' });
   };
-  const { settings, updateSetting, expandedSections, anyExpanded, toggleSection, toggleAllSections } = data;
+  const { expandedSections, anyExpanded, toggleSection, toggleAllSections } = data;
+  // Home's "Change" on budgets opens here with #budgets: open that section and scroll to it.
+  useEffect(() => {
+    if (window.location.hash !== '#budgets') return;
+    if (!expandedSections.categoryBudgets) toggleSection('categoryBudgets');
+    setTimeout(() => document.getElementById('budgets')?.scrollIntoView({ behavior: 'smooth' }), 100);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sectionProps = (key) => ({
     darkMode,
     expanded: expandedSections[key],
     onToggle: () => toggleSection(key)
   });
-  const settingProps = { settings, updateSetting };
 
   return (
     <div className="space-y-6">
@@ -58,21 +61,17 @@ export default function Settings({
           }`}
         >
           {anyExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          {anyExpanded ? 'Collapse All' : 'Expand All'}
+          {anyExpanded ? 'Close all' : 'Open all'}
         </button>
       </div>
 
       <GeminiKeyCard darkMode={darkMode} />
       <DisplaySection
         {...sectionProps('appearance')}
-        {...settingProps}
         displayDensity={displayDensity}
         onDisplayDensityChange={onDisplayDensityChange}
       />
-      <AlertsSection {...sectionProps('notifications')} {...settingProps} />
-      <FinancialSection {...sectionProps('financial')} {...settingProps} />
-      <AutomationSection {...sectionProps('automation')} {...settingProps} />
-      <TransactionDefaultsSection {...sectionProps('transactionDefaults')} {...settingProps} />
+      <RemindersSection {...sectionProps('notifications')} />
       <CategoriesSection
         {...sectionProps('categories')}
         onCategoriesChanged={() => {
@@ -80,6 +79,7 @@ export default function Settings({
           data.loadLocalCategories();
         }}
       />
+      <div id="budgets" />
       <BudgetHistorySection
         {...sectionProps('budgetHistory')}
         categories={data.categories}

@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, Camera, AlertTriangle, CheckCircle2, Repeat, Hand } from 'lucide-react';
+import { ChevronRight, Camera, AlertTriangle, CheckCircle2, Repeat, Hand, Check } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { api } from '../utils/server';
 import { position, monthEnd, monthlyCost, upcoming } from '../utils/finance';
+import { budgetMonth, monthOf, findRecurring } from '../utils/spending';
 import { formatCurrency, formatDate, parseDay } from '../utils/helpers';
 import { Card, Section, Stat, Badge, Button } from './shared/ui';
 
@@ -31,16 +32,18 @@ export default function Dashboard() {
 
   const today = useMemo(() => new Date(), []);
   const p = useMemo(() => position({ bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets }, today), [d, today]);
-  const m = useMemo(() => monthEnd({ liquid: p.liquid, incomeSchedules: schedules, loans: d.loans, creditCards: d.creditCards }, today), [p.liquid, schedules, d.loans, d.creditCards, today]);
+  const m = useMemo(() => monthEnd({ liquid: p.liquid, incomeSchedules: schedules, loans: d.loans, creditCards: d.creditCards, bills: d.bills, transactions: d.transactions }, today), [p.liquid, schedules, d.loans, d.creditCards, d.bills, d.transactions, today]);
   const cost = useMemo(() => monthlyCost({ creditCards: d.creditCards, loans: d.loans, bankAccounts: d.bankAccounts }, today), [d.creditCards, d.loans, d.bankAccounts, today]);
-  const due = useMemo(() => upcoming({ creditCards: d.creditCards, loans: d.loans, bankAccounts: d.bankAccounts }, today, 30), [d.creditCards, d.loans, d.bankAccounts, today]);
+  const due = useMemo(() => upcoming({ creditCards: d.creditCards, loans: d.loans, bankAccounts: d.bankAccounts, bills: d.bills, transactions: d.transactions }, today, 30), [d.creditCards, d.loans, d.bankAccounts, d.bills, d.transactions, today]);
+  const budgets = useMemo(() => budgetMonth(d.transactions, d.budgets, d.categories, monthOf(today), today), [d.transactions, d.budgets, d.categories, today]);
+  const found = useMemo(() => findRecurring(d.transactions, d.bills, today), [d.transactions, d.bills, today]);
   const nextPay = useMemo(() => schedules.filter((s) => s.is_active !== false && s.next_date).sort((a, b) => String(a.next_date).localeCompare(String(b.next_date)))[0], [schedules]);
   const recent = useMemo(() => [...(d.transactions || [])].filter((t) => t.status !== 'undone' && t.status !== 'deleted')
     .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0, 5), [d.transactions]);
   const cards = (d.creditCards || []).filter((c) => !c.is_gift_card);
   const limit = cards.reduce((s, c) => s + (Number(c.credit_limit) || 0), 0);
   const owedOnCards = cards.reduce((s, c) => s + Math.max(0, Number(c.balance) || 0), 0);
-  const youPay = due.filter((x) => x.amount != null && !x.auto).reduce((s, x) => s + x.amount, 0);
+  const youPay = due.filter((x) => x.amount != null && !x.auto && !x.paid).reduce((s, x) => s + x.amount, 0);
 
   const isNew = !d.dataLoading && !(d.bankAccounts || []).length && !cards.length && !(d.loans || []).length;
   if (isNew) {
@@ -106,16 +109,17 @@ export default function Dashboard() {
         <Card padded={false} className="divide-y divide-line overflow-hidden">
           {due.length === 0 && <p className="px-4 py-3 text-sm text-muted">Nothing due.</p>}
           {due.slice(0, 8).map((x, i) => (
-            <Row key={i} onClick={() => navigate(x.kind === 'card' || x.kind === 'promo_end' ? '/cards' : '/loans')}>
+            <Row key={i} onClick={() => navigate(x.kind === 'bill' ? '/bills' : x.kind === 'card' || x.kind === 'promo_end' ? '/cards' : '/loans')}>
               <span className="w-12 shrink-0 text-xs text-muted tabular-nums">{short(x.date)}</span>
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-medium truncate">{x.name}</span>
                 <span className="block text-xs text-muted truncate">
-                  {x.kind === 'promo_end' ? x.note : x.auto ? `Autopay from ${x.from}` : 'You pay'}{x.note && x.kind !== 'promo_end' ? ` · ${x.note}` : ''}
+                  {x.kind === 'bill' ? `Bill${x.from ? ` · ${x.from}` : ''} · ${x.note}` : x.kind === 'promo_end' ? x.note : x.auto ? `Autopay from ${x.from}` : 'You pay'}{x.note && x.kind !== 'promo_end' && x.kind !== 'bill' ? ` · ${x.note}` : ''}
                 </span>
               </span>
               {x.amount != null && <span className="text-sm font-semibold tabular-nums">{formatCurrency(x.amount)}</span>}
-              {x.kind !== 'promo_end' && (x.auto ? <Repeat size={14} className="text-muted" aria-label="Automatic" /> : <Hand size={14} className="text-warning" aria-label="You pay" />)}
+              {x.paid ? <Check size={14} className="text-positive" aria-label="Recorded" />
+                : x.kind !== 'promo_end' && (x.auto ? <Repeat size={14} className="text-muted" aria-label="Automatic" /> : <Hand size={14} className="text-warning" aria-label="You pay" />)}
             </Row>
           ))}
           {nextPay && (
@@ -127,6 +131,37 @@ export default function Dashboard() {
           )}
         </Card>
       </Section>
+
+      {found.length > 0 && (
+        <Card role="link" tabIndex={0} onClick={() => navigate('/bills')} onKeyDown={(e) => { if (e.key === 'Enter') navigate('/bills'); }} className="press cursor-pointer flex items-start gap-3">
+          <Repeat size={18} className="text-accent mt-0.5 shrink-0" aria-hidden="true" />
+          <span className="flex-1 text-sm">
+            <span className="block font-medium">{found.length} {found.length === 1 ? 'payment looks' : 'payments look'} like a repeating bill</span>
+            <span className="block text-xs text-muted truncate">{found.slice(0, 3).map((b) => b.name).join(', ')}{found.length > 3 ? ' and more' : ''}. Track them to see them coming and get reminders.</span>
+          </span>
+          <ChevronRight size={18} className="text-muted" aria-hidden="true" />
+        </Card>
+      )}
+
+      {budgets.length > 0 && (
+        <Section title="Budgets this month" action={<button type="button" onClick={() => navigate('/settings#budgets')} className="text-xs font-medium text-accent">Change</button>}>
+          <Card padded={false} className="divide-y divide-line">
+            {budgets.slice(0, 6).map((b) => (
+              <div key={b.category_id} className="px-4 py-2.5 space-y-1.5">
+                <div className="flex items-baseline justify-between gap-2 text-sm">
+                  <span className="truncate">{b.name}</span>
+                  <span className={`tabular-nums ${b.over ? 'text-negative font-medium' : ''}`}>{formatCurrency(b.spent)} <span className="text-xs text-muted">of {formatCurrency(b.limit)}</span></span>
+                </div>
+                <div className="relative h-1.5 rounded-full bg-surface-2 overflow-hidden">
+                  <div className={`absolute inset-y-0 left-0 rounded-full ${b.over ? 'bg-negative' : b.ahead ? 'bg-warning' : 'bg-positive'}`} style={{ width: `${Math.min(100, b.pct * 100)}%` }} />
+                  <div className="absolute inset-y-0 w-px bg-fg/40" style={{ left: `${b.pace * 100}%` }} aria-hidden="true" />
+                </div>
+                <div className="text-xs text-muted">{b.over ? `${formatCurrency(-b.left)} over` : `${formatCurrency(b.left)} left`}{!b.over && b.ahead ? ' · spending faster than the month' : ''}</div>
+              </div>
+            ))}
+          </Card>
+        </Section>
+      )}
 
       {cost.items.length > 0 && (
         <Section title="What debt costs you" action={<span className="text-xs text-muted">about {formatCurrency(cost.total)} a month</span>}>

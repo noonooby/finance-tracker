@@ -1,21 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { formatCurrency } from '../../utils/helpers';
-import { getAllSettings, setSetting, setCategoryBudget, deleteCategoryBudget } from '../../utils/settingsManager';
+import { getAllSettings, setCategoryBudget, deleteCategoryBudget } from '../../utils/settingsManager';
 import { fetchCategories } from '../../utils/categories';
 import { logActivity } from '../../utils/activityLogger';
-import { trackCurrentMonth, checkAndFinalizePreviousMonths } from '../../utils/budgetTrackingManager';
+import { useFinanceData } from '../../hooks/useFinanceData';
 import {
   getUserPreferences,
   toggleSettingsSection,
   updateCollapsedSettingsSections
 } from '../../utils/userPreferencesManager';
 import { showToast } from '../../utils/toast';
-import { SETTING_METADATA } from './settingMetadata';
 
 export const SECTION_KEYS = [
-  'appearance', 'notifications', 'financial', 'automation',
-  'transactionDefaults', 'categories', 'categoryBudgets',
-  'budgetHistory', 'suggestions', 'backup', 'danger'
+  'appearance', 'notifications', 'categories', 'categoryBudgets',
+  'budgetHistory', 'learned', 'suggestions', 'backup', 'danger'
 ];
 
 const allSectionsSetTo = (value) =>
@@ -76,15 +74,6 @@ export default function useSettingsData(categoriesProp = []) {
     loadSettingsUIPreferences();
   }, [loadLocalCategories]);
 
-  // Finalize previous month budgets once budgets are known
-  useEffect(() => {
-    if (settings.categoryBudgets && Object.keys(settings.categoryBudgets).length > 0) {
-      checkAndFinalizePreviousMonths(settings.categoryBudgets).catch(err => {
-        console.warn('Failed to finalize previous months:', err);
-      });
-    }
-  }, [settings.categoryBudgets]);
-
   const toggleSection = (section) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
     toggleSettingsSection(section).catch(err => {
@@ -108,34 +97,11 @@ export default function useSettingsData(categoriesProp = []) {
     }
   };
 
-  const updateSetting = async (key, value) => {
-    try {
-      const oldValue = settings[key];
-      await setSetting(key, value);
-      setSettings(prev => ({ ...prev, [key]: value }));
-
-      const metadata = SETTING_METADATA[key];
-      if (metadata) {
-        const description = metadata.formatDescription(oldValue, value);
-        if (metadata.undoable) {
-          await logActivity('edit_setting', key, `setting-${key}`, metadata.displayName, description, {
-            settingKey: key,
-            previousValue: oldValue,
-            newValue: value
-          });
-        } else {
-          await logActivity('setting_change', key, `setting-${key}`, metadata.displayName, description, null);
-        }
-      }
-    } catch (error) {
-      console.error(`Error updating setting ${key}:`, error);
-      showToast.error('Failed to update setting. Please try again.');
-    }
-  };
 
   const categories = categoriesProp.length > 0 ? categoriesProp : localCategories;
   const expenseCategories = categories.filter(cat => !cat.is_income);
   const categoryBudgets = settings.categoryBudgets || {};
+  const { setBudgets } = useFinanceData();
 
   /** Saves a category budget. Returns true on success. */
   const saveCategoryBudget = async (categoryId, amount) => {
@@ -146,6 +112,7 @@ export default function useSettingsData(categoriesProp = []) {
       await setCategoryBudget(categoryId, amount);
       const updatedBudgets = { ...(settings.categoryBudgets || {}), [categoryId]: amount };
       setSettings(prev => ({ ...prev, categoryBudgets: updatedBudgets }));
+      setBudgets(updatedBudgets);
 
       const description = previousBudget > 0
         ? `Updated ${categoryName} budget from ${formatCurrency(previousBudget)} to ${formatCurrency(amount)} per month`
@@ -157,10 +124,6 @@ export default function useSettingsData(categoriesProp = []) {
         amount,
         previousBudget,
         categoryName
-      });
-
-      trackCurrentMonth(categoryId, amount).catch(err => {
-        console.warn('Failed to track budget:', err);
       });
       return true;
     } catch (error) {
@@ -179,6 +142,7 @@ export default function useSettingsData(categoriesProp = []) {
       const updatedBudgets = { ...(settings.categoryBudgets || {}) };
       delete updatedBudgets[categoryId];
       setSettings(prev => ({ ...prev, categoryBudgets: updatedBudgets }));
+      setBudgets(updatedBudgets);
 
       // Historical budget data is kept for trend analysis
       await logActivity(
@@ -197,7 +161,6 @@ export default function useSettingsData(categoriesProp = []) {
 
   return {
     settings,
-    updateSetting,
     categories,
     expenseCategories,
     categoryBudgets,

@@ -135,9 +135,18 @@ export default function TransactionCard({
               <h3 className={`font-semibold ${isUndone ? 'line-through text-muted' : ''}`}>
                 {formatDescription(transaction)}
               </h3>
-              {transaction.category_name && (
+              {Array.isArray(transaction.splits) && transaction.splits.length ? (
+                <span className="text-xs px-2 py-1 rounded bg-surface-2" title={transaction.splits.map((p) => `${p.category_name || 'No category'} ${formatCurrency(p.amount)}`).join(', ')}>
+                  Split: {transaction.splits.map((p) => p.category_name || 'No category').join(', ')}
+                </span>
+              ) : transaction.category_name && (
                 <span className={`text-xs px-2 py-1 rounded bg-surface-2`}>
                   {transaction.category_name}
+                </span>
+              )}
+              {transaction.original_currency && (
+                <span className="text-xs px-2 py-1 rounded bg-surface-2" title={transaction.fx_rate ? `Rate ${transaction.fx_rate}` : undefined}>
+                  {transaction.original_currency} {Number(transaction.original_amount).toFixed(2)}
                 </span>
               )}
               {isUndone && (

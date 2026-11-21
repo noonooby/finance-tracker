@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Moon, Sun, Plus, HelpCircle } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
@@ -10,7 +10,14 @@ import BottomNavigation from '../BottomNavigation';
  * Main layout: header, the current page, the add button and the tab bar.
  */
 export function MainLayout() {
-  const { isMigrating, dataLoading, loadError, loadAllData } = useFinanceData();
+  const { isMigrating, dataLoading, loadError, loadAllData, offlineAt } = useFinanceData();
+  // Back online after showing the saved copy: load the real figures again.
+  useEffect(() => {
+    if (!offlineAt) return undefined;
+    const back = () => loadAllData();
+    window.addEventListener('online', back);
+    return () => window.removeEventListener('online', back);
+  }, [offlineAt, loadAllData]);
   const { darkMode, toggleDarkMode } = useTheme();
   const { openAddTransaction } = useUI();
   const location = useLocation();
@@ -40,9 +47,15 @@ export function MainLayout() {
         </div>
       </header>
 
+      {offlineAt && (
+        <div role="status" className="bg-warning/10 text-warning text-sm px-4 py-2 flex items-center justify-between gap-3">
+          <span>No connection. Showing your figures as saved {new Date(offlineAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. Changes need a connection.</span>
+          <button type="button" onClick={() => loadAllData()} className="font-medium underline shrink-0">Try again</button>
+        </div>
+      )}
       {loadError && (
         <div role="alert" className="bg-negative/10 text-negative text-sm px-4 py-2 flex items-center justify-between gap-3">
-          <span>Could not load your data. Check your connection.</span>
+          <span>{loadError}</span>
           <button type="button" onClick={() => loadAllData()} className="font-medium underline">Try again</button>
         </div>
       )}

@@ -29,11 +29,13 @@ const TABLES = new Set(['snapshots', 'activities', 'alert_history', 'bank_accoun
   'card_payment_contexts', 'expense_description_contexts', 'gift_card_purchase_contexts', 'income_source_contexts',
   'loan_creation_contexts', 'loan_payment_contexts', 'transfer_description_contexts',
   // merchant -> category, learned from what you record or set by you
-  'category_rules']);
+  'category_rules',
+  // bills that repeat (found in your history or added by you); browsers that get reminders
+  'bills', 'push_subscriptions']);
 // Tables whose balance /api/money may change, and the fields it may change.
 const MONEY_FIELDS = { bank_accounts: ['balance'], credit_cards: ['balance'], loans: ['balance'], investments: ['balance'], assets: ['balance'] };
 // Tables only the server writes.
-const SERVER_ONLY = new Set(['balance_points', 'snapshots']);
+const SERVER_ONLY = new Set(['balance_points', 'snapshots', 'push_subscriptions']);
 // The user's calendar day (balances are dated by it). APP_TZ defaults to Toronto, like the Telegram bot.
 const APP_TZ = process.env.APP_TZ || 'America/Toronto';
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: APP_TZ });
@@ -137,8 +139,23 @@ function clean(values) {
   delete v._legs; // only /api/money writes the record of what a transaction moved
   return v;
 }
+// A purchase split across categories: 2 to 20 parts, each a positive amount, adding up to the purchase to the cent.
+// The money moves once for the whole amount; the parts only say which categories it was for.
+function checkSplits(t) {
+  if (t.splits == null) return;
+  if (!Array.isArray(t.splits) || t.splits.length < 2 || t.splits.length > 20) fail(400, 'A split needs 2 to 20 parts.');
+  t.splits = t.splits.map((p) => {
+    const a = cents(p && p.amount);
+    if (!(a > 0)) fail(400, 'Every part of a split needs an amount above zero.');
+    return { category_id: p.category_id ? String(p.category_id) : null, category_name: p.category_name ? String(p.category_name).slice(0, 60) : null,
+      amount: fromCents(a), ...(p.note ? { note: String(p.note).slice(0, 80) } : {}) };
+  });
+  const sum = t.splits.reduce((x, p) => x + cents(p.amount), 0);
+  if (sum !== cents(t.amount)) fail(400, `The parts add up to ${fromCents(sum).toFixed(2)}, not the amount of ${fromCents(cents(t.amount)).toFixed(2)}.`);
+}
 function insertRow(uid, tbl, values, upsertOn) {
   const v = clean(values);
+  if (tbl === 'transactions') checkSplits(v);
   v.user_id = uid;
   if (upsertOn && upsertOn !== 'id') {
     const keys = upsertOn.split(',').map(s => s.trim());
@@ -163,6 +180,11 @@ function insertRow(uid, tbl, values, upsertOn) {
 // keyed like the screenshot reader's merchant key). A rule you set yourself (source 'set') is never changed by learning.
 // Learning stops when the setting learn_categories is false. Rules are plain rows you can edit or delete.
 function learnCategory(uid, t) {
+  // A split purchase teaches the category of its largest part.
+  if (Array.isArray(t.splits) && t.splits.length) {
+    const big = [...t.splits].sort((a, b) => Number(b.amount) - Number(a.amount))[0];
+    t = { ...t, category_id: big.category_id, category_name: big.category_name };
+  }
   if (!t || !t.category_id || !t.description || t.status === 'undone' || t.status === 'deleted') return;
   if (!['expense', 'income', 'refund'].includes(t.type)) return;
   const key = require('./reader').mkey(t.description);
@@ -185,10 +207,11 @@ function updateRows(uid, tbl, filters, values, orGroups) {
   for (const r of selectRows(uid, { table: tbl, filters, or: orGroups })) {
     const n = { ...r, ...v, id: r.id, user_id: uid, updated_at: now() };
     if (r._legs) n._legs = r._legs;
+    if (tbl === 'transactions' && ('splits' in v || 'amount' in v)) checkSplits(n);
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), tbl, String(r.id), uid);
     // Stating a balance (even the same figure) confirms it as of today, or as of the date given.
     for (const f of MONEY_FIELDS[tbl] || []) if (f in v) stamp(uid, tbl, n, f, values.balance_as_of);
-    if (tbl === 'transactions' && 'category_id' in v) learnCategory(uid, n);
+    if (tbl === 'transactions' && ('category_id' in v || 'splits' in v)) learnCategory(uid, n);
     out.push(n);
   }
   return out;
@@ -382,6 +405,40 @@ route('POST', '/api/logout', (req) => { const t = (req.headers.authorization || 
 route('POST', '/api/db', (req, b) => runQuery(authUser(req).id, b));
 route('POST', '/api/money', (req, b) => money(authUser(req).id, b));
 route('POST', '/api/lookup-rates', async (req, b) => { authUser(req); try { return await require('./rates').lookup(String(b.kind || ''), b.name); } catch (e) { if (e.status) fail(e.status, e.message); throw e; } });
+// Exchange rate for a day (purchases in another currency are recorded in the home currency, keeping the original).
+route('GET', '/api/fx', async (req, b, m, url) => { authUser(req); try { return await require('./fx').rate(db, url.searchParams.get('from'), url.searchParams.get('to') || undefined, url.searchParams.get('date')); } catch (e) { if (e.status) fail(e.status, e.message); throw e; } });
+// Reminders: the public key browsers need, and each browser's subscription (kept per user, replaced by endpoint).
+route('GET', '/api/push/key', (req) => { authUser(req); return { key: require('./push').publicKey(db) }; });
+route('POST', '/api/push/subscribe', (req, b) => {
+  const uid = authUser(req).id;
+  const s = b.subscription || {};
+  if (!/^https:\/\//.test(String(s.endpoint || '')) || !s.keys || !s.keys.p256dh || !s.keys.auth) fail(400, 'That browser did not give a usable subscription.');
+  const id = 'push:' + crypto.createHash('sha256').update(String(s.endpoint)).digest('hex').slice(0, 32);
+  const row = { id, endpoint: String(s.endpoint).slice(0, 1000), keys: { p256dh: String(s.keys.p256dh).slice(0, 200), auth: String(s.keys.auth).slice(0, 100) },
+    device: String(b.device || '').slice(0, 80), created_at: now() };
+  tx(() => { db.prepare("DELETE FROM rows WHERE tbl = 'push_subscriptions' AND id = ?").run(id); db.prepare("INSERT INTO rows (tbl, id, user_id, data) VALUES ('push_subscriptions', ?, ?, ?)").run(id, uid, JSON.stringify({ ...row, user_id: uid })); });
+  return { ok: true, id };
+});
+route('POST', '/api/push/unsubscribe', (req, b) => {
+  const uid = authUser(req).id;
+  const id = 'push:' + crypto.createHash('sha256').update(String(b.endpoint || '')).digest('hex').slice(0, 32);
+  db.prepare("DELETE FROM rows WHERE tbl = 'push_subscriptions' AND id = ? AND user_id = ?").run(id, uid);
+  return { ok: true };
+});
+route('POST', '/api/push/test', async (req) => {
+  const uid = authUser(req).id;
+  const subs = selectRows(uid, { table: 'push_subscriptions', filters: [] });
+  if (!subs.length) fail(400, 'This account has no device set up for reminders yet.');
+  const push = require('./push');
+  const res = [];
+  for (const s of subs) {
+    const r = await push.send(db, s, { title: 'Reminders are on', body: 'Payments you make yourself will show here two days before they are due.', url: '/' }, PUBLIC_URL);
+    if (r === 'gone') db.prepare("DELETE FROM rows WHERE tbl = 'push_subscriptions' AND id = ? AND user_id = ?").run(String(s.id), uid);
+    res.push(r);
+  }
+  if (!res.includes('sent')) fail(502, 'The reminder could not be delivered. Turn reminders off and on again on this device.');
+  return { sent: res.filter((x) => x === 'sent').length };
+});
 route('POST', '/api/snapshot', (req, b) => snapshot(authUser(req).id, b));
 // Open checks with the difference as it stands now (adding the missing lines closes them).
 route('GET', '/api/checks', (req) => {
@@ -410,6 +467,12 @@ route('POST', '/api/snapshots/:id/resolve', (req, b, [id]) => {
   db.prepare("UPDATE rows SET data = json_set(data, '$.status', 'dismissed') WHERE tbl = 'snapshots' AND id = ? AND user_id = ?").run(String(id), uid);
   return { ok: true };
 });
+// Delete everything this person has recorded, in one step (the sign-in stays). The browser must send the exact phrase.
+route('POST', '/api/reset', (req, b) => {
+  const uid = authUser(req).id;
+  if (b.confirm !== 'DELETE ALL MY DATA') fail(400, 'Type the phrase to confirm.');
+  return tx(() => ({ rows: Number(db.prepare('DELETE FROM rows WHERE user_id = ?').run(uid).changes), keys: Number(db.prepare('DELETE FROM money_keys WHERE user_id = ?').run(uid).changes) }));
+});
 route('POST', '/api/transactions/:id/reverse', (req, b, [id]) => reverse(authUser(req).id, id, b));
 route('GET', '/api/config', () => ({ google: !!(G_ID && G_SECRET), dev: !!DEV_USER, ai: require('./keystore').isSet() }));
 // The Gemini key: whether it is set and whether this user may set it. Never the key itself.
@@ -419,7 +482,7 @@ route('POST', '/api/read-screenshot', async (req, b) => {
   const uid = authUser(req).id;
   const all = (t) => selectRows(uid, { table: t, filters: [] });
   const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today };
+  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db };
   try { return await require('./reader').read(uid, b, ctx); } catch (e) { if (e.status) fail(e.status, e.message); throw e; }
 });
 // Local testing only: DEV_USER signs in without Google. Refused unless NODE_ENV is development.
@@ -510,6 +573,24 @@ function moveCashSettingToAccount() {
 }
 moveCashSettingToAccount();
 
+// Preferences (theme, alerts, budgets...) live in one settings row with key 'prefs'. Older versions kept them in a row
+// without a key, and some saves spread them onto the key/value rows too. Once per person, every such field is gathered
+// (newest save wins) into the 'prefs' row. Nothing is deleted.
+function gatherPrefs() {
+  const SKIP = new Set(['id', 'user_id', 'key', 'value', 'created_at', 'updated_at', 'moved_to_account']);
+  const users = db.prepare("SELECT DISTINCT user_id FROM rows WHERE tbl = 'settings'").all().map((r) => r.user_id);
+  for (const uid of users) {
+    const list = selectRows(uid, { table: 'settings', filters: [] });
+    if (list.some((r) => r.key === 'prefs')) continue;
+    const prefs = {};
+    for (const r of list.sort((a, b) => String(a.updated_at || a.created_at || '').localeCompare(String(b.updated_at || b.created_at || '')))) {
+      for (const [k, v] of Object.entries(r)) if (!SKIP.has(k) && v !== undefined && v !== null) prefs[k] = v;
+    }
+    tx(() => insertRow(uid, 'settings', { ...prefs, key: 'prefs' }));
+  }
+}
+gatherPrefs();
+
 // Learned categories start from the history you already have, once per person (flag: settings rules_seeded).
 function seedCategoryRules() {
   const users = db.prepare("SELECT DISTINCT user_id FROM rows WHERE tbl = 'transactions'").all().map((r) => r.user_id);
@@ -524,5 +605,11 @@ function seedCategoryRules() {
 }
 seedCategoryRules();
 
-if (require.main === module) server.listen(PORT, () => console.log(`Finance tracker running on http://localhost:${PORT}`));
-module.exports = { server, db, money, reverse, runQuery };
+// Reminders go out from a check every 15 minutes (each one once; see server/push.js).
+const runReminders = (at) => require('./push').remind(db, { selectRows, tz: APP_TZ, subject: PUBLIC_URL, now: at }).catch((e) => { console.error('reminders:', e.message); return 0; });
+if (require.main === module) {
+  server.listen(PORT, () => console.log(`Finance tracker running on http://localhost:${PORT}`));
+  setTimeout(runReminders, 60e3);
+  setInterval(runReminders, 15 * 60e3).unref();
+}
+module.exports = { server, db, money, reverse, runQuery, runReminders };

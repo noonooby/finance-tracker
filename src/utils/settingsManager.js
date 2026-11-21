@@ -1,4 +1,4 @@
-import { server } from './server';
+import { loadPrefs, savePrefs } from './prefs';
 
 // Default settings structure
 export const DEFAULT_SETTINGS = {
@@ -93,28 +93,12 @@ const SETTINGS_COLUMN_MAP = {
 
 export async function getAllSettings() {
   try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const { data, error } = await server
-      .from('settings')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    
-    if (error && error.code !== 'PGRST116') throw error;
-
+    const data = await loadPrefs();
     const settings = { ...DEFAULT_SETTINGS };
-
-    if (data) {
-      Object.keys(SETTINGS_COLUMN_MAP).forEach(jsKey => {
-        const dbKey = SETTINGS_COLUMN_MAP[jsKey];
-        if (data[dbKey] !== undefined && data[dbKey] !== null) {
-          settings[jsKey] = data[dbKey];
-        }
-      });
-    }
-
+    Object.keys(SETTINGS_COLUMN_MAP).forEach((jsKey) => {
+      const v = data[SETTINGS_COLUMN_MAP[jsKey]];
+      if (v !== undefined && v !== null) settings[jsKey] = v;
+    });
     return settings;
   } catch (error) {
     console.error('Error getting all settings:', error);
@@ -133,94 +117,15 @@ export async function getSetting(key, defaultValue = null) {
 }
 
 export async function setSetting(key, value) {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const dbColumn = SETTINGS_COLUMN_MAP[key];
-    if (!dbColumn) {
-      throw new Error(`Unknown setting key: ${key}`);
-    }
-
-    const { data: existing } = await server
-      .from('settings')
-      .select('user_id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    const updateData = {
-      [dbColumn]: value,
-      updated_at: new Date().toISOString()
-    };
-
-    if (existing) {
-      const { error } = await server
-        .from('settings')
-        .update(updateData)
-        .eq('user_id', user.id);
-      
-      if (error) throw error;
-    } else {
-      const insertData = {
-        user_id: user.id,
-        ...updateData
-      };
-      
-      const { error } = await server
-        .from('settings')
-        .insert(insertData);
-      
-      if (error) throw error;
-    }
-  } catch (error) {
-    console.error(`Error setting ${key}:`, error);
-    throw error;
-  }
+  const dbColumn = SETTINGS_COLUMN_MAP[key];
+  if (!dbColumn) throw new Error(`Unknown setting key: ${key}`);
+  await savePrefs({ [dbColumn]: value });
 }
 
 export async function setMultipleSettings(settings) {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const { data: existing } = await server
-      .from('settings')
-      .select('user_id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    const updateData = {};
-    Object.entries(settings).forEach(([jsKey, value]) => {
-      const dbColumn = SETTINGS_COLUMN_MAP[jsKey];
-      if (dbColumn) {
-        updateData[dbColumn] = value;
-      }
-    });
-    updateData.updated_at = new Date().toISOString();
-
-    if (existing) {
-      const { error } = await server
-        .from('settings')
-        .update(updateData)
-        .eq('user_id', user.id);
-      
-      if (error) throw error;
-    } else {
-      const insertData = {
-        user_id: user.id,
-        ...updateData
-      };
-      
-      const { error } = await server
-        .from('settings')
-        .insert(insertData);
-      
-      if (error) throw error;
-    }
-  } catch (error) {
-    console.error('Error setting multiple settings:', error);
-    throw error;
-  }
+  const patch = {};
+  for (const [jsKey, value] of Object.entries(settings)) if (SETTINGS_COLUMN_MAP[jsKey]) patch[SETTINGS_COLUMN_MAP[jsKey]] = value;
+  await savePrefs(patch);
 }
 
 export async function resetAllSettings() {

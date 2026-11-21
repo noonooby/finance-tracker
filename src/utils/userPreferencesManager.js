@@ -42,18 +42,7 @@ export async function getUserPreferences() {
  */
 function getDefaultPreferences() {
   return {
-    // Dashboard customization
-    dashboard_layout: 'grid',
-    dashboard_compact_mode: false,
     display_density: 'comfortable', // 'comfortable' | 'cozy' | 'compact'
-    visible_dashboard_widgets: [
-      'upcoming_obligations',
-      'next_income',
-      'recent_activity',
-      'debt_summary'
-    ],
-    collapsed_dashboard_sections: [],
-    dashboard_widget_order: [],
     
     // Settings page UI state
     collapsed_settings_sections: [],
@@ -166,43 +155,6 @@ export async function updateUserPreferences(updates) {
 }
 
 /**
- * Update dashboard widget visibility
- */
-export async function updateDashboardWidgets(visibleWidgets) {
-  return await updateUserPreferences({
-    visible_dashboard_widgets: visibleWidgets
-  });
-}
-
-/**
- * Update collapsed dashboard sections
- */
-export async function updateCollapsedSections(collapsedSections) {
-  return await updateUserPreferences({
-    collapsed_dashboard_sections: collapsedSections
-  });
-}
-
-/**
- * Toggle a dashboard section collapse state
- */
-export async function toggleDashboardSection(sectionId) {
-  try {
-    const prefs = await getUserPreferences();
-    const collapsed = prefs.collapsed_dashboard_sections || [];
-    
-    const newCollapsed = collapsed.includes(sectionId)
-      ? collapsed.filter(id => id !== sectionId)
-      : [...collapsed, sectionId];
-    
-    return await updateCollapsedSections(newCollapsed);
-  } catch (error) {
-    console.error('Error toggling dashboard section:', error);
-    throw error;
-  }
-}
-
-/**
  * Update collapsed Settings sections
  */
 export async function updateCollapsedSettingsSections(collapsedSections) {
@@ -242,24 +194,6 @@ export async function toggleSettingsSection(sectionId) {
 }
 
 /**
- * Update dashboard layout mode
- */
-export async function updateDashboardLayout(layout) {
-  return await updateUserPreferences({
-    dashboard_layout: layout
-  });
-}
-
-/**
- * Toggle dashboard compact mode (legacy)
- */
-export async function toggleCompactMode(enabled) {
-  return await updateUserPreferences({
-    dashboard_compact_mode: enabled
-  });
-}
-
-/**
  * Set display density mode
  * @param {'comfortable' | 'cozy' | 'compact' | 'auto'} density
  */
@@ -276,30 +210,6 @@ export async function setDisplayDensity(density) {
       return { display_density: density };
     }
     throw error;
-  }
-}
-
-/**
- * Get current display density (with auto-detection)
- * @returns {'comfortable' | 'cozy' | 'compact'}
- */
-export async function getDisplayDensity() {
-  try {
-    const prefs = await getUserPreferences();
-    const density = prefs.display_density || 'comfortable';
-    
-    // If auto, detect based on viewport
-    if (density === 'auto') {
-      const width = window.innerWidth;
-      if (width < 768) return 'compact';
-      if (width < 1024) return 'cozy';
-      return 'comfortable';
-    }
-    
-    return density;
-  } catch (error) {
-    console.error('Error getting display density:', error);
-    return 'comfortable';
   }
 }
 
@@ -467,37 +377,6 @@ export async function updateActivityPreferences(preferences) {
 }
 
 /**
- * Get dashboard widget configuration
- */
-export async function getDashboardConfig() {
-  try {
-    const prefs = await getUserPreferences();
-    
-    return {
-      layout: prefs.dashboard_layout || 'grid',
-      compactMode: prefs.dashboard_compact_mode || false,
-      visibleWidgets: prefs.visible_dashboard_widgets || [],
-      collapsedSections: prefs.collapsed_dashboard_sections || [],
-      widgetOrder: prefs.dashboard_widget_order || []
-    };
-  } catch (error) {
-    console.error('Error getting dashboard config:', error);
-    return {
-      layout: 'grid',
-      compactMode: false,
-      visibleWidgets: [
-        'upcoming_obligations',
-        'next_income',
-        'recent_activity',
-        'debt_summary'
-      ],
-      collapsedSections: [],
-      widgetOrder: []
-    };
-  }
-}
-
-/**
  * Update recent transactions display settings for entity type
  * Stores settings in JSONB column: recent_transactions_settings
  */
@@ -521,15 +400,3 @@ export async function updateRecentTransactionsSettings(entityType, settings) {
   }
 }
 
-/**
- * Reset preferences to defaults
- */
-export async function resetPreferences() {
-  try {
-    const defaults = getDefaultPreferences();
-    return await updateUserPreferences(defaults);
-  } catch (error) {
-    console.error('Error resetting preferences:', error);
-    throw error;
-  }
-}

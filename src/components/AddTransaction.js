@@ -16,6 +16,10 @@ import {
 import { localDate } from '../utils/helpers';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { suggestCategoryId } from '../utils/categoryRules';
+import { api } from '../utils/server';
+
+// Purchases in another currency are recorded in dollars (CAD); the original amount, currency and rate are kept on the line.
+const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'INR', 'MXN', 'JPY', 'AUD', 'CHF', 'CNY', 'HKD', 'SGD', 'NZD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'KRW', 'THB', 'PHP', 'BRL', 'ZAR', 'TRY', 'IDR', 'MYR'];
 
 export default function AddTransaction({ 
   darkMode, 
@@ -61,6 +65,15 @@ export default function AddTransaction({
   // The category the app filled in (from what you chose before). Your own choice is never replaced.
   const [autoCategory, setAutoCategory] = useState('');
   const [saving, setSaving] = useState(false);
+  // Another currency: the amount as charged abroad, and the day's rate. The dollar amount stays yours to change
+  // (the card's own rate and fees can differ); once you change it, the app stops filling it in.
+  const [currency, setCurrency] = useState('CAD');
+  const [foreign, setForeign] = useState('');
+  const [fx, setFx] = useState({ rate: null, date: null, error: '', loading: false });
+  const [ownCad, setOwnCad] = useState(false);
+  // Split across categories: parts that must add up to the amount.
+  const [splitOn, setSplitOn] = useState(false);
+  const [parts, setParts] = useState([]);
   const [, setRecentCategories] = useState([]);
   const [recentPaymentMethods, setRecentPaymentMethods] = useState([]);
   const [recentExpenses, setRecentExpenses] = useState([]);
@@ -253,6 +266,28 @@ export default function AddTransaction({
     }
   }, [preselectedCard, preselectedLoan]);
 
+  useEffect(() => {
+    if (currency === 'CAD') { setFx({ rate: null, date: null, error: '', loading: false }); return undefined; }
+    let live = true;
+    setFx((f) => ({ ...f, loading: true, error: '' }));
+    api(`/api/fx?from=${currency}&date=${formData.date}`, null, 'GET')
+      .then((r) => { if (live) setFx({ rate: r.rate, date: r.date, error: '', loading: false }); })
+      .catch((e) => { if (live) setFx({ rate: null, date: null, error: e.message, loading: false }); });
+    return () => { live = false; };
+  }, [currency, formData.date]);
+  useEffect(() => {
+    if (currency === 'CAD' || ownCad || !fx.rate || !(Number(foreign) > 0)) return;
+    setFormData((p) => ({ ...p, amount: (Math.round(Number(foreign) * fx.rate * 100) / 100).toFixed(2) }));
+  }, [currency, foreign, fx.rate, ownCad]);
+
+  const cents = (v) => Math.round((Number(v) || 0) * 100);
+  const partsLeft = (cents(formData.amount) - parts.reduce((s, p) => s + cents(p.amount), 0)) / 100;
+  const startSplit = () => {
+    setSplitOn(true);
+    setParts([{ categoryId: formData.categoryId || '', amount: '' }, { categoryId: '', amount: '' }]);
+  };
+  const setPart = (i, change) => setParts(parts.map((p, j) => (j === i ? { ...p, ...change } : p)));
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -266,8 +301,23 @@ export default function AddTransaction({
     // Validate amount
     const amount = parseFloat(formData.amount);
     if (isNaN(amount) || amount <= 0) {
-      showToast.error('Please enter a valid amount');
+      showToast.error('Enter an amount above zero.');
+      setSaving(false);
       return;
+    }
+    const extra = {};
+    if (currency !== 'CAD') {
+      if (!(Number(foreign) > 0)) { showToast.error(`Enter the amount in ${currency}.`); setSaving(false); return; }
+      Object.assign(extra, { original_amount: Math.round(Number(foreign) * 100) / 100, original_currency: currency, fx_rate: fx.rate || Math.round((amount / Number(foreign)) * 1e6) / 1e6 });
+    }
+    let categoryId = formData.categoryId;
+    if (formData.type === 'expense' && splitOn) {
+      const used = parts.filter((p) => Number(p.amount) > 0);
+      if (used.length < 2) { showToast.error('A split needs at least two parts with an amount.'); setSaving(false); return; }
+      if (Math.abs(partsLeft) >= 0.005) { showToast.error(`The parts must add up to ${formatCurrency(amount)}: ${formatCurrency(Math.abs(partsLeft))} ${partsLeft > 0 ? 'is not assigned yet' : 'too much'}.`); setSaving(false); return; }
+      const cats = localCategories;
+      extra.splits = used.map((p) => ({ category_id: p.categoryId || null, category_name: (cats.find((c) => String(c.id) === String(p.categoryId)) || {}).name || null, amount: Math.round(Number(p.amount) * 100) / 100 }));
+      categoryId = [...used].sort((a, b) => Number(b.amount) - Number(a.amount))[0].categoryId || '';
     }
 
     // Prepare form data for unified processing
@@ -277,7 +327,8 @@ export default function AddTransaction({
       date: formData.date,
       description: formData.description,
       notes: formData.notes,
-      categoryId: formData.categoryId,
+      categoryId,
+      extra: Object.keys(extra).length ? extra : undefined,
       
       // Payment method info
       paymentMethod: formData.paymentMethod,
@@ -356,18 +407,42 @@ export default function AddTransaction({
             </div>
           </div>
 
-          {/* Amount */}
+          {/* Amount, and the currency it was in */}
           <div>
-            <label className="block text-sm font-medium mb-2">Amount *</label>
-            <input
-              type="number"
-              step="0.01"
-              value={formData.amount}
-              onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
-              placeholder="0.00"
-              required
-            />
+            <label className="block text-sm font-medium mb-2" htmlFor="add-amount">{currency === 'CAD' ? 'Amount *' : `Amount in ${currency} *`}</label>
+            <div className="flex gap-2">
+              <input
+                id="add-amount"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                value={currency === 'CAD' ? formData.amount : foreign}
+                onChange={(e) => (currency === 'CAD' ? setFormData({ ...formData, amount: e.target.value }) : setForeign(e.target.value))}
+                className={`flex-1 min-w-0 px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+                placeholder="0.00"
+                required
+              />
+              <select aria-label="Currency" value={currency} onChange={(e) => {
+                const c = e.target.value;
+                if (c !== 'CAD' && currency === 'CAD') setForeign(formData.amount);
+                if (c === 'CAD' && currency !== 'CAD') setOwnCad(false);
+                setCurrency(c);
+              }} className="w-24 px-2 py-2 border rounded-xl border-line bg-surface-2 text-fg">
+                {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            {currency !== 'CAD' && (
+              <div className="mt-2 space-y-1">
+                <label className="block text-sm font-medium" htmlFor="add-cad">Charged in CAD *</label>
+                <input id="add-cad" type="number" inputMode="decimal" step="0.01" value={formData.amount} required placeholder="0.00"
+                  onChange={(e) => { setOwnCad(true); setFormData({ ...formData, amount: e.target.value }); }}
+                  className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`} />
+                <p className="text-xs text-muted">
+                  {fx.loading ? 'Looking up the rate...' : fx.error ? fx.error : fx.rate ? `1 ${currency} = ${fx.rate} CAD (published rate for ${fx.date}). Your card may charge a little more; enter what it charged if you know it.` : ''}
+                  {ownCad && fx.rate && <> <button type="button" className="text-accent font-medium" onClick={() => setOwnCad(false)}>Use the rate</button></>}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Date */}
@@ -443,8 +518,37 @@ export default function AddTransaction({
                   if (onUpdate) onUpdate();
                 }}
               />
-              {autoCategory && formData.categoryId === autoCategory && (
+              {autoCategory && formData.categoryId === autoCategory && !splitOn && (
                 <p className="mt-1 text-xs text-muted">Filled in from what you chose before for this merchant. Change it if it is wrong; the app learns from that too.</p>
+              )}
+              {!splitOn ? (
+                <button type="button" onClick={startSplit} className="mt-2 text-xs font-medium text-accent">Split across categories</button>
+              ) : (
+                <div className="mt-3 space-y-2 rounded-xl border border-line p-3">
+                  <div className="flex items-center justify-between text-sm font-medium">
+                    <span>Split</span>
+                    <button type="button" className="text-xs text-accent" onClick={() => { setSplitOn(false); setParts([]); }}>No split</button>
+                  </div>
+                  {parts.map((p, i) => (
+                    <div key={i} className="flex gap-2">
+                      <select aria-label={`Category for part ${i + 1}`} value={p.categoryId} onChange={(e) => setPart(i, { categoryId: e.target.value })}
+                        className="flex-1 min-w-0 px-2 py-2 border rounded-xl border-line bg-surface-2 text-fg text-sm">
+                        <option value="">Category</option>
+                        {localCategories.filter((c) => !c.is_income).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      <input aria-label={`Amount for part ${i + 1}`} type="number" inputMode="decimal" step="0.01" placeholder={!p.amount && partsLeft > 0 ? partsLeft.toFixed(2) : '0.00'} value={p.amount}
+                        onFocus={() => { if (!p.amount && partsLeft > 0 && parts.filter((x) => !x.amount).length === 1) setPart(i, { amount: partsLeft.toFixed(2) }); }}
+                        onChange={(e) => setPart(i, { amount: e.target.value })} className="w-28 px-2 py-2 border rounded-xl border-line bg-surface-2 text-fg text-sm" />
+                      {parts.length > 2 && <button type="button" aria-label={`Remove part ${i + 1}`} className="text-muted px-1" onClick={() => setParts(parts.filter((_, j) => j !== i))}><X size={16} /></button>}
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between text-xs">
+                    {parts.length < 20 && <button type="button" className="font-medium text-accent" onClick={() => setParts([...parts, { categoryId: '', amount: partsLeft > 0 ? partsLeft.toFixed(2) : '' }])}>Add a part</button>}
+                    <span className={Math.abs(partsLeft) < 0.005 ? 'text-positive' : 'text-warning'}>
+                      {Math.abs(partsLeft) < 0.005 ? 'Adds up' : partsLeft > 0 ? `${formatCurrency(partsLeft)} left to assign` : `${formatCurrency(-partsLeft)} too much`}
+                    </span>
+                  </div>
+                </div>
               )}
             </div>
           )}

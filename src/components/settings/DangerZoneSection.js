@@ -8,9 +8,8 @@ export default function DangerZoneSection({ darkMode, expanded, onToggle, onUpda
   const [deleting, setDeleting] = useState(false);
 
   const handleDeleteAllData = async () => {
-    if (!window.confirm('This will permanently delete all of your data for this account. This action cannot be undone. Continue?')) {
-      return;
-    }
+    const typed = window.prompt('This permanently deletes every account, card, loan, transaction, category, bill and setting on this sign-in. It cannot be undone. Download a backup first if you may want it back.\n\nType DELETE to continue.');
+    if (String(typed || '').trim().toUpperCase() !== 'DELETE') return;
     setDeleting(true);
     try {
       await deleteAllUserData();
@@ -19,7 +18,7 @@ export default function DangerZoneSection({ darkMode, expanded, onToggle, onUpda
       if (onReloadCategories) await onReloadCategories();
     } catch (error) {
       console.error('Error deleting data:', error);
-      showToast.error('Failed to delete data. Please try again.');
+      showToast.error(`Could not delete: ${error.message}`);
     } finally {
       setDeleting(false);
     }
@@ -35,7 +34,7 @@ export default function DangerZoneSection({ darkMode, expanded, onToggle, onUpda
       bodyClassName="p-6 space-y-3 border-t border-line"
     >
       <p className={`text-sm text-muted`}>
-        Delete all data associated with this account, including cards, loans, reserved funds, income, transactions, categories, and activity history.
+        Delete everything recorded on this sign-in: accounts, cards, loans, income, transactions, categories, bills, settings and history.
       </p>
       <button
         onClick={handleDeleteAllData}

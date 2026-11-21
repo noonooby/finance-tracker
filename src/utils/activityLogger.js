@@ -171,12 +171,6 @@ export const undoActivity = async (activity, onUpdate) => {
         if (hasMoney) await reverseMoney(); else warnNoRecord();
         break;
 
-      case 'recalculate_cash':
-        if (snapshot && snapshot.previousValue !== undefined) {
-          await dbOperation('settings', 'put', { key: 'availableCash', value: snapshot.previousValue });
-        }
-        break;
-
       case 'edit_setting':
       case 'set_budget':
       case 'delete_budget':

@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useFinanceData } from '../../hooks/useFinanceData';
+import { spentByCategory, monthRange, monthOf, prevMonth } from '../../utils/spending';
 import { Target, X, Lightbulb } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { formatCurrency } from '../../utils/helpers';
@@ -15,12 +17,20 @@ export default function CategoryBudgetsSection({
   removeCategoryBudget
 }) {
   const [inputs, setInputs] = useState({});
+  // What each category cost on average over the last three full months, as a starting point for its budget.
+  const { transactions } = useFinanceData();
+  const avg = useMemo(() => {
+    const now = monthOf();
+    const from = monthRange(prevMonth(now, 3))[0], to = monthRange(prevMonth(now, 1))[1];
+    const s = spentByCategory(transactions, from, to);
+    return Object.fromEntries(Object.entries(s).map(([k, v]) => [k, Math.max(0, Math.round(v / 3))]));
+  }, [transactions]);
   const [saving, setSaving] = useState(false);
 
   const handleSet = async (categoryId) => {
     const amount = parseFloat(inputs[categoryId]);
     if (isNaN(amount) || amount <= 0) {
-      showToast.error('Please enter a valid budget amount');
+      showToast.error('Enter a monthly amount above zero.');
       return;
     }
     setSaving(true);
@@ -37,7 +47,7 @@ export default function CategoryBudgetsSection({
   };
 
   return (
-    <SettingsSection title="Category Budgets" icon={Target} expanded={expanded} onToggle={onToggle} darkMode={darkMode}>
+    <SettingsSection title="Category budgets" icon={Target} expanded={expanded} onToggle={onToggle} darkMode={darkMode}>
       <p className={`text-sm text-muted`}>
         Set a monthly spending limit for each expense category.
       </p>
@@ -84,6 +94,11 @@ export default function CategoryBudgetsSection({
                   )}
                 </div>
 
+                {!hasBudget && avg[String(category.id)] > 0 && (
+                  <div className="text-xs text-muted">Last 3 months: about {formatCurrency(avg[String(category.id)])} a month.{' '}
+                    <button type="button" className="text-accent font-medium" onClick={() => setInputs((p) => ({ ...p, [category.id]: String(avg[String(category.id)]) }))}>Use this</button>
+                  </div>
+                )}
                 {!hasBudget && (
                   <div className="flex items-center gap-2 mt-2">
                     <input
@@ -98,7 +113,7 @@ export default function CategoryBudgetsSection({
                     <button
                       onClick={() => handleSet(category.id)}
                       disabled={saving || !inputs[category.id]}
-                      className="px-4 py-2 bg-accent text-accent-contrast rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 bg-accent text-accent-contrast rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Set
                     </button>

@@ -5,7 +5,12 @@
 
 const TOKEN = 'finance_token';
 export const getToken = () => { try { return localStorage.getItem(TOKEN); } catch { return null; } };
-const setToken = (t) => { try { t ? localStorage.setItem(TOKEN, t) : localStorage.removeItem(TOKEN); } catch {} };
+const setToken = (t) => {
+  try { if (t) localStorage.setItem(TOKEN, t); else { localStorage.removeItem(TOKEN); localStorage.removeItem(USER); } } catch {}
+};
+// Who is signed in, kept so the app can open without a connection (it then shows the figures saved on this device).
+const USER = 'finance_user';
+const cachedUser = () => { try { return JSON.parse(localStorage.getItem(USER) || 'null'); } catch { return null; } };
 
 export async function api(path, body, method = 'POST') {
   const res = await fetch(path, {
@@ -83,8 +88,15 @@ function notify(session) { current = session; listeners.forEach((fn) => fn(sessi
 async function loadSession() {
   if (current !== undefined) return current;
   if (!getToken()) return (current = null);
-  try { const { user } = await api('/api/me', null, 'GET'); current = { user, access_token: getToken() }; }
-  catch { current = null; }
+  try {
+    const { user } = await api('/api/me', null, 'GET');
+    current = { user, access_token: getToken() };
+    try { localStorage.setItem(USER, JSON.stringify(user)); } catch {}
+  } catch (e) {
+    // No connection (no answer at all): stay signed in on this device. A real "not signed in" answer signs out.
+    const u = !e.status && cachedUser();
+    current = u ? { user: u, access_token: getToken(), offline: true } : null;
+  }
   return current;
 }
 

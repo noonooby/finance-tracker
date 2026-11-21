@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, FileText, Scale, PiggyBank } from 'lucide-react';
+import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, FileText, Scale, PiggyBank, Repeat } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { OTHER_APPS } from '../utils/apps';
@@ -60,6 +60,7 @@ export default function More() {
         <Item icon={PiggyBank} label="Investments and property" hint="TFSA, RRSP, home: values and contributions" to="/investments" />
         <Item icon={CreditCard} label="Cards" hint="Credit cards and gift cards" to="/cards" />
         <Item icon={TrendingUp} label="Loans" hint="What you owe and when it is due" to="/loans" />
+        <Item icon={Repeat} label="Bills" hint="Payments that repeat: found in your history or added by you" to="/bills" />
         <Item icon={DollarSign} label="Income" hint="Pay and other money coming in, one-off or on a schedule" to="/income" />
       </Section>
 
@@ -69,7 +70,7 @@ export default function More() {
       </Section>
 
       <Section title="App">
-        <Item icon={Settings} label="Settings" hint="Categories, alerts, backup and restore" to="/settings" />
+        <Item icon={Settings} label="Settings" hint="Reminders, budgets, categories, backup and restore" to="/settings" />
         <Item icon={HelpCircle} label="Help" hint="How the app works, step by step" to="/help" />
         <button type="button" className={row} onClick={signOut}>
           <span className="grid place-items-center w-9 h-9 rounded-xl bg-negative/10 text-negative shrink-0"><LogOut size={18} aria-hidden="true" /></span>

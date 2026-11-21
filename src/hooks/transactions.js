@@ -101,7 +101,8 @@ async function processExpense(formData, { creditCards, bankAccounts, categories 
     description: formData.description,
     notes: formData.notes,
     category_id: formData.categoryId || null,
-    category_name: category?.name || null
+    category_name: category?.name || null,
+    extra: formData.extra
   }, { bankAccounts, creditCards });
   const transactionId = res.transaction?.id;
 

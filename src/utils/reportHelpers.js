@@ -1,3 +1,4 @@
+import { categoryParts } from './spending';
 /**
  * Report Helpers
  * Data processing and aggregation utilities for reports
@@ -39,7 +40,7 @@ export const filterTransactions = (transactions, filters) => {
 
   // Category filter
   if (filters.categories && filters.categories.length > 0) {
-    filtered = filtered.filter(t => filters.categories.includes(t.category_id));
+    filtered = filtered.filter(t => categoryParts(t).some(p => filters.categories.map(String).includes(p.category_id)));
   }
 
   // Payment method filter
@@ -160,13 +161,17 @@ const removeEmojis = (text) => {
 export const groupByCategory = (transactions, categories) => {
   const grouped = {};
 
+  // A split purchase counts each part in its own category.
   transactions.forEach(t => {
-    if (t.type === 'expense' && t.category_id) {
-      if (!grouped[t.category_id]) {
-        const category = categories.find(c => c.id === t.category_id);
-        const rawName = t.category_name || category?.name || 'Unknown';
-        grouped[t.category_id] = {
-          id: t.category_id,
+    if (t.type !== 'expense') return;
+    categoryParts(t).forEach(part => {
+      if (!part.category_id) return;
+      const id = part.category_id;
+      if (!grouped[id]) {
+        const category = categories.find(c => String(c.id) === id);
+        const rawName = part.category_name || category?.name || 'Unknown';
+        grouped[id] = {
+          id,
           name: removeEmojis(rawName), // Clean name without emojis
           icon: category?.icon || 'Package',
           color: category?.color || '#6B7280',
@@ -175,10 +180,10 @@ export const groupByCategory = (transactions, categories) => {
           transactions: []
         };
       }
-      grouped[t.category_id].total += Number(t.amount) || 0;
-      grouped[t.category_id].count += 1;
-      grouped[t.category_id].transactions.push(t);
-    }
+      grouped[id].total += part.amount;
+      grouped[id].count += 1;
+      grouped[id].transactions.push(t);
+    });
   });
 
   return Object.values(grouped).sort((a, b) => b.total - a.total);

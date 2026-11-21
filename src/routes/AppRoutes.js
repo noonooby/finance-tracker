@@ -4,8 +4,6 @@ import { useAuth } from '../hooks/useAuth';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { useTheme } from '../hooks/useTheme';
 import { useUI } from '../hooks/useUI';
-import { useUpcomingObligations } from '../hooks/useUpcomingObligations';
-import { useNextIncome } from '../hooks/useNextIncome';
 
 // Critical components (loaded immediately)
 import Auth from '../components/Auth';
@@ -28,6 +26,7 @@ const More = lazy(() => import('../components/More'));
 const Help = lazy(() => import('../components/Help'));
 const Position = lazy(() => import('../components/Position'));
 const Investments = lazy(() => import('../components/Investments'));
+const Bills = lazy(() => import('../components/Bills'));
 
 /**
  * Loading Fallback Component
@@ -60,82 +59,8 @@ const AuthRoute = React.memo(() => {
 /**
  * Route Component Wrappers with Props
  */
-const DashboardRoute = React.memo(() => {
-  const {
-    creditCards,
-    loans,
-    income,
-    bankAccounts,
-    displayAvailableCash,
-    totalCreditCardDebt,
-    totalLoanDebt,
-    latestActivities,
-    loadAllData,
-  } = useFinanceData();
-  
-  const {
-    darkMode,
-    alertSettings,
-    updateAlertSettings,
-  } = useTheme();
-  
-  const { handleNavigate } = useUI();
-
-  // Use custom hooks for business logic
-  const upcomingObligations = useUpcomingObligations(creditCards, loans, [], alertSettings);
-  const nextIncome = useNextIncome(income);
-
-  // Handle process due payments from Dashboard
-  const handleProcessDuePayments = async () => {
-    try {
-      const { processOverdueLoanPayments } = await import('../utils/schedules');
-      const { showToast } = await import('../utils/toast');
-      
-      const results = await processOverdueLoanPayments(
-        loans,
-        creditCards,
-        bankAccounts
-      );
-      
-      await loadAllData();
-      
-      const processedCount = results.processed.length;
-      const failedCount = results.failed.length;
-      
-      if (processedCount > 0) {
-        showToast.success(`Processed ${processedCount} loan payment(s)`);
-      } else if (failedCount > 0) {
-        showToast.error(`Failed to process ${failedCount} loan(s)`);
-      } else {
-        showToast.info('No overdue loans found');
-      }
-    } catch (error) {
-      console.error('Error processing due payments:', error);
-      const { showToast } = await import('../utils/toast');
-      showToast.error('Error processing payments');
-    }
-  };
-
-  return (
-    <Dashboard
-      darkMode={darkMode}
-      availableCash={displayAvailableCash}
-      upcomingObligations={upcomingObligations}
-      nextIncome={nextIncome}
-      totalCreditCardDebt={totalCreditCardDebt}
-      totalLoanDebt={totalLoanDebt}
-      creditCards={creditCards}
-      loans={loans}
-      alertSettings={alertSettings}
-      onNavigate={handleNavigate}
-      onUpdateAlertSettings={updateAlertSettings}
-      bankAccounts={bankAccounts}
-      onReloadAll={loadAllData}
-      latestActivities={latestActivities}
-      onProcessDuePayments={handleProcessDuePayments}
-    />
-  );
-});
+// Home reads everything it needs from the data context itself.
+const DashboardRoute = React.memo(() => <Dashboard />);
 
 const CreditCardsRoute = React.memo(() => {
   const { darkMode, alertSettings } = useTheme();
@@ -347,6 +272,7 @@ export function AppRoutes() {
         <Route path="/more" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={More} /></Suspense>} />
         <Route path="/position" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Position} /></Suspense>} />
         <Route path="/investments" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Investments} /></Suspense>} />
+        <Route path="/bills" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Bills} /></Suspense>} />
         <Route path="/help" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Help} /></Suspense>} />
         <Route path="/screenshot" element={
           <Suspense fallback={<LoadingFallback />}>
