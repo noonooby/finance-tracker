@@ -30,19 +30,27 @@ function explain(status, gmsg, what) {
   return err(502, `Could not ${what} (Google answered ${status}). Try again in a minute.`);
 }
 
+// When the main model is busy (503), fails on Google's side, or is too slow, the read moves to the lighter model.
+const LIGHT = process.env.GEMINI_LIGHT_MODEL || 'gemini-flash-lite-latest';
+
 // body: a generateContent request body. Returns the reply's text.
-async function generate(key, body, { what, timeoutMs = 60000 } = {}) {
-  for (let attempt = 0; attempt < 2; attempt++) {
+async function generate(key, body, { what, timeoutMs = 45000 } = {}) {
+  let switched = false, last = null;
+  const queue = [model, LIGHT].filter((m, i, a) => a.indexOf(m) === i);
+  for (let i = 0; i < queue.length; i++) {
+    const m = queue[i];
     let r;
     try {
-      r = await fetch(`${BASE}/models/${model}:generateContent`, {
+      r = await fetch(`${BASE}/models/${m}:generateContent`, {
         method: 'POST', signal: AbortSignal.timeout(timeoutMs),
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body),
       });
     } catch (e) {
-      console.error(`gemini ${what}: ${e.name === 'TimeoutError' ? 'timed out' : e.message}`);
-      if (e.name === 'TimeoutError') throw err(504, `Could not ${what}: it took too long. Try again, or try a smaller screenshot.`);
-      throw err(502, `Could not ${what}: the server could not reach Google. Try again in a minute.`);
+      const slow = e.name === 'TimeoutError';
+      console.error(`gemini ${what}: ${m} ${slow ? 'timed out' : e.message}`);
+      last = slow ? err(504, `Could not ${what}: Google took too long. Try again in a minute.`)
+        : err(502, `Could not ${what}: the server could not reach Google. Try again in a minute.`);
+      continue;
     }
     const j = await r.json().catch(() => ({}));
     if (r.ok) {
@@ -50,20 +58,26 @@ async function generate(key, body, { what, timeoutMs = 60000 } = {}) {
       const text = parts.map((p) => p.text || '').join('');
       if (!text) {
         const why = j?.promptFeedback?.blockReason || j?.candidates?.[0]?.finishReason || 'empty reply';
-        console.error(`gemini ${what}: ${model} gave no text (${why})`);
+        console.error(`gemini ${what}: ${m} gave no text (${why})`);
         throw err(502, `Could not ${what}: Google returned nothing for this picture (${String(why).toLowerCase()}). Try another screenshot.`);
       }
       return text;
     }
     const gmsg = j?.error?.message || '';
-    console.error(`gemini ${what}: ${model} answered ${r.status} ${String(gmsg).slice(0, 200)}`);
-    if (r.status === 404 && attempt === 0) {
+    console.error(`gemini ${what}: ${m} answered ${r.status} ${String(gmsg).slice(0, 200)}`);
+    if (r.status === 404 && m === model && !switched) {
+      switched = true;
       const next = await newestFlash(key).catch(() => null);
-      if (next && next !== model) { console.error(`gemini: switching model ${model} -> ${next}`); model = next; continue; }
+      if (next && next !== model) { console.error(`gemini: switching model ${model} -> ${next}`); model = next; queue.splice(i + 1, 0, next); continue; }
     }
-    throw explain(r.status, gmsg, what);
+    last = explain(r.status, gmsg, what);
+    if (r.status >= 500 || r.status === 404) {
+      if (r.status === 503) last = err(503, `Could not ${what}: Google's Gemini service is busy right now. Try again in a few minutes.`);
+      continue;
+    }
+    throw last;
   }
-  throw err(502, `Could not ${what}. Try again in a minute.`);
+  throw last || err(502, `Could not ${what}. Try again in a minute.`);
 }
 
 module.exports = { generate, explain, newestFlash, currentModel: () => model, _setModel: (m) => { model = m; } };

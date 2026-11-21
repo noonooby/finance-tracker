@@ -21,7 +21,7 @@ test('a retired model switches to the newest numbered flash model and retries', 
       { name: 'models/gemini-3.8-flash-lite', supportedGenerationMethods: ['generateContent'] },
       { name: 'models/gemini-3.9-flash-tts', supportedGenerationMethods: ['generateContent'] },
     ] });
-    if (String(url).includes('gemini-2.5-flash:')) return reply(404, { error: { message: 'This model is no longer available to new users.' } });
+    if (String(url).includes('gemini-2.5-flash:') || String(url).includes('lite-latest')) return reply(404, { error: { message: 'This model is no longer available to new users.' } });
     return ok('{"ok":true}');
   };
   const text = await gemini.generate('k', {}, { what: 'read the screenshot' });
@@ -37,6 +37,7 @@ test('failures say what went wrong', async () => {
     [400, 'API key not valid', /did not accept the Gemini key/],
     [400, 'Unsupported MIME type image/heic', /could not open this file/],
     [500, 'Internal', /service had a problem/],
+    [503, 'high demand', /busy right now/],
   ]) {
     global.fetch = async () => reply(status, { error: { message: msg } });
     await assert.rejects(gemini.generate('k', {}, { what: 'read the screenshot' }), re);
@@ -58,4 +59,12 @@ test('a card summary screen drafts the card with balance, statement, due date an
   assert.equal(p.new_accounts.length, 1);
   const d = p.new_accounts[0];
   assert.deepEqual([d.type, d.balance, d.statement_balance, d.due_date, d.autopay], ['credit_card', 591.14, 378.48, '2026-12-10', true]);
+});
+
+test('a busy model falls back to the lighter model', async () => {
+  gemini._setModel('gemini-3.8-flash');
+  const used = [];
+  global.fetch = async (url) => { used.push(String(url)); return String(url).includes('gemini-3.8-flash:') ? reply(503, { error: { message: 'high demand' } }) : ok('{"ok":1}'); };
+  assert.equal(await gemini.generate('k', {}, { what: 'read the screenshot' }), '{"ok":1}');
+  assert.ok(used[1].includes('gemini-flash-lite-latest:'));
 });
