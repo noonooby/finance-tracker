@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Minus, X, TrendingUp } from 'lucide-react';
+import { Plus, Minus, X, TrendingUp, Star } from 'lucide-react';
 import { formatCurrency, parseSmartInput } from '../../utils/helpers';
 import ActionButton from '../shared/ActionButton';
+import { showToast } from '../../utils/toast';
 import {
   getGiftCardAddBalanceContext,
   saveGiftCardAddBalanceContext,
@@ -63,7 +64,6 @@ export default function GiftCardOperations({
         const savedContext = await getGiftCardAddBalanceContext(giftCard.id);
         
         if (savedContext) {
-          console.log('✅ Applying add balance context:', savedContext);
           
           setFormData(prev => ({
             ...prev,
@@ -93,7 +93,6 @@ export default function GiftCardOperations({
       } else {
         // Load recent expense descriptions for use balance
         const recent = await getRecentExpenseDescriptions(5);
-        console.log('📊 Recent expenses found:', recent?.length || 0, recent);
         setRecentExpenses(recent);
         
         // Reset form for use balance
@@ -144,17 +143,17 @@ export default function GiftCardOperations({
 
   const handleSubmit = async () => {
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      alert('Please enter a valid amount');
+      showToast.error('Please enter a valid amount');
       return;
     }
 
     if (!formData.category) {
-      alert('Please select a category');
+      showToast.error('Please select a category');
       return;
     }
 
     if (operationType === 'use' && !formData.notes?.trim()) {
-      alert('Please enter what you\'re buying (this creates a clear expense description)');
+      showToast.error('Please enter what you\'re buying');
       return;
     }
 
@@ -224,7 +223,6 @@ export default function GiftCardOperations({
           ...prev, 
           category: contextData.categoryId || prev.category
         }));
-        console.log('✅ Applied expense context for:', formData.notes);
       }
     } catch (error) {
       console.error('Error loading expense context:', error);
@@ -251,7 +249,10 @@ export default function GiftCardOperations({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
-      <div 
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Manage balance: ${giftCard.name}`}
         className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full my-8 max-h-[calc(100vh-4rem)] overflow-y-auto`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -260,6 +261,7 @@ export default function GiftCardOperations({
           <h3 className="text-lg font-bold">{giftCard.name}</h3>
           <button
             onClick={onClose}
+            aria-label="Close"
             className={`text-2xl leading-none ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900'}`}
           >
             <X size={24} />
@@ -330,7 +332,7 @@ export default function GiftCardOperations({
                   }`}
                 >
                   {expense.description}
-                  {expense.usage_count > 10 && ' ⭐'}
+                  {expense.usage_count > 10 && <Star size={12} className="inline ml-1" aria-label="Frequently used" />}
                 </button>
               ))}
             </div>

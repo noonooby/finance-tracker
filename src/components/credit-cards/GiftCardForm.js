@@ -122,20 +122,12 @@ export default function GiftCardForm({
           How are you paying for this gift card? *
         </label>
         <select
-          value={(() => {
-            const val = formData.giftCardPaymentMethodId 
-              ? `${formData.giftCardPaymentMethod}:${formData.giftCardPaymentMethodId}` 
-              : formData.giftCardPaymentMethod;
-            console.log('🔍 Select value:', val);
-            console.log('  giftCardPaymentMethod:', formData.giftCardPaymentMethod);
-            console.log('  giftCardPaymentMethodId:', formData.giftCardPaymentMethodId);
-            return val;
-          })()}
+          value={formData.giftCardPaymentMethodId 
+            ? `${formData.giftCardPaymentMethod}:${formData.giftCardPaymentMethodId}` 
+            : formData.giftCardPaymentMethod}
           onChange={(e) => {
             const value = e.target.value;
-            console.log('💳 Payment method selected:', value);
             if (value === 'cash_in_hand') {
-              console.log('  Setting to cash in hand');
               onFormDataChange({ 
                 ...formData, 
                 giftCardPaymentMethod: 'cash_in_hand',
@@ -143,7 +135,6 @@ export default function GiftCardForm({
               });
             } else if (value.includes(':')) {
               const [method, id] = value.split(':');
-              console.log('  Parsed method:', method, 'ID:', id);
               onFormDataChange({ 
                 ...formData, 
                 giftCardPaymentMethod: method,  // Store ONLY the type

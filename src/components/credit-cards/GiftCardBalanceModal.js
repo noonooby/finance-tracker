@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Minus } from 'lucide-react';
 import { formatCurrency } from '../../utils/helpers';
 import ActionButton from '../shared/ActionButton';
+import { showToast } from '../../utils/toast';
 import { localDate } from '../../utils/helpers';
 
 /**
@@ -69,12 +70,12 @@ export default function GiftCardBalanceModal({
 
   const handleSubmit = () => {
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      alert('Please enter a valid amount');
+      showToast.error('Please enter a valid amount');
       return;
     }
     
     if (operation === 'use' && !formData.category) {
-      alert('Please select a category for this expense');
+      showToast.error('Please select a category for this expense');
       return;
     }
     
@@ -83,7 +84,10 @@ export default function GiftCardBalanceModal({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div 
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${isAddOperation ? 'Add balance' : 'Use balance'}: ${giftCard.name}`}
         className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -103,6 +107,7 @@ export default function GiftCardBalanceModal({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className={`text-2xl leading-none ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900'}`}
           >
             ×

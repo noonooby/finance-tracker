@@ -37,11 +37,6 @@ export function useGiftCardPurchase({
       const paymentMethodId = formData.giftCardPaymentMethodId;
       const paymentMethodRaw = String(paymentMethodId ? `${paymentMethodType}:${paymentMethodId}` : (paymentMethodType || ''));
       
-      console.log('🎁 Creating gift card purchase transaction:');
-      console.log('  Payment method type:', paymentMethodType);
-      console.log('  Payment method ID:', paymentMethodId);
-      console.log('  Payment method (combined):', paymentMethodRaw);
-      console.log('  Amount paid:', purchaseAmountPaid);
       
       let sourceName;
       if (paymentMethodRaw === 'cash_in_hand') {
@@ -99,7 +94,6 @@ export function useGiftCardPurchase({
         }).catch(err => console.warn('Failed to save gift card context:', err));
       }
 
-      console.log('✅ Gift card purchase transaction created');
       
       return {
         transactionId,
