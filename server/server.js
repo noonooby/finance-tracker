@@ -27,7 +27,9 @@ const TABLES = new Set(['snapshots', 'activities', 'alert_history', 'bank_accoun
   'settings', 'transactions', 'user_preferences', 'uploads', 'investments', 'assets', 'balance_points',
   // remembered form entries (descriptions, sources), used for suggestions
   'card_payment_contexts', 'expense_description_contexts', 'gift_card_purchase_contexts', 'income_source_contexts',
-  'loan_creation_contexts', 'loan_payment_contexts', 'transfer_description_contexts']);
+  'loan_creation_contexts', 'loan_payment_contexts', 'transfer_description_contexts',
+  // merchant -> category, learned from what you record or set by you
+  'category_rules']);
 // Tables whose balance /api/money may change, and the fields it may change.
 const MONEY_FIELDS = { bank_accounts: ['balance'], credit_cards: ['balance'], loans: ['balance'], investments: ['balance'], assets: ['balance'] };
 // Tables only the server writes.
@@ -153,7 +155,27 @@ function insertRow(uid, tbl, values, upsertOn) {
   v.created_at = v.created_at || now(); v.updated_at = v.updated_at || v.created_at;
   db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)').run(tbl, String(v.id), uid, JSON.stringify(v));
   for (const f of MONEY_FIELDS[tbl] || []) if (f in v) stamp(uid, tbl, v, f, values.balance_as_of);
+  if (tbl === 'transactions') learnCategory(uid, v);
   return v;
+}
+// ---------- learning categories ----------
+// Every saved purchase or income with a category teaches the app that merchant's category (one rule per merchant,
+// keyed like the screenshot reader's merchant key). A rule you set yourself (source 'set') is never changed by learning.
+// Learning stops when the setting learn_categories is false. Rules are plain rows you can edit or delete.
+function learnCategory(uid, t) {
+  if (!t || !t.category_id || !t.description || t.status === 'undone' || t.status === 'deleted') return;
+  if (!['expense', 'income', 'refund'].includes(t.type)) return;
+  const key = require('./reader').mkey(t.description);
+  if (key.length < 3) return;
+  const off = selectRows(uid, { table: 'settings', filters: [['key', 'eq', 'learn_categories']], limit: 1 })[0];
+  if (off && (off.value === false || off.value === 'false')) return;
+  const id = `rule:${uid}:${key}`;
+  const ex = selectRows(uid, { table: 'category_rules', filters: [['id', 'eq', id]], limit: 1 })[0];
+  if (ex && ex.source === 'set') return;
+  const row = { key, merchant: String(t.description).slice(0, 60), category_id: t.category_id, category_name: t.category_name || null,
+    source: 'learned', uses: ex && String(ex.category_id) === String(t.category_id) ? (Number(ex.uses) || 0) + 1 : 1, last_date: t.date || today() };
+  if (ex) db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify({ ...ex, ...row, updated_at: now() }), 'category_rules', id, uid);
+  else db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)').run('category_rules', id, uid, JSON.stringify({ id, user_id: uid, ...row, created_at: now(), updated_at: now() }));
 }
 function updateRows(uid, tbl, filters, values, orGroups) {
   const v = clean(values); delete v.user_id; delete v.id;
@@ -166,6 +188,7 @@ function updateRows(uid, tbl, filters, values, orGroups) {
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), tbl, String(r.id), uid);
     // Stating a balance (even the same figure) confirms it as of today, or as of the date given.
     for (const f of MONEY_FIELDS[tbl] || []) if (f in v) stamp(uid, tbl, n, f, values.balance_as_of);
+    if (tbl === 'transactions' && 'category_id' in v) learnCategory(uid, n);
     out.push(n);
   }
   return out;
@@ -486,6 +509,20 @@ function moveCashSettingToAccount() {
   }
 }
 moveCashSettingToAccount();
+
+// Learned categories start from the history you already have, once per person (flag: settings rules_seeded).
+function seedCategoryRules() {
+  const users = db.prepare("SELECT DISTINCT user_id FROM rows WHERE tbl = 'transactions'").all().map((r) => r.user_id);
+  for (const uid of users) {
+    if (selectRows(uid, { table: 'settings', filters: [['key', 'eq', 'rules_seeded']], limit: 1 })[0]) continue;
+    tx(() => {
+      const list = selectRows(uid, { table: 'transactions', filters: [] }).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      for (const t of list) learnCategory(uid, t);
+      insertRow(uid, 'settings', { key: 'rules_seeded', value: true });
+    });
+  }
+}
+seedCategoryRules();
 
 if (require.main === module) server.listen(PORT, () => console.log(`Finance tracker running on http://localhost:${PORT}`));
 module.exports = { server, db, money, reverse, runQuery };

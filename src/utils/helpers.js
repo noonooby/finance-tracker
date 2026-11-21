@@ -435,10 +435,8 @@ export function parseSmartInput(input) {
 // ============================================
 // END OF BANK ACCOUNT HELPER FUNCTIONS
 // ============================================
-
-// The account picked by default for paying or receiving money: the primary account, else the first one, else none.
-// Cash is one of the bank accounts, so it is chosen like any other.
+// The account picked by default: the primary account, else the first that is not cash, else cash, else none.
 export function defaultBankAccount(bankAccounts) {
   const list = bankAccounts || [];
-  return list.find((a) => a.is_primary) || list[0] || null;
+  return list.find((a) => a.is_primary) || list.find((a) => a.account_type !== 'cash') || list[0] || null;
 }

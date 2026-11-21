@@ -14,6 +14,8 @@ import {
   applyExpenseContext
 } from '../utils/formContexts';
 import { localDate } from '../utils/helpers';
+import { useFinanceData } from '../hooks/useFinanceData';
+import { suggestCategoryId } from '../utils/categoryRules';
 
 export default function AddTransaction({ 
   darkMode, 
@@ -55,6 +57,9 @@ export default function AddTransaction({
   });
 
   const [localCategories, setLocalCategories] = useState(categoriesProp);
+  const { categoryRules } = useFinanceData();
+  // The category the app filled in (from what you chose before). Your own choice is never replaced.
+  const [autoCategory, setAutoCategory] = useState('');
   const [saving, setSaving] = useState(false);
   const [, setRecentCategories] = useState([]);
   const [recentPaymentMethods, setRecentPaymentMethods] = useState([]);
@@ -149,25 +154,26 @@ export default function AddTransaction({
   const handleDescriptionBlur = useCallback(async () => {
     if (!formData.description?.trim() || formData.type !== 'expense') return;
     try {
-      const context = await getExpenseContext(formData.description);
-      if (context) {
-        const contextData = applyExpenseContext(context);
-        
-        // If card is preselected, only apply category (not payment method)
-        if (preselectedCard) {
-          setFormData(prev => ({ 
-            ...prev, 
-            categoryId: contextData.categoryId || prev.categoryId 
-          }));
-        } else {
-          setFormData(prev => ({ ...prev, ...contextData }));
+      // The remembered entry for this exact description (if that lookup fails, learned categories still work).
+      let contextData = {};
+      try { const context = await getExpenseContext(formData.description); if (context) contextData = applyExpenseContext(context); } catch { contextData = {}; }
+      const learned = contextData.categoryId || suggestCategoryId(categoryRules, formData.description, localCategories.filter(c => !c.is_income));
+      setFormData(prev => {
+        const mayFill = !prev.categoryId || prev.categoryId === autoCategory;
+        const next = { ...prev };
+        if (mayFill && learned) next.categoryId = learned;
+        // The payment method from last time is used only when nothing else was chosen yet.
+        if (!preselectedCard && contextData.paymentMethod && prev.paymentMethod === defaultPaymentMethod && String(prev.paymentMethodId) === String(defaultPaymentMethodId)) {
+          next.paymentMethod = contextData.paymentMethod; next.paymentMethodId = contextData.paymentMethodId;
         }
-        
-      }
+        return next;
+      });
+      if (learned) setAutoCategory(learned);
     } catch (error) {
       console.error('Error loading expense context:', error);
     }
-  }, [formData.description, formData.type, preselectedCard]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.description, formData.type, preselectedCard, categoryRules, localCategories, autoCategory]);
   
   const loadRecentCategories = async () => {
     try {
@@ -427,7 +433,7 @@ export default function AddTransaction({
               <CategorySelect
                 categories={localCategories.filter(c => !c.is_income)}
                 value={formData.categoryId}
-                onChange={(categoryId) => setFormData({ ...formData, categoryId })}
+                onChange={(categoryId) => { setFormData({ ...formData, categoryId }); setAutoCategory(''); }}
                 darkMode={darkMode}
                 placeholder="Search or create category..."
                 onCategoryCreated={(newCategory) => {
@@ -437,6 +443,9 @@ export default function AddTransaction({
                   if (onUpdate) onUpdate();
                 }}
               />
+              {autoCategory && formData.categoryId === autoCategory && (
+                <p className="mt-1 text-xs text-muted">Filled in from what you chose before for this merchant. Change it if it is wrong; the app learns from that too.</p>
+              )}
             </div>
           )}
           

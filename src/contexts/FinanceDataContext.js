@@ -22,6 +22,8 @@ export function FinanceDataProvider({ children }) {
   const [availableCash, setAvailableCash] = useState(0);
   const [investments, setInvestments] = useState([]);
   const [assets, setAssets] = useState([]);
+  const [incomeSchedules, setIncomeSchedules] = useState([]);
+  const [categoryRules, setCategoryRules] = useState([]);
   
   // Loading states
   const [dataLoading, setDataLoading] = useState(false);
@@ -124,7 +126,9 @@ export function FinanceDataProvider({ children }) {
         getAllBankAccounts(),
         server.from('investments').select('*').then((r) => r.data || []),
         server.from('assets').select('*').then((r) => r.data || []),
-      ]).then(([c, l, i, t, a, inv, as]) => { setInvestments(inv); setAssets(as); return [c, l, i, t, a]; });
+        server.from('income_schedules').select('*').then((r) => r.data || []),
+        server.from('category_rules').select('*').then((r) => r.data || []),
+      ]).then(([c, l, i, t, a, inv, as, sch, rules]) => { setInvestments(inv); setAssets(as); setIncomeSchedules(sch); setCategoryRules(rules); return [c, l, i, t, a]; });
       
       let incomeData = incomeDataRaw || [];
       let transactionsData = transRaw || [];
@@ -147,10 +151,9 @@ export function FinanceDataProvider({ children }) {
       const autoResults = dueCheck ? await processDueIncomeSchedules() : { deposited: [] };
       let paid = 0;
       if (dueCheck) try {
-        const freshCards = (await dbOperation('creditCards', 'getAll')) || [];
-        const freshLoans = (await dbOperation('loans', 'getAll')) || [];
-        const loanRes = await processOverdueLoanPayments(freshLoans, freshCards, accounts || []);
-        const cardRes = await processOverdueCreditCardPayments(freshCards, accounts || []);
+        // Cards and loans were loaded a moment ago in this same load; the server checks every balance again anyway.
+        const loanRes = await processOverdueLoanPayments(loansData || [], cards || [], accounts || []);
+        const cardRes = await processOverdueCreditCardPayments(cards || [], accounts || []);
         paid = (loanRes?.processed?.length || 0) + (cardRes?.processed?.length || 0);
         if (paid) {
           setLoans((await dbOperation('loans', 'getAll')) || []);
@@ -210,6 +213,9 @@ export function FinanceDataProvider({ children }) {
     availableCash,
     investments,
     assets,
+    incomeSchedules,
+    categoryRules,
+    setCategoryRules,
     setInvestments,
     setAssets,
     dataLoading,
@@ -237,7 +243,7 @@ export function FinanceDataProvider({ children }) {
     displayAvailableCash,
     totalCreditCardDebt,
     totalLoanDebt,
-  }), [creditCards, loans, income, transactions, categories, bankAccounts, availableCash, investments, assets, dataLoading, loadError,
+  }), [creditCards, loans, income, transactions, categories, bankAccounts, availableCash, investments, assets, incomeSchedules, categoryRules, dataLoading, loadError,
     latestActivities, loadAllData, loadDataProgressively, loadBankAccounts, loadCategories, loadLatestActivities,
     handleUpdateCash, displayAvailableCash, totalCreditCardDebt, totalLoanDebt]);
 

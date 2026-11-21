@@ -500,3 +500,23 @@ test('rate lookup sends only the product name and returns a dated suggestion', a
   await assert.rejects(api('/api/lookup-rates', { kind: 'other', name: 'Amex Cobalt' }), /product name/);
   delete process.env.LOOKUP_STUB;
 });
+
+test('categories are learned per merchant; a rule you fixed stays; learning can be turned off', async () => {
+  const a = await accounts();
+  const cat1 = await add('categories', { name: 'Coffee', is_income: false });
+  const cat2 = await add('categories', { name: 'Treats', is_income: false });
+  await M.recordExpense({ amount: 4, source: `bank_account:${chq.id}`, date: '2026-11-20', description: 'Tim Hortons #123', category_id: cat1.id, category_name: 'Coffee' }, a);
+  let rules = (await db.from('category_rules').select('*')).data;
+  const r = rules.find((x) => x.key === 'timhortons');
+  assert.ok(r && r.category_id === cat1.id && r.source === 'learned');
+  // You fix it to another category: learning from a later purchase does not change it.
+  await db.from('category_rules').update({ category_id: cat2.id, source: 'set' }).eq('id', r.id);
+  await M.recordExpense({ amount: 5, source: `bank_account:${chq.id}`, date: '2026-11-21', description: 'Tim Hortons', category_id: cat1.id }, a);
+  assert.equal((await get('category_rules', r.id)).category_id, cat2.id);
+  // Learning off: a new merchant is not learned.
+  await db.from('settings').upsert({ key: 'learn_categories', value: false }, { onConflict: 'key' });
+  await M.recordExpense({ amount: 6, source: `bank_account:${chq.id}`, date: '2026-11-21', description: 'Second Cup', category_id: cat1.id }, a);
+  rules = (await db.from('category_rules').select('*')).data;
+  assert.ok(!rules.some((x) => x.key === 'secondcup'));
+  await db.from('settings').upsert({ key: 'learn_categories', value: true }, { onConflict: 'key' });
+});

@@ -8,6 +8,7 @@ import { recordExpense, recordIncome, parseSource } from '../money';
 import { server } from '../server';
 import { format } from 'date-fns';
 import { fetchCategories } from '../categories';
+import { suggestCategoryId } from '../categoryRules';
 import { getAllSettings } from '../settingsManager';
 import { defaultBankAccount } from '../helpers';
 
@@ -84,8 +85,11 @@ export async function downloadTransactionTemplate() {
 /**
  * Auto-match category from description
  */
-async function matchCategory(description, type, categories) {
+async function matchCategory(description, type, categories, rules = []) {
   if (!description) return null;
+  // What you chose before for this merchant comes first.
+  const learned = suggestCategoryId(rules, description, categories.filter((c) => (type === 'income' ? c.is_income : !c.is_income)));
+  if (learned) return learned;
 
   const desc = description.toLowerCase();
   
@@ -190,6 +194,7 @@ async function sha256(text) {
  */
 async function parseTransactionRows(data, userId) {
   const categories = await fetchCategories();
+  const rules = (await server.from('category_rules').select('*')).data || [];
   const settings = await getAllSettings();
   const accounts = await loadAccounts(userId);
   const defaultSource = settings.defaultPaymentMethod || '';
@@ -233,7 +238,7 @@ async function parseTransactionRows(data, userId) {
         const matchedCat = categories.find((c) => c.name.toLowerCase() === catName.toLowerCase() && (type === 'income' ? c.is_income : !c.is_income));
         if (matchedCat) { categoryId = matchedCat.id; categoryName = matchedCat.name; } else { categoryName = catName; }
       } else if (description) {
-        categoryId = await matchCategory(description, type, categories);
+        categoryId = await matchCategory(description, type, categories, rules);
         if (categoryId) categoryName = categories.find((c) => c.id === categoryId)?.name || null;
       }
 

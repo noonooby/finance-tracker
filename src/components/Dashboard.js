@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, Camera, AlertTriangle, CheckCircle2, Repeat, Hand } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
-import { api, server } from '../utils/server';
+import { api } from '../utils/server';
 import { position, monthEnd, monthlyCost, upcoming } from '../utils/finance';
 import { formatCurrency, formatDate, parseDay } from '../utils/helpers';
 import { Card, Section, Stat, Badge, Button } from './shared/ui';
@@ -22,12 +22,12 @@ function Row({ onClick, children }) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const d = useFinanceData();
-  const [schedules, setSchedules] = useState([]);
+  const schedules = d.incomeSchedules;
   const [checks, setChecks] = useState([]);
   useEffect(() => {
-    server.from('income_schedules').select('*').then((r) => setSchedules(r.data || []));
+    if (d.dataLoading) return;
     api('/api/checks', null, 'GET').then((x) => setChecks(x || [])).catch(() => setChecks([]));
-  }, [d.bankAccounts, d.creditCards, d.loans, d.transactions]);
+  }, [d.dataLoading, d.transactions]);
 
   const today = useMemo(() => new Date(), []);
   const p = useMemo(() => position({ bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets }, today), [d, today]);

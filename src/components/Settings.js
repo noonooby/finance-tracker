@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { server } from '../utils/server';
+import LearnedCategoriesSection from './settings/LearnedCategoriesSection';
 import { Settings as SettingsIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import useSettingsData from './settings/useSettingsData';
 import DisplaySection from './settings/DisplaySection';
@@ -23,6 +25,15 @@ export default function Settings({
   onDisplayDensityChange
 }) {
   const data = useSettingsData(categoriesProp);
+  // Learning categories is on unless you turn it off (setting learn_categories).
+  const [learnOn, setLearnOn] = useState(true);
+  useEffect(() => {
+    server.from('settings').select('*').eq('key', 'learn_categories').maybeSingle().then(({ data: row }) => setLearnOn(!(row && (row.value === false || row.value === 'false'))));
+  }, []);
+  const setLearn = async (on) => {
+    setLearnOn(on);
+    await server.from('settings').upsert({ key: 'learn_categories', value: on }, { onConflict: 'key' });
+  };
   const { settings, updateSetting, expandedSections, anyExpanded, toggleSection, toggleAllSections } = data;
 
   const sectionProps = (key) => ({
@@ -81,6 +92,7 @@ export default function Settings({
         saveCategoryBudget={data.saveCategoryBudget}
         removeCategoryBudget={data.removeCategoryBudget}
       />
+      <LearnedCategoriesSection {...sectionProps('learned')} categories={data.categories} learnOn={learnOn} onLearnChange={setLearn} />
       <SuggestionsSection {...sectionProps('suggestions')} />
       <BackupSection {...sectionProps('backup')} />
       <DangerZoneSection

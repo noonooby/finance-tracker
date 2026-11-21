@@ -92,6 +92,12 @@ const SECTIONS = [
       <p>Each payday is added once, even if you have the app open on two devices. If you haven't opened the app for a while, every missed payday is added when you do.</p>
     </>
   )],
+  ['learning', 'Categories it learns', (
+    <>
+      <p>When you save a purchase or income with a category, the app remembers that category for the merchant. Next time, on the + button, Scan or an Excel upload, it fills it in for you. It only fills an empty category, and you can always change it; your change is learned too.</p>
+      <p>Settings, Learned categories, lists everything it has learned. You can change a category, fix a rule so learning leaves it alone, delete a rule, add your own, or turn learning off.</p>
+    </>
+  )],
   ['undo', 'Fixing mistakes', (
     <>
       <p>Delete a transaction from <Link to="/transactions">Transactions</Link>, or undo it from <Link to="/activity">Activity</Link>. The money goes back to exactly the account it came from.</p>

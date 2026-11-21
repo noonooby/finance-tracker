@@ -42,12 +42,12 @@ function Sparkline({ data }) {
 
 export default function Position({ darkMode }) {
   const d = useFinanceData();
-  const [schedules, setSchedules] = useState([]);
+  const schedules = d.incomeSchedules;
   const [points, setPoints] = useState([]);
   useEffect(() => {
-    server.from('income_schedules').select('*').then((r) => setSchedules(r.data || []));
+    if (d.dataLoading) return;
     server.from('balance_points').select('*').then((r) => setPoints(r.data || []));
-  }, [d.bankAccounts, d.loans, d.creditCards, d.investments, d.assets]);
+  }, [d.dataLoading, d.bankAccounts, d.loans, d.creditCards, d.investments, d.assets]);
 
   const p = useMemo(() => position({ bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets }), [d]);
   const m = useMemo(() => monthEnd({ liquid: p.liquid, incomeSchedules: schedules, loans: d.loans, creditCards: d.creditCards }), [p.liquid, schedules, d.loans, d.creditCards]);

@@ -4,6 +4,8 @@ import { recordExpense, recordIncome, recordRefund, recordTransfer, recordCardPa
 import { server } from '../utils/server';
 import { formatCurrency, generateId } from '../utils/helpers';
 import { loadPending, savePending, clearPending } from '../utils/pendingScan';
+import { useFinanceData } from '../hooks/useFinanceData';
+import { suggestCategoryId } from '../utils/categoryRules';
 import { Camera, Image as ImageIcon } from 'lucide-react';
 
 const readFile = (file) => new Promise((resolve, reject) => {
@@ -83,6 +85,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const [open, setOpen] = useState(null);
   const [done, setDone] = useState(null);
   const [aiReady, setAiReady] = useState(true);
+  const { categoryRules } = useFinanceData();
   useEffect(() => { server.auth.config().then((c) => setAiReady(c.ai !== false)); }, []);
 
   const expenseCategories = categories.filter((c) => !c.is_income);
@@ -118,6 +121,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   // A category for a purchase: how this merchant was categorised before, else the reader's guess matched to your categories.
   const suggestCategory = (merchant, guess, income = false) => {
     const pool = income ? incomeCategories : expenseCategories;
+    const learned = suggestCategoryId(categoryRules, merchant, pool);
+    if (learned) return learned;
     const k = mkey(merchant);
     const past = k && [...transactions].sort((a, b) => String(b.date).localeCompare(String(a.date)))
       .find((t) => t.category_id && mkey(t.description) === k);

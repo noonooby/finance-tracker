@@ -151,7 +151,6 @@ export default function Loans({
           paymentAmount: contextData.paymentAmount || prev.paymentAmount,
           frequency: contextData.frequency || prev.frequency
         }));
-        console.log('✅ Applied loan template for:', formData.name);
       }
     } catch (error) {
       console.error('Error loading loan template:', error);
@@ -323,10 +322,6 @@ export default function Loans({
   const handleProcessDuePayments = async () => {
     if (isProcessing) return;
 
-    console.log('🔘 Process Due Payments clicked');
-    console.log('📊 Loans data:', loans);
-    console.log('💰 Available cash:', availableCash);
-    console.log('🏦 Bank accounts:', bankAccounts);
 
     if (!window.confirm('Process all overdue loan payments?')) {
       return;
@@ -336,11 +331,9 @@ export default function Loans({
     setProcessingResults(null);
 
     try {
-      console.log('🔄 Starting loan payment processing...');
       
       const results = await processOverdueLoans(loans, creditCards, bankAccounts);
       
-      console.log('📊 Processing results:', results);
       
       await onUpdate();
       setProcessingResults(results);
