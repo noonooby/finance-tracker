@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { localDate } from './helpers';
 
 /**
  * Budget Tracking Manager
@@ -235,8 +236,8 @@ export async function trackCurrentMonth(categoryId, budgetLimit) {
     const month = now.getMonth(); // 0-indexed
     
     // Get first and last day of current month
-    const periodStart = new Date(year, month, 1).toISOString().split('T')[0];
-    const periodEnd = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const periodStart = localDate(new Date(year, month, 1));
+    const periodEnd = localDate(new Date(year, month + 1, 0));
     
     // Calculate actual spending
     const actualSpent = await calculateActualSpending(categoryId, periodStart, periodEnd);
@@ -302,8 +303,8 @@ export async function trackPreviousMonth(categoryId, budgetLimit) {
     const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
     const month = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
     
-    const periodStart = new Date(year, month, 1).toISOString().split('T')[0];
-    const periodEnd = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const periodStart = localDate(new Date(year, month, 1));
+    const periodEnd = localDate(new Date(year, month + 1, 0));
     
     // Check if already tracked
     const existing = await getBudgetPeriod(categoryId, periodStart, periodEnd);
@@ -430,8 +431,8 @@ export async function getCurrentBudgetStatus(categoryId, budgetLimit) {
     const year = now.getFullYear();
     const month = now.getMonth();
     
-    const periodStart = new Date(year, month, 1).toISOString().split('T')[0];
-    const periodEnd = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const periodStart = localDate(new Date(year, month, 1));
+    const periodEnd = localDate(new Date(year, month + 1, 0));
     
     const actualSpent = await calculateActualSpending(categoryId, periodStart, periodEnd);
     const percentageUsed = (actualSpent / budgetLimit) * 100;

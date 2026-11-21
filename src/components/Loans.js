@@ -20,6 +20,7 @@ import {
 } from '../utils/formContexts';
 import { LoanForm, useLoanPayment } from './loans/index';
 import AddTransaction from './AddTransaction';
+import { localDate } from '../utils/helpers';
 
 export default function Loans({
   darkMode,
@@ -49,7 +50,7 @@ export default function Loans({
     interestRate: '',
     paymentAmount: '',
     frequency: 'monthly',
-    nextPaymentDate: new Date().toISOString().split('T')[0],
+    nextPaymentDate: localDate(),
     alertDays: alertSettings.defaultDays || 7,
     recurringDurationType: 'indefinite',
     recurringUntilDate: '',
@@ -69,7 +70,7 @@ export default function Loans({
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     amountMode: 'recommended',
-    date: new Date().toISOString().split('T')[0],
+    date: localDate(),
     category: 'other',
     source: 'cash_in_hand'
   });
@@ -78,7 +79,7 @@ export default function Loans({
     setPaymentForm({
       amount: '',
       amountMode: 'recommended',
-      date: new Date().toISOString().split('T')[0],
+      date: localDate(),
       category: 'other',
       source: 'cash_in_hand'
     });
@@ -376,16 +377,7 @@ export default function Loans({
     try {
       console.log('🔄 Starting loan payment processing...');
       
-      const results = await processOverdueLoans(
-        loans,
-        [],
-        availableCash,
-        onUpdateCash,
-        creditCards,
-        bankAccounts,
-        cashInHand,
-        onUpdateCashInHand
-      );
+      const results = await processOverdueLoans(loans, creditCards, bankAccounts, cashInHand);
       
       console.log('📊 Processing results:', results);
       
@@ -419,7 +411,7 @@ export default function Loans({
       interestRate: '',
       paymentAmount: '',
       frequency: 'monthly',
-      nextPaymentDate: new Date().toISOString().split('T')[0],
+      nextPaymentDate: localDate(),
       alertDays: alertSettings.defaultDays || 7,
       recurringDurationType: 'indefinite',
       recurringUntilDate: '',

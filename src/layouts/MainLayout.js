@@ -7,6 +7,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useUI } from '../hooks/useUI';
 import { dbOperation } from '../utils/db';
 import BottomNavigation from '../BottomNavigation';
+import { localDate } from '../utils/helpers';
 
 /**
  * Main Layout Component
@@ -48,7 +49,7 @@ export function MainLayout() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `finance-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `finance-backup-${localDate()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };

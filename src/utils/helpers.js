@@ -29,7 +29,23 @@ export const getDaysUntil = (date) => {
   return diffDays;
 };
 
-export const predictNextDate = (lastDate, frequency) => {
+// A date as YYYY-MM-DD in the user's own timezone (toISOString would give the UTC date, a day off near midnight).
+export const localDate = (d = new Date()) => {
+  const x = d instanceof Date ? d : new Date(d);
+  const m = String(x.getMonth() + 1).padStart(2, '0');
+  const day = String(x.getDate()).padStart(2, '0');
+  return `${x.getFullYear()}-${m}-${day}`;
+};
+
+// The same day n months later; a 29th-31st falls on the last day of a shorter month and returns to the anchor day after.
+export const addMonths = (date, n, anchorDay = date.getDate()) => {
+  const y = date.getFullYear();
+  const mo = date.getMonth() + n;
+  const last = new Date(y, mo + 1, 0).getDate();
+  return new Date(y, mo, Math.min(anchorDay, last));
+};
+
+export const predictNextDate = (lastDate, frequency, anchorDay) => {
   const [year, month, day] = lastDate.split('T')[0].split('-');
   const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
   switch (frequency) {
@@ -39,16 +55,13 @@ export const predictNextDate = (lastDate, frequency) => {
     case 'biweekly':
       date.setDate(date.getDate() + 14);
       break;
-    case 'monthly':
-      date.setMonth(date.getMonth() + 1);
-      break;
     case 'bimonthly':
-      date.setMonth(date.getMonth() + 2);
-      break;
+      return localDate(addMonths(date, 2, anchorDay || date.getDate()));
+    case 'monthly':
     default:
-      date.setMonth(date.getMonth() + 1);
+      return localDate(addMonths(date, 1, anchorDay || date.getDate()));
   }
-  return date.toISOString().split('T')[0];
+  return localDate(date);
 };
 
 export const DEFAULT_CATEGORIES = [

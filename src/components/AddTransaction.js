@@ -19,6 +19,7 @@ import {
   getLastUsedExpenseContext,
   applyExpenseContext
 } from '../utils/formContexts';
+import { localDate } from '../utils/helpers';
 
 export default function AddTransaction({ 
   darkMode, 
@@ -49,7 +50,7 @@ export default function AddTransaction({
   const [formData, setFormData] = useState({
     type: validatedType,
     amount: preselectedAmount || '',
-    date: new Date().toISOString().split('T')[0],
+    date: localDate(),
     description: '',
     notes: '',
     categoryId: '',

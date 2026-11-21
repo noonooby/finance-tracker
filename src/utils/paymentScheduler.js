@@ -1,5 +1,6 @@
 import { dbOperation } from './db';
 import { supabase } from './supabase';
+import { localDate } from './helpers';
 
 /**
  * Payment Scheduling System
@@ -158,8 +159,8 @@ export const getUpcomingScheduledPayments = async (daysAhead = 7) => {
       .select('*')
       .eq('user_id', user.id)
       .eq('status', 'pending')
-      .gte('scheduled_date', today.toISOString().split('T')[0])
-      .lte('scheduled_date', futureDate.toISOString().split('T')[0])
+      .gte('scheduled_date', localDate(today))
+      .lte('scheduled_date', localDate(futureDate))
       .order('scheduled_date', { ascending: true });
 
     if (error) throw error;

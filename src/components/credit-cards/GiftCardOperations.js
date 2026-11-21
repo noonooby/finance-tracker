@@ -13,6 +13,7 @@ import {
   getRecentExpenseDescriptions,
   applyExpenseContext
 } from '../../utils/formContexts';
+import { localDate } from '../../utils/helpers';
 
 /**
  * Gift Card Operations Modal
@@ -33,7 +34,7 @@ export default function GiftCardOperations({
   const [formData, setFormData] = useState({
     amount: '',
     amountPaid: '', // Different from amount when bonus is applied
-    date: new Date().toISOString().split('T')[0],
+    date: localDate(),
     paymentSource: 'cash_in_hand',
     paymentSourceId: null,
     category: '',
@@ -67,7 +68,7 @@ export default function GiftCardOperations({
           setFormData(prev => ({
             ...prev,
             ...savedContext,
-            date: new Date().toISOString().split('T')[0]
+            date: localDate()
           }));
           
           if (savedContext.amount) {

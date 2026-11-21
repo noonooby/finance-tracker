@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Minus } from 'lucide-react';
 import { formatCurrency } from '../../utils/helpers';
 import ActionButton from '../shared/ActionButton';
+import { localDate } from '../../utils/helpers';
 
 /**
  * Gift Card Balance Operations Modal
@@ -22,7 +23,7 @@ export default function GiftCardBalanceModal({
   const [formData, setFormData] = useState({
     amount: '',
     amountPaid: '', // Different from amount when bonus is applied
-    date: new Date().toISOString().split('T')[0],
+    date: localDate(),
     paymentMethod: 'cash_in_hand',
     paymentMethodId: null,
     category: operation === 'add' ? 'gift_card_purchase' : '',

@@ -44,6 +44,7 @@ import {
   saveTransferContext,
   getRecentTransferDescriptions
 } from '../utils/formContexts';
+import { localDate } from '../utils/helpers';
 
 /**
  * BankAccounts Component
@@ -120,7 +121,7 @@ export default function BankAccounts({
     toAccount: '',
     amount: '',
     description: 'Account Transfer',
-    date: new Date().toISOString().split('T')[0]
+    date: localDate()
   });
   const [recentTransfers, setRecentTransfers] = useState([]);
 
@@ -788,7 +789,7 @@ export default function BankAccounts({
         toAccount: '',
         amount: '',
         description: 'Account Transfer',
-        date: new Date().toISOString().split('T')[0]
+        date: localDate()
       });
       setShowTransferForm(false);
 
@@ -1029,7 +1030,7 @@ export default function BankAccounts({
                   toAccount: '',
                   amount: '',
                   description: 'Account Transfer',
-                  date: new Date().toISOString().split('T')[0]
+                  date: localDate()
                 });
                 setShowTransferForm(false);
               }}

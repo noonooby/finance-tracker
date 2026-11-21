@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { logActivity } from './activityLogger';
+import { localDate } from './helpers';
 
 const TABLE_MAP = {
   creditCards: 'credit_cards',
@@ -583,7 +584,7 @@ export async function transferBetweenAccounts(fromAccountId, toAccountId, amount
     const updatedFromAccount = await updateBankAccountBalance(fromAccountId, newFromBalance);
     const updatedToAccount = await updateBankAccountBalance(toAccountId, newToBalance);
 
-    const effectiveDate = transferDate || new Date().toISOString().split('T')[0];
+    const effectiveDate = transferDate || localDate();
 
     const transaction = {
       type: 'transfer',
@@ -682,7 +683,7 @@ export async function withdrawCashFromBank(accountId, amount) {
     const transaction = {
       type: 'cash_withdrawal',
       amount: withdrawAmount,
-      date: new Date().toISOString().split('T')[0],
+      date: localDate(),
       description: `Withdrew cash from ${account.name}`,
       payment_method: 'cash_withdrawal',
       payment_method_id: accountId,
@@ -823,7 +824,7 @@ export async function depositCashToBank(accountId, amount) {
     const transaction = {
       type: 'cash_deposit',
       amount: depositAmount,
-      date: new Date().toISOString().split('T')[0],
+      date: localDate(),
       description: `Deposited cash to ${account.name}`,
       payment_method: 'cash_deposit',
       payment_method_id: accountId,

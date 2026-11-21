@@ -3,6 +3,7 @@ import { dbOperation, updateBankAccountBalance } from '../../../utils/db';
 import { logActivity } from '../../../utils/activityLogger';
 import { formatCurrency, predictNextDate } from '../../../utils/helpers';
 import { saveLoanPaymentContext } from '../../../utils/formContexts';
+import { localDate } from '../../../utils/helpers';
 
 /**
  * Payment Validation Hook
@@ -299,7 +300,7 @@ export const useLoanPayment = ({
         ...loan,
         balance: Math.max(0, loanBalance - paymentAmount),
         last_payment_date: paymentDate,
-        last_auto_payment_date: new Date().toISOString().split('T')[0]
+        last_auto_payment_date: localDate()
       };
 
       let shouldContinue = true;

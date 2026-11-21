@@ -2,6 +2,7 @@ import { supabase } from '../supabase';
 import { formatCurrency } from '../helpers';
 import { dbOperation, updateBankAccountBalance, getCashInHand, updateCashInHand } from '../db';
 import { logActivity } from '../activityLogger';
+import { localDate } from '../helpers';
 
 /**
  * Credit Card Payment Management
@@ -18,7 +19,7 @@ export async function processOverdueCreditCardPayments(creditCards, bankAccounts
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayString = today.toISOString().split('T')[0];
+    const todayString = localDate(today);
 
     console.log('🔄 Processing overdue credit card payments...');
 
@@ -215,7 +216,7 @@ export async function createCreditCardPayment(paymentData, card, paymentSource) 
     const currentDueDate = new Date(card.due_date);
     const nextDueDate = new Date(currentDueDate);
     nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-    const nextDueDateString = nextDueDate.toISOString().split('T')[0];
+    const nextDueDateString = localDate(nextDueDate);
 
     await dbOperation('creditCards', 'put', {
       ...card,
@@ -332,7 +333,7 @@ export async function undoCreditCardPayment(paymentId) {
       const currentDueDate = new Date(card.due_date);
       const previousDueDate = new Date(currentDueDate);
       previousDueDate.setMonth(previousDueDate.getMonth() - 1);
-      const previousDueDateString = previousDueDate.toISOString().split('T')[0];
+      const previousDueDateString = localDate(previousDueDate);
 
       await dbOperation('creditCards', 'put', {
         ...card,

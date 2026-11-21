@@ -20,6 +20,7 @@ import {
   applyGiftCardPurchaseContext
 } from '../utils/formContexts';
 import { GiftCardForm, GiftCardOperations, useGiftCardPurchase } from './credit-cards';
+import { localDate } from '../utils/helpers';
 
 export default function CreditCards({ 
   darkMode, 
@@ -47,12 +48,12 @@ export default function CreditCards({
     name: '',
     balance: '',
     creditLimit: '',
-    dueDate: new Date().toISOString().split('T')[0],
+    dueDate: localDate(),
     statementDay: '',
     interestRate: '',
     alertDays: alertSettings.defaultDays || 7,
     isGiftCard: false,
-    purchaseDate: new Date().toISOString().split('T')[0],
+    purchaseDate: localDate(),
     purchaseAmount: '',
     purchaseAmountPaid: '',
     giftCardPaymentMethod: 'cash_in_hand',
@@ -427,15 +428,7 @@ export default function CreditCards({
     setProcessingResults(null);
 
     try {
-      const results = await processOverdueCreditCards(
-        creditCards,
-        [],
-        availableCash,
-        onUpdateCash,
-        bankAccounts,
-        cashInHand,
-        onUpdateCashInHand
-      );
+      const results = await processOverdueCreditCards(creditCards, bankAccounts, cashInHand);
       await onUpdate();
       setProcessingResults(results);
 
@@ -462,12 +455,12 @@ export default function CreditCards({
       name: '', 
       balance: '', 
       creditLimit: '', 
-      dueDate: new Date().toISOString().split('T')[0], 
+      dueDate: localDate(), 
       statementDay: '', 
       interestRate: '', 
       alertDays: alertSettings.defaultDays || 7,
       isGiftCard: false,
-      purchaseDate: new Date().toISOString().split('T')[0],
+      purchaseDate: localDate(),
       purchaseAmount: '',
       purchaseAmountPaid: '',
       giftCardPaymentMethod: 'cash_in_hand',
@@ -493,7 +486,7 @@ export default function CreditCards({
       interestRate: card.interest_rate ? (parseFloat(card.interest_rate)).toFixed(2) : '',
       alertDays: card.alert_days?.toString() || (alertSettings.defaultDays || 7).toString(),
       isGiftCard: card.is_gift_card || false,
-      purchaseDate: card.purchase_date || new Date().toISOString().split('T')[0],
+      purchaseDate: card.purchase_date || localDate(),
       purchaseAmount: card.purchase_amount ? (parseFloat(card.purchase_amount)).toFixed(2) : '',
       purchaseAmountPaid: card.purchase_amount_paid ? (parseFloat(card.purchase_amount_paid)).toFixed(2) : card.purchase_amount ? (parseFloat(card.purchase_amount)).toFixed(2) : '',
       giftCardPaymentMethod: 'cash_in_hand',

@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { dbOperation, getBankAccount } from './db';
 import { logActivity } from './activityLogger';
-import { formatCurrency, predictNextDate, getDaysUntil } from './helpers';
+import { formatCurrency, predictNextDate, getDaysUntil, localDate } from './helpers';
 
 /**
  * Enhanced Auto-Payment System
@@ -59,7 +59,7 @@ const normalizeDate = (value) => {
 const todayInfo = () => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return { date: today, iso: today.toISOString().split('T')[0] };
+  return { date: today, iso: localDate(today) };
 };
 
 const hasRecurringEnded = (entity, today) => {

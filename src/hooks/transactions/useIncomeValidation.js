@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { localDate } from '../../utils/helpers';
 
 /**
  * Hook for income form validation
@@ -53,7 +54,7 @@ export const useIncomeValidation = () => {
     return {
       source: '',
       amount: '',
-      date: new Date().toISOString().split('T')[0],
+      date: localDate(),
       frequency: 'onetime',
       reservedAmount: '',
       recurringDurationType: 'indefinite',

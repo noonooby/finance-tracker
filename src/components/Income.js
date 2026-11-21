@@ -12,6 +12,7 @@ import {
   useIncomeValidation,
   useIncomePredictions
 } from '../hooks/transactions';
+import { localDate } from '../utils/helpers';
 
 export default function Income({
   darkMode,
@@ -468,7 +469,7 @@ export default function Income({
                     value={formData.recurringUntilDate}
                     onChange={(e) => setFormData({ ...formData, recurringUntilDate: e.target.value })}
                     className={`w-full px-3 py-2 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} rounded-lg`}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={localDate()}
                   />
                 </div>
               )}

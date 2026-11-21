@@ -2,6 +2,7 @@ import { supabase } from '../supabase';
 import { predictNextDate, formatCurrency } from '../helpers';
 import { dbOperation, updateBankAccountBalance, getCashInHand, updateCashInHand } from '../db';
 import { logActivity } from '../activityLogger';
+import { localDate } from '../helpers';
 
 /**
  * Income Schedule Management
@@ -270,7 +271,7 @@ export async function processDueIncomeSchedules() {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayString = today.toISOString().split('T')[0];
+    const todayString = localDate(today);
 
     console.log('🔄 Processing due income schedules...');
 

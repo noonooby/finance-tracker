@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import { Gift } from 'lucide-react';
 import { formatCurrency } from '../../utils/helpers';
+import { localDate } from '../../utils/helpers';
 
 /**
  * Gift Card Form Component
@@ -232,7 +233,7 @@ export default function GiftCardForm({
             value={formData.expiryDate}
             onChange={(e) => onFormDataChange({ ...formData, expiryDate: e.target.value })}
             className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
-            min={new Date().toISOString().split('T')[0]}
+            min={localDate()}
           />
         </div>
       )}
