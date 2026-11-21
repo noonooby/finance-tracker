@@ -10,12 +10,13 @@
 const crypto = require('node:crypto');
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-const TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif']);
+const TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif', 'application/pdf']);
 const MAX_BYTES = 8_000_000;
 
-const PROMPT = `You read one screenshot from a banking app, credit card app, or a receipt. Report only what is visible; never guess.
+const PROMPT = `You read one screenshot or statement (PDF) from a banking app, credit card app, or a receipt. Report only what is visible; never guess.
 Return JSON:
-{"kind":"transactions"|"receipt"|"balance"|"other",
+{"kind":"transactions"|"statement"|"receipt"|"balance"|"other",
+ "statement":{"account_name":"","last4":"or null","period_start":"YYYY-MM-DD","period_end":"YYYY-MM-DD","opening_balance":number,"closing_balance":number} or null (only for a statement),
  "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null}],
  "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null",
    "type":"purchase|income|refund|card_payment|transfer|fee|interest","other_account":"for card_payment or transfer: the other account's name or last 4 digits as shown, else null",
@@ -23,6 +24,7 @@ Return JSON:
  "receipt":{"merchant":"","date":"YYYY-MM-DD","total":number,"items":[{"name":"","amount":number}]} or null,
  "notes":"anything unclear, short"}
 Rules: payroll, salary or direct deposit from an employer is income with category Salary; a payment to a credit card (e.g. "PAYMENT THANK YOU", "VISA PAYMENT") is card_payment; money moved between the person's own accounts is transfer; pay and deposits are income.
+For a statement, list every transaction in the period and report the closing balance as the account's balance; for a credit card, balances are what is owed.
 Amounts are positive numbers; direction "out" is money spent or charged, "in" is money received, refunds and payments to the card.
 A year missing from a date: use YEAR_NOW unless that puts the date in the future, then the year before. Today is TODAY.`;
 
@@ -133,9 +135,24 @@ function plan(reading, ctx, sourceId) {
     // Every balance the screenshot shows is offered as a snapshot; the server works out any difference after the lines are saved.
     return { account: { type: acct._type, id: acct.id, name: acct.name }, shown, current: has, differs: shown !== has, snapshot_date: acct.snapshot_date || null };
   }).filter(Boolean);
+  // A statement is the authority for its period: its closing balance is checked against the app's history for that day,
+  // and lines the app has in the period that are not on the statement are listed to review.
+  let statement = null;
+  const st = reading.statement;
+  if (st && /^\d{4}-\d{2}-\d{2}$/.test(String(st.period_end || ''))) {
+    const acct = resolveAccount(withDrafts, { last4: st.last4, name: st.account_name }) || only;
+    const inPeriod = (d) => d && (!st.period_start || d >= st.period_start) && d <= st.period_end;
+    const onStatement = (t) => lines.some(l => l.action !== 'skip' && Math.abs(Number(t.amount) - l.amount) < 0.005 && dayDiff(t.date, l.date) <= 3);
+    const notOn = acct && !String(acct.id).startsWith('new:') ? transactions.filter(t => t.status !== 'undone' && t.status !== 'deleted' && t.type !== 'adjustment'
+      && [t.payment_method_id, t.card_id, t.to_account_id].map(String).includes(String(acct.id)) && inPeriod(t.date) && !onStatement(t))
+      .map(t => ({ id: t.id, date: t.date, description: t.description, amount: Number(t.amount), type: t.type })) : [];
+    statement = { account: acct ? { type: acct._type, id: acct.id, name: acct.name } : null, period_start: st.period_start || null, period_end: st.period_end,
+      opening_balance: Number.isFinite(Number(st.opening_balance)) ? Number(st.opening_balance) : null,
+      closing_balance: Number.isFinite(Number(st.closing_balance)) ? Math.abs(Number(st.closing_balance)) : null, not_on_statement: notOn };
+  }
   const unknown = (reading.accounts || []).filter(a => !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
-  return { source_id: sourceId, kind: reading.kind || 'other', lines, balances, new_accounts, unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
+  return { source_id: sourceId, kind: reading.kind || 'other', statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
 }
 
 // body: { image: base64 (no data: prefix) or data URL, mime }
@@ -143,8 +160,8 @@ async function read(uid, body, ctx) {
   let b64 = String(body.image || ''), mime = String(body.mime || '');
   const m = b64.match(/^data:([\w/+.-]+);base64,(.*)$/s);
   if (m) { mime = m[1]; b64 = m[2]; }
-  if (!TYPES.has(mime)) { const e = new Error('Send a PNG, JPEG, WebP or HEIC screenshot.'); e.status = 400; throw e; }
-  if (Buffer.byteLength(b64, 'base64') > MAX_BYTES) { const e = new Error('That image is too large (8 MB at most).'); e.status = 413; throw e; }
+  if (!TYPES.has(mime)) { const e = new Error('Send a screenshot or photo (PNG, JPEG, WebP, HEIC) or a statement PDF.'); e.status = 400; throw e; }
+  if (Buffer.byteLength(b64, 'base64') > MAX_BYTES) { const e = new Error('That file is too large (8 MB at most).'); e.status = 413; throw e; }
   const sourceId = crypto.createHash('sha256').update(b64).digest('hex').slice(0, 16);
   const today = ctx.today || new Date().toLocaleDateString('en-CA');
   const reading = await callGemini(mime, b64, today);

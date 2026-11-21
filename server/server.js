@@ -288,7 +288,8 @@ function reverseInner(uid, id, b = {}) {
     const t = selectRows(uid, { table: 'transactions', filters: [['id', 'eq', id]], limit: 1 })[0];
     if (!t) fail(404, 'Transaction not found');
     if (t.status === 'undone' || t.status === 'deleted') return { transaction: t, legs: [], repeated: true };
-    const legs = applyLegs(uid, (t._legs || []).map(l => ({ ...l, delta: -l.delta })));
+    // Undoing a line dated before the account's snapshot leaves today's balance as seen (the snapshot is the truth).
+    const legs = applyLegs(uid, (t._legs || []).map(l => ({ ...l, delta: -l.delta })), t);
     const n = { ...t, status: b.remove ? 'deleted' : 'undone', undone_at: now(), updated_at: now() };
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), 'transactions', String(id), uid);
     return { transaction: n, legs };
@@ -301,6 +302,20 @@ const reverse = (uid, id, b) => tx(() => reverseInner(uid, id, b));
 //  - apply: the gap is recorded as an adjustment (undoable) so the balance equals what you saw, and the day becomes the
 //    account's snapshot date: older lines added later are history only and cannot move today's balance again
 //  - without apply, or for a day older than the account's snapshot, nothing changes; the gap stays open to be explained
+// The balance an account had at the end of a day, worked back from today: today's balance minus everything dated after
+// that day, including lines kept as history (a later snapshot already counted them).
+function balanceAt(uid, table, id, day) {
+  const r = legTarget(uid, { table, id: table === 'settings' ? undefined : id, key: table === 'settings' ? 'cashInHand' : undefined }).r;
+  const field = MONEY_FIELDS[table][0];
+  let c = cents(r[field]);
+  const acctId = table === 'settings' ? r.id : String(id);
+  for (const t of selectRows(uid, { table: 'transactions', filters: [['date', 'gt', day]] })) {
+    if (t.status === 'undone' || t.status === 'deleted') continue;
+    for (const l of t._legs || []) if (l.table === table && String(l.id) === String(acctId)) c -= cents(l.delta);
+    for (const h of t.history_only || []) if (h.table === table && String(h.id) === String(acctId)) c -= cents(h.amount);
+  }
+  return c;
+}
 function snapshot(uid, b) {
   return tx(() => {
     const day = isDay(b.date) ? b.date : today();
@@ -309,7 +324,9 @@ function snapshot(uid, b) {
     const { r, field } = legTarget(uid, { table: b.table, id: b.id, key: b.key });
     const current = cents(r[field]);
     const newer = isDay(r.snapshot_date) && r.snapshot_date > day;
-    const gap = value - current;
+    // An older balance (a past statement) is compared with the app's history for that day, never applied to today.
+    const atDay = balanceAt(uid, b.table, b.table === 'settings' ? 'cash' : r.id, day);
+    const gap = value - atDay;
     let adjustment = null, status = gap ? 'open' : 'ok';
     if (!newer && b.apply && gap) {
       const legs = applyLegs(uid, [{ table: b.table, id: r.id, key: b.key, delta: fromCents(gap), as_of: day }]);
@@ -327,7 +344,7 @@ function snapshot(uid, b) {
       stamp(uid, b.table, n, field, day);
     }
     const snap = insertRow(uid, 'snapshots', { account_table: b.table, account_id: b.table === 'settings' ? 'cash' : r.id, name: r.name || 'Cash in hand', date: day,
-      value: fromCents(value), app_value: fromCents(current), gap: fromCents(gap), status: newer ? 'older' : status, source: String(b.source || '').slice(0, 60),
+      value: fromCents(value), app_value: fromCents(atDay), gap: fromCents(gap), status: newer ? (gap ? 'open_history' : 'ok_history') : status, source: String(b.source || '').slice(0, 60),
       adjustment_id: adjustment ? adjustment.id : null, created_at: now() });
     return { snapshot: snap, adjustment };
   });
@@ -341,11 +358,24 @@ route('POST', '/api/logout', (req) => { const t = (req.headers.authorization || 
 route('POST', '/api/db', (req, b) => runQuery(authUser(req).id, b));
 route('POST', '/api/money', (req, b) => money(authUser(req).id, b));
 route('POST', '/api/snapshot', (req, b) => snapshot(authUser(req).id, b));
+// Open checks with the difference as it stands now (adding the missing lines closes them).
+route('GET', '/api/checks', (req) => {
+  const uid = authUser(req).id;
+  return selectRows(uid, { table: 'snapshots', filters: [] }).filter(s => s.status === 'open' || s.status === 'open_history').map(s => {
+    let now = null;
+    try { now = fromCents(balanceAt(uid, s.account_table, s.account_id, s.date)); } catch { /* account removed */ }
+    return { ...s, app_now: now, left: now == null ? null : Math.round((Number(s.value) - now) * 100) / 100 };
+  });
+});
 // Leave an open gap as it is, or correct it now (the balance moves by today's difference).
 route('POST', '/api/snapshots/:id/resolve', (req, b, [id]) => {
   const uid = authUser(req).id;
   const s = selectRows(uid, { table: 'snapshots', filters: [['id', 'eq', id]], limit: 1 })[0];
   if (!s) fail(404, 'Not found');
+  if (s.status === 'open_history') {
+    db.prepare("UPDATE rows SET data = json_set(data, '$.status', ?) WHERE tbl = 'snapshots' AND id = ? AND user_id = ?").run(b.action === 'correct' ? 'ok_history' : 'dismissed', String(id), uid);
+    return { ok: true };
+  }
   if (s.status !== 'open') return { snapshot: s };
   if (b.action === 'correct') {
     const out = snapshot(uid, { table: s.account_table, id: s.account_id === 'cash' ? undefined : s.account_id, key: s.account_table === 'settings' ? 'cashInHand' : undefined, value: s.value, date: s.date, source: s.source || 'a snapshot', apply: true });

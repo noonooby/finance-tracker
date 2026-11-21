@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../utils/server';
-import { recordExpense, recordIncome, recordRefund, recordTransfer, recordCardPayment, recordSnapshot } from '../utils/money';
+import { recordExpense, recordIncome, recordRefund, recordTransfer, recordCardPayment, recordSnapshot, reverseTransaction } from '../utils/money';
 import { server } from '../utils/server';
 import { formatCurrency, generateId } from '../utils/helpers';
 import { Camera, Image as ImageIcon } from 'lucide-react';
@@ -16,6 +16,7 @@ const readFile = (file) => new Promise((resolve, reject) => {
 // Small text stays readable at that size. If the browser can't draw the image, the original is sent.
 async function prepare(file) {
   const original = await readFile(file);
+  if (file.type === 'application/pdf') return { url: original, type: 'application/pdf', pdf: true };
   try {
     const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = original; });
     const scale = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
@@ -74,6 +75,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const [rows, setRows] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const [fixes, setFixes] = useState([]);
+  const [removals, setRemovals] = useState({});
   const [open, setOpen] = useState(null);
   const [done, setDone] = useState(null);
   const [aiReady, setAiReady] = useState(true);
@@ -137,6 +139,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         return r;
       }));
       setFixes(p.balances.map((b) => ({ ...b, on: true })));
+      setRemovals({});
     } catch (err) {
       setError(err.message);
     } finally {
@@ -237,12 +240,25 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       ...fixes.map((f) => ({ target: `${f.account.type}:${f.account.id}`, name: f.account.name, value: f.shown, apply: f.on })),
       ...drafts.filter((d) => d.on && realRef[d.id]).map((d) => ({ target: realRef[d.id], name: d.name, value: Number(d.balance), apply: true })),
     ];
+    // A statement: its closing balance is a snapshot for the last day of the period. If it is the newest thing known about
+    // the account it sets the balance for that day; if not, it is checked against the app's history for that day.
+    const st = proposal.statement;
+    if (st && st.account && st.closing_balance != null) {
+      const target = String(st.account.id).startsWith('new:') ? realRef[st.account.id] : `${st.account.type}:${st.account.id}`;
+      if (target) snaps.push({ target, name: `${st.account.name} statement to ${st.period_end}`, value: st.closing_balance, apply: true, date: st.period_end, source: 'statement' });
+    }
+    for (const t of (st && st.not_on_statement) || []) {
+      if (!removals[t.id]) continue;
+      try { await reverseTransaction(t.id, { remove: true }); result.removed = (result.removed || 0) + 1; } catch (err) { result.failed.push(`${t.description}: ${err.message}`); }
+    }
     for (const sn of snaps) {
       try {
-        const out = await recordSnapshot({ target: sn.target, value: sn.value, date: day, source: 'screenshot', apply: sn.apply });
+        const out = await recordSnapshot({ target: sn.target, value: sn.value, date: sn.date || day, source: sn.source || 'screenshot', apply: sn.apply });
         const gap = Number(out.snapshot.gap) || 0;
         if (out.snapshot.status === 'corrected') { result.corrected += 1; result.gaps.push(`${sn.name}: the lines did not explain ${formatCurrency(Math.abs(gap))}; corrected to ${formatCurrency(sn.value)} (undo from Activity)`); }
         else if (out.snapshot.status === 'open') result.gaps.push(`${sn.name}: off by ${formatCurrency(Math.abs(gap))}; left open on Where you stand`);
+        else if (out.snapshot.status === 'open_history') result.gaps.push(`${sn.name}: the app's history gives ${formatCurrency(out.snapshot.app_value)} for that day, ${formatCurrency(Math.abs(gap))} off. Today's balance is unchanged; see Checks on Where you stand.`);
+        else if (out.snapshot.status === 'ok_history') result.gaps.push(`${sn.name}: matches the app's history`);
       } catch (err) {
         result.failed.push(`${sn.name}: ${err.message}`);
       }
@@ -283,7 +299,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       <div>
         <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Scan</h1>
         <p className={`text-sm ${muted}`}>
-          Take a photo of a receipt, or choose a screenshot of your bank or card app. The app fills in everything it can: new accounts, the account for each line,
+          Take a photo of a receipt, or choose a screenshot of your bank or card app, or a statement PDF. The app fills in everything it can: new accounts, the account for each line,
           the kind of line and a category. Check it, change anything with Edit, then tap Confirm. Nothing is saved before that.
         </p>
       </div>
@@ -302,16 +318,16 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           </label>
           <label className="press cursor-pointer flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 py-5 font-medium">
             <ImageIcon size={26} aria-hidden="true" />
-            Choose a screenshot
-            <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" onChange={pick} className="sr-only" />
+            Screenshot or statement
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf" onChange={pick} className="sr-only" />
           </label>
         </div>
         {image && (
           <div className="flex flex-col sm:flex-row gap-3 items-start">
-            <img src={image.url} alt="The screenshot to read" className="max-h-64 rounded border border-gray-300" />
+            {image.pdf ? <div className="text-sm font-medium">{image.name}</div> : <img src={image.url} alt="The screenshot to read" className="max-h-64 rounded border border-gray-300" />}
             <button type="button" onClick={read} disabled={reading}
               className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50">
-              {reading ? 'Reading...' : 'Read screenshot'}
+              {reading ? 'Reading...' : image.pdf ? 'Read statement' : 'Read screenshot'}
             </button>
           </div>
         )}
@@ -322,6 +338,26 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         <div className={`border rounded-lg p-4 space-y-4 ${card}`}>
           <h2 className="font-semibold">Check before saving</h2>
           {proposal.notes && <p className={`text-sm ${muted}`}>{proposal.notes}</p>}
+          {proposal.statement && (
+            <section className="space-y-1 text-sm">
+              <h3 className="font-semibold">Statement</h3>
+              <div>{proposal.statement.account ? proposal.statement.account.name : 'Account not found'}{proposal.statement.period_start ? `, ${proposal.statement.period_start} to ${proposal.statement.period_end}` : `, to ${proposal.statement.period_end}`}
+                {proposal.statement.closing_balance != null && `, closing balance ${formatCurrency(proposal.statement.closing_balance)}`}</div>
+              <p className={`text-xs ${muted}`}>Lines before your latest balance are added as history and don't change today's balance. The closing balance is checked against the app after saving.</p>
+              {proposal.statement.not_on_statement.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <div className="font-medium text-amber-600">In the app for this period but not on the statement</div>
+                  {proposal.statement.not_on_statement.map((t) => (
+                    <label key={t.id} className="flex items-center gap-2 text-xs">
+                      <input type="checkbox" checked={!!removals[t.id]} onChange={(e) => setRemovals((m) => ({ ...m, [t.id]: e.target.checked }))} />
+                      Remove {t.description} {formatCurrency(t.amount)} on {t.date}
+                    </label>
+                  ))}
+                  <p className={`text-xs ${muted}`}>Leave unticked if it belongs elsewhere (another card, cash). Removed lines can be found in Activity.</p>
+                </div>
+              )}
+            </section>
+          )}
 
           {drafts.length > 0 && (
             <section className="space-y-2">
@@ -454,6 +490,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           {done.created.length > 0 && <div>Accounts added: {done.created.join(', ')}.</div>}
           Saved {done.recorded}. Pending lines marked as posted: {done.posted}.
           {done.repeated > 0 && ` Already saved from an earlier screenshot, skipped: ${done.repeated}.`}
+          {done.removed > 0 && ` Removed as not on the statement: ${done.removed}.`}
           {done.gaps.length > 0 && <ul className="mt-1 list-disc pl-5">{done.gaps.map((g) => <li key={g}>{g}</li>)}</ul>}
           {done.failed.length > 0 && (
             <ul className="mt-2 text-red-600 list-disc pl-5">{done.failed.map((f) => <li key={f}>{f}</li>)}</ul>

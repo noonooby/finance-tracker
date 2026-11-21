@@ -224,7 +224,7 @@ test('screenshot without a Gemini key says so plainly', async () => {
   const saved = process.env.READER_STUB; delete process.env.READER_STUB;
   await assert.rejects(api('/api/read-screenshot', { image: 'aGVsbG8=', mime: 'image/png' }), /not set up/);
   process.env.READER_STUB = saved;
-  await assert.rejects(api('/api/read-screenshot', { image: 'aGVsbG8=', mime: 'application/pdf' }), /PNG, JPEG/);
+  await assert.rejects(api('/api/read-screenshot', { image: 'aGVsbG8=', mime: 'application/zip' }), /statement PDF/);
 });
 
 
@@ -398,9 +398,22 @@ test('snapshots: the balance you saw is fixed; older lines are history; gaps are
   const r = await M.resolveSnapshot(s2.snapshot.id, 'correct');
   assert.equal(r.snapshot.status, 'ok');
   assert.equal((await get('bank_accounts', acct.id)).balance, 870);
-  // A balance from an older statement never changes today's figure.
+  // A line recorded before the snapshot existed, then removed after it: today's balance stays as seen.
+  const acct2 = await add('bank_accounts', { name: 'Snap two', balance: 500 });
+  const early = await M.recordExpense({ amount: 30, source: `bank_account:${acct2.id}`, date: ago(3), description: 'Wrong line' }, await accounts());
+  assert.equal((await get('bank_accounts', acct2.id)).balance, 470);
+  await M.recordSnapshot({ target: `bank_account:${acct2.id}`, value: 470, date: T, source: 'bank app' });
+  await M.reverseTransaction(early.transaction.id, { remove: true });
+  assert.equal((await get('bank_accounts', acct2.id)).balance, 470);
+  // A balance from an older statement never changes today's figure; it is checked against the app's history for that day.
+  // Worked back from 870: minus today's lines (-20, -10 by hand; the in-snapshot coffee -7 as history), minus the corrections
+  // (-100 on day T, then +0), plus the old purchase undone (nothing) -> 1000 + 7 = 1007 on that day.
   const s3 = await M.recordSnapshot({ target: src, value: 1234, date: ago(40), source: 'statement' });
-  assert.equal(s3.snapshot.status, 'older');
+  assert.equal(s3.snapshot.status, 'open_history');
+  assert.equal(s3.snapshot.app_value, 1007);
+  assert.equal(s3.snapshot.gap, 227);
+  const s4 = await M.recordSnapshot({ target: src, value: 1007, date: ago(40), source: 'statement' });
+  assert.equal(s4.snapshot.status, 'ok_history');
   assert.equal((await get('bank_accounts', acct.id)).balance, 870);
   // Snapshots are kept by the server only.
   const w = await db.from('snapshots').insert({ account_id: acct.id, value: 1 });
@@ -446,4 +459,27 @@ test('debts: card plans are inside the card, cost of debt, what is coming up', (
   // Month end does not pay the plan twice.
   const m = F.monthEnd({ liquid: 1000, loans, creditCards: [] }, today);
   assert.equal(m.going, 75);
+});
+
+test('statement: its lines, its closing balance, and app lines it does not show', () => {
+  const { plan } = require(path.join(root, 'server', 'reader.js'));
+  const ctx = {
+    bankAccounts: [], creditCards: [{ id: 'v1', name: 'Visa', last4: '4321', balance: 900, snapshot_date: '2026-11-20' }],
+    transactions: [
+      { id: 'a', type: 'expense', amount: 42, date: '2026-10-05', status: 'active', payment_method_id: 'v1', card_id: 'v1', description: 'Shell' },
+      { id: 'b', type: 'expense', amount: 19.99, date: '2026-10-12', status: 'active', payment_method_id: 'v1', card_id: 'v1', description: 'Netflix twice?' },
+      { id: 'c', type: 'expense', amount: 10, date: '2026-11-02', status: 'active', payment_method_id: 'v1', card_id: 'v1', description: 'After the period' },
+    ],
+  };
+  const p = plan({ kind: 'statement', statement: { account_name: 'Visa', last4: '4321', period_start: '2026-10-01', period_end: '2026-10-31', opening_balance: 300, closing_balance: 361.99 },
+    accounts: [{ name: 'Visa', last4: '4321', type: 'credit_card', balance: 361.99 }],
+    lines: [
+      { date: '2026-10-05', merchant: 'SHELL', amount: 42, direction: 'out', type: 'purchase' },
+      { date: '2026-10-20', merchant: 'LOBLAWS', amount: 20, direction: 'out', type: 'purchase' },
+    ] }, ctx, 's9');
+  assert.equal(p.statement.account.id, 'v1');
+  assert.equal(p.statement.closing_balance, 361.99);
+  assert.deepEqual(p.statement.not_on_statement.map((t) => t.id), ['b']);
+  // The statement's balance is not offered as today's balance.
+  assert.equal(p.balances.length, 0);
 });
