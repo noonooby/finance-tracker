@@ -345,8 +345,15 @@ export default function AddTransaction({
     };
 
     // Process transaction through unified hook
-    const result = await processTransaction(transactionData);
-    
+    let result;
+    try {
+      result = await processTransaction(transactionData);
+    } catch (err) {
+      result = { success: false, error: err?.message };
+    }
+    // Whatever happened, the form can be used again (a refused save is corrected and saved a second time).
+    setSaving(false);
+
     if (result?.success) {
       // Show success message based on transaction type
       if (formData.type === 'expense') {
