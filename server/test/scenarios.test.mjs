@@ -1122,3 +1122,57 @@ test('figures on accounts, cards and loans must be numbers', async () => {
   assert.match((await db.from('bank_accounts').update({ balance: 'NaN' }).eq('id', ok.id)).error.message, /balance as a number/);
   assert.equal((await get('bank_accounts', ok.id)).balance, 12.35);
 });
+
+test('repeating dates always move forward and land the right number of times a year, from any starting day', () => {
+  const perYear = { weekly: [52, 53], biweekly: [26, 27], semimonthly: [24, 24], monthly: [12, 12], bimonthly: [6, 6], quarterly: [4, 4], yearly: [1, 1] };
+  for (const [freq, [lo, hi]] of Object.entries(perYear)) {
+    for (let i = 0; i < 366; i++) {
+      const start = new Date(2027, 0, 1 + i);
+      const first = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+      const anchor = start.getDate();
+      const end = `${start.getFullYear() + 1}-${first.slice(5)}`;
+      let d = first, n = 0;
+      while (d < end && n < 400) {
+        const next = S.nextDue(d, freq, anchor);
+        assert.ok(next > d, `${freq} from ${d} went to ${next}`);
+        assert.match(next, /^\d{4}-\d{2}-\d{2}$/);
+        d = next; n++;
+      }
+      // Feb 29 has no same day a year later; allow one either way there.
+      const slack = first.slice(5) === '02-29' ? 1 : 0;
+      assert.ok(n >= lo - slack && n <= hi + slack, `${freq} from ${first}: ${n} times in a year`);
+    }
+  }
+});
+
+test('undoing everything, in any order, puts every balance back to the cent', async () => {
+  let seed = 20261123;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const pick = (xs) => xs[Math.floor(rnd() * xs.length)];
+  const amt = () => Math.round((1 + rnd() * 90) * 100) / 100;
+  const a = await add('bank_accounts', { name: 'Sweep A', balance: 5000 });
+  const b = await add('bank_accounts', { name: 'Sweep B', balance: 5000, allows_overdraft: true, overdraft_limit: 500 });
+  const card = await add('credit_cards', { name: 'Sweep card', balance: 2000, credit_limit: 9000 });
+  const loan = await add('loans', { name: 'Sweep loan', balance: 4000, payment_amount: 100, interest_rate: 7.25, frequency: 'monthly' });
+  const state = async () => Promise.all([['bank_accounts', a.id], ['bank_accounts', b.id], ['credit_cards', card.id], ['loans', loan.id]].map(async ([t, id]) => Math.round(Number((await get(t, id)).balance) * 100)));
+  const before = await state();
+  const banks = [`bank_account:${a.id}`, `bank_account:${b.id}`];
+  const ids = [];
+  for (let i = 0; i < 40; i++) {
+    const acc = await accounts();
+    const kind = pick(['expense', 'card expense', 'income', 'transfer', 'card payment', 'loan payment', 'refund']);
+    const date = '2026-11-23', description = `Sweep ${i}`;
+    let r;
+    if (kind === 'expense') r = await M.recordExpense({ amount: amt(), source: pick(banks), date, description }, acc);
+    else if (kind === 'card expense') r = await M.recordExpense({ amount: amt(), source: `credit_card:${card.id}`, date, description }, acc);
+    else if (kind === 'income') r = await M.recordIncome({ amount: amt(), target: pick(banks), date, description }, acc);
+    else if (kind === 'transfer') r = await M.recordTransfer({ amount: amt(), from: banks[0], to: banks[1], date, description }, acc);
+    else if (kind === 'card payment') r = await M.recordCardPayment({ cardId: card.id, amount: amt(), source: pick(banks), date }, acc);
+    else if (kind === 'loan payment') r = await M.recordLoanPayment({ loanId: loan.id, amount: amt(), source: pick(banks), date }, acc);
+    else r = await M.recordRefund({ amount: amt(), target: `credit_card:${card.id}`, date, description }, acc);
+    ids.push(r.transaction.id);
+  }
+  assert.notDeepEqual(await state(), before);
+  while (ids.length) await M.reverseTransaction(ids.splice(Math.floor(rnd() * ids.length), 1)[0]);
+  assert.deepEqual(await state(), before);
+});
