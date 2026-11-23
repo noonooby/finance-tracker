@@ -213,16 +213,21 @@ export function upcoming({ creditCards = [], loans = [], bankAccounts = [], bill
     }
   }
   for (const l of loans) {
-    const bal = Number(l.balance) || 0;
-    const d = l.next_payment_date && String(l.next_payment_date).slice(0, 10);
-    if (bal <= 0 || !(inWindow(d) || late(d))) continue;
-    const amount = Math.min(bal, Number(l.payment_amount) || bal);
-    if (l.on_card_id) {
-      const card = creditCards.find((c) => String(c.id) === String(l.on_card_id));
-      out.push({ date: d, name: l.name, amount: round2(amount), kind: 'plan', auto: true, from: card ? card.name : 'the card', note: 'installment billed on the card' });
-    } else {
-      out.push({ date: d, name: l.name, amount: round2(amount), kind: 'loan', auto: !!l.connected_payment_source,
-        from: l.connected_payment_source ? nameOf(l.connected_payment_source, l.connected_payment_source_id) : null, note: late(d) ? 'past due' : null });
+    let left = Number(l.balance) || 0;
+    const first = l.next_payment_date && String(l.next_payment_date).slice(0, 10);
+    if (left <= 0 || !(inWindow(first) || late(first))) continue;
+    const card = l.on_card_id && creditCards.find((c) => String(c.id) === String(l.on_card_id));
+    // Every payment that falls in the window (a weekly loan has four or five), never more than is still owed.
+    for (const d of dueDatesBetween(first, l.frequency || 'monthly', dayOfMonth(l.start_date) || dayOfMonth(first), late(first) ? first : t, end)) {
+      if (left <= 0) break;
+      const amount = Math.min(left, Number(l.payment_amount) || left);
+      left = round2(left - amount);
+      if (l.on_card_id) {
+        out.push({ date: d, name: l.name, amount: round2(amount), kind: 'plan', auto: true, from: card ? card.name : 'the card', note: 'installment billed on the card' });
+      } else {
+        out.push({ date: d, name: l.name, amount: round2(amount), kind: 'loan', auto: !!l.connected_payment_source,
+          from: l.connected_payment_source ? nameOf(l.connected_payment_source, l.connected_payment_source_id) : null, note: late(d) ? 'past due' : null });
+      }
     }
   }
   for (const { bill: b, date, paid } of billDates(bills, transactions, today, end)) {

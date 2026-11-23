@@ -989,3 +989,17 @@ test('the server holds every balance to its own limit, whatever limit the browse
   await M.reverseTransaction(dep.transaction.id);
   assert.equal(Number((await get('bank_accounts', plain.id)).balance), -450);
 });
+
+test('next 30 days lists every loan payment in the window, down to what is still owed', () => {
+  const up = F.upcoming({ loans: [
+    { id: 'w', name: 'Weekly', balance: 250, payment_amount: 100, frequency: 'weekly', next_payment_date: '2026-11-25' },
+    { id: 'm', name: 'Monthly', balance: 5000, payment_amount: 300, frequency: 'monthly', next_payment_date: '2026-12-01' },
+    { id: 'l', name: 'Late', balance: 900, payment_amount: 50, frequency: 'biweekly', next_payment_date: '2026-11-10' },
+    { id: 'z', name: 'Paid off', balance: 0, payment_amount: 50, frequency: 'weekly', next_payment_date: '2026-11-25' },
+  ] }, new Date(2026, 10, 23), 30);
+  const of = (n) => up.filter((x) => x.name === n).map((x) => [x.date, x.amount, x.note]);
+  assert.deepEqual(of('Weekly'), [['2026-11-25', 100, null], ['2026-12-02', 100, null], ['2026-12-09', 50, null]]);
+  assert.deepEqual(of('Monthly'), [['2026-12-01', 300, null]]);
+  assert.deepEqual(of('Late'), [['2026-11-10', 50, 'past due'], ['2026-11-24', 50, null], ['2026-12-08', 50, null], ['2026-12-22', 50, null]]);
+  assert.deepEqual(of('Paid off'), []);
+});

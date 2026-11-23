@@ -653,10 +653,10 @@ export default function Loans({
                           : 'text-muted'
                       }`}>
                         {getDaysUntil(loan.next_payment_date) < 0
-                          ? `${Math.abs(getDaysUntil(loan.next_payment_date))} days overdue!`
+                          ? `${Math.abs(getDaysUntil(loan.next_payment_date))} ${Math.abs(getDaysUntil(loan.next_payment_date)) === 1 ? 'day' : 'days'} overdue`
                           : getDaysUntil(loan.next_payment_date) === 0 
                           ? 'Due today' 
-                          : `${getDaysUntil(loan.next_payment_date)} days`
+                          : `${getDaysUntil(loan.next_payment_date)} ${getDaysUntil(loan.next_payment_date) === 1 ? 'day' : 'days'}`
                         }
                       </div>
                     )}

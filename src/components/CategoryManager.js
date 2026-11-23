@@ -380,7 +380,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
             'text-muted'
           }`}>
             <p>No {activeTab} categories yet.</p>
-            <p className="text-sm mt-2">Add your first category above!</p>
+            <p className="text-sm mt-2">Add your first category above.</p>
           </div>
         ) : (
           filteredCategories.map((category) => {

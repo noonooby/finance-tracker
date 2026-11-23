@@ -262,6 +262,8 @@ export default function Income({
               if (showAddForm) {
                 resetForm();
               } else {
+                // Start from the accounts as they are now (they may have loaded after this screen opened).
+                setFormData(getDefaultFormData(bankAccounts));
                 setShowAddForm(true);
               }
             }}

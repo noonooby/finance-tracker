@@ -322,9 +322,9 @@ export default function BackupManager() {
             <div className="text-xs text-purple-900 dark:text-purple-100 space-y-1">
               <div className="font-semibold">How it works:</div>
               <div>1. Download blank template Excel file</div>
-              <div>2. Fill in: Date, Amount, Description (Type & Category auto-detected)</div>
+              <div>2. Fill in Date, Amount, Type (income or expense) and Description</div>
               <div>3. Upload the file to add all transactions at once</div>
-              <div className="mt-2 text-purple-700 dark:text-purple-300">Smart auto-detection learns from your descriptions!</div>
+              <div className="mt-2 text-purple-700 dark:text-purple-300">Leave Category empty to have it filled in from purchases you recorded before.</div>
             </div>
           </div>
         </div>
