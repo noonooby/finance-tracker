@@ -9,7 +9,14 @@ export async function getTransferContext(description) {
 }
 
 export async function saveTransferContext(description, contextData) {
-  return await manager.saveContext(description, contextData);
+  // Saved under the stored names (as the other remembered entries are), so the form can fill them in next time.
+  const d = contextData || {};
+  return await manager.saveContext(description, {
+    from_account_id: d.fromAccountId || d.from_account_id || null,
+    to_account_id: d.toAccountId || d.to_account_id || null,
+    from_account_name: d.fromAccountName || d.from_account_name || null,
+    to_account_name: d.toAccountName || d.to_account_name || null,
+  });
 }
 
 export async function getRecentTransferDescriptions(limit = 5) {
