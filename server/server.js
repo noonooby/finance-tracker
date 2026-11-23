@@ -181,6 +181,14 @@ function checkWhen(v) {
   if (v.date == null || v.date === '') return;
   if (!isDay(String(v.date).slice(0, 10))) fail(400, 'That date does not exist. Choose the day it happened.');
 }
+// Percentages a person types (a card's rewards, a payment service's fee): a number from 0 to 10.
+function checkPercents(v) {
+  for (const f of ['reward_percent', 'reward_bills_percent', 'fee_percent']) {
+    if (!(f in v) || v[f] == null || v[f] === '') continue;
+    const n = Number(v[f]);
+    if (!Number.isFinite(n) || n < 0 || n > 10) fail(400, 'Enter a percentage from 0 to 10.');
+  }
+}
 // A savings goal: a name, an amount above zero, a real date when one is given.
 function checkGoal(g) {
   if (!String(g.name || '').trim()) fail(400, 'Give the goal a name.');
@@ -255,6 +263,7 @@ function insertRow(uid, tbl, values, upsertOn) {
   if (tbl === 'income_schedules') checkSchedule(v);
   if (tbl === 'goals') checkGoal(v);
   if (tbl === 'credit_scores') checkScore(v);
+  checkPercents(v);
   checkFigures(tbl, v);
   if (tbl === 'bills') {
     checkBill(uid, v);
@@ -327,6 +336,7 @@ function updateRows(uid, tbl, filters, values, orGroups) {
     if (tbl === 'bills') checkBill(uid, n);
     if (tbl === 'income_schedules') checkSchedule(n);
     if (tbl === 'goals') checkGoal(n);
+    checkPercents(v);
     if (tbl === 'credit_scores') checkScore(n);
     // Checked when the name or kind really changes, so two that shared a name before this rule can still be edited.
     const nm = (x) => String(x || '').trim().toLowerCase();

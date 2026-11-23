@@ -211,6 +211,12 @@ export default function CreditCardForm({
             <label className={smallLabel}>Annual fee
               <input type="number" step="0.01" inputMode="decimal" placeholder="0.00" value={formData.annualFee} onChange={(e) => setFormData({ ...formData, annualFee: e.target.value })} className={inputClass} />
             </label>
+            <label className={smallLabel}>Rewards %
+              <input type="number" step="0.01" min="0" max="10" inputMode="decimal" placeholder="For example 2" value={formData.rewardPercent || ''} onChange={(e) => setFormData({ ...formData, rewardPercent: e.target.value })} className={inputClass} />
+            </label>
+            <label className={smallLabel}>Rewards on bill payments %
+              <input type="number" step="0.01" min="0" max="10" inputMode="decimal" placeholder="If different" value={formData.rewardBillsPercent || ''} onChange={(e) => setFormData({ ...formData, rewardBillsPercent: e.target.value })} className={inputClass} />
+            </label>
             <label className={smallLabel}>Cash advance rate %
               <input type="number" step="0.01" inputMode="decimal" placeholder="Optional" value={formData.cashRate} onChange={(e) => setFormData({ ...formData, cashRate: e.target.value })} className={inputClass} />
             </label>

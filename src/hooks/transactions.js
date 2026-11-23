@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { recordExpense, recordCardPayment, recordLoanPayment, paymentSourceOf, cardDueAfterPayment } from '../utils/money';
 import { logActivity } from '../utils/activityLogger';
+import { showToast } from '../utils/toast';
 import { formatCurrency } from '../utils/helpers';
 import {
   addRecentTransaction,
@@ -244,6 +245,19 @@ async function processLoanPayment(formData, { loans, bankAccounts, creditCards }
     }
   }, { bankAccounts, creditCards, loans });
   const transactionId = res.transaction?.id;
+  // Paid by card through a service that charges a fee (Chexy and the like): the fee is recorded as its own purchase
+  // on the same card, so it counts as spending and can be undone on its own.
+  const feePct = Number(loan.fee_percent) || 0;
+  if (feePct > 0 && sourceType === 'credit_card') {
+    const fee = Math.round(amount * feePct) / 100;
+    const service = (loan.paid_through || '').trim() || 'Service';
+    try {
+      if (fee > 0) await recordExpense({ amount: fee, source, date: formData.date, description: `${service} fee for ${loan.name}`, category_id: null, category_name: 'Fees',
+        extra: { through_fee_for: transactionId || loan.id } }, { bankAccounts, creditCards });
+    } catch (e) {
+      showToast.error(`The payment is saved, but the ${service} fee of ${formatCurrency(fee)} was not: ${e.message} Add it as a purchase.`);
+    }
+  }
 
   await logActivity(
     'payment',

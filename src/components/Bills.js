@@ -6,6 +6,7 @@ import { showToast } from '../utils/toast';
 import { findRecurring, rollForward, billPaid } from '../utils/spending';
 import { mkey } from '../utils/categoryRules';
 import { priceChanges, yearlyCost } from '../utils/plans';
+import ThroughNote from './shared/ThroughNote';
 import { formatCurrency, parseDay } from '../utils/helpers';
 import { Card, Section, Button, Field, Badge, EmptyState } from './shared/ui';
 
@@ -18,7 +19,7 @@ const day = (d) => { const x = parseDay(d); return x ? x.toLocaleDateString(unde
 const today = () => new Date().toLocaleDateString('en-CA');
 
 function BillForm({ bill, onSave, onCancel, saving }) {
-  const [v, setV] = useState({ name: bill.name || '', amount: bill.amount ?? '', frequency: bill.frequency || 'monthly', next_date: bill.next_date || today(), remind: bill.remind !== false });
+  const [v, setV] = useState({ name: bill.name || '', amount: bill.amount ?? '', frequency: bill.frequency || 'monthly', next_date: bill.next_date || today(), remind: bill.remind !== false, paid_through: bill.paid_through || '', fee_percent: bill.fee_percent ? String(bill.fee_percent) : '' });
   const set = (k) => (e) => setV({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   return (
     <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onSave(v); }}>
@@ -29,6 +30,8 @@ function BillForm({ bill, onSave, onCancel, saving }) {
           {Object.entries(FREQ).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </Field>
         <Field label="Next due" type="date" value={v.next_date} onChange={set('next_date')} required />
+        <Field label="Paid through (optional)" value={v.paid_through} onChange={set('paid_through')} maxLength={40} placeholder="For example Chexy" />
+        <Field label="Its fee %" type="number" inputMode="decimal" step="0.01" min="0" max="10" value={v.fee_percent} onChange={set('fee_percent')} />
       </div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={v.remind} onChange={set('remind')} /> Remind me (when reminders are on in Settings)</label>
       <div className="flex gap-2">
@@ -40,7 +43,7 @@ function BillForm({ bill, onSave, onCancel, saving }) {
 }
 
 export default function Bills() {
-  const { bills = [], setBills, transactions } = useFinanceData();
+  const { bills = [], setBills, transactions, creditCards = [] } = useFinanceData();
   const [editing, setEditing] = useState(null); // bill id, or 'new'
   const [saving, setSaving] = useState(false);
   const now = useMemo(() => new Date(), []);
@@ -69,7 +72,8 @@ export default function Bills() {
     if (error) return showToast.error(error.message);
     setBills(bills.filter((x) => x.id !== b.id));
   };
-  const clean = (v) => ({ name: String(v.name).trim().slice(0, 60), amount: Math.round(Number(v.amount) * 100) / 100, frequency: v.frequency, next_date: v.next_date, remind: !!v.remind });
+  const clean = (v) => ({ name: String(v.name).trim().slice(0, 60), amount: Math.round(Number(v.amount) * 100) / 100, frequency: v.frequency, next_date: v.next_date, remind: !!v.remind,
+    paid_through: String(v.paid_through || '').trim().slice(0, 40) || null, fee_percent: Number(v.fee_percent) || 0 });
   // The same check for a new bill and an edited one. A bill you added yourself is matched by its name, so its key follows the name;
   // one found in your history keeps the merchant it was found by.
   const checked = (v, bill) => {
@@ -154,6 +158,7 @@ export default function Bills() {
                 <span className="flex-1 min-w-0">
                   <span className="block font-medium truncate">{b.name}</span>
                   <span className="block text-xs text-muted truncate">{FREQ[b.frequency]} · next {day(b.due)}{b.payment_method_name ? ` · ${b.payment_method_name}` : ''}</span>
+                  <ThroughNote item={b} amount={b.amount} cards={creditCards} />
                 </span>
                 {paid && <Badge tone="positive">Recorded</Badge>}
                 {b.remind === false ? <BellOff size={14} className="text-muted" aria-label="No reminder" /> : <Bell size={14} className="text-muted" aria-label="Reminder on" />}

@@ -1375,3 +1375,31 @@ test('changing a purchase: the old line is taken back and the new one recorded i
   await api(`/api/transactions/${second.transaction.id}/reverse`, {});
   await db.from('bank_accounts').delete().eq('id', chq.id); await db.from('credit_cards').delete().eq('id', visa.id);
 });
+
+test('paying through a service with a fee: the fee, what each card gives back, and which comes out ahead', async () => {
+  const cards = [{ id: 'a', name: 'Plain 1%', reward_percent: 1 }, { id: 'b', name: 'Cash Back', reward_percent: 2 },
+    { id: 'c', name: 'Bills 4%', reward_percent: 1, reward_bills_percent: 4 }, { id: 'd', name: 'No rewards' }, { id: 'g', name: 'Gift', is_gift_card: true, reward_percent: 9 }];
+  const c = P.throughCost(600, 1.75, cards);
+  assert.deepEqual([c.fee, c.charged], [10.5, 610.5]);
+  assert.deepEqual(c.options.map((o) => [o.name, o.reward, o.net]), [['Bills 4%', 24.42, 13.92], ['Cash Back', 12.21, 1.71], ['Plain 1%', 6.11, -4.39], ['No rewards', 0, -10.5]]);
+  assert.equal(c.best.name, 'Bills 4%');
+  assert.equal(P.throughCost(600, 1.75, [cards[3]]).best, null);
+  // About what a card gave back in a month.
+  const tx = [
+    { type: 'expense', amount: 100, date: '2026-11-03', payment_method: 'credit_card', payment_method_id: 'c' },
+    { type: 'refund', amount: 20, date: '2026-11-04', payment_method: 'credit_card', payment_method_id: 'c' },
+    { type: 'loan_payment', loan_id: 'l', amount: 600, date: '2026-11-05', payment_method: 'credit_card', payment_method_id: 'c' },
+    { type: 'expense', amount: 10.5, date: '2026-11-05', payment_method: 'credit_card', payment_method_id: 'c', through_fee_for: 'x' },
+    { type: 'expense', amount: 999, date: '2026-11-06', payment_method: 'credit_card', payment_method_id: 'c', status: 'undone' },
+    { type: 'expense', amount: 50, date: '2026-10-06', payment_method: 'credit_card', payment_method_id: 'c' },
+    { type: 'expense', amount: 50, date: '2026-11-06', payment_method: 'credit_card', payment_method_id: 'b' },
+  ];
+  assert.equal(P.rewardsEarned(cards[2], tx, '2026-11'), 25.22); // 1.00 - 0.20 + 24.00 + 0.42
+  // The server keeps percentages sensible.
+  const bad = async (t, v) => { const { error } = await db.from(t).insert(v).select().single(); return error && error.message; };
+  assert.match(await bad('credit_cards', { name: 'Too generous', balance: 0, reward_percent: 40 }), /0 to 10/);
+  assert.match(await bad('loans', { name: 'Odd fee', balance: 10, fee_percent: -1 }), /0 to 10/);
+  const card = await add('credit_cards', { name: 'Rewards card', balance: 0, reward_percent: 2, reward_bills_percent: 4 });
+  assert.match((await db.from('credit_cards').update({ reward_bills_percent: 'lots' }).eq('id', card.id)).error.message, /0 to 10/);
+  await db.from('credit_cards').delete().eq('id', card.id);
+});

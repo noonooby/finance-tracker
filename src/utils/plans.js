@@ -128,3 +128,35 @@ export function chargesToCheck(transactions, today = new Date(), seen = []) {
   }
   return out.filter((x) => !done.has(x.id)).sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
 }
+
+// ---------- Card rewards, and payments made through a service that charges a fee ----------
+// What a card gives back, in percent: its everyday rate, or its rate on bill payments when it has one.
+export const rewardRate = (card, forBills = false) => {
+  const bills = card && card.reward_bills_percent;
+  return Number(forBills && bills != null && bills !== '' ? bills : card && card.reward_percent) || 0;
+};
+// A bill or loan payment made through a service such as Chexy: the fee, what the card is charged, and for each card
+// what it gives back on that charge and whether you come out ahead (net above zero) or behind.
+// -> { fee, charged, options: [{ id, name, rate, reward, net }] best first, best }
+export function throughCost(amount, feePercent, cards = []) {
+  const a = round2(amount), fee = round2(a * (Number(feePercent) || 0) / 100), charged = round2(a + fee);
+  const options = (cards || []).filter((c) => !c.is_gift_card).map((c) => {
+    const rate = rewardRate(c, true), reward = round2(charged * rate / 100);
+    return { id: c.id, name: c.name, rate, reward, net: round2(reward - fee) };
+  }).sort((x, y) => y.net - x.net || String(x.name).localeCompare(String(y.name)));
+  return { fee, charged, options, best: options.length && options[0].rate > 0 ? options[0] : null };
+}
+// About what a card gave back in a month (YYYY-MM): purchases on it less refunds at its everyday rate,
+// and loan payments charged to it at its bill-payment rate. An estimate: the card issuer's own count is the real one.
+export function rewardsEarned(card, transactions, month) {
+  let cents = 0;
+  for (const t of transactions || []) {
+    if (!live(t) || String(t.date || '').slice(0, 7) !== month) continue;
+    if (t.payment_method !== 'credit_card' || String(t.payment_method_id) !== String(card.id)) continue;
+    const a = Number(t.amount) || 0;
+    if (t.type === 'expense') cents += a * rewardRate(card, !!t.through_fee_for);
+    else if (t.type === 'refund') cents -= a * rewardRate(card);
+    else if (t.loan_id && (t.type === 'loan_payment' || t.type === 'payment')) cents += a * rewardRate(card, true);
+  }
+  return round2(cents / 100);
+}

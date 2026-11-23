@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import ThroughNote from './shared/ThroughNote';
 import { Plus, Edit2, X, TrendingUp, ListFilter, Star } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId } from '../utils/helpers';
 import { formatFrequency } from '../utils/sentenceCase';
@@ -240,6 +241,8 @@ export default function Loans({
         principal: parseFloat(formData.principal) || 0,
         balance: parseFloat(formData.balance) || 0,
         interest_rate: parseFloat(formData.interestRate) || 0,
+        paid_through: (formData.paidThrough || '').trim() || null,
+        fee_percent: parseFloat(formData.feePercent) || 0,
         loan_type: formData.loanType || 'loan',
         compounding: formData.compounding || null,
         provider: formData.provider || null,
@@ -389,6 +392,8 @@ export default function Loans({
       principal: (parseFloat(loan.principal) || 0).toFixed(2),
       balance: (parseFloat(loan.balance) || 0).toFixed(2),
       interestRate: loan.interest_rate ? (parseFloat(loan.interest_rate)).toFixed(2) : '',
+      paidThrough: loan.paid_through || '',
+      feePercent: loan.fee_percent ? String(loan.fee_percent) : '',
       loanType: loan.loan_type || 'loan',
       compounding: loan.compounding || '',
       provider: loan.provider || '',
@@ -586,6 +591,7 @@ export default function Loans({
                       Payment: {formatCurrency(loan.payment_amount)}
                     </div>
                   )}
+                  <ThroughNote item={loan} amount={loan.payment_amount} cards={creditCards} />
                   <PayoffSummary loan={loan} darkMode={darkMode} />
                   {loan.frequency && (
                     <div className={`text-xs text-muted mt-1`}>

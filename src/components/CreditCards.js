@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import Rewards from './credit-cards/Rewards';
 import { Plus, CreditCard as CreditCardIcon } from 'lucide-react';
 import AddTransaction from './AddTransaction';
 import { GiftCardOperations } from './credit-cards';
@@ -122,6 +123,7 @@ export default function CreditCards({
         />
       )}
 
+      <Rewards creditCards={creditCards} />
       <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-4">
         <h2 className="text-xl md:text-2xl font-bold">Credit Cards</h2>
         <div className="flex gap-2">

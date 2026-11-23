@@ -115,6 +115,9 @@ const SECTIONS = [
   ['changing', 'Changing a saved line or a pay schedule', (
     <p>On Transactions, tap the pencil on a line to change its description, category and notes. For a plain purchase you can also change the amount, the date and the account it was paid from: the old line is taken back and the new one recorded together, so balances always match. Payments, transfers, split purchases and purchases in another currency keep their money as it was; delete and record those again. On Income, the pencil on a pay schedule changes who pays, the amount, how often, the next pay day and the accounts; it applies from the next pay day.</p>
   )],
+  ['through', 'Card rewards, and paying through a service such as Chexy', (
+    <p>On a card, enter its rewards rate, and its rate on bill payments if that is different. Cards then shows about what each card gave back this month and last. On a loan, lease or bill that you pay by card through a service, enter the service's name and its fee (for example Chexy, 1.75). The app shows the fee each time and which of your cards comes out best once its rewards are counted. When you record a loan or lease payment from a card, the fee is added as its own purchase on that card. If the fee or a card's rate changes, change the number and everything follows.</p>
+  )],
   ['goals', 'Savings goals', (
     <p>Under More, Savings goals: give a goal a name, an amount and, if you like, a date and the account the money is kept in. The goal reads that account's balance; two goals in one account are filled in the order you made them, so no dollar counts twice. With a date, the app shows what to put aside each month. The app never moves money for a goal.</p>
   )],

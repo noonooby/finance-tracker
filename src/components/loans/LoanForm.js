@@ -147,6 +147,31 @@ export default function LoanForm({
         className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
       />
 
+      {/* Paid by card through a service that charges a fee */}
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          type="text"
+          maxLength={40}
+          placeholder="Paid through (for example Chexy)"
+          aria-label="Service the payment goes through"
+          value={formData.paidThrough || ''}
+          onChange={(e) => setFormData({ ...formData, paidThrough: e.target.value })}
+          className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+        />
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          max="10"
+          inputMode="decimal"
+          placeholder="Its fee %"
+          aria-label="Fee the service charges, in percent"
+          value={formData.feePercent || ''}
+          onChange={(e) => setFormData({ ...formData, feePercent: e.target.value })}
+          className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+        />
+      </div>
+
       {/* Payment Amount */}
       <input
         type="number"
