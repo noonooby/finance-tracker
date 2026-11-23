@@ -324,3 +324,19 @@ test('chart axis money stays readable for small and large amounts', () => {
     ['$0', '$40', '$150', '$999', '$1k', '$1.3k', '$10k', '$15k', '$125k', '-$75', '-$2.5k']);
   assert.equal(R.axisMoney('abc'), '$0');
 });
+
+test('scan: a purchase in another currency that is already saved is recognised, whichever amount the picture shows', () => {
+  const ctx = { bankAccounts: [], creditCards: [{ id: 'v1', name: 'Visa', last4: '4321' }], transactions: [
+    { id: 't1', status: 'active', type: 'expense', payment_method_id: 'v1', description: 'AMAZON.COM', amount: 14, original_amount: 10, original_currency: 'USD', date: '2026-11-21' },
+    { id: 't2', status: 'active', type: 'expense', payment_method_id: 'v1', description: 'STEAM', amount: 20, date: '2026-11-21' },
+  ] };
+  const read = (lines) => reader.plan({ kind: 'transactions', accounts: [{ name: 'Visa', last4: '4321', type: 'credit_card' }], lines }, ctx, 'src').lines;
+  const line = (more) => ({ date: '2026-11-21', merchant: 'AMAZON.COM', amount: 10, direction: 'out', type: 'purchase', currency: 'USD', ...more });
+  const [onlyUsd, both, otherAmount, otherCurrency, plain] = read([line({}), line({ amount: 14.3, original_amount: 10 }), line({ amount: 11 }), line({ currency: 'EUR' }),
+    { date: '2026-11-21', merchant: 'STEAM', amount: 10, direction: 'out', type: 'purchase' }]);
+  assert.deepEqual([onlyUsd.action, onlyUsd.existing_id], ['already', 't1']);        // shown only in USD
+  assert.deepEqual([both.action, both.existing_id], ['already', 't1']);              // the card charged a little more than the day's rate
+  assert.equal(otherAmount.action, 'record');                                         // a different purchase
+  assert.equal(otherCurrency.action, 'record');                                       // 10 EUR is not 10 USD
+  assert.equal(plain.action, 'record');                                               // 10 CAD is not the 20 CAD already saved
+});

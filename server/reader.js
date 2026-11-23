@@ -95,6 +95,13 @@ function plan(reading, ctx, sourceId) {
     let other = otherRef ? resolveAccount(withDrafts.filter(x => !acct || x.id !== acct.id), otherRef) : null;
     // A card payment seen from the card's side: the card is this account; the other side is the bank it came from.
     if (kind === 'card_payment' && acct && acct._type !== 'credit_card' && other && other._type !== 'credit_card') kind = 'transfer';
+    // A line in another currency matches a saved purchase by its home amount, or by the same original amount and currency
+    // (the saved one was converted; the screenshot may show only the original).
+    const lineCur = String(l.currency || '').toUpperCase();
+    const foreign = /^[A-Z]{3}$/.test(lineCur) && lineCur !== HOME;
+    const lineOrig = foreign ? (Math.round(Math.abs(Number(l.original_amount)) * 100) / 100 || amount) : null;
+    const sameMoney = (t) => Math.abs(Number(t.amount) - amount) < 0.005
+      || (foreign && String(t.original_currency || '').toUpperCase() === lineCur && Math.abs(Number(t.original_amount) - lineOrig) < 0.005);
     const sig = [acct ? acct.id : '?', l.date, mkey(l.merchant), amount.toFixed(2)].join('|');
     const n = seen.get(sig) || 0; seen.set(sig, n + 1);
     const key = 'shot:' + crypto.createHash('sha256').update(sig + '|' + n).digest('hex').slice(0, 32);
@@ -117,10 +124,10 @@ function plan(reading, ctx, sourceId) {
     if (!acct) { out.action = 'choose_account'; out.why = 'Choose which account this is'; }
     // Already recorded by hand (same account, amount, merchant, within a day): offered unticked.
     const same = acct && transactions.find(t => t.status !== 'undone' && t.status !== 'deleted' && String(t.payment_method_id) === String(acct.id)
-      && Math.abs(Number(t.amount) - amount) < 0.005 && dayDiff(t.date, l.date) <= 1 && mkey(t.description) && mkey(t.description) === mkey(l.merchant));
+      && sameMoney(t) && dayDiff(t.date, l.date) <= 1 && mkey(t.description) && mkey(t.description) === mkey(l.merchant));
     const ids = [acct && acct.id, other && other.id].filter(Boolean).map(String);
     const samePair = !same && (kind === 'card_payment' || kind === 'transfer') && ids.length && transactions.find(t => t.status !== 'undone' && t.status !== 'deleted'
-      && (t.type === 'credit_card_payment' || t.type === 'transfer') && Math.abs(Number(t.amount) - amount) < 0.005 && dayDiff(t.date, l.date) <= 3
+      && (t.type === 'credit_card_payment' || t.type === 'transfer') && sameMoney(t) && dayDiff(t.date, l.date) <= 3
       && [t.payment_method_id, t.card_id, t.to_account_id, t.from_account_id].filter(Boolean).map(String).some(x => ids.includes(x)));
     if (samePair) { out.action = 'already'; out.existing_id = samePair.id; out.why = 'Looks already recorded from the other account'; }
     if (same && !l.pending && same.pending) { out.action = 'mark_posted'; out.existing_id = same.id; out.why = 'Posts the pending line already recorded'; }
@@ -128,7 +135,7 @@ function plan(reading, ctx, sourceId) {
     // A posted line whose pending version is recorded from an earlier screenshot (date may move a few days).
     if (out.action === 'record' && acct && !l.pending) {
       const pend = transactions.find(t => t.pending && t.status === 'active' && String(t.payment_method_id) === String(acct.id)
-        && Math.abs(Number(t.amount) - amount) < 0.005 && mkey(t.description) === mkey(l.merchant) && dayDiff(t.date, l.date) <= 7);
+        && sameMoney(t) && mkey(t.description) === mkey(l.merchant) && dayDiff(t.date, l.date) <= 7);
       if (pend) { out.action = 'mark_posted'; out.existing_id = pend.id; out.why = 'Posts the pending line already recorded'; }
     }
     return out;
