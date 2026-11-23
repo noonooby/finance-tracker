@@ -1504,3 +1504,18 @@ test('card rewards by category: a category with its own rate uses it, split purc
   assert.match(await bad({ reward_rules: [{ category_id: 'a', percent: 40 }] }), /0 to 10/);
   assert.match(await bad({ reward_rules: Array.from({ length: 7 }, (_, i) => ({ category_id: 'c' + i, percent: 1 })) }), /six categories/);
 });
+
+test('a card payment or transfer whose other side is not in the app changes only the side the app holds, and undoes cleanly', async () => {
+  const before = { card: (await get('credit_cards', card.id)).balance, chq: (await get('bank_accounts', chq.id)).balance };
+  const paid = await M.recordCardPayment({ cardId: card.id, amount: 7, source: 'outside', date: '2026-11-22', description: 'PAYMENT FROM 0164' }, await accounts());
+  assert.equal(Math.round(((await get('credit_cards', card.id)).balance - before.card) * 100), -700);
+  assert.equal((await get('bank_accounts', chq.id)).balance, before.chq);
+  const line = await get('transactions', paid.transaction.id);
+  assert.deepEqual([line.type, line.payment_method, line.payment_method_name], ['credit_card_payment', 'outside', 'An account not in the app']);
+  const moved = await M.recordTransfer({ amount: 5, from: 'outside', to: `bank_account:${chq.id}`, date: '2026-11-22' }, await accounts());
+  assert.equal(Math.round(((await get('bank_accounts', chq.id)).balance - before.chq) * 100), 500);
+  await assert.rejects(M.recordTransfer({ amount: 1, from: 'outside', to: 'outside' }, await accounts()), /in the app/);
+  await M.reverseTransaction(paid.transaction.id);
+  await M.reverseTransaction(moved.transaction.id);
+  assert.deepEqual([(await get('credit_cards', card.id)).balance, (await get('bank_accounts', chq.id)).balance], [before.card, before.chq]);
+});

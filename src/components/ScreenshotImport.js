@@ -107,7 +107,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     ...creditCards.filter((c) => !c.is_gift_card).map((c) => ({ value: `credit_card:${c.id}`, label: c.name })),
     ...creditCards.filter((c) => c.is_gift_card).map((c) => ({ value: `credit_card:${c.id}`, label: `${c.name} (gift card)` })),
   ], [drafts, bankAccounts, creditCards]);
-  const nameOf = (v) => (accountOptions.find((o) => o.value === v) || {}).label || 'Choose';
+  const nameOf = (v) => (v === 'outside' ? 'An account not in the app' : (accountOptions.find((o) => o.value === v) || {}).label || 'Choose');
   const isCardRef = (v) => v.startsWith('credit_card:') || (v.startsWith('new:') && (drafts.find((d) => d.id === v) || {}).type === 'credit_card');
 
   const card = 'bg-surface border-line text-fg';
@@ -335,7 +335,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     if (r.action === 'mark_posted' || r.action === 'skip') return null;
     if (!(Number(r.amount) > 0)) return 'Enter the amount';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) return 'Enter the date';
-    if (r.kind === 'transfer') return !r.from || !r.to ? 'Choose both accounts' : r.from === r.to ? 'Choose two different accounts' : null;
+    if (r.kind === 'transfer') return !r.from || !r.to ? 'Choose both accounts' : r.from === r.to ? (r.from === 'outside' ? 'One of the two must be an account in the app' : 'Choose two different accounts') : null;
     if (r.kind === 'card_payment') return !r.card ? 'Choose the card' : !r.source ? 'Choose what paid it' : null;
     return r.target ? null : 'Choose the account';
   };
@@ -550,15 +550,28 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     if (r.kind === 'card_payment') return `${nameOf(r.source)} pays ${nameOf(r.card)}`;
     return nameOf(r.target);
   };
-  const Select = ({ value, onChange, label, cards }) => (
-    <label className="block text-xs">
+  const Select = ({ value, onChange, label, cards, outside, big: large }) => (
+    <label className={`block ${large ? 'text-sm' : 'text-xs'}`}>
       <span className={muted}>{label}</span>
-      <select className={input} value={value || ''} onChange={(e) => onChange(e.target.value)}>
+      <select className={`${input} ${large ? 'mt-1 py-2.5 text-base' : ''}`} value={value || ''} onChange={(e) => onChange(e.target.value)}>
         <option value="">Choose</option>
         {accountOptions.filter((o) => cards === undefined || isCardRef(o.value) === cards).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        {outside && <option value="outside">An account not in the app</option>}
       </select>
     </label>
   );
+  // What has to be answered before saving, gathered in one place. Lines missing the same thing are answered together.
+  const ASKS = [
+    ['Choose what paid it', 'source', (n) => (n === 1 ? 'One card payment: which account paid it?' : `${n} card payments: which account paid them?`), { cards: false, outside: true }],
+    ['Choose the card', 'card', (n) => (n === 1 ? 'One card payment: which card was paid?' : `${n} card payments: which card was paid?`), { cards: true }],
+    ['Choose the account', 'target', (n) => (n === 1 ? 'One line: which account or card is it on?' : `${n} lines: which account or card are they on?`), {}],
+  ];
+  const waiting = rows.filter((r) => r.on && missing(r));
+  const asks = ASKS.map(([why, field, text, opts]) => ({ why, field, opts, list: waiting.filter((r) => missing(r) === why), text })).filter((a) => a.list.length);
+  const otherWaiting = waiting.filter((r) => !ASKS.some(([why]) => missing(r) === why));
+  const answerAll = (a, v) => { if (!v) return; const ids = new Set(a.list.map((r) => r.i)); setRows((rs) => rs.map((r) => (ids.has(r.i) ? { ...r, [a.field]: v } : r))); };
+  const showLine = (i) => { setOpen(i); setTimeout(() => { const el = document.getElementById(`scan-line-${i}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); };
+  const showQuestions = () => { const el = document.getElementById('scan-questions'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 
   return (
     <div className="space-y-4">
@@ -661,6 +674,24 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <h3 className="font-semibold text-base">What was understood</h3>
             {understood(proposal, rows, drafts, fixes).map((t) => <p key={t}>{t}</p>)}
           </section>
+          {blocked > 0 && (
+            <section id="scan-questions" className="rounded-xl border border-amber-500/60 bg-amber-500/10 px-3 py-3 space-y-3 text-sm" style={{ scrollMarginTop: 80 }}>
+              <h3 className="font-semibold text-base">Answer before saving</h3>
+              {asks.map((a) => (
+                <div key={a.why} className="space-y-1">
+                  <Select big label={a.text(a.list.length)} value="" onChange={(v) => answerAll(a, v)} {...a.opts} />
+                  <p className={`text-xs ${muted}`}>{a.list.slice(0, 3).map((r) => `${r.merchant} ${formatCurrency(Number(r.amount) || 0)}`).join(', ')}{a.list.length > 3 ? ` and ${a.list.length - 3} more` : ''}.{a.list.length > 1 ? ' One answer fills them all; change any single line with Edit.' : ''}{a.field === 'source' ? ' If it was paid from an account you do not keep here, choose "An account not in the app": only the card changes.' : ''}</p>
+                </div>
+              ))}
+              {otherWaiting.map((r) => (
+                <div key={r.i} className="flex items-center justify-between gap-3">
+                  <span className="min-w-0"><span className="block truncate">{r.merchant} {formatCurrency(Number(r.amount) || 0)}</span><span className="block text-xs text-amber-600">{missing(r)}</span></span>
+                  <button type="button" className="press shrink-0 px-3 py-2 rounded-lg border border-line bg-surface font-medium" onClick={() => showLine(r.i)}>Answer</button>
+                </div>
+              ))}
+              {blocked > waiting.length && <p>{blocked - waiting.length === 1 ? 'One thing' : `${blocked - waiting.length} things`} to add below {blocked - waiting.length === 1 ? 'needs' : 'need'} a detail the picture does not show: look for the amber text, or untick what you do not want added.</p>}
+            </section>
+          )}
           {usedRefs.some((ref) => accountOptions.some((o) => o.value === ref)) && accountOptions.length > 1 && (
             <section className="space-y-2 text-sm">
               <h3 className="font-semibold">Wrong account?</h3>
@@ -901,7 +932,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                 const cat = catsFor(r.kind).find((c) => String(c.id) === String(r.category_id));
                 const editable = r.action !== 'mark_posted' && r.action !== 'skip';
                 return (
-                  <li key={r.i} className="py-3 space-y-2">
+                  <li key={r.i} id={`scan-line-${r.i}`} style={{ scrollMarginTop: 80 }} className="py-3 space-y-2">
                     <div className="flex items-start gap-3">
                       <input type="checkbox" className="mt-1 w-5 h-5 shrink-0" checked={r.on} disabled={r.action === 'skip'} aria-label={`Save ${r.merchant}`}
                         onChange={(e) => setRow(r.i, { on: e.target.checked })} />
@@ -934,12 +965,12 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                             {Object.entries(KIND_TEXT).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
                           </select></label>
                         {r.kind === 'transfer' && (<>
-                          <Select label="From" value={r.from} onChange={(v) => setRow(r.i, { from: v })} />
-                          <Select label="To" value={r.to} onChange={(v) => setRow(r.i, { to: v })} />
+                          <Select label="From" value={r.from} outside onChange={(v) => setRow(r.i, { from: v })} />
+                          <Select label="To" value={r.to} outside onChange={(v) => setRow(r.i, { to: v })} />
                         </>)}
                         {r.kind === 'card_payment' && (<>
                           <Select label="Card paid" value={r.card} cards onChange={(v) => setRow(r.i, { card: v })} />
-                          <Select label="Paid from" value={r.source} cards={false} onChange={(v) => setRow(r.i, { source: v })} />
+                          <Select label="Paid from" value={r.source} cards={false} outside onChange={(v) => setRow(r.i, { source: v })} />
                         </>)}
                         {!['transfer', 'card_payment'].includes(r.kind) && (
                           <Select label={r.kind === 'purchase' ? 'Paid with' : 'Into'} value={r.target} onChange={(v) => setRow(r.i, { target: v })} />
@@ -1016,7 +1047,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <button type="button" onClick={() => { setDone(null); advance(true); }} disabled={saving || reading} className="press px-3 py-3 rounded-xl border border-line bg-surface text-fg font-medium disabled:opacity-50">Skip</button>
           )}
           {proposal && chosen > 0 && (
-            <button type="button" onClick={save} disabled={saving || reading || !chosen || blocked > 0}
+            <button type="button" onClick={blocked > 0 ? showQuestions : save} disabled={saving || reading || !chosen}
               className="press flex-1 px-4 py-3 rounded-xl bg-accent text-accent-contrast font-medium hover:opacity-90 disabled:opacity-50">
               {saving ? 'Saving...' : blocked ? `Answer ${blocked} ${blocked === 1 ? 'question' : 'questions'} first` : `Save ${chosen} ${chosen === 1 ? 'item' : 'items'}`}
             </button>

@@ -77,8 +77,12 @@ export function payInto(target, amount, { creditCards = [] } = {}) {
   throw new Error('Choose where the money goes.');
 }
 
+// The other side of a payment or transfer when it is an account the app does not hold: only the side the app
+// holds changes, and the line still says where the money came from or went.
+export const OUTSIDE = 'outside';
 const sourceName = (source, { bankAccounts = [], creditCards = [], investments = [] }) => {
   const { type, id } = parseSource(source);
+  if (type === OUTSIDE) return 'An account not in the app';
   const list = type === 'bank_account' ? bankAccounts : type === 'investment' ? investments : creditCards;
   return (list.find((x) => String(x.id) === String(id)) || {}).name || null;
 };
@@ -183,7 +187,7 @@ export async function recordCardPayment({ cardId, amount, source, date, descript
   const rows = [];
   if (paymentRow) rows.push({ table: 'credit_card_payments', values: { card_id: card.id, amount: a, payment_date: date, ...paymentRow } });
   rows.push({ table: 'transactions', values: txRow({ type: 'credit_card_payment', amount: a, date, description: description || `Payment to ${card.name}`, ...extra, card_id: card.id }, source, accounts) });
-  return send(key, [payFrom(source, a, accounts), { table: 'credit_cards', id: card.id, delta: -a }], rows, withUpdates(updates));
+  return send(key, [...(from.type === OUTSIDE ? [] : [payFrom(source, a, accounts)]), { table: 'credit_cards', id: card.id, delta: -a }], rows, withUpdates(updates));
 }
 
 // Paying a loan. A payment larger than what is owed is refused.
@@ -204,8 +208,8 @@ export async function recordLoanPayment({ loanId, amount, source, date, descript
 export async function recordTransfer({ amount, from, to, date, description, key, extra }, accounts) {
   const a = toAmount(amount);
   const f = parseSource(from), t = parseSource(to);
-  if (f.type === t.type && String(f.id) === String(t.id)) throw new Error('Choose two different accounts.');
-  return send(key, [payFrom(from, a, accounts), payInto(to, a, accounts)], [
+  if (f.type === t.type && String(f.id) === String(t.id)) throw new Error(f.type === OUTSIDE ? 'Choose at least one account that is in the app.' : 'Choose two different accounts.');
+  return send(key, [...(f.type === OUTSIDE ? [] : [payFrom(from, a, accounts)]), ...(t.type === OUTSIDE ? [] : [payInto(to, a, accounts)])], [
     { table: 'transactions', values: txRow({ type: 'transfer', amount: a, date, description: description || `Transfer to ${sourceName(to, accounts) || 'account'}`,
       from_account_id: f.id, to_account_id: t.id, transfer_to: t.type, ...extra }, from, accounts) },
   ]);
