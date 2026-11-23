@@ -6,6 +6,7 @@ import {
 import { DEFAULT_CATEGORIES, calculateTotalBankBalance } from '../utils/helpers';
 import { processDueIncomeSchedules, processOverdueLoanPayments, processOverdueCreditCardPayments } from '../utils/schedules';
 import { server } from '../utils/server';
+import { showToast } from '../utils/toast';
 import { seedDefaultCategories } from '../utils/categories';
 import { loadPrefs } from '../utils/prefs';
 import { getLocal, setLocal } from '../utils/localStore';
@@ -158,6 +159,9 @@ export function FinanceDataProvider({ children }) {
       const dueCheck = first || Date.now() - lastDueRef.current > 600000;
       if (dueCheck) lastDueRef.current = Date.now();
       const autoResults = dueCheck ? await processDueIncomeSchedules() : { deposited: [] };
+      // Pay that could not be added because its account was removed: say so once when the app opens, not silently.
+      const lost = first ? (autoResults.skipped || []).filter((x) => x.reason === 'No account to deposit into').map((x) => x.source) : [];
+      if (lost.length) showToast.error(`Pay from ${lost.join(', ')} was not added: its account was removed. Choose an account for it under Income.`);
       let paid = 0;
       if (dueCheck) try {
         // Cards and loans were loaded a moment ago in this same load; the server checks every balance again anyway.
