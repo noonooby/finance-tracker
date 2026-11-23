@@ -598,6 +598,9 @@ test('reminders: a browser subscribes; payments you make yourself are reminded o
   const k = await api('/api/push/key', null, 'GET');
   assert.equal(Buffer.from(k.key, 'base64url').length, 65);
   await assert.rejects(api('/api/push/subscribe', { subscription: { endpoint: 'http://x' } }), /usable subscription/);
+  // Only a push service on the internet: not an address, not a name on a private network.
+  for (const endpoint of ['https://127.0.0.1/x', 'https://10.0.0.5:8443/x', 'https://[::1]/x', 'https://localhost/x', 'https://nas.local/x', 'https://router/x', 'https://db.internal/x'])
+    await assert.rejects(api('/api/push/subscribe', { subscription: { endpoint, keys: { p256dh: 'k', auth: 'a' } } }), /usable subscription/);
   await api('/api/push/subscribe', { subscription: { endpoint: 'https://push.example.test/abc', keys: { p256dh: k.key, auth: 'AAAAAAAAAAAAAAAAAAAAAA' } } });
   // The browser cannot write subscriptions through the data API.
   assert.ok((await db.from('push_subscriptions').insert({ endpoint: 'https://evil.test' })).error);

@@ -513,6 +513,10 @@ route('POST', '/api/push/subscribe', (req, b) => {
   const uid = authUser(req).id;
   const s = b.subscription || {};
   if (!/^https:\/\//.test(String(s.endpoint || '')) || !s.keys || !s.keys.p256dh || !s.keys.auth) fail(400, 'That browser did not give a usable subscription.');
+  // Reminders are sent to the browser maker's push service on the internet, never to an address on a private network.
+  let host = ''; try { host = new URL(String(s.endpoint)).hostname.toLowerCase(); } catch { /* refused below */ }
+  if (!host || !host.includes('.') || /^[\d.]+$/.test(host) || host.includes(':') || host.startsWith('[') || /(^|\.)(localhost|local|internal|lan|home|corp)$/.test(host))
+    fail(400, 'That browser did not give a usable subscription.');
   const id = 'push:' + crypto.createHash('sha256').update(String(s.endpoint)).digest('hex').slice(0, 32);
   if (db.prepare("SELECT COUNT(*) n FROM rows WHERE tbl = 'push_subscriptions' AND user_id = ? AND id != ?").get(uid, id).n >= 10) fail(400, 'Reminders are on for 10 devices already. Turn them off on one first.');
   const row = { id, endpoint: String(s.endpoint).slice(0, 1000), keys: { p256dh: String(s.keys.p256dh).slice(0, 200), auth: String(s.keys.auth).slice(0, 100) },
