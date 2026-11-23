@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState } from 'react';
-import { predictNextDate, getDaysUntil, parseDay } from '../../utils/helpers';
+import { predictNextDate, getDaysUntil } from '../../utils/helpers';
 import { getIncomeSchedules } from '../../utils/schedules';
 
 /**
@@ -31,6 +31,7 @@ export const useIncomePredictions = (income = [], predictionCount = 8) => {
     const allPredictions = [];
     activeSchedules.forEach(schedule => {
       let currentDate = schedule.next_date;
+      const payDay = Number(String(schedule.start_date || schedule.next_date || '').slice(8, 10)) || undefined;
       const generateCount = Math.max(predictionCount * 2, 20);
       const totalOccurrences = schedule.recurring_occurrences_total || null;
       const completedOccurrences = schedule.recurring_occurrences_completed || 0;
@@ -48,9 +49,8 @@ export const useIncomePredictions = (income = [], predictionCount = 8) => {
           }
 
           if (schedule.recurring_duration_type === 'until_date' && schedule.recurring_until_date) {
-            const endDate = parseDay(schedule.recurring_until_date);
-            const predictionDate = new Date(currentDate);
-            if (predictionDate > endDate) {
+            // Days compared as written (YYYY-MM-DD), so the time zone cannot shift the last one.
+            if (String(currentDate).slice(0, 10) > String(schedule.recurring_until_date).slice(0, 10)) {
               break;
             }
           }
@@ -67,7 +67,8 @@ export const useIncomePredictions = (income = [], predictionCount = 8) => {
           });
         }
         
-        currentDate = predictNextDate(currentDate, schedule.frequency);
+        // The pay day comes from the schedule's start, as when the deposits are made.
+        currentDate = predictNextDate(currentDate, schedule.frequency, payDay);
       }
     });
     
