@@ -72,6 +72,8 @@ export function budgetMonth(transactions, budgets, categories, month, today = ne
     if (limit <= 0) continue;
     const s = Math.max(0, spent[String(id)] || 0);
     const cat = (categories || []).find((c) => String(c.id) === String(id));
+    // A budget whose category was deleted has nothing left to manage: it is not shown.
+    if (!cat && (categories || []).length) continue;
     out.push({ category_id: String(id), name: cat ? cat.name : 'Deleted category', limit, spent: s, left: round2(limit - s), pct: s / limit, pace, over: s > limit, ahead: s / limit > pace + 0.1 && s <= limit });
   }
   return out.sort((a, b) => b.pct - a.pct);

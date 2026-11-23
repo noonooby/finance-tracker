@@ -852,6 +852,11 @@ test('categories: a name is needed, and the same name cannot be used twice for t
   assert.match((await db.from('categories').update({ name: 'PETS' }).eq('id', b.id)).error.message, /already have a category called Pets/);
   assert.equal((await db.from('categories').update({ name: 'Pets', color: '#111111' }).eq('id', a.id)).error, null); // saving its own name is fine
   assert.equal((await get('categories', b.id)).name, 'Vet');
+  // Two that already shared a name (from before this rule) can still have their colour changed, and one can be renamed apart.
+  await api('/api/restore', { table: 'categories', rows: [{ id: 'twin-1', name: 'Twin', is_income: false }, { id: 'twin-2', name: 'Twin', is_income: false }] });
+  assert.equal((await db.from('categories').update({ name: 'Twin', color: '#222222' }).eq('id', 'twin-1')).error, null);
+  assert.equal((await db.from('categories').update({ name: 'Twin two' }).eq('id', 'twin-2')).error, null);
+  assert.match((await db.from('categories').update({ name: ' ' }).eq('id', 'twin-1')).error.message, /Give the category a name/);
 });
 
 test('restoring a backup: everything comes back as it was, and a bad file changes nothing', async () => {
@@ -1060,4 +1065,21 @@ test('the transaction list finds everything that involved an account, card or lo
   assert.deepEqual(found('credit_cards', visa.id), ['On the card', 'Payment to Filter Visa']);
   assert.deepEqual(found('loans', car.id), ['Payment to Filter loan']);
   assert.deepEqual(found('loans', 'nothing'), []);
+});
+
+test('deleting a category takes what was learned for it along, and its budget is no longer shown', async () => {
+  const cat = (await db.from('categories').insert({ name: 'Hobby', is_income: false }).select().single()).data;
+  const keep = (await db.from('categories').insert({ name: 'Garden', is_income: false }).select().single()).data;
+  const bank = await add('bank_accounts', { name: 'Hobby Bank', balance: 500 });
+  const buy = async (description, c) => M.recordExpense({ amount: 5, source: `bank_account:${bank.id}`, date: '2026-11-23', description, category_id: c.id, category_name: c.name }, await accounts());
+  await buy('HOBBY SHOP 12', cat);
+  await buy('GARDEN CENTRE', keep);
+  const rules = async () => ((await db.from('category_rules').select('*')).data || []).filter((r) => [cat.id, keep.id].includes(r.category_id)).map((r) => r.category_name).sort();
+  assert.deepEqual(await rules(), ['Garden', 'Hobby']);
+  await db.from('categories').delete().eq('id', cat.id);
+  assert.deepEqual(await rules(), ['Garden']);
+  const tx = (await db.from('transactions').select('*')).data;
+  const cats = (await db.from('categories').select('*')).data;
+  const shown = S.budgetMonth(tx, { [cat.id]: 50, [keep.id]: 80 }, cats, '2026-11', new Date(2026, 10, 23)).map((b) => b.name);
+  assert.deepEqual(shown, ['Garden']);
 });

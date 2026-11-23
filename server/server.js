@@ -251,7 +251,9 @@ function updateRows(uid, tbl, filters, values, orGroups) {
       if (fixed.some((k) => k in v && !same(v[k], r[k]))) fail(409, 'This transaction moved money. Undo it and record it again to change the amount, kind or account.');
     }
     if (tbl === 'bills') checkBill(uid, n);
-    if (tbl === 'categories' && ('name' in v || 'is_income' in v)) checkCategory(uid, n);
+    // Checked when the name or kind really changes, so two that shared a name before this rule can still be edited.
+    const nm = (x) => String(x || '').trim().toLowerCase();
+    if (tbl === 'categories' && (nm(n.name) !== nm(r.name) || !!n.is_income !== !!r.is_income || !nm(n.name))) checkCategory(uid, n);
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), tbl, String(r.id), uid);
     // Stating a balance (even the same figure) confirms it as of today, or as of the date given.
     for (const f of MONEY_FIELDS[tbl] || []) if (f in v) stamp(uid, tbl, n, f, values.balance_as_of);
@@ -265,6 +267,8 @@ function deleteRows(uid, tbl, filters, orGroups) {
   for (const r of rs) {
     if (tbl === 'transactions' && r._legs && r.status !== 'undone' && r.status !== 'deleted') fail(409, 'Undo this transaction first so its money goes back');
     db.prepare('DELETE FROM rows WHERE tbl = ? AND id = ? AND user_id = ?').run(tbl, String(r.id), uid);
+    // What was learned for a category goes with it, so a new purchase is not filed under a category that is gone.
+    if (tbl === 'categories') db.prepare("DELETE FROM rows WHERE tbl = 'category_rules' AND user_id = ? AND json_extract(data, '$.category_id') = ?").run(uid, String(r.id));
   }
   return rs;
 }
