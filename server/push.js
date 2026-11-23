@@ -54,6 +54,7 @@ function encrypt(sub, text, { salt = crypto.randomBytes(16), server = null } = {
 
 // Send one message. -> 'sent' | 'gone' (the browser unsubscribed; remove it) | 'failed'
 async function send(db, sub, message, subject) {
+  if (process.env.PUSH_STUB === 'fail') return 'failed';
   if (process.env.PUSH_STUB) { (global.__pushed = global.__pushed || []).push({ endpoint: sub.endpoint, message }); return 'sent'; }
   try {
     const r = await fetch(sub.endpoint, { method: 'POST', signal: AbortSignal.timeout(15000), headers: {
@@ -125,12 +126,15 @@ async function remind(db, { selectRows, tz, subject, now = new Date() }) {
     for (const item of dueFor(rows, today, soon)) {
       const k = `remind:${uid}:${item.id}`;
       if (db.prepare('SELECT 1 FROM meta WHERE k = ?').get(k)) continue;
-      db.prepare('INSERT INTO meta (k, v) VALUES (?, ?)').run(k, now.toISOString());
+      // Counted as reminded only once a device has it; if none could be reached, the next pass tries again.
+      let reached = 0;
       for (const s of subs) {
         const r = await send(db, s, { title: item.title, body: item.body, url: item.url, tag: item.id });
         if (r === 'gone') db.prepare("DELETE FROM rows WHERE tbl = 'push_subscriptions' AND id = ? AND user_id = ?").run(String(s.id), uid);
-        if (r === 'sent') sent++;
+        if (r === 'sent') reached++;
       }
+      if (reached) db.prepare('INSERT OR IGNORE INTO meta (k, v) VALUES (?, ?)').run(k, now.toISOString());
+      sent += reached;
     }
   }
   return sent;

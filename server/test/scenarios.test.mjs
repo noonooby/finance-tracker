@@ -699,3 +699,44 @@ test('a bill on the 31st shows on the last day of shorter months and on the 31st
   const days = F.billDates([b], [], new Date(2026, 1, 5), '2026-05-31').map((x) => x.date);
   assert.deepEqual(days, ['2026-02-28', '2026-03-31', '2026-04-30', '2026-05-31']);
 });
+
+test('tables kept by the server cannot be written through a money step, and a refused step changes nothing', async () => {
+  const k = await api('/api/push/key', null, 'GET');
+  await api('/api/push/subscribe', { subscription: { endpoint: 'https://push.example.test/keep', keys: { p256dh: k.key, auth: 'AAAAAAAAAAAAAAAAAAAAAA' } } });
+  const acct = await add('bank_accounts', { name: 'Guard', balance: 100 });
+  const count = async (t) => (await db.from(t).select('*')).data.length;
+  const before = { subs: await count('push_subscriptions'), snaps: await count('snapshots'), points: await count('balance_points') };
+  const leg = { table: 'bank_accounts', id: acct.id, delta: -10 };
+  for (const [table, values] of [
+    ['push_subscriptions', { endpoint: 'http://127.0.0.1:9/internal', keys: { p256dh: k.key, auth: 'AAAAAAAAAAAAAAAAAAAAAA' } }],
+    ['snapshots', { account_table: 'bank_accounts', account_id: acct.id, value: 1, status: 'ok' }],
+    ['balance_points', { account_table: 'bank_accounts', account_id: acct.id, date: '2020-01-01', value: 999999 }],
+  ]) await assert.rejects(api('/api/money', { legs: [leg], rows: [{ table, values }] }), /kept by the server/);
+  const sub = (await db.from('push_subscriptions').select('*')).data[0];
+  await assert.rejects(api('/api/money', { legs: [leg], rows: [], updates: [{ table: 'push_subscriptions', id: sub.id, values: { endpoint: 'http://127.0.0.1:9/internal' } }] }), /kept by the server/);
+  await assert.rejects(api('/api/money', { legs: [leg], rows: [], updates: [{ table: 'no_such_table', id: 'x', values: { a: 1 } }] }), /Unknown table/);
+  assert.equal((await get('push_subscriptions', sub.id)).endpoint, sub.endpoint);
+  assert.equal(Number((await get('bank_accounts', acct.id)).balance), 100); // the money did not move in any refused step
+  assert.deepEqual({ subs: await count('push_subscriptions'), snaps: await count('snapshots'), points: await count('balance_points') }, before);
+  // An ordinary step with an ordinary update still works.
+  await api('/api/money', { legs: [leg], rows: [], updates: [{ table: 'bank_accounts', id: acct.id, values: { institution: 'Test Bank' } }] });
+  const after = await get('bank_accounts', acct.id);
+  assert.deepEqual([Number(after.balance), after.institution], [90, 'Test Bank']);
+});
+
+test('a reminder that could not be delivered is tried again, and is still sent only once', async () => {
+  const { runReminders } = require(path.join(root, 'server', 'server.js'));
+  const k = await api('/api/push/key', null, 'GET');
+  await api('/api/push/subscribe', { subscription: { endpoint: 'https://push.example.test/retry', keys: { p256dh: k.key, auth: 'AAAAAAAAAAAAAAAAAAAAAA' } } });
+  await add('credit_cards', { name: 'Retry Visa', balance: 80, due_date: '2027-03-10' });
+  const at = new Date('2027-03-10T15:00:00Z');
+  const got = () => (global.__pushed || []).filter((x) => /Retry Visa/.test(x.message.title) && x.endpoint.endsWith('/retry')).length;
+  global.__pushed = [];
+  process.env.PUSH_STUB = 'fail';
+  try { await runReminders(at); } finally { process.env.PUSH_STUB = '1'; }
+  assert.equal(got(), 0);
+  await runReminders(new Date(at.getTime() + 15 * 60e3));
+  assert.equal(got(), 1, 'sent on the next pass');
+  await runReminders(new Date(at.getTime() + 30 * 60e3));
+  assert.equal(got(), 1, 'not sent again');
+});

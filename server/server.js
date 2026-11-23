@@ -224,9 +224,14 @@ function deleteRows(uid, tbl, filters, orGroups) {
   }
   return rs;
 }
+// The one rule for anything the browser asks to write, whichever route it comes through.
+function mayWrite(table) {
+  if (!TABLES.has(table)) fail(400, 'Unknown table');
+  if (SERVER_ONLY.has(table)) fail(403, 'That table is kept by the server');
+}
 function runQuery(uid, q) {
   if (!TABLES.has(q.table)) fail(400, 'Unknown table');
-  if (SERVER_ONLY.has(q.table) && q.action !== 'select') fail(403, 'That table is kept by the server');
+  if (q.action !== 'select') mayWrite(q.table);
   const filters = q.filters || [], orG = q.or || [];
   switch (q.action) {
     case 'select': {
@@ -307,12 +312,12 @@ function money(uid, b) {
       const seen = db.prepare('SELECT result FROM money_keys WHERE user_id = ? AND k = ?').get(uid, key);
       if (seen) return { ...JSON.parse(seen.result || '{}'), repeated: true };
     }
+    for (const x of [...(b.rows || []), ...(b.updates || [])]) mayWrite(x && x.table);
     // replace: an edit undoes the old transaction in the same step, so a failed edit leaves the old one as it was
     const replaced = (b.replace || []).map(id => reverseInner(uid, String(id), { remove: true }));
     const line = ((b.rows || []).find(x => x.table === 'transactions') || {}).values;
     const legs = applyLegs(uid, b.legs, line);
     const rows = (b.rows || []).map(({ table, values }) => {
-      if (!TABLES.has(table)) fail(400, 'Unknown table');
       const v = insertRow(uid, table, values);
       const split = legs.find(x => x.interest != null);
       if (table === 'transactions' && split) { v.interest_amount = split.interest; v.principal_amount = split.principal; }
@@ -479,7 +484,7 @@ route('POST', '/api/reset', (req, b) => {
 // A row id that belongs to someone else is refused. Only legs on this person's own balance tables are kept.
 route('POST', '/api/restore', (req, b) => {
   const uid = authUser(req).id;
-  if (!TABLES.has(b.table) || SERVER_ONLY.has(b.table)) fail(400, 'That table cannot be restored');
+  try { mayWrite(b.table); } catch { fail(400, 'That table cannot be restored'); }
   if (!Array.isArray(b.rows) || b.rows.length > 1000) fail(400, 'Send up to 1000 rows at a time');
   return tx(() => {
     let n = 0;
