@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronRight, Camera, AlertTriangle, CheckCircle2, Repeat, Hand, Check } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { api } from '../utils/server';
-import { position, monthEndFor, monthlyCost, upcoming } from '../utils/finance';
+import { position, monthEndFor, monthlyCost, upcoming, billDates } from '../utils/finance';
+import { goalsProgress, goalsThisMonth, freeAtMonthEnd } from '../utils/plans';
+import { server } from '../utils/server';
 import { budgetMonth, monthOf, findRecurring } from '../utils/spending';
 import { formatCurrency, formatDate, parseDay } from '../utils/helpers';
 import { Card, Section, Stat, Badge, Button } from './shared/ui';
@@ -31,11 +33,20 @@ export default function Dashboard() {
   }, [d.dataLoading, d.transactions]);
 
   const today = useMemo(() => new Date(), []);
+  const [goals, setGoals] = useState([]);
+  useEffect(() => { server.from('goals').select('*').then((r) => setGoals(r.data || [])).catch(() => {}); }, []);
   const p = useMemo(() => position({ bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets }, today), [d, today]);
   const m = useMemo(() => monthEndFor(d, p.liquid, today), [d, p.liquid, today]);
   const cost = useMemo(() => monthlyCost({ creditCards: d.creditCards, loans: d.loans, bankAccounts: d.bankAccounts }, today), [d.creditCards, d.loans, d.bankAccounts, today]);
   const due = useMemo(() => upcoming({ creditCards: d.creditCards, loans: d.loans, bankAccounts: d.bankAccounts, bills: d.bills, transactions: d.transactions }, today, 30), [d.creditCards, d.loans, d.bankAccounts, d.bills, d.transactions, today]);
   const budgets = useMemo(() => budgetMonth(d.transactions, d.budgets, d.categories, monthOf(today), today), [d.transactions, d.budgets, d.categories, today]);
+  // Free at month end: the month end, less what budgets still allow and what this month's goals ask for.
+  const free = useMemo(() => {
+    const last = new Date(today.getFullYear(), today.getMonth() + 1, 0).toLocaleDateString('en-CA');
+    const unpaidBills = billDates(d.bills, d.transactions, today, last).filter((x) => !x.paid).map((x) => ({ category_id: x.bill.category_id, amount: x.bill.amount }));
+    const goalNeed = goalsThisMonth(goalsProgress(goals, { bankAccounts: d.bankAccounts, investments: d.investments }, today));
+    return freeAtMonthEnd({ atEnd: m.atEnd, budgets, unpaidBills, goalNeed });
+  }, [d.bills, d.transactions, d.bankAccounts, d.investments, goals, budgets, m.atEnd, today]);
   const found = useMemo(() => findRecurring(d.transactions, d.bills, today), [d.transactions, d.bills, today]);
   const nextPay = useMemo(() => schedules.filter((s) => s.is_active !== false && s.next_date).sort((a, b) => String(a.next_date).localeCompare(String(b.next_date)))[0], [schedules]);
   const recent = useMemo(() => [...(d.transactions || [])].filter((t) => t.status !== 'undone' && t.status !== 'deleted')
@@ -89,6 +100,11 @@ export default function Dashboard() {
           <Stat label="Month end" value={formatCurrency(m.atEnd)} tone={m.atEnd < 0 ? 'negative' : undefined} />
           <Stat label="Debt costs" value={`${formatCurrency(cost.total)}`} sub="a month" tone={cost.total > 0 ? 'warning' : undefined} />
         </div>
+        {!d.dataLoading && (free.budgetLeft > 0 || free.goalNeed > 0) && (
+          <div className={`text-xs mt-3 ${free.free < 0 ? 'text-negative' : 'text-muted'}`}>
+            {free.free >= 0 ? `${formatCurrency(free.free)} free at month end` : `${formatCurrency(-free.free)} short at month end`} after what budgets still allow{free.goalNeed > 0 ? ` and ${formatCurrency(free.goalNeed)} for goals` : ''}.
+          </div>
+        )}
       </Card>
 
       {(checks.length > 0 || p.stale.length > 0) ? (

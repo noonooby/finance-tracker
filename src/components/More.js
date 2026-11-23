@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, FileText, Scale, PiggyBank, Repeat } from 'lucide-react';
+import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, FileText, Scale, PiggyBank, Repeat, Target, Gauge } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { OTHER_APPS } from '../utils/apps';
@@ -61,6 +61,8 @@ export default function More() {
         <Item icon={CreditCard} label="Cards" hint="Credit cards and gift cards" to="/cards" />
         <Item icon={TrendingUp} label="Loans" hint="What you owe and when it is due" to="/loans" />
         <Item icon={Repeat} label="Bills" hint="Payments that repeat: found in your history or added by you" to="/bills" />
+        <Item icon={Target} label="Savings goals" hint="What you are saving for and how far along it is" to="/goals" />
+        <Item icon={Gauge} label="Credit score" hint="The score from each bureau, when you check it" to="/credit" />
         <Item icon={DollarSign} label="Income" hint="Pay and other money coming in, one-off or on a schedule" to="/income" />
       </Section>
 

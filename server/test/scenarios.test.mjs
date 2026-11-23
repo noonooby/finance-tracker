@@ -33,7 +33,7 @@ globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v
 const realFetch = globalThis.fetch;
 globalThis.fetch = (u, o) => realFetch(String(u).startsWith('/') ? base + u : u, o);
 const lib = path.join(tmp, 'lib'); fs.mkdirSync(lib);
-for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js']) {
+for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js']) {
   const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
   fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
 }
@@ -41,6 +41,7 @@ const { server: client, api } = await import(pathToFileURL(path.join(lib, 'serve
 const M = await import(pathToFileURL(path.join(lib, 'money.mjs')));
 const F = await import(pathToFileURL(path.join(lib, 'finance.mjs')));
 const S = await import(pathToFileURL(path.join(lib, 'spending.mjs')));
+const P = await import(pathToFileURL(path.join(lib, 'plans.mjs')));
 await client.auth.devSignIn();
 
 const db = client;
@@ -1228,4 +1229,75 @@ test('a transaction saved or edited directly needs a real date too', async () =>
   assert.match((await db.from('transactions').update({ date: 'yesterday' }).eq('id', t.id)).error.message, /does not exist/);
   assert.equal((await db.from('transactions').update({ date: '2026-02-28' }).eq('id', t.id)).error, null);
   await db.from('transactions').delete().eq('id', t.id);
+});
+
+test('savings goals: an account is never counted twice, and a date gives a monthly amount', async () => {
+  const today = new Date(2026, 10, 23);
+  const acc = { bankAccounts: [{ id: 'sv', balance: 1500 }], investments: [{ id: 'tf', balance: 200 }] };
+  const g = P.goalsProgress([
+    { id: 2, name: 'Trip', target: 2000, kept_in: 'bank_account:sv', created_at: '2026-02-01', date: '2027-03-23' },
+    { id: 1, name: 'Cushion', target: 1000, kept_in: 'bank_account:sv', created_at: '2026-01-01' },
+    { id: 3, name: 'Typed', target: 300, saved: 450, created_at: '2026-03-01' },
+    { id: 4, name: 'Gone', target: 50, kept_in: 'bank_account:nope', created_at: '2026-04-01' },
+    { id: 5, name: 'Late', target: 500, kept_in: 'investment:tf', created_at: '2026-05-01', date: '2026-10-01' },
+  ], acc, today);
+  const by = Object.fromEntries(g.map((x) => [x.name, x]));
+  assert.deepEqual([by.Cushion.saved, by.Cushion.done], [1000, true]);         // made first, filled first
+  assert.deepEqual([by.Trip.saved, by.Trip.left, by.Trip.monthly], [500, 1500, 375]); // four months away
+  assert.deepEqual([by.Typed.saved, by.Typed.done], [300, true]);              // never more than the goal
+  assert.deepEqual([by.Gone.saved, by.Gone.missing], [0, true]);
+  assert.deepEqual([by.Late.saved, by.Late.late, by.Late.monthly], [200, true, 300]);
+  assert.equal(P.goalsThisMonth(g), 675);
+  // The server keeps the rules.
+  const bad = async (t, v) => { const { error } = await db.from(t).insert(v).select().single(); return error && error.message; };
+  assert.match(await bad('goals', { name: ' ', target: 10 }), /name/);
+  assert.match(await bad('goals', { name: 'Car', target: 0 }), /above zero/);
+  assert.match(await bad('goals', { name: 'Car', target: 10, date: '2027-02-30' }), /does not exist/);
+  const goal = await add('goals', { name: 'Car', target: 10, date: '2027-02-28' });
+  assert.match((await db.from('goals').update({ target: -5 }).eq('id', goal.id)).error.message, /above zero/);
+  await db.from('goals').delete().eq('id', goal.id);
+});
+
+test('free at month end: budgets still to spend and goals come off, a coming bill is not taken twice', () => {
+  const f = P.freeAtMonthEnd({ atEnd: 1000, goalNeed: 100,
+    budgets: [{ category_id: 'food', left: 300 }, { category_id: 'tv', left: 50 }, { category_id: 'fun', left: -20 }],
+    unpaidBills: [{ category_id: 'tv', amount: 30 }, { category_id: 'tv', amount: 40 }, { category_id: null, amount: 99 }] });
+  assert.deepEqual(f, { free: 600, budgetLeft: 300, goalNeed: 100 });
+});
+
+test('bills: a changed charge is offered once, and a year of each bill adds up', () => {
+  const bills = [
+    { id: 1, key: 'netflix', name: 'Netflix', amount: 16.49, frequency: 'monthly', status: 'active' },
+    { id: 2, key: 'gym', name: 'Gym', amount: 30, frequency: 'biweekly', status: 'active' },
+    { id: 3, key: 'spotify', name: 'Spotify', amount: 11, frequency: 'monthly', status: 'active', price_seen: 12.5 },
+    { id: 4, key: 'hydro', name: 'Hydro', amount: 80, frequency: 'monthly', status: 'ignored' },
+  ];
+  const tx = [
+    { type: 'expense', description: 'NETFLIX', amount: 16.49, date: '2026-10-05' },
+    { type: 'expense', description: 'Netflix', amount: 18.99, date: '2026-11-05' },
+    { type: 'expense', description: 'Netflix', amount: 99, date: '2026-11-20', status: 'undone' },
+    { type: 'expense', description: 'Gym', amount: 30.2, date: '2026-11-10' },   // within 50 cents
+    { type: 'expense', description: 'Spotify', amount: 12.5, date: '2026-11-11' }, // already answered
+    { type: 'expense', description: 'Hydro', amount: 140, date: '2026-11-12' },
+  ];
+  const c = P.priceChanges(bills, tx);
+  assert.deepEqual(c.map((x) => [x.bill.name, x.was, x.now, x.up, x.date]), [['Netflix', 16.49, 18.99, true, '2026-11-05']]);
+  assert.deepEqual(bills.map(P.yearlyCost), [197.88, 780, 132, 960]);
+});
+
+test('credit scores: latest per bureau with its change, and only real scores are kept', async () => {
+  const s = P.scoreSummary([
+    { bureau: 'Equifax', score: 700, date: '2026-09-01' }, { bureau: 'Equifax', score: 712, date: '2026-11-01' },
+    { bureau: 'TransUnion', score: 690, date: '2026-10-15' },
+  ]);
+  assert.deepEqual(s, [{ bureau: 'Equifax', score: 712, date: '2026-11-01', change: 12, count: 2 }, { bureau: 'TransUnion', score: 690, date: '2026-10-15', change: null, count: 1 }]);
+  assert.deepEqual([759, 760, 660, 559].map(P.scoreBand), ['Very good', 'Excellent', 'Good', 'Poor']);
+  const bad = async (v) => { const { error } = await db.from('credit_scores').insert(v).select().single(); return error && error.message; };
+  assert.match(await bad({ bureau: 'Equifax', score: 950, date: '2026-11-01' }), /300 to 900/);
+  assert.match(await bad({ bureau: 'Equifax', score: 701.5, date: '2026-11-01' }), /300 to 900/);
+  assert.match(await bad({ bureau: '', score: 700, date: '2026-11-01' }), /bureau/);
+  assert.match(await bad({ bureau: 'Equifax', score: 700, date: '2999-01-01' }), /not come yet/);
+  const row = await add('credit_scores', { bureau: 'Equifax', score: 700, date: '2026-11-01' });
+  assert.equal((await get('credit_scores', row.id)).score, 700);
+  await db.from('credit_scores').delete().eq('id', row.id);
 });

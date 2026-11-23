@@ -31,7 +31,9 @@ const TABLES = new Set(['snapshots', 'activities', 'alert_history', 'bank_accoun
   // merchant -> category, learned from what you record or set by you
   'category_rules',
   // bills that repeat (found in your history or added by you); browsers that get reminders
-  'bills', 'push_subscriptions']);
+  'bills', 'push_subscriptions',
+  // savings goals; credit scores you typed in, by bureau and day
+  'goals', 'credit_scores']);
 // Tables whose balance /api/money may change, and the fields it may change.
 const MONEY_FIELDS = { bank_accounts: ['balance'], credit_cards: ['balance'], loans: ['balance'], investments: ['balance'], assets: ['balance'] };
 // Tables only the server writes.
@@ -179,6 +181,22 @@ function checkWhen(v) {
   if (v.date == null || v.date === '') return;
   if (!isDay(String(v.date).slice(0, 10))) fail(400, 'That date does not exist. Choose the day it happened.');
 }
+// A savings goal: a name, an amount above zero, a real date when one is given.
+function checkGoal(g) {
+  if (!String(g.name || '').trim()) fail(400, 'Give the goal a name.');
+  if (!(cents(g.target) > 0)) fail(400, 'Enter the amount to reach, above zero.');
+  if (g.date != null && g.date !== '' && !isDay(String(g.date).slice(0, 10))) fail(400, 'That date does not exist. Choose a real day.');
+  if (g.saved != null && g.saved !== '' && !(Number(g.saved) >= 0)) fail(400, 'Enter what is saved so far as a number, zero or more.');
+}
+// A credit score: which bureau, a whole number from 300 to 900, and the day it was checked (not in the future).
+function checkScore(s) {
+  const n = Number(s.score);
+  if (!String(s.bureau || '').trim()) fail(400, 'Say which bureau the score is from.');
+  if (!Number.isInteger(n) || n < 300 || n > 900) fail(400, 'A credit score is a whole number from 300 to 900.');
+  const d = String(s.date || '').slice(0, 10);
+  if (!isDay(d)) fail(400, 'Choose the day you checked it.');
+  if (d > today()) fail(400, 'That day has not come yet.');
+}
 function checkFigures(tbl, v) {
   if (!MONEY_FIELDS[tbl]) return;
   for (const f of MONEY_FIELDS[tbl]) {
@@ -227,6 +245,8 @@ function insertRow(uid, tbl, values, upsertOn) {
   v.user_id = uid;
   if (tbl === 'categories') checkCategory(uid, v);
   if (tbl === 'income_schedules') checkSchedule(v);
+  if (tbl === 'goals') checkGoal(v);
+  if (tbl === 'credit_scores') checkScore(v);
   checkFigures(tbl, v);
   if (tbl === 'bills') {
     checkBill(uid, v);
@@ -298,6 +318,8 @@ function updateRows(uid, tbl, filters, values, orGroups) {
     }
     if (tbl === 'bills') checkBill(uid, n);
     if (tbl === 'income_schedules') checkSchedule(n);
+    if (tbl === 'goals') checkGoal(n);
+    if (tbl === 'credit_scores') checkScore(n);
     // Checked when the name or kind really changes, so two that shared a name before this rule can still be edited.
     const nm = (x) => String(x || '').trim().toLowerCase();
     if (tbl === 'categories' && (nm(n.name) !== nm(r.name) || !!n.is_income !== !!r.is_income || !nm(n.name))) checkCategory(uid, n);

@@ -5,6 +5,7 @@ import { server } from '../utils/server';
 import { showToast } from '../utils/toast';
 import { findRecurring, rollForward, billPaid } from '../utils/spending';
 import { mkey } from '../utils/categoryRules';
+import { priceChanges, yearlyCost } from '../utils/plans';
 import { formatCurrency, parseDay } from '../utils/helpers';
 import { Card, Section, Button, Field, Badge, EmptyState } from './shared/ui';
 
@@ -47,6 +48,8 @@ export default function Bills() {
   const active = bills.filter((b) => b.status === 'active').map((b) => ({ ...b, due: rollForward(b.next_date, b.frequency, now) }))
     .sort((a, b) => String(a.due).localeCompare(String(b.due)));
   const ignored = bills.filter((b) => b.status === 'ignored');
+  const changed = useMemo(() => priceChanges(bills, transactions), [bills, transactions]);
+  const yearly = active.reduce((s, b) => s + yearlyCost(b), 0);
   const monthly = active.reduce((s, b) => s + (Number(b.amount) || 0) * (PER_MONTH[b.frequency] || 1), 0);
 
   const insert = async (row) => {
@@ -110,7 +113,29 @@ export default function Bills() {
         </Section>
       )}
 
-      <Section title="Tracked" action={active.length ? <span className="text-xs text-muted">about {formatCurrency(monthly)} a month</span> : null}>
+      {changed.length > 0 && (
+        <Section title="Price changes">
+          <Card padded={false} className="divide-y divide-line">
+            {changed.map((c) => (
+              <div key={c.bill.id} className="p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{c.bill.name}</div>
+                    <div className="text-xs text-muted">Charged {formatCurrency(c.now)} on {day(c.date)}. The usual amount is {formatCurrency(c.was)}.</div>
+                  </div>
+                  <Badge tone={c.up ? 'warning' : 'positive'}>{c.up ? 'Up' : 'Down'} {formatCurrency(Math.abs(c.now - c.was))}</Badge>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => update(c.bill, { amount: c.now, price_seen: c.now })}>Use {formatCurrency(c.now)} from now on</Button>
+                  <Button size="sm" variant="secondary" onClick={() => update(c.bill, { price_seen: c.now })}>Keep {formatCurrency(c.was)}</Button>
+                </div>
+              </div>
+            ))}
+          </Card>
+        </Section>
+      )}
+
+      <Section title="Tracked" action={active.length ? <span className="text-xs text-muted">about {formatCurrency(monthly)} a month · {formatCurrency(yearly)} a year</span> : null}>
         <Card padded={false} className="divide-y divide-line">
           {active.length === 0 && editing !== 'new' && (
             <EmptyState icon={Repeat} title="No bills tracked yet" text="Track one found above, or add one yourself." />

@@ -12,7 +12,7 @@ const BACKUP_VERSION = '1.0.0';
 const TABLES_TO_BACKUP = [
   'settings', 'user_preferences', 'categories', 'category_rules',
   'bank_accounts', 'credit_cards', 'loans', 'investments', 'assets',
-  'income', 'income_schedules', 'bills', 'transactions', 'credit_card_payments', 'loan_payments',
+  'income', 'income_schedules', 'bills', 'goals', 'credit_scores', 'transactions', 'credit_card_payments', 'loan_payments',
   'activities', 'budget_tracking', 'balance_points', 'snapshots', 'scheduled_payments', 'known_entities', 'alert_history', 'saved_filters', 'report_templates',
   // Form contexts
   'expense_description_contexts', 'transfer_description_contexts', 'income_source_contexts',
