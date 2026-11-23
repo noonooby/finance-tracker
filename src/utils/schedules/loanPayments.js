@@ -199,13 +199,17 @@ export async function undoLoanPayment(paymentId) {
   if (payment.status === 'undone') return true;
   if (!payment.transaction_id) throw new Error('This payment has no linked transaction to undo.');
 
+  const { data: was } = await server.from('loans').select('*').eq('id', payment.loan_id).single();
   await reverseTransaction(payment.transaction_id);
 
   const { data: loan } = await server.from('loans').select('*').eq('id', payment.loan_id).single();
   if (loan) {
+    // Reversing the transaction already puts the count back when nothing was paid since; take one off only when it did not.
+    const count = loan.recurring_occurrences_completed || 0;
+    const untouched = !was || (was.recurring_occurrences_completed || 0) === count;
     await server.from('loans').update({
       next_payment_date: payment.due_date,
-      recurring_occurrences_completed: Math.max(0, (loan.recurring_occurrences_completed || 0) - 1),
+      recurring_occurrences_completed: untouched ? Math.max(0, count - 1) : count,
     }).eq('id', loan.id);
   }
   await server.from('loan_payments').update({ status: 'undone', undone_at: new Date().toISOString() }).eq('id', paymentId);

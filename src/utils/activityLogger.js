@@ -138,13 +138,17 @@ export const undoActivity = async (activity, onUpdate) => {
 
       case 'loan_payment': {
         const { undoLoanPayment } = await import('./schedules');
-        await undoLoanPayment(entity_id);
+        if (snapshot?.paymentId) await undoLoanPayment(snapshot.paymentId);
+        else if (hasMoney) await reverseMoney();
+        else await undoLoanPayment(entity_id);
         break;
       }
 
       case 'credit_card_payment': {
         const { undoCreditCardPayment } = await import('./schedules');
-        await undoCreditCardPayment(entity_id);
+        if (snapshot?.paymentId) await undoCreditCardPayment(snapshot.paymentId);
+        else if (hasMoney) await reverseMoney();
+        else await undoCreditCardPayment(entity_id);
         break;
       }
 

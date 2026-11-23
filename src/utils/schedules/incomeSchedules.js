@@ -398,13 +398,17 @@ export async function undoIncomeOccurrence(incomeId) {
     txId = txs && txs[0] ? txs[0].id : null;
   }
   if (!txId) throw new Error('The transaction for this income was not found.');
+  const { data: was } = await server.from('income_schedules').select('*').eq('id', income.schedule_id).single();
   await reverseTransaction(txId);
 
   const { data: schedule } = await server.from('income_schedules').select('*').eq('id', income.schedule_id).single();
   if (schedule) {
+    // Reversing the transaction already puts the count back when nothing was deposited since; take one off only when it did not.
+    const count = schedule.recurring_occurrences_completed || 0;
+    const untouched = !was || (was.recurring_occurrences_completed || 0) === count;
     await server.from('income_schedules').update({
       next_date: income.date,
-      recurring_occurrences_completed: Math.max(0, (schedule.recurring_occurrences_completed || 0) - 1),
+      recurring_occurrences_completed: untouched ? Math.max(0, count - 1) : count,
     }).eq('id', schedule.id);
   }
 
