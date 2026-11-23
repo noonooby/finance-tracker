@@ -886,3 +886,40 @@ test('a card payment you record moves the due date to next month when it settles
   assert.equal(f(c(auto), '2026-11-23', 100), null);                     // the automatic payment will take the rest
   assert.equal(f(c(auto), '2026-11-23', 0), '2026-12-28');               // nothing left for it to take
 });
+
+test('repeating dates: one rule for weekly, every two weeks, twice a month, every 2 months and monthly', () => {
+  const n = S.nextDue;
+  assert.equal(n('2026-11-23', 'weekly'), '2026-11-30');
+  assert.equal(n('2026-11-23', 'biweekly'), '2026-12-07');
+  assert.equal(n('2026-01-31', 'monthly'), '2026-02-28');
+  assert.equal(n('2026-02-28', 'monthly', 31), '2026-03-31');
+  assert.equal(n('2026-11-23', 'bimonthly'), '2027-01-23');
+  // Twice a month: the 5th and the 20th, whichever of the two it starts on.
+  assert.equal(n('2026-11-05', 'semimonthly'), '2026-11-20');
+  assert.equal(n('2026-11-20', 'semimonthly'), '2026-12-05');
+  assert.equal(n('2026-11-20', 'semimonthly', 5), '2026-12-05');
+  // The 15th and the 30th: February ends early, March returns to the 30th.
+  assert.equal(n('2026-02-15', 'semimonthly'), '2026-02-28');
+  assert.equal(n('2026-02-28', 'semimonthly', 30), '2026-03-15');
+  assert.equal(n('2026-03-15', 'semimonthly', 30), '2026-03-30');
+  assert.equal(n('2026-01-31', 'semimonthly'), '2026-02-16');
+  assert.equal(n('not a date', 'monthly'), null);
+  assert.deepEqual(S.dueDatesBetween('2026-11-06', 'biweekly', undefined, '2026-11-10', '2026-11-30'), ['2026-11-20']);
+});
+
+test('month end counts pay and loan payments every time they fall in the month, and never more than is owed', () => {
+  const today = new Date(2026, 10, 2);
+  const m = F.monthEnd({ liquid: 0,
+    incomeSchedules: [
+      { amount: 1000, frequency: 'biweekly', next_date: '2026-11-06' },                    // the 6th and the 20th
+      { amount: 500, frequency: 'weekly', next_date: '2026-11-03', recurring_duration_type: 'occurrences', recurring_occurrences_total: 5, recurring_occurrences_completed: 3 }, // two left
+      { amount: 70, frequency: 'weekly', next_date: '2026-11-03', recurring_duration_type: 'until_date', recurring_until_date: '2026-11-10' }, // the 3rd and the 10th
+      { amount: 9, frequency: 'monthly', next_date: '2026-11-15', is_active: false },
+    ],
+    loans: [
+      { payment_amount: 100, frequency: 'weekly', next_payment_date: '2026-11-04', balance: 250 },   // 100 + 100 + 50
+      { payment_amount: 40, frequency: 'semimonthly', next_payment_date: '2026-11-05', balance: 1000 }, // the 5th and the 20th
+      { payment_amount: 300, frequency: 'monthly', next_payment_date: '2026-11-25', balance: 0 },    // paid off
+    ] }, today);
+  assert.deepEqual([m.coming, m.going], [2000 + 1000 + 140, 250 + 80]);
+});

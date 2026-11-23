@@ -74,6 +74,12 @@ function nextBill(date, frequency, anchorDay) {
   const d = parse(date); if (!d) return null;
   const months = { monthly: 1, bimonthly: 2, quarterly: 3, yearly: 12 }[frequency];
   if (months) { const day = anchorDay || d.getDate(); const n = new Date(d.getFullYear(), d.getMonth() + months, 1); n.setDate(Math.min(day, new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate())); return iso(n); }
+  // Twice a month: two days 15 apart (as src/utils/spending.js nextDue).
+  if (frequency === 'semimonthly') {
+    const day = anchorDay || d.getDate(), lo = day > 15 ? day - 15 : day, y = d.getFullYear(), m = d.getMonth();
+    const inMonth = (mo, want) => new Date(y, mo, Math.min(want, new Date(y, mo + 1, 0).getDate()));
+    return iso([inMonth(m, lo), inMonth(m, lo + 15), inMonth(m + 1, lo)].find((x) => x > d));
+  }
   d.setDate(d.getDate() + (frequency === 'weekly' ? 7 : 14)); return iso(d);
 }
 const money = (n) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(Number(n) || 0);

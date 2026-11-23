@@ -22,7 +22,7 @@ export function formatFrequency(frequency) {
     'biweekly': 'Bi-Weekly',
     'bi-weekly': 'Bi-Weekly',
     'monthly': 'Monthly',
-    'bimonthly': 'Bi-Monthly',
+    'bimonthly': 'Every 2 months',
     'bi-monthly': 'Bi-Monthly',
     'quarterly': 'Quarterly',
     'yearly': 'Yearly',

@@ -68,18 +68,32 @@ const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const n = s.le
 // The day after `date` that a bill with this frequency falls on. anchorDay: the day of the month the bill belongs to,
 // so a bill on the 31st that fell on Feb 28 returns to the 31st instead of staying on the 28th.
 export const dayOfMonth = (date) => { const d = parse(date); return d ? d.getDate() : undefined; };
-export function nextBillDate(date, frequency, anchorDay) {
+// One rule for everything that repeats (bills, loan payments, pay), used by every screen:
+// weekly and every two weeks count days; twice a month is two days 15 apart (the 5th and 20th, the 15th and 30th);
+// every 2 months, quarterly and yearly count months; anything else is monthly.
+export function nextDue(date, frequency, anchorDay) {
   const d = parse(date);
   if (!d) return null;
   const day = anchorDay || d.getDate();
-  const months = { monthly: 1, quarterly: 3, yearly: 12 }[frequency];
-  if (months) {
-    const n = new Date(d.getFullYear(), d.getMonth() + months, 1);
-    n.setDate(Math.min(day, new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate()));
-    return iso(n);
+  const y = d.getFullYear(), m = d.getMonth();
+  const inMonth = (mo, want) => new Date(y, mo, Math.min(want, new Date(y, mo + 1, 0).getDate()));
+  if (frequency === 'weekly') return iso(new Date(y, m, d.getDate() + 7));
+  if (frequency === 'biweekly' || frequency === 'accelerated_biweekly') return iso(new Date(y, m, d.getDate() + 14));
+  if (frequency === 'semimonthly') {
+    const lo = day > 15 ? day - 15 : day;
+    return iso([inMonth(m, lo), inMonth(m, lo + 15), inMonth(m + 1, lo)].find((x) => x > d));
   }
-  d.setDate(d.getDate() + (frequency === 'weekly' ? 7 : 14));
-  return iso(d);
+  const months = { bimonthly: 2, quarterly: 3, yearly: 12 }[frequency] || 1;
+  return iso(inMonth(m + months, day));
+}
+export const nextBillDate = nextDue;
+// Every date something falls due between two days (inclusive), stepping from its next date. -> ['YYYY-MM-DD']
+export function dueDatesBetween(nextDate, frequency, anchorDay, from, to) {
+  const out = [];
+  let d = String(nextDate || '').slice(0, 10);
+  if (!parse(d)) return out;
+  for (let i = 0; d && d <= to && i < 400; i++) { if (d >= from) out.push(d); d = nextDue(d, frequency, anchorDay); }
+  return out;
 }
 // The first due day on or after today, stepping from a known date.
 export function rollForward(date, frequency, today = new Date()) {

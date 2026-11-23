@@ -1,3 +1,4 @@
+import { nextDue } from './spending';
 // Utility functions for formatting and calculations
 export const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
@@ -52,24 +53,8 @@ export const addMonths = (date, n, anchorDay = date.getDate()) => {
   return new Date(y, mo, Math.min(anchorDay, last));
 };
 
-export const predictNextDate = (lastDate, frequency, anchorDay) => {
-  const [year, month, day] = lastDate.split('T')[0].split('-');
-  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-  switch (frequency) {
-    case 'weekly':
-      date.setDate(date.getDate() + 7);
-      break;
-    case 'biweekly':
-      date.setDate(date.getDate() + 14);
-      break;
-    case 'bimonthly':
-      return localDate(addMonths(date, 2, anchorDay || date.getDate()));
-    case 'monthly':
-    default:
-      return localDate(addMonths(date, 1, anchorDay || date.getDate()));
-  }
-  return localDate(date);
-};
+// The next date for a loan payment or a pay day (the shared rule in spending.js).
+export const predictNextDate = (lastDate, frequency, anchorDay) => nextDue(String(lastDate).split('T')[0], frequency, anchorDay);
 
 export const DEFAULT_CATEGORIES = [
   { id: 'groceries', name: 'Groceries', color: '#10b981', icon: 'ShoppingCart', is_income: false },

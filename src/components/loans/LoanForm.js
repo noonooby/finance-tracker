@@ -218,10 +218,10 @@ export default function LoanForm({
           className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
         >
           <option value="weekly">Weekly</option>
-          <option value="biweekly">Bi-Weekly</option>
+          <option value="biweekly">Every 2 weeks</option>
           <option value="semimonthly">Twice a month</option>
           <option value="monthly">Monthly</option>
-          <option value="bimonthly">Bi-Monthly</option>
+          <option value="bimonthly">Every 2 months</option>
         </select>
       </div>
 

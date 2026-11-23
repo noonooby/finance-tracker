@@ -1,4 +1,4 @@
-import { nextBillDate, billPaid, dayOfMonth } from './spending';
+import { nextBillDate, billPaid, dayOfMonth, nextDue, dueDatesBetween } from './spending';
 // Money arithmetic that does not change anything: interest, amortization, how current each figure is, and where you stand.
 // Pure functions, so the screens and the scenario tests use the same rules.
 
@@ -52,7 +52,7 @@ export function amortize(loan, { from } = {}) {
   const step = (d) => {
     if (n === 52) return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7);
     if (n === 26) return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 14);
-    if (n === 24) return d.getDate() < 15 ? new Date(d.getFullYear(), d.getMonth(), 15) : new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    if (n === 24) return parse(nextDue(iso(d), 'semimonthly', anchor));
     const months = 12 / n;
     const last = new Date(d.getFullYear(), d.getMonth() + months + 1, 0).getDate();
     return new Date(d.getFullYear(), d.getMonth() + months, Math.min(anchor, last));
@@ -127,8 +127,23 @@ export function monthEnd({ liquid, incomeSchedules = [], loans = [], creditCards
   const end = iso(new Date(today.getFullYear(), today.getMonth() + 1, 0));
   const t = iso(today);
   const due = (d) => d && d >= t && d <= end;
-  const coming = incomeSchedules.filter((s) => s.is_active !== false && due(s.next_date)).reduce((s, x) => s + (Number(x.amount) || 0), 0);
-  const going = loans.filter((l) => !l.on_card_id && due(l.next_payment_date)).reduce((s, l) => s + (Number(l.payment_amount) || 0), 0)
+  // Pay and loan payments that repeat inside the month count each time they fall (weekly pay comes four times, not once).
+  const times = (next, frequency, start) => dueDatesBetween(next, frequency || 'monthly', dayOfMonth(start) || dayOfMonth(next), t, end);
+  const coming = incomeSchedules.filter((s) => s.is_active !== false).reduce((sum, x) => {
+    let dates = times(x.next_date, x.frequency, x.start_date);
+    if (x.recurring_duration_type === 'until_date' && x.recurring_until_date) dates = dates.filter((d) => d <= String(x.recurring_until_date).slice(0, 10));
+    if (x.recurring_duration_type === 'occurrences' && x.recurring_occurrences_total) dates = dates.slice(0, Math.max(0, x.recurring_occurrences_total - (x.recurring_occurrences_completed || 0)));
+    return sum + dates.length * (Number(x.amount) || 0);
+  }, 0);
+  const going = loans.filter((l) => !l.on_card_id).reduce((sum, l) => {
+    // Never more than is still owed (when the balance is known).
+    let left = l.balance == null ? Infinity : Math.max(0, Number(l.balance) || 0);
+    for (let i = times(l.next_payment_date, l.frequency, l.start_date).length; i > 0 && left > 0; i--) {
+      const pay = Math.min(Number(l.payment_amount) || 0, left);
+      sum += pay; left -= pay;
+    }
+    return sum;
+  }, 0)
     + creditCards.filter((c) => !c.is_gift_card && Number(c.balance) > 0 && due(c.due_date)).reduce((s, c) => s + (Number(c.minimum_payment || c.payment_amount) || Number(c.balance) || 0), 0)
     + billDates(bills, transactions, today, end).filter((x) => !x.paid && x.bill.payment_method !== 'credit_card').reduce((s, x) => s + (Number(x.bill.amount) || 0), 0);
   return { end, now: round2(liquid), coming: round2(coming), going: round2(going), atEnd: round2(liquid + coming - going) };
