@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, FileText, Scale, PiggyBank, Repeat, Target, Gauge, MessageCircle, CalendarDays, TrendingDown } from 'lucide-react';
+import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, FileText, Scale, PiggyBank, Repeat, Target, Gauge, MessageCircle, CalendarDays, TrendingDown, FileSpreadsheet } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { OTHER_APPS } from '../utils/apps';
@@ -74,6 +74,7 @@ export default function More() {
 
       <Section title="Look back">
         <Item icon={Activity} label="Activity" hint="Everything you changed, with undo" to="/activity" />
+        <Item icon={FileSpreadsheet} label="The year" hint="A year added up for tax time, with files to download" to="/year" />
         <Item icon={BarChart3} label="Reports" hint="Spending by category, month and payment method" to="/reports" />
       </Section>
 

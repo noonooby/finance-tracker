@@ -188,6 +188,14 @@ function checkPercents(v) {
     const n = Number(v[f]);
     if (!Number.isFinite(n) || n < 0 || n > 10) fail(400, 'Enter a percentage from 0 to 10.');
   }
+  // A card's own rates for some categories: six at most, each a category once and a percentage from 0 to 10.
+  if (v.reward_rules != null) {
+    const rules = v.reward_rules;
+    if (!Array.isArray(rules) || rules.length > 6) fail(400, 'A card can have its own rate for six categories at most.');
+    const ids = rules.map((r) => String((r && r.category_id) || ''));
+    if (ids.some((x) => !x) || new Set(ids).size !== ids.length) fail(400, 'Choose a different category for each rewards rate.');
+    if (rules.some((r) => r.percent === '' || r.percent == null || !Number.isFinite(Number(r.percent)) || Number(r.percent) < 0 || Number(r.percent) > 10)) fail(400, 'Enter a percentage from 0 to 10.');
+  }
 }
 // A savings goal: a name, an amount above zero, a real date when one is given.
 function checkGoal(g) {
@@ -750,6 +758,12 @@ route('POST', '/api/ask', async (req, b) => {
     schedules: all('income_schedules'), goals: all('goals'), scores: all('credit_scores'),
     transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: isDay(b.today) ? b.today : today(), db };
   try { return await require('./assistant').ask(uid, b, ctx); } catch (e) { if (e.status) fail(e.status, e.message); throw e; }
+});
+// A screenshot of a credit score (a bureau's app or a bank's): the bureau, the score and the day. Nothing is saved.
+route('POST', '/api/read-score', async (req, b) => {
+  authUser(req);
+  try { return await require('./reader').readScore(b, { today: isDay(b.today) ? b.today : today() }); }
+  catch (e) { if (e.status) fail(e.status, e.message); throw e; }
 });
 // A pay slip or a payroll screen (Workday and the like): what the pay is and which accounts it lands in. Nothing is saved.
 route('POST', '/api/read-pay', async (req, b) => {

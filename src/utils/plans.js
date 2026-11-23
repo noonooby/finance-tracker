@@ -131,9 +131,12 @@ export function chargesToCheck(transactions, today = new Date(), seen = []) {
 
 // ---------- Card rewards, and payments made through a service that charges a fee ----------
 // What a card gives back, in percent: its everyday rate, or its rate on bill payments when it has one.
-export const rewardRate = (card, forBills = false) => {
+// A category with its own rate on the card (for example 4% on groceries) uses that for purchases in it.
+export const rewardRate = (card, forBills = false, categoryId = null) => {
   const bills = card && card.reward_bills_percent;
-  return Number(forBills && bills != null && bills !== '' ? bills : card && card.reward_percent) || 0;
+  if (forBills) return Number(bills != null && bills !== '' ? bills : card && card.reward_percent) || 0;
+  const rule = categoryId != null && categoryId !== '' && ((card && card.reward_rules) || []).find((r) => String(r.category_id) === String(categoryId));
+  return Number(rule ? rule.percent : card && card.reward_percent) || 0;
 };
 // A bill or loan payment made through a service such as Chexy: the fee, what the card is charged, and for each card
 // what it gives back on that charge and whether you come out ahead (net above zero) or behind.
@@ -146,7 +149,7 @@ export function throughCost(amount, feePercent, cards = []) {
   }).sort((x, y) => y.net - x.net || String(x.name).localeCompare(String(y.name)));
   return { fee, charged, options, best: options.length && options[0].rate > 0 ? options[0] : null };
 }
-// About what a card gave back in a month (YYYY-MM): purchases on it less refunds at its everyday rate,
+// About what a card gave back in a month (YYYY-MM): purchases on it less refunds at its everyday rate (or the rate of their category),
 // and loan payments charged to it at its bill-payment rate. An estimate: the card issuer's own count is the real one.
 export function rewardsEarned(card, transactions, month) {
   let cents = 0;
@@ -154,8 +157,10 @@ export function rewardsEarned(card, transactions, month) {
     if (!live(t) || String(t.date || '').slice(0, 7) !== month) continue;
     if (t.payment_method !== 'credit_card' || String(t.payment_method_id) !== String(card.id)) continue;
     const a = Number(t.amount) || 0;
-    if (t.type === 'expense') cents += a * rewardRate(card, !!t.through_fee_for);
-    else if (t.type === 'refund') cents -= a * rewardRate(card);
+    const parts = Array.isArray(t.splits) && t.splits.length ? t.splits : [{ category_id: t.category_id, amount: a }];
+    if (t.type === 'expense' && t.through_fee_for) cents += a * rewardRate(card, true);
+    else if (t.type === 'expense') for (const p of parts) cents += (Number(p.amount) || 0) * rewardRate(card, false, p.category_id);
+    else if (t.type === 'refund') for (const p of parts) cents -= (Number(p.amount) || 0) * rewardRate(card, false, p.category_id);
     else if (t.loan_id && (t.type === 'loan_payment' || t.type === 'payment')) cents += a * rewardRate(card, true);
   }
   return round2(cents / 100);
@@ -227,4 +232,55 @@ export function spendingPace(now = {}, usual = {}) {
     out.push({ category_id: k, now: a, usual: b, diff });
   }
   return out.sort((x, y) => y.diff - x.diff);
+}
+
+// ---------- The year, for tax time ----------
+// Everything recorded in one calendar year, added up: money in by source, spending by category (refunds taken off,
+// gift-card spending left out as it was counted when the card was loaded), interest paid on loans, and fees.
+// -> { year, income: { total, by: [{ name, amount }] }, spending: { total, by: [...] }, interest, fees, lines: [...] }
+export function yearSummary(transactions, year) {
+  const y = String(year);
+  const lines = (transactions || []).filter((t) => live(t) && String(t.date || '').slice(0, 4) === y).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const inc = new Map(), spend = new Map();
+  let interest = 0, fees = 0;
+  const add = (map, k, v) => map.set(k, (map.get(k) || 0) + v);
+  for (const t of lines) {
+    const a = Number(t.amount) || 0;
+    if (t.type === 'income') add(inc, String(t.income_source || t.description || 'Other').replace(/ \(from schedule\)$/, ''), a);
+    const sign = t.gift_card_id ? 0 : t.type === 'expense' ? 1 : t.type === 'refund' ? -1 : 0;
+    if (sign) {
+      const parts = Array.isArray(t.splits) && t.splits.length ? t.splits : [{ category_name: t.category_name, amount: a }];
+      for (const p of parts) {
+        const name = p.category_name || 'No category';
+        add(spend, name, sign * (Number(p.amount) || 0));
+        if (/\bfees?\b/i.test(name)) fees += sign * (Number(p.amount) || 0);
+      }
+    }
+    if (Number(t.interest_amount) > 0) interest += Number(t.interest_amount);
+  }
+  const list = (map) => [...map.entries()].map(([name, amount]) => ({ name, amount: round2(amount) })).filter((x) => x.amount !== 0).sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
+  const total = (l) => round2(l.reduce((s, x) => s + x.amount, 0));
+  const income = list(inc), spending = list(spend);
+  return { year: Number(year), income: { total: total(income), by: income }, spending: { total: total(spending), by: spending }, interest: round2(interest), fees: round2(fees), lines };
+}
+// Rows of cells as a CSV file. Text that a spreadsheet would run as a formula is written as plain text.
+export function toCsv(rows) {
+  const cell = (v) => {
+    if (v == null) return '';
+    if (typeof v === 'number') return String(v);
+    let s = String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return rows.map((r) => r.map(cell).join(',')).join('\r\n') + '\r\n';
+}
+export function yearFiles(summary) {
+  const s = summary;
+  const totals = [['Year', s.year], [], ['Money in', s.income.total], ...s.income.by.map((x) => [`  ${x.name}`, x.amount]), [],
+    ['Spending', s.spending.total], ...s.spending.by.map((x) => [`  ${x.name}`, x.amount]), [], ['Interest paid on loans', s.interest], ['Fees', s.fees]];
+  const kind = { expense: 'Purchase', income: 'Money in', refund: 'Refund', transfer: 'Transfer', credit_card_payment: 'Card payment', loan_payment: 'Loan payment', payment: 'Payment', adjustment: 'Balance correction' };
+  const lines = [['Date', 'Kind', 'Description', 'Category', 'Amount', 'Account', 'Interest part', 'Notes'],
+    ...s.lines.map((t) => [String(t.date).slice(0, 10), kind[t.type] || t.type, t.description || '', Array.isArray(t.splits) && t.splits.length ? t.splits.map((p) => `${p.category_name || 'No category'} ${p.amount}`).join('; ') : (t.category_name || ''),
+      round2(t.amount), t.payment_method_name || '', Number(t.interest_amount) > 0 ? round2(t.interest_amount) : '', t.notes || ''])];
+  return { totals: toCsv(totals), lines: toCsv(lines) };
 }

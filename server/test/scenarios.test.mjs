@@ -1466,3 +1466,41 @@ test('a service fee on a payment charged to a card is its own purchase, and only
   await api(`/api/transactions/${r.transaction.id}/reverse`, {});
   await db.from('credit_cards').delete().eq('id', visa.id); await db.from('bank_accounts').delete().eq('id', chq.id);
 });
+
+test('the year: money in, spending, interest and fees add up, and the files are safe to open', () => {
+  const tx = [
+    { type: 'income', amount: 2000, date: '2026-01-15', description: 'Acme (from schedule)', income_source: 'Acme' },
+    { type: 'income', amount: 2000, date: '2026-02-15', description: 'Acme (from schedule)', income_source: 'Acme' },
+    { type: 'income', amount: 50, date: '2026-03-01', description: 'Interest' },
+    { type: 'expense', amount: 100, date: '2026-03-02', description: 'Loblaws', category_name: 'Groceries' },
+    { type: 'refund', amount: 25, date: '2026-03-03', description: 'Loblaws', category_name: 'Groceries' },
+    { type: 'expense', amount: 60, date: '2026-03-04', description: 'Mixed', splits: [{ category_name: 'Dining', amount: 40 }, { category_name: 'Groceries', amount: 20 }] },
+    { type: 'expense', amount: 10.5, date: '2026-03-05', description: '=Chexy fee, "lease" car', category_name: 'Fees' },
+    { type: 'expense', amount: 30, date: '2026-03-06', description: 'On a gift card', category_name: 'Dining', gift_card_id: 'g' },
+    { type: 'loan_payment', amount: 400, date: '2026-03-07', description: 'Car', interest_amount: 61.25 },
+    { type: 'expense', amount: 999, date: '2026-03-08', description: 'Undone', category_name: 'Dining', status: 'undone' },
+    { type: 'expense', amount: 5, date: '2025-12-31', description: 'Last year', category_name: 'Dining' },
+  ];
+  const s = P.yearSummary(tx, 2026);
+  assert.deepEqual(s.income, { total: 4050, by: [{ name: 'Acme', amount: 4000 }, { name: 'Interest', amount: 50 }] });
+  assert.deepEqual(s.spending, { total: 145.5, by: [{ name: 'Groceries', amount: 95 }, { name: 'Dining', amount: 40 }, { name: 'Fees', amount: 10.5 }] });
+  assert.deepEqual([s.interest, s.fees, s.lines.length], [61.25, 10.5, 9]);
+  const f = P.yearFiles(s);
+  assert.match(f.totals, /Money in,4050\r\n {2}Acme,4000/);
+  assert.match(f.lines, /2026-03-05,Purchase,"'=Chexy fee, ""lease"" car",Fees,10.5/); // not run as a formula, quotes kept
+  assert.match(f.lines, /2026-03-07,Loan payment,Car,,400,,61.25,/);
+  assert.equal(P.toCsv([['a', null, 1.5, '-5 off', 'line\nbreak']]), 'a,,1.5,\'-5 off,"line\nbreak"\r\n');
+});
+
+test('card rewards by category: a category with its own rate uses it, split purchases part by part', async () => {
+  const card = { id: 'c', reward_percent: 1, reward_bills_percent: 2, reward_rules: [{ category_id: 'groc', percent: 4 }] };
+  assert.deepEqual([P.rewardRate(card), P.rewardRate(card, false, 'groc'), P.rewardRate(card, false, 'fun'), P.rewardRate(card, true, 'groc')], [1, 4, 1, 2]);
+  const on = { payment_method: 'credit_card', payment_method_id: 'c', date: '2026-11-05' };
+  const tx = [{ ...on, type: 'expense', amount: 100, category_id: 'groc' }, { ...on, type: 'expense', amount: 100, category_id: 'fun' },
+    { ...on, type: 'expense', amount: 50, splits: [{ category_id: 'groc', amount: 30 }, { category_id: 'fun', amount: 20 }] }, { ...on, type: 'refund', amount: 10, category_id: 'groc' }];
+  assert.equal(P.rewardsEarned(card, tx, '2026-11'), 6); // 4.00 + 1.00 + 1.20 + 0.20 - 0.40
+  const bad = async (v) => { const { error } = await db.from('credit_cards').insert({ name: 'Rules card', balance: 0, ...v }).select().single(); return error && error.message; };
+  assert.match(await bad({ reward_rules: [{ category_id: 'a', percent: 4 }, { category_id: 'a', percent: 2 }] }), /different category/);
+  assert.match(await bad({ reward_rules: [{ category_id: 'a', percent: 40 }] }), /0 to 10/);
+  assert.match(await bad({ reward_rules: Array.from({ length: 7 }, (_, i) => ({ category_id: 'c' + i, percent: 1 })) }), /six categories/);
+});

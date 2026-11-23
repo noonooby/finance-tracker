@@ -483,3 +483,13 @@ test('assistant: the figures it may use are worked out from the records', () => 
   assert.deepEqual([f.cards.length, f.gift_cards.length, f.bills.length, f.pay.length], [1, 1, 1, 1]);
   assert.ok(!JSON.stringify(f).includes('999'));
 });
+
+test('credit score from a picture: only a real score and a real past day are passed on', () => {
+  const reader = mod('reader.js');
+  assert.deepEqual(reader.planScore({ bureau: ' Equifax ', score: 718, date: '2026-11-20' }, '2026-11-23'), { bureau: 'Equifax', score: 718, date: '2026-11-20', notes: '' });
+  assert.deepEqual(reader.planScore({ bureau: null, score: '742', date: '2026-12-01' }, '2026-11-23'), { bureau: null, score: 742, date: null, notes: '' }); // a day that has not come
+  assert.equal(reader.planScore({ score: 950 }, '2026-11-23').score, null);
+  assert.equal(reader.planScore({ score: 701.5 }, '2026-11-23').score, null);
+  assert.equal(reader.planScore({ score: 700, date: '2026-02-30' }, '2026-11-23').date, null);
+  assert.equal(reader.planScore(null, '2026-11-23').score, null);
+});

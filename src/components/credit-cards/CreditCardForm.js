@@ -1,4 +1,5 @@
 import React from 'react';
+import { useFinanceData } from '../../hooks/useFinanceData';
 import RateLookup from '../shared/RateLookup';
 import { CreditCard as CreditCardIcon, Gift, Star } from 'lucide-react';
 import ActionButton from '../shared/ActionButton';
@@ -28,6 +29,7 @@ export default function CreditCardForm({
   onCancel,
   submitting
 }) {
+  const spendCategories = (useFinanceData().categories || []).filter((c) => !c.is_income);
   const isEdit = mode === 'edit';
   const inputClass = `w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`;
   const smallLabel = `block text-sm mb-1 text-muted`;
@@ -217,6 +219,25 @@ export default function CreditCardForm({
             <label className={smallLabel}>Rewards on bill payments %
               <input type="number" step="0.01" min="0" max="10" inputMode="decimal" placeholder="If different" value={formData.rewardBillsPercent || ''} onChange={(e) => setFormData({ ...formData, rewardBillsPercent: e.target.value })} className={inputClass} />
             </label>
+            <div className="col-span-full space-y-2">
+              {(formData.rewardRules || []).map((r, i) => {
+                const setRule = (change) => setFormData({ ...formData, rewardRules: formData.rewardRules.map((x, j) => (j === i ? { ...x, ...change } : x)) });
+                return (
+                  <div key={i} className="flex items-center gap-2">
+                    <select aria-label={`Category with its own rewards rate ${i + 1}`} value={r.category_id} onChange={(e) => setRule({ category_id: e.target.value })} className={inputClass}>
+                      <option value="">Category</option>
+                      {spendCategories.filter((c) => !formData.rewardRules.some((x, j) => j !== i && String(x.category_id) === String(c.id))).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    <input type="number" step="0.01" min="0" max="10" inputMode="decimal" placeholder="%" aria-label={`Rewards rate for category ${i + 1}, in percent`}
+                      value={r.percent} onChange={(e) => setRule({ percent: e.target.value })} className={`${inputClass} max-w-[6rem]`} />
+                    <button type="button" className="text-sm text-muted underline shrink-0" onClick={() => setFormData({ ...formData, rewardRules: formData.rewardRules.filter((_, j) => j !== i) })}>Remove</button>
+                  </div>
+                );
+              })}
+              {(formData.rewardRules || []).length < 6 && spendCategories.length > 0 && (
+                <button type="button" className="text-sm font-medium text-accent" onClick={() => setFormData({ ...formData, rewardRules: [...(formData.rewardRules || []), { category_id: '', percent: '' }] })}>Add a rewards rate for one category</button>
+              )}
+            </div>
             <label className={smallLabel}>Cash advance rate %
               <input type="number" step="0.01" inputMode="decimal" placeholder="Optional" value={formData.cashRate} onChange={(e) => setFormData({ ...formData, cashRate: e.target.value })} className={inputClass} />
             </label>

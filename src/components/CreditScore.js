@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Gauge, Trash2 } from 'lucide-react';
-import { server } from '../utils/server';
+import { server, api } from '../utils/server';
 import { showToast } from '../utils/toast';
 import { scoreSummary, scoreBand } from '../utils/plans';
 import { parseDay } from '../utils/helpers';
@@ -17,6 +17,22 @@ export default function CreditScore() {
   const [saving, setSaving] = useState(false);
   const [v, setV] = useState({ bureau: 'Equifax', other: '', score: '', date: today(), note: '' });
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
+  // A screenshot of the score fills the form; you check it and save.
+  const [reading, setReading] = useState(false);
+  const [readNote, setReadNote] = useState('');
+  const fromPicture = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setReading(true); setReadNote('');
+    try {
+      const image = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('That file could not be opened.')); r.readAsDataURL(file); });
+      const p = await api('/api/read-score', { image, mime: file.type, today: today() });
+      const known = p.bureau && BUREAUS.find((b) => b.toLowerCase() === p.bureau.toLowerCase());
+      setV((prev) => ({ ...prev, score: String(p.score), date: p.date || prev.date, bureau: known || (p.bureau ? 'Other' : prev.bureau), other: known || !p.bureau ? prev.other : p.bureau }));
+      setReadNote(`Read ${p.score}${p.bureau ? ` from ${p.bureau}` : ''}${p.date ? '' : '; the picture shows no date, so set the day'}${p.bureau ? '' : '; choose the bureau'}. Check it, then save.`);
+    } catch (err) { showToast.error(err.message); } finally { setReading(false); }
+  };
   const load = async () => {
     const { data, error } = await server.from('credit_scores').select('*');
     if (error) showToast.error(error.message);
@@ -74,6 +90,13 @@ export default function CreditScore() {
       <Section title="Add a score">
         <Card>
           <form className="space-y-3" onSubmit={add}>
+            <div className="space-y-1">
+              <label className="press inline-flex items-center gap-2 text-sm font-medium text-accent cursor-pointer">
+                <input type="file" accept="image/*,application/pdf" className="sr-only" onChange={fromPicture} disabled={reading} />
+                {reading ? 'Reading the picture' : 'Fill in from a screenshot'}
+              </label>
+              {readNote && <p className="text-xs text-muted">{readNote}</p>}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Bureau" as="select" value={v.bureau} onChange={set('bureau')}>
                 {[...BUREAUS, 'Other'].map((b) => <option key={b}>{b}</option>)}

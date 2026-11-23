@@ -277,4 +277,38 @@ async function readPay(body, ctx) {
   return p;
 }
 
-module.exports = { read, plan, resolveAccount, mkey, cleanNote, readPay, planPay };
+// ---------- Credit score screens ----------
+const SCORE_PROMPT = `You read one screenshot showing a person's credit score (from a credit bureau's app, a bank's app or a report). Report only what is visible; never guess.
+Return JSON: {"bureau":"the bureau that produced the score (Equifax, TransUnion, Experian) as shown, or null when the screen does not say","score":whole number or null,"date":"YYYY-MM-DD the score is dated or was last updated, or null","notes":"anything unclear, short"}
+The score is the main number, usually between 300 and 900. Never report a rating word, a change or a range as the score. A year missing from a date: use YEAR_NOW unless that puts the date in the future, then the year before. Today is TODAY.`;
+// Only what can be trusted is passed on: a whole score from 300 to 900, a real day that is not in the future.
+function planScore(reading, today) {
+  const n = Number(reading && reading.score);
+  const d = String((reading && reading.date) || '');
+  const real = /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)) && new Date(d + 'T00:00:00Z').toISOString().slice(0, 10) === d && d <= today;
+  return { bureau: reading && reading.bureau ? String(reading.bureau).trim().slice(0, 40) : null, score: Number.isInteger(n) && n >= 300 && n <= 900 ? n : null, date: real ? d : null,
+    notes: String((reading && reading.notes) || '').slice(0, 200) };
+}
+async function readScore(body, ctx) {
+  let b64 = String(body.image || ''), mime = String(body.mime || '');
+  const m = b64.match(/^data:([\w/+.-]+);base64,(.*)$/s);
+  if (m) { mime = m[1]; b64 = m[2]; }
+  if (!TYPES.has(mime) || mime === 'text/csv') { const e = new Error('Send a screenshot or photo (PNG, JPEG, WebP, HEIC) or a PDF.'); e.status = 400; throw e; }
+  if (Buffer.byteLength(b64, 'base64') > MAX_BYTES) { const e = new Error('That file is too large (8 MB at most).'); e.status = 413; throw e; }
+  let reading;
+  if (process.env.SCORE_STUB) reading = JSON.parse(require('node:fs').readFileSync(process.env.SCORE_STUB, 'utf8'));
+  else {
+    const key = require('./keystore').get();
+    if (!key) { const e = new Error('Screenshot reading is not set up yet: the owner adds the Gemini key once in Settings.'); e.status = 503; throw e; }
+    const text = await require('./gemini').generate(key, {
+      contents: [{ parts: [{ text: SCORE_PROMPT.replace('YEAR_NOW', ctx.today.slice(0, 4)).replace('TODAY', ctx.today) }, { inline_data: { mime_type: mime, data: b64 } }] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0 },
+    }, { what: 'read the score' });
+    try { reading = JSON.parse(text); } catch { reading = null; }
+  }
+  const p = planScore(reading, ctx.today);
+  if (p.score == null) { const e = new Error('No credit score was found in that picture. Type it in instead.'); e.status = 422; throw e; }
+  return p;
+}
+
+module.exports = { read, plan, resolveAccount, mkey, cleanNote, readPay, planPay, readScore, planScore };

@@ -30,6 +30,7 @@ export function emptyCardForm(defaultDays, bankAccounts) {
     annualFee: '',
     rewardPercent: '',
     rewardBillsPercent: '',
+    rewardRules: [],
     ratesSource: '',
     ratesChecked: ''
   };
@@ -63,6 +64,7 @@ export function formFromCard(card, defaultDays, bankAccounts) {
     cashRate: card.cash_rate ? String(card.cash_rate) : '',
     annualFee: card.annual_fee ? String(card.annual_fee) : '',
     rewardPercent: card.reward_percent ? String(card.reward_percent) : '',
+    rewardRules: (card.reward_rules || []).map((r) => ({ category_id: String(r.category_id), percent: String(r.percent) })),
     rewardBillsPercent: card.reward_bills_percent != null && card.reward_bills_percent !== '' ? String(card.reward_bills_percent) : '',
     ratesSource: card.rates_source || '',
     ratesChecked: card.rates_checked || ''
@@ -109,6 +111,8 @@ export function cardFromForm(formData, { id, createdAt, defaultDays }) {
     cash_rate: gift ? 0 : (parseFloat(formData.cashRate) || 0),
     annual_fee: gift ? 0 : (parseFloat(formData.annualFee) || 0),
     reward_percent: gift ? 0 : (parseFloat(formData.rewardPercent) || 0),
+    // Rows left unfinished are dropped; the server refuses a category named twice.
+    reward_rules: gift ? [] : (formData.rewardRules || []).filter((r) => r.category_id && r.percent !== '' && Number.isFinite(parseFloat(r.percent))).map((r) => ({ category_id: r.category_id, percent: parseFloat(r.percent) })),
     reward_bills_percent: gift || formData.rewardBillsPercent === '' || formData.rewardBillsPercent == null ? null : (parseFloat(formData.rewardBillsPercent) || 0),
     rates_source: gift ? null : (formData.ratesSource || null),
     rates_checked: gift ? null : (formData.ratesChecked || null),
