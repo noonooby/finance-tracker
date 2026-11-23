@@ -1220,3 +1220,12 @@ test('due dates on cards and loans must be real days', async () => {
   assert.equal((await db.from('credit_cards').update({ due_date: null }).eq('id', card.id)).error, null);
   await db.from('credit_cards').delete().eq('id', card.id);
 });
+
+test('a transaction saved or edited directly needs a real date too', async () => {
+  const { error } = await db.from('transactions').insert({ type: 'expense', amount: 1, description: 'Bad day', date: '2026-02-30' }).select().single();
+  assert.match(error.message, /does not exist/);
+  const { data: t } = await db.from('transactions').insert({ type: 'expense', amount: 1, description: 'Good day', date: '2026-02-27T10:00:00Z' }).select().single();
+  assert.match((await db.from('transactions').update({ date: 'yesterday' }).eq('id', t.id)).error.message, /does not exist/);
+  assert.equal((await db.from('transactions').update({ date: '2026-02-28' }).eq('id', t.id)).error, null);
+  await db.from('transactions').delete().eq('id', t.id);
+});

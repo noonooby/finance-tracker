@@ -174,6 +174,11 @@ function checkBill(uid, b) {
 }
 // Figures on an account, card or loan are numbers: a balance may be below zero, the rest may not.
 const AMOUNTS = ['credit_limit', 'overdraft_limit', 'payment_amount', 'minimum_payment', 'interest_rate', 'annual_fee', 'autopay_fixed', 'principal'];
+// A transaction's date, however it is saved, is a real calendar day.
+function checkWhen(v) {
+  if (v.date == null || v.date === '') return;
+  if (!isDay(String(v.date).slice(0, 10))) fail(400, 'That date does not exist. Choose the day it happened.');
+}
 function checkFigures(tbl, v) {
   if (!MONEY_FIELDS[tbl]) return;
   for (const f of MONEY_FIELDS[tbl]) {
@@ -218,7 +223,7 @@ function checkCategory(uid, c) {
 }
 function insertRow(uid, tbl, values, upsertOn) {
   const v = clean(values);
-  if (tbl === 'transactions') checkSplits(v);
+  if (tbl === 'transactions') { checkSplits(v); checkWhen(v); }
   v.user_id = uid;
   if (tbl === 'categories') checkCategory(uid, v);
   if (tbl === 'income_schedules') checkSchedule(v);
@@ -283,6 +288,7 @@ function updateRows(uid, tbl, filters, values, orGroups) {
     if (r._legs) n._legs = r._legs;
     if (r._undo) n._undo = r._undo;
     if (tbl === 'transactions' && ('splits' in v || 'amount' in v)) checkSplits(n);
+    if (tbl === 'transactions' && 'date' in v) checkWhen(v);
     // A transaction that moved money keeps its amount, kind and account in a plain edit: the balances it moved would no
     // longer match. Undoing it (which puts the money back) and recording it again is the way to change those.
     if (tbl === 'transactions' && Array.isArray(r._legs) && r._legs.length && r.status !== 'undone' && r.status !== 'deleted') {
