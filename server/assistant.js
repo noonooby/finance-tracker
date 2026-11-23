@@ -73,10 +73,10 @@ async function ask(uid, body, ctx) {
   let reply;
   if (process.env.ASK_STUB) reply = JSON.parse(require('node:fs').readFileSync(process.env.ASK_STUB, 'utf8'));
   else {
-    const key = require('./keystore').get();
+    const key = require('./models').ready();
     if (!key) { const e = new Error('The assistant is not set up yet: the owner adds the Gemini key once in Settings.'); e.status = 503; throw e; }
     const prompt = `${PROMPT.replace(/TODAY/g, today)}\n\nDATA:\n${JSON.stringify(facts(ctx))}\n\nMESSAGE:\n<<<${text}>>>`;
-    const out = await require('./gemini').generate(key, { contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } }, { what: 'answer' });
+    const out = await require('./models').generate(key, { contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } }, { what: 'answer' });
     try { reply = JSON.parse(out); } catch { reply = null; }
   }
   if (reply && reply.kind === 'record' && Array.isArray(reply.lines) && reply.lines.length) {

@@ -10,6 +10,7 @@ RUN CI=true npm run build
 FROM node:22-slim
 WORKDIR /app
 COPY server ./server
+RUN cd server && npm ci --omit=dev --no-audit --no-fund
 COPY --from=build /app/build ./build
 RUN rm -rf server/test
 ENV PORT=8080 DB_PATH=/data/finance.db NODE_ENV=production

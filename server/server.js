@@ -745,7 +745,7 @@ route('POST', '/api/restore-all', (req, b) => {
   });
 });
 route('POST', '/api/transactions/:id/reverse', (req, b, [id]) => reverse(authUser(req).id, id, b));
-route('GET', '/api/config', () => ({ google: !!(G_ID && G_SECRET), dev: !!DEV_USER, ai: require('./keystore').isSet() }));
+route('GET', '/api/config', () => ({ google: !!(G_ID && G_SECRET), dev: !!DEV_USER, ai: require('./models').ready() }));
 // The Gemini key: whether it is set and whether this user may set it. Never the key itself.
 route('GET', '/api/gemini-key', (req) => { const u = authUser(req); const ks = require('./keystore'); return { set: ks.isSet(), canSet: !ks.isSet() && ks.mayManage(db, u) }; });
 route('POST', '/api/gemini-key', async (req, b) => { const u = authUser(req); await require('./keystore').set(db, u, b.key, fail); return { set: true }; });

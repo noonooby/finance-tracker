@@ -514,3 +514,48 @@ test('a short note names the account: one clear match, or none', () => {
   const q = reader.plan(reading, ctx, 'src1'); // without the note it is offered as a new card, as before
   assert.equal(q.new_accounts.length, 1);
 });
+
+test('reading services: Claude first, then Gemini, then Hugging Face, each only when it can', async () => {
+  const models = mod('models.js');
+  const body = { contents: [{ parts: [{ text: 'Read it' }, { inline_data: { mime_type: 'image/png', data: 'AAAA' } }] }], generationConfig: { responseMimeType: 'application/json' } };
+  const c = models.toClaude(body);
+  assert.deepEqual([c[0].type, c[0].source.media_type, c[1].type, /JSON object only/.test(c[1].text)], ['image', 'image/png', 'text', true]); // the picture goes first
+  assert.equal(models.toClaude({ contents: [{ parts: [{ inline_data: { mime_type: 'application/pdf', data: 'AAAA' } }] }] })[0].type, 'document');
+  assert.equal(models.toClaude({ contents: [{ parts: [{ inline_data: { mime_type: 'image/heic', data: 'AAAA' } }] }] }), null);
+  assert.equal(models.onlyJson('Here it is:\n```json\n{"a":1}\n```'), '{"a":1}');
+  const used = [];
+  const step = (name, how) => [name, async () => { used.push(name); return how(); }];
+  const fail = (status, message) => () => { throw Object.assign(new Error(message), { status }); };
+  const none = () => { throw Object.assign(new Error('no key'), { skip: true }); };
+  try {
+    models._setChain([step('claude', () => 'from claude'), step('gemini', () => 'x'), step('huggingface', () => 'x')]);
+    assert.equal(await models.generate(true, body, { what: 'read the screenshot' }), 'from claude');
+    assert.deepEqual(used.splice(0), ['claude']);
+    models._setChain([step('claude', fail(503, 'Claude is busy.')), step('gemini', none), step('huggingface', () => 'from hf')]);
+    assert.equal(await models.generate(true, body, { what: 'read the screenshot' }), 'from hf');
+    assert.deepEqual(used.splice(0), ['claude', 'gemini', 'huggingface']);
+    models._setChain([step('claude', none), step('gemini', fail(503, "Could not read the screenshot: Google's Gemini service is busy right now. Try again in a few minutes.")), step('huggingface', fail(502, 'Hugging Face did not answer.'))]);
+    await assert.rejects(models.generate(true, body, { what: 'read the screenshot' }), (e) => e.status === 503 && /busy right now/.test(e.message)); // the person sees the plain message
+    models._setChain([step('claude', fail(502, 'Claude did not answer.')), step('gemini', none), step('huggingface', none)]);
+    await assert.rejects(models.generate(true, body, { what: 'read the screenshot' }), (e) => e.status === 503 && /none of the reading services answered/.test(e.message));
+    models._setChain([step('claude', none), step('gemini', none), step('huggingface', none)]);
+    await assert.rejects(models.generate(true, body, { what: 'read the screenshot' }), /not set up yet/);
+    // Claude's own step: a reply is taken from its text parts; a declined or cut-off reply moves on.
+    const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fin-models-')), keep = process.env.DB_PATH;
+    process.env.DB_PATH = path.join(dir, 'finance.db');
+    try {
+      await assert.rejects(models._parts.claude(body), (e) => e.skip === true); // no key on the server
+      fs.writeFileSync(path.join(dir, 'claude.key'), 'test-key-not-real');
+      let sent = null;
+      models._setClaudeSend(async (key, content) => { sent = content; return { stop_reason: 'end_turn', usage: { input_tokens: 1000, output_tokens: 500 }, content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: 'Sure: {"kind":"receipt"}' }] }; });
+      assert.equal(await models._parts.claude(body), '{"kind":"receipt"}');
+      assert.equal(sent[0].type, 'image');
+      assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'claude.spend'), 'utf8')).usd, 0.014); // 1000 in at $4, 500 out at $20 per million
+      models._setClaudeSend(async () => ({ stop_reason: 'refusal', content: [] }));
+      await assert.rejects(models._parts.claude(body), (e) => e.why === 'declined');
+      fs.writeFileSync(path.join(dir, 'claude.cap'), '0.01');
+      await assert.rejects(models._parts.claude(body), (e) => e.skip === true && /limit/.test(e.message)); // the month's limit is used
+    } finally { if (keep == null) delete process.env.DB_PATH; else process.env.DB_PATH = keep; fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally { models._setChain([['claude', models._parts.claude], ['gemini', models._parts.gemini], ['huggingface', models._parts.hf]]); }
+});

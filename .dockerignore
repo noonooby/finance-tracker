@@ -4,3 +4,4 @@ build
 *.db
 *.db-*
 server/test
+**/node_modules
