@@ -108,19 +108,48 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const input = `px-2 py-1.5 rounded border text-sm w-full bg-surface border-line text-fg`;
 
   const [csvAccount, setCsvAccount] = useState('');
+  // Several pictures can be chosen at once. The first is shown; the others wait their turn, each with its own note,
+  // and each comes up once the one before it is saved or removed.
+  const MAX_WAITING = 10;
+  const [queue, setQueue] = useState([]);
+  const queueRef = React.useRef([]);
+  const putQueue = (q) => { queueRef.current = q; setQueue(q); };
   const pick = async (e) => {
-    const file = e.target.files && e.target.files[0];
+    const files = [...(e.target.files || [])];
     e.target.value = '';
-    if (!file) return;
-    setError(''); setProposal(null); setDone(null);
-    try {
-      const img = { ...(await prepare(file)), name: file.name };
-      setImage(img); setResumed(false);
-      savePending({ image: img, note });
-    } catch (err) { setError(err.message); }
+    if (!files.length) return;
+    setError(''); setDone(null);
+    const got = [], bad = [];
+    for (const file of files) {
+      try { got.push({ image: { ...(await prepare(file)), name: file.name }, note: '' }); } catch (err) { bad.push(files.length > 1 ? `${file.name}: ${err.message}` : err.message); }
+    }
+    let current = image;
+    if (!current && got.length) {
+      const first = got.shift();
+      current = first.image;
+      setImage(current); setNote(''); setProposal(null); setResumed(false);
+    }
+    const room = MAX_WAITING - queueRef.current.length;
+    if (got.length > room) bad.push(`Only ${MAX_WAITING} can wait at a time, so ${got.length - room} ${got.length - room === 1 ? 'was' : 'were'} left out. Choose ${got.length - room === 1 ? 'it' : 'them'} again later.`);
+    const q = [...queueRef.current, ...got.slice(0, Math.max(0, room))];
+    putQueue(q);
+    if (current) savePending({ queue: q, image: current, note: current === image ? note : '', proposal: current === image ? proposal : undefined });
+    if (bad.length) setError(bad.join(' '));
   };
 
-  const removePicture = () => { setImage(null); setProposal(null); setDrafts([]); setRows([]); setFixes([]); setNote(''); setError(''); setResumed(false); clearPending(); };
+  // The picture on screen is finished with (saved or removed): the next one waiting comes up.
+  const advance = (readIt) => {
+    const [next, ...rest] = queueRef.current;
+    putQueue(rest);
+    setProposal(null); setDrafts([]); setRows([]); setFixes([]); setError(''); setResumed(false);
+    if (!next) { setImage(null); setNote(''); clearPending(); return; }
+    setImage(next.image); setNote(next.note || '');
+    savePending({ queue: rest, image: next.image, note: next.note || '' });
+    if (readIt && !next.image.csv) read(next.image, next.note || '', true);
+  };
+  const removePicture = () => advance(false);
+  const setWaiting = (i, change) => putQueue(queueRef.current.map((x, j) => (j === i ? { ...x, ...change } : x)));
+  const keepWaiting = () => { if (image) savePending({ queue: queueRef.current, image, note, proposal }); };
 
   // A category for a purchase: how this merchant was categorised before, else the reader's guess matched to your categories.
   const suggestCategory = (merchant, guess, income = false) => {
@@ -137,17 +166,22 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     return hit ? String(hit.id) : '';
   };
 
-  const read = async () => {
-    setReading(true); setError(''); setDone(null); setOpen(null);
+  const read = async (image0, note0, keepDone) => {
+    // Called with nothing for the picture on screen, or with the next picture just after a save.
+    const img = image0 && image0.url !== undefined ? image0 : image, nt = typeof note0 === 'string' ? note0 : note;
+    return readOne(img, nt, keepDone === true);
+  };
+  const readOne = async (image, note, keepDone) => {
+    setReading(true); setError(''); if (!keepDone) setDone(null); setOpen(null);
     try {
       if (image.csv && !csvAccount) throw new Error('Choose which account the file is from.');
       // Something you typed to the assistant is read again by the assistant.
       const p = image.typed ? (await api('/api/ask', { text: image.text, today: new Date().toLocaleDateString('en-CA') })).proposal || { lines: [], balances: [], new_accounts: [], unknown_accounts: [], notes: 'Nothing to record was found in what you typed.' } : await api('/api/read-screenshot', { image: image.url, mime: image.type, note: note.trim() || undefined, account: image.csv ? csvAccount : undefined, today: new Date().toLocaleDateString('en-CA') });
       applyProposal(p);
-      savePending({ image, note, proposal: p });
+      savePending({ queue: queueRef.current, image, note, proposal: p });
     } catch (err) {
       setError(`${err.message} Your picture is kept here, so you can try again without choosing it again.`);
-      savePending({ image, note });
+      savePending({ queue: queueRef.current, image, note });
     } finally {
       setReading(false);
     }
@@ -199,7 +233,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const loadedRef = React.useRef(false);
   useEffect(() => {
     if (!loadedRef.current || !image) return;
-    const t = setTimeout(() => savePending({ image, note, proposal }), 400);
+    const t = setTimeout(() => savePending({ queue: queueRef.current, image, note, proposal }), 400);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note]);
@@ -210,7 +244,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     loadPending().then((v) => {
       loadedRef.current = true;
       if (!live || !v) return;
-      setImage(v.image); setNote(v.note || ''); setResumed(true);
+      setImage(v.image); setNote(v.note || ''); setResumed(true); putQueue(Array.isArray(v.queue) ? v.queue : []);
       if (v.proposal) applyProposal(v.proposal);
     });
     return () => { live = false; };
@@ -340,7 +374,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     setDone(result);
     setSaving(false);
     if (onUpdate) await onUpdate();
-    if (!result.failed.length) { setProposal(null); setImage(null); setDrafts([]); setNote(''); setResumed(false); clearPending(); }
+    if (!result.failed.length) advance(true);
   };
 
   const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length;
@@ -373,7 +407,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       <div>
         <h1 className={`text-2xl font-bold text-fg`}>Scan</h1>
         <p className={`text-sm ${muted}`}>
-          Take a photo of a receipt, or choose a screenshot of your bank or card app, a statement PDF, or a file exported by your bank (CSV). The app fills in everything it can: new accounts, the account for each line,
+          Take a photo of a receipt, or choose screenshots of your bank or card app (several at once if you like), a statement PDF, or a file exported by your bank (CSV). The app fills in everything it can: new accounts, the account for each line,
           the kind of line and a category. Check it, change anything with Edit, then tap Save. Nothing is saved before that.
         </p>
       </div>
@@ -393,7 +427,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           <label className="press cursor-pointer flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-line py-5 font-medium">
             <ImageIcon size={26} aria-hidden="true" />
             Screenshot or statement
-            <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf,text/csv,.csv" onChange={pick} className="sr-only" />
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf,text/csv,.csv" multiple onChange={pick} className="sr-only" />
           </label>
         </div>
         {image && resumed && !image.typed && <p className="text-sm text-muted">Picked up where you left off. This picture was kept on this device.</p>}
@@ -422,6 +456,23 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                   className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2 text-fg placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none" />
               </label>}
             </div>
+          </div>
+        )}
+        {queue.length > 0 && (
+          <div className="space-y-2 border-t border-line pt-3">
+            <p className="text-sm font-medium">Waiting: {queue.length}</p>
+            <p className="text-xs text-muted">Each one is read when the one before it is saved. Add a note to any of them now if it helps.</p>
+            {queue.map((q, i) => (
+              <div key={i} className="flex items-start gap-3">
+                {q.image.pdf || q.image.csv ? <div className="w-14 shrink-0 text-xs text-muted break-all">{q.image.name}</div> : <img src={q.image.url} alt={`Waiting, number ${i + 1}`} className="w-14 h-14 shrink-0 object-cover rounded-lg border border-line" />}
+                <div className="flex-1 min-w-0 space-y-1">
+                  {!q.image.csv && <input type="text" maxLength={300} value={q.note || ''} aria-label={`Note about waiting picture ${i + 1}`} placeholder="Note (optional)"
+                    onChange={(e) => setWaiting(i, { note: e.target.value })} onBlur={keepWaiting}
+                    className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none" />}
+                  <button type="button" className="press text-xs text-muted underline" onClick={() => { putQueue(queueRef.current.filter((_, j) => j !== i)); keepWaiting(); }}>Remove</button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
         {error && <p role="alert" className="text-sm text-negative">{error}</p>}
