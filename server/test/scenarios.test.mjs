@@ -962,3 +962,30 @@ test('money is recorded on a real day', async () => {
   assert.equal((await spend('2028-02-29')).transaction.date, '2028-02-29');
   assert.match((await spend(undefined)).transaction.date, /^\d{4}-\d{2}-\d{2}$/);
 });
+
+test('the server holds every balance to its own limit, whatever limit the browser sends', async () => {
+  const plain = await add('bank_accounts', { name: 'No overdraft', balance: 100 });
+  const od = await add('bank_accounts', { name: 'Overdraft 200', balance: 100, allows_overdraft: true, overdraft_limit: 200 });
+  const gift = await add('credit_cards', { name: 'Gift 50', balance: 50, is_gift_card: true });
+  const owed = await add('loans', { name: 'Small loan', balance: 80, payment_amount: 40 });
+  const visa = await add('credit_cards', { name: 'Limit Visa', balance: 10, credit_limit: 500 });
+  const out = (table, id, amount, more = {}) => api('/api/money', { legs: [{ table, id, delta: -amount, ...more }],
+    rows: [{ table: 'transactions', values: { type: 'expense', amount, date: '2026-11-23', description: 'Limit test', status: 'active' } }] });
+  // No limit sent, or a generous one: the account's own rule still applies.
+  await assert.rejects(out('bank_accounts', plain.id, 150), /more than it can pay/);
+  await assert.rejects(out('bank_accounts', plain.id, 150, { floor: -1000 }), /more than it can pay/);
+  await assert.rejects(out('bank_accounts', od.id, 301, { floor: -5000 }), /overdraft limit/);
+  await assert.rejects(out('credit_cards', gift.id, 51), /more than it can pay/);
+  await assert.rejects(out('loans', owed.id, 81), /more than that/);
+  assert.deepEqual([Number((await get('bank_accounts', plain.id)).balance), Number((await get('credit_cards', gift.id)).balance)], [100, 50]);
+  // Inside the limits it goes through; a card payment above what is owed leaves the card in credit, as before.
+  await out('bank_accounts', od.id, 300);
+  assert.equal(Number((await get('bank_accounts', od.id)).balance), -200);
+  await out('credit_cards', visa.id, 30);
+  assert.equal(Number((await get('credit_cards', visa.id)).balance), -20);
+  // Undo is not held to the limit: taking back a deposit may leave an account below zero.
+  const dep = await M.recordIncome({ amount: 500, target: `bank_account:${plain.id}`, date: '2026-11-23', description: 'Deposit' }, await accounts());
+  await out('bank_accounts', plain.id, 550);
+  await M.reverseTransaction(dep.transaction.id);
+  assert.equal(Number((await get('bank_accounts', plain.id)).balance), -450);
+});

@@ -313,7 +313,16 @@ function legTarget(uid, l) {
 const coveredBySnapshot = (r, line) => !!(line && isDay(line.date) && isDay(r.snapshot_date) && line.type !== 'adjustment'
   && (line.date < r.snapshot_date || (line.date === r.snapshot_date && line.in_snapshot)));
 const isCash = (table, r) => table === 'bank_accounts' && r && r.account_type === 'cash';
-function applyLegs(uid, legs, line) {
+// How low a balance may go when money leaves it, worked out here from the account as it is now (never from what the
+// browser sent): a bank account stops at zero or at its overdraft limit, cash and a gift card at zero, and a loan or an
+// investment cannot give more than it holds. A credit card has no such limit here. -> a figure, or null for no limit.
+function lowest(table, r) {
+  if (table === 'bank_accounts') return isCash(table, r) || !r.allows_overdraft ? 0 : -(Number(r.overdraft_limit) || 0);
+  if (table === 'credit_cards') return r.is_gift_card ? 0 : null;
+  if (table === 'loans' || table === 'investments') return 0;
+  return null;
+}
+function applyLegs(uid, legs, line, opts = {}) {
   const done = [];
   for (const l of legs || []) {
     const d = cents(l.delta);
@@ -337,7 +346,9 @@ function applyLegs(uid, legs, line) {
     }
     const after = before + delta;
     // Cash can't go below zero, whatever the browser sent; only a stated balance (adjustment) may set it.
-    const floor = isCash(l.table, r) && delta < 0 && !(line && line.type === 'adjustment') ? Math.max(Number(l.floor ?? 0), 0) : l.floor;
+    // In a money step the limit is the server's own; a stated balance (adjustment) and an undo are not held to it.
+    const own = opts.limits && delta < 0 && !(line && line.type === 'adjustment') ? lowest(l.table, r) : null;
+    const floor = own != null ? own : isCash(l.table, r) && delta < 0 && !(line && line.type === 'adjustment') ? Math.max(Number(l.floor ?? 0), 0) : l.floor;
     if (floor != null && after < cents(floor)) {
       const name = r.name || 'This account', m = (c) => `$${(Math.abs(c) / 100).toFixed(2)}`;
       if (l.table === 'loans') fail(409, `You owe ${m(before)} on ${name}. ${m(delta)} is more than that.`);
@@ -368,7 +379,7 @@ function money(uid, b) {
       if (line.date == null || line.date === '') line.date = today();
       else if (!isDay(String(line.date).slice(0, 10))) fail(400, 'That date does not exist. Choose the day it happened.');
     }
-    const legs = applyLegs(uid, b.legs, line);
+    const legs = applyLegs(uid, b.legs, line, { limits: true });
     const rows = (b.rows || []).map(({ table, values }) => {
       const v = insertRow(uid, table, values);
       const split = legs.find(x => x.interest != null);
