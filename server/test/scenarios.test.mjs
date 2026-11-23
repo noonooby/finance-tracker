@@ -1176,3 +1176,17 @@ test('undoing everything, in any order, puts every balance back to the cent', as
   while (ids.length) await M.reverseTransaction(ids.splice(Math.floor(rnd() * ids.length), 1)[0]);
   assert.deepEqual(await state(), before);
 });
+
+test('pay that repeats needs a source, an amount, a rhythm and a real next day', async () => {
+  const ok = { source: 'Employer', amount: 2000, frequency: 'biweekly', start_date: '2026-11-27', next_date: '2026-11-27', is_active: true };
+  const ins = async (more) => (await db.from('income_schedules').insert({ ...ok, ...more }).select().single());
+  assert.match((await ins({ source: ' ' })).error.message, /who the pay is from/);
+  assert.match((await ins({ amount: 0 })).error.message, /above zero/);
+  assert.match((await ins({ frequency: 'sometimes' })).error.message, /how often/);
+  assert.match((await ins({ next_date: '2026-02-30' })).error.message, /next pay day/);
+  const row = (await ins({})).data;
+  assert.ok(row.id);
+  assert.match((await db.from('income_schedules').update({ amount: -5 }).eq('id', row.id)).error.message, /above zero/);
+  // One that has ended is left alone, whatever it holds.
+  assert.equal((await db.from('income_schedules').update({ is_active: false, next_date: null }).eq('id', row.id)).error, null);
+});

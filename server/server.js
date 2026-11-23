@@ -186,6 +186,15 @@ function checkFigures(tbl, v) {
     if (!Number.isFinite(Number(v[f])) || Number(v[f]) < 0) fail(400, `Enter ${f.replace(/_/g, ' ')} as a number, zero or more.`);
   }
 }
+// Pay that repeats: who it is from, an amount above zero, a known rhythm and a real next day (while it is running).
+const PAY_FREQ = new Set(['weekly', 'biweekly', 'semimonthly', 'monthly', 'bimonthly', 'quarterly', 'yearly']);
+function checkSchedule(sc) {
+  if (sc.is_active === false) return;
+  if (!String(sc.source || '').trim()) fail(400, 'Say who the pay is from.');
+  if (!(cents(sc.amount) > 0)) fail(400, 'Enter the pay amount, above zero.');
+  if (!PAY_FREQ.has(sc.frequency)) fail(400, 'Choose how often the pay comes.');
+  if (!isDay(String(sc.next_date || '').slice(0, 10))) fail(400, 'Choose the next pay day.');
+}
 // Only one account is the main one: making an account the main one takes the mark off the others.
 function onePrimary(uid, row) {
   if (!row || !row.is_primary) return;
@@ -207,6 +216,7 @@ function insertRow(uid, tbl, values, upsertOn) {
   if (tbl === 'transactions') checkSplits(v);
   v.user_id = uid;
   if (tbl === 'categories') checkCategory(uid, v);
+  if (tbl === 'income_schedules') checkSchedule(v);
   checkFigures(tbl, v);
   if (tbl === 'bills') {
     checkBill(uid, v);
@@ -276,6 +286,7 @@ function updateRows(uid, tbl, filters, values, orGroups) {
       if (fixed.some((k) => k in v && !same(v[k], r[k]))) fail(409, 'This transaction moved money. Undo it and record it again to change the amount, kind or account.');
     }
     if (tbl === 'bills') checkBill(uid, n);
+    if (tbl === 'income_schedules') checkSchedule(n);
     // Checked when the name or kind really changes, so two that shared a name before this rule can still be edited.
     const nm = (x) => String(x || '').trim().toLowerCase();
     if (tbl === 'categories' && (nm(n.name) !== nm(r.name) || !!n.is_income !== !!r.is_income || !nm(n.name))) checkCategory(uid, n);
