@@ -559,3 +559,17 @@ test('reading services: Claude first, then Gemini, then Hugging Face, each only 
     } finally { if (keep == null) delete process.env.DB_PATH; else process.env.DB_PATH = keep; fs.rmSync(dir, { recursive: true, force: true }); }
   } finally { models._setChain([['claude', models._parts.claude], ['gemini', models._parts.gemini], ['huggingface', models._parts.hf]]); }
 });
+
+test('a loan or pay-later balance on a picture is offered to add, unless the app already has it', () => {
+  const reader = mod('reader.js');
+  const ctx = { bankAccounts: [], creditCards: [], loans: [{ id: 'l1', name: 'Car lease', balance: 9000 }], transactions: [], today: '2026-11-23' };
+  const reading = { kind: 'balance', lines: [], accounts: [
+    { name: 'Pay later', type: 'loan', loan_kind: 'bnpl', balance: 221.14 },
+    { name: 'Car Lease', type: 'loan', balance: 8800, payment_amount: 410, due_date: '2026-12-01' },
+    { name: 'Student line', type: 'loan', loan_kind: 'nonsense', balance: -5000, payment_amount: 150, payment_frequency: 'biweekly', due_date: '2026-13-40', interest_rate: 6.2 }] };
+  const p = reader.plan(reading, ctx, 'src2');
+  assert.deepEqual(p.new_loans, [
+    { id: 'newloan:0', name: 'Pay later', loan_type: 'bnpl', balance: 221.14, payment_amount: null, frequency: 'monthly', next_payment_date: null, interest_rate: null },
+    { id: 'newloan:1', name: 'Student line', loan_type: 'loan', balance: 5000, payment_amount: 150, frequency: 'biweekly', next_payment_date: null, interest_rate: 6.2 }]); // owed shown as a minus is still owed; a day that does not exist is asked for
+  assert.deepEqual([p.unknown_accounts, p.new_accounts], [[], []]); // loans are no longer listed as left out, nor offered as bank accounts
+});

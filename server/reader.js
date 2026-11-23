@@ -17,13 +17,14 @@ const PROMPT = `You read one screenshot or statement (PDF) from a banking app, c
 Return JSON:
 {"kind":"transactions"|"statement"|"receipt"|"balance"|"other",
  "statement":{"account_name":"","last4":"or null","period_start":"YYYY-MM-DD","period_end":"YYYY-MM-DD","opening_balance":number,"closing_balance":number} or null (only for a statement),
- "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null,"statement_balance":number or null,"autopay":true|false|null}],
+ "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null,"statement_balance":number or null,"autopay":true|false|null,"loan_kind":"loan|mortgage|line_of_credit|car_lease|bnpl|plan|student or null","payment_amount":number or null,"payment_frequency":"weekly|biweekly|semimonthly|monthly or null","interest_rate":number or null}],
  "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null",
    "type":"purchase|income|refund|card_payment|transfer|fee|interest","currency":"3-letter code only when the line shows a currency other than the account's (e.g. USD), else null","original_amount":"the amount in that other currency when the line also shows the converted amount, else null","other_account":"for card_payment or transfer: the other account's name or last 4 digits as shown, else null",
    "category":"one short category: for a purchase or fee (Groceries, Dining, Transport, Fuel, Bills, Utilities, Phone, Shopping, Entertainment, Health, Travel, Subscriptions, Rent, Insurance, Education, Personal care, Gifts, Fees); for income (Salary, Freelance, Interest, Government, Refund, Other income); else null"}],
  "receipt":{"merchant":"","date":"YYYY-MM-DD","total":number,"items":[{"name":"","amount":number}]} or null,
  "notes":"anything unclear, short"}
 Rules: a screen that shows an account or card summary (balance, statement balance, due date, autopay, rewards) and no list of transactions is kind "balance": fill accounts and leave lines empty. Summary figures such as cash back, rewards, available credit or the statement amount are never lines.
+A loan, mortgage, line of credit, car lease or loan, student loan, or a pay-later plan (Klarna, Affirm, PayPal Pay in 4 and the like) is an account of type "loan": balance is what is still owed, due_date the next payment day, payment_amount the amount of each payment, interest_rate the yearly percentage, each only when shown. Name it as shown; when no name is visible, name it by the provider or by what it is ("Pay later").
 Payroll, salary or direct deposit from an employer is income with category Salary; a payment to a credit card (e.g. "PAYMENT THANK YOU", "VISA PAYMENT") is card_payment; money moved between the person's own accounts is transfer; pay and deposits are income.
 For a statement, list every transaction in the period and report the closing balance as the account's balance; for a credit card, balances are what is owed.
 Amounts are positive numbers; direction "out" is money spent or charged, "in" is money received, refunds and payments to the card.
@@ -220,9 +221,25 @@ function plan(reading, ctx, sourceId) {
       statement.check = { adds_up: expected === close, expected: expected / 100, off: (close - expected) / 100, lines: read.length };
     }
   }
-  const unknown = (reading.accounts || []).filter(a => !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
+  // Loans on the picture: one the app already has is left alone; any other is offered to add, with what the picture
+  // shows filled in and the rest asked on the screen.
+  const LOAN_KINDS = new Set(['loan', 'mortgage', 'line_of_credit', 'car_lease', 'bnpl', 'plan', 'student']);
+  const LOAN_FREQS = new Set(['weekly', 'biweekly', 'semimonthly', 'monthly']);
+  const have = (ctx.loans || []).map((l) => ({ ...l, _type: 'loan' }));
+  const pos = (v) => (Number.isFinite(Number(v)) && v !== null && Number(v) !== 0 ? Math.round(Math.abs(Number(v)) * 100) / 100 : null);
+  const realDay = (v) => { const d = String(v || ''); return /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)) && new Date(d + 'T00:00:00Z').toISOString().slice(0, 10) === d ? d : null; };
+  const new_loans = [];
+  for (const a of (reading.accounts || []).filter((x) => x && x.type === 'loan')) {
+    const name = String(a.name || 'Loan').trim().slice(0, 60) || 'Loan';
+    if (resolveAccount(have, { name, last4: a.last4 }) || new_loans.some((l) => norm(l.name) === norm(name))) continue;
+    new_loans.push({ id: 'newloan:' + new_loans.length, name, loan_type: LOAN_KINDS.has(a.loan_kind) ? a.loan_kind : 'loan', balance: pos(a.balance),
+      payment_amount: pos(a.payment_amount) || pos(a.minimum_payment), frequency: LOAN_FREQS.has(a.payment_frequency) ? a.payment_frequency : 'monthly',
+      next_payment_date: realDay(a.due_date),
+      interest_rate: Number.isFinite(Number(a.interest_rate)) && a.interest_rate !== null && Number(a.interest_rate) >= 0 && Number(a.interest_rate) <= 100 ? Number(a.interest_rate) : null });
+  }
+  const unknown = (reading.accounts || []).filter(a => a.type !== 'loan' && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
-  return { source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
+  return { source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
 }
 
 // The optional note: plain text, one paragraph, at most 300 characters, with the quote markers removed.
