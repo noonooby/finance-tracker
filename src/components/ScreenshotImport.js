@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../utils/server';
 import { recordExpense, recordIncome, recordRefund, recordTransfer, recordCardPayment, recordSnapshot, reverseTransaction } from '../utils/money';
 import { server } from '../utils/server';
-import { formatCurrency, generateId } from '../utils/helpers';
+import { formatCurrency, formatDate, generateId } from '../utils/helpers';
 import { loadPending, savePending, clearPending } from '../utils/pendingScan';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { suggestCategoryId } from '../utils/categoryRules';
@@ -498,7 +498,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{r.merchant}</div>
                         <div className={`text-xs ${muted}`}>
-                          {r.date}{r.pending ? ', pending' : ''} · {KIND_TEXT[r.kind] || r.kind} · {lineSummary(r)}{cat ? ` · ${cat.name}` : ''}
+                          {formatDate(r.date) || r.date}{r.pending ? ', pending' : ''} · {KIND_TEXT[r.kind] || r.kind} · {lineSummary(r)}{cat ? ` · ${cat.name}` : ''}
                         </div>
                         {r.action !== 'record' && r.action !== 'choose_account' && <div className={`text-xs ${muted}`}>{r.why || STATUS_TEXT[r.action]}</div>}
                         {need && <div className="text-xs text-amber-600">{need}</div>}
@@ -604,7 +604,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       {done && (
         <div role="status" className={`border rounded-lg p-4 text-sm ${card}`}>
           {done.created.length > 0 && <div>Accounts added: {done.created.join(', ')}.</div>}
-          Saved {done.recorded}. Pending lines marked as posted: {done.posted}.
+          Saved {done.recorded}.{done.posted > 0 && ` Pending lines marked as posted: ${done.posted}.`}
           {done.repeated > 0 && ` Already saved from an earlier screenshot, skipped: ${done.repeated}.`}
           {done.removed > 0 && ` Removed as not on the statement: ${done.removed}.`}
           {done.gaps.length > 0 && <ul className="mt-1 list-disc pl-5">{done.gaps.map((g) => <li key={g}>{g}</li>)}</ul>}

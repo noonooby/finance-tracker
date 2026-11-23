@@ -655,7 +655,7 @@ export default function Loans({
                         {getDaysUntil(loan.next_payment_date) < 0
                           ? `${Math.abs(getDaysUntil(loan.next_payment_date))} days overdue!`
                           : getDaysUntil(loan.next_payment_date) === 0 
-                          ? 'Due Today!' 
+                          ? 'Due today' 
                           : `${getDaysUntil(loan.next_payment_date)} days`
                         }
                       </div>

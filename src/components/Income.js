@@ -526,8 +526,8 @@ export default function Income({
                           </div>
                           <div>
                             Next: {formatDate(nextDate)} 
-                            {isDueToday && <span className="text-green-600 font-medium ml-2">• Due today!</span>}
-                            {isOverdue && <span className="text-red-600 font-medium ml-2">• Overdue!</span>}
+                            {isDueToday && <span className="text-green-600 font-medium ml-2">· Due today</span>}
+                            {isOverdue && <span className="text-red-600 font-medium ml-2">· Overdue</span>}
                             {!isDueToday && !isOverdue && <span className="ml-2">• {daysUntil} days</span>}
                           </div>
                           <div>Deposits to: {depositAccountName}</div>
