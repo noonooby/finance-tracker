@@ -166,10 +166,19 @@ function checkBill(uid, b) {
   const twin = selectRows(uid, { table: 'bills', filters: [['key', 'eq', b.key], ['status', 'eq', 'active']] }).find((x) => String(x.id) !== String(b.id));
   if (twin) fail(409, `${twin.name} is already tracked. Change that one instead.`);
 }
+// A category needs a name, and only one category of each kind (spending or income) may carry that name.
+function checkCategory(uid, c) {
+  const name = String(c.name || '').trim().toLowerCase();
+  if (!name) fail(400, 'Give the category a name.');
+  const twin = selectRows(uid, { table: 'categories', filters: [] })
+    .find((x) => String(x.id) !== String(c.id) && !!x.is_income === !!c.is_income && String(x.name || '').trim().toLowerCase() === name);
+  if (twin) fail(409, `You already have a category called ${twin.name}.`);
+}
 function insertRow(uid, tbl, values, upsertOn) {
   const v = clean(values);
   if (tbl === 'transactions') checkSplits(v);
   v.user_id = uid;
+  if (tbl === 'categories') checkCategory(uid, v);
   if (tbl === 'bills') {
     checkBill(uid, v);
     // A merchant you turned down earlier and now add yourself: that row becomes the tracked bill.
@@ -229,6 +238,7 @@ function updateRows(uid, tbl, filters, values, orGroups) {
     if (r._undo) n._undo = r._undo;
     if (tbl === 'transactions' && ('splits' in v || 'amount' in v)) checkSplits(n);
     if (tbl === 'bills') checkBill(uid, n);
+    if (tbl === 'categories' && ('name' in v || 'is_income' in v)) checkCategory(uid, n);
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), tbl, String(r.id), uid);
     // Stating a balance (even the same figure) confirms it as of today, or as of the date given.
     for (const f of MONEY_FIELDS[tbl] || []) if (f in v) stamp(uid, tbl, n, f, values.balance_as_of);
@@ -684,7 +694,9 @@ function seedCategoryRules() {
   for (const uid of users) {
     if (selectRows(uid, { table: 'settings', filters: [['key', 'eq', 'rules_seeded']], limit: 1 })[0]) continue;
     tx(() => {
-      const list = selectRows(uid, { table: 'transactions', filters: [] }).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      // Someone whose purchases were all saved by this version already has their rules: counting them again would double the counts.
+      const has = selectRows(uid, { table: 'category_rules', filters: [], limit: 1 })[0];
+      const list = has ? [] : selectRows(uid, { table: 'transactions', filters: [] }).sort((a, b) => String(a.date).localeCompare(String(b.date)));
       for (const t of list) learnCategory(uid, t);
       insertRow(uid, 'settings', { key: 'rules_seeded', value: true });
     });

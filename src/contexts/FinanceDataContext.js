@@ -6,6 +6,7 @@ import {
 import { DEFAULT_CATEGORIES, calculateTotalBankBalance } from '../utils/helpers';
 import { processDueIncomeSchedules, processOverdueLoanPayments, processOverdueCreditCardPayments } from '../utils/schedules';
 import { server } from '../utils/server';
+import { seedDefaultCategories } from '../utils/categories';
 import { loadPrefs } from '../utils/prefs';
 import { getLocal, setLocal } from '../utils/localStore';
 
@@ -68,9 +69,10 @@ export function FinanceDataProvider({ children }) {
         setCategories(cats);
         return cats;
       } else {
-        for (const cat of DEFAULT_CATEGORIES) {
-          await dbOperation('categories', 'put', cat);
-        }
+        // First visit: the starting categories are saved under ids of this account's own (two accounts cannot share an id).
+        await seedDefaultCategories();
+        const seeded = await dbOperation('categories', 'getAll');
+        if (seeded && seeded.length > 0) { setCategories(seeded); return seeded; }
       }
     } catch (error) {
       console.error('Error loading categories:', error);

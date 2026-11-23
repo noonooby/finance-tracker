@@ -836,3 +836,17 @@ test('undoing a payment also puts back the dates the payment moved, unless they 
   const t = await add('transactions', { type: 'expense', amount: 1, date: '2026-11-23', description: 'x', status: 'active', _undo: [{ table: 'loans', id: two.id, before: { name: 'hacked' }, set: { name: 'Undo loan' } }] });
   assert.equal((await get('transactions', t.id))._undo, undefined);
 });
+
+test('categories: a name is needed, and the same name cannot be used twice for the same kind', async () => {
+  const ins = (v) => db.from('categories').insert(v).select().single();
+  const a = (await ins({ name: 'Pets', is_income: false })).data;
+  assert.ok(a.id);
+  assert.match((await ins({ name: ' pets ', is_income: false })).error.message, /already have a category called Pets/);
+  assert.match((await ins({ name: '  ', is_income: false })).error.message, /Give the category a name/);
+  const inc = (await ins({ name: 'Pets', is_income: true })).data;   // the income side may reuse the name
+  assert.ok(inc.id);
+  const b = (await ins({ name: 'Vet', is_income: false })).data;
+  assert.match((await db.from('categories').update({ name: 'PETS' }).eq('id', b.id)).error.message, /already have a category called Pets/);
+  assert.equal((await db.from('categories').update({ name: 'Pets', color: '#111111' }).eq('id', a.id)).error, null); // saving its own name is fine
+  assert.equal((await get('categories', b.id)).name, 'Vet');
+});
