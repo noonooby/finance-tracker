@@ -1194,3 +1194,17 @@ test('pay that repeats needs a source, an amount, a rhythm and a real next day',
   // One that has ended is left alone, whatever it holds.
   assert.equal((await db.from('income_schedules').update({ is_active: false, next_date: null }).eq('id', row.id)).error, null);
 });
+
+test('month end takes off what each card payment will really take', () => {
+  const today = new Date(2026, 10, 21);
+  const going = (card) => F.monthEnd({ liquid: 0, creditCards: [{ balance: 300, due_date: '2026-11-30', minimum_payment: 25, ...card }] }, today).going;
+  const auto = { connected_payment_source: 'bank_account', connected_payment_source_id: 'b' };
+  assert.equal(going({}), 25);                                             // you pay it yourself: the minimum
+  assert.equal(going({ minimum_payment: 0 }), 300);                        // no minimum known: the balance
+  assert.equal(going(auto), 300);                                          // pays itself in full
+  assert.equal(going({ ...auto, autopay_mode: 'minimum' }), 25);
+  assert.equal(going({ ...auto, autopay_mode: 'fixed', autopay_fixed: 120 }), 120);
+  assert.equal(going({ ...auto, autopay_mode: 'fixed', autopay_fixed: 900 }), 300); // never more than is owed
+  assert.equal(going({ ...auto, due_date: '2026-12-02' }), 0);             // due after the month ends
+  assert.equal(going({ minimum_payment: 500 }), 300);
+});

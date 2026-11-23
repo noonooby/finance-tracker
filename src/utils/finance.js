@@ -120,6 +120,19 @@ export function position({ bankAccounts = [], creditCards = [], loans = [], inve
   };
 }
 
+// What a card's next payment takes. A card that pays itself takes what its automatic payment is set to (the whole
+// balance unless set to the minimum or a fixed amount); one you pay yourself is counted at its minimum.
+export function cardPaymentDue(c) {
+  const bal = Number(c.balance) || 0;
+  if (bal <= 0) return 0;
+  const min = Number(c.minimum_payment || c.payment_amount) || 0;
+  if (!c.connected_payment_source) return Math.min(bal, min || bal);
+  const mode = c.autopay_mode || 'statement';
+  if (mode === 'fixed') return Math.min(bal, Number(c.autopay_fixed) || bal);
+  if (mode === 'minimum') return Math.min(bal, min || Math.max(10, round2(bal * 0.03)));
+  return bal;
+}
+
 // The month ahead, as the bot works it out: money you can spend now, plus pay due before the end of the month,
 // minus scheduled loan and card payments due before then, and tracked bills paid from a bank account that are not recorded yet
 // (a bill on a card is counted when the card is paid).
@@ -144,7 +157,7 @@ export function monthEnd({ liquid, incomeSchedules = [], loans = [], creditCards
     }
     return sum;
   }, 0)
-    + creditCards.filter((c) => !c.is_gift_card && Number(c.balance) > 0 && due(c.due_date)).reduce((s, c) => s + (Number(c.minimum_payment || c.payment_amount) || Number(c.balance) || 0), 0)
+    + creditCards.filter((c) => !c.is_gift_card && Number(c.balance) > 0 && due(String(c.due_date || '').slice(0, 10))).reduce((s, c) => s + cardPaymentDue(c), 0)
     + billDates(bills, transactions, today, end).filter((x) => !x.paid && x.bill.payment_method !== 'credit_card').reduce((s, x) => s + (Number(x.bill.amount) || 0), 0);
   return { end, now: round2(liquid), coming: round2(coming), going: round2(going), atEnd: round2(liquid + coming - going) };
 }
