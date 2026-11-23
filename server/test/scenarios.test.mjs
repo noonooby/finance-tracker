@@ -95,7 +95,7 @@ test('refund to a card lowers what is owed', async () => {
 
 test('gift card cannot be spent below zero; nothing is saved when refused', async () => {
   const before = (await db.from('transactions').select('*')).data.length;
-  await assert.rejects(M.recordExpense({ amount: 30, source: `credit_card:${gift.id}`, date: '2026-11-06', description: 'Coffee' }, await accounts()), /below its limit/);
+  await assert.rejects(M.recordExpense({ amount: 30, source: `credit_card:${gift.id}`, date: '2026-11-06', description: 'Coffee' }, await accounts()), /more than (that|it can pay)|overdraft limit/);
   assert.equal((await get('credit_cards', gift.id)).balance, 25);
   assert.equal((await db.from('transactions').select('*')).data.length, before);
 });
@@ -104,21 +104,21 @@ test('overdraft: allowed up to the limit, refused past it', async () => {
   const a = await accounts();
   await M.recordExpense({ amount: 1000, source: `bank_account:${chq.id}`, date: '2026-11-06', description: 'Rent' }, a); // 869.15 -> -130.85
   assert.equal((await get('bank_accounts', chq.id)).balance, -130.85);
-  await assert.rejects(M.recordExpense({ amount: 100, source: `bank_account:${chq.id}`, date: '2026-11-06', description: 'Too much' }, a), /below its limit/);
+  await assert.rejects(M.recordExpense({ amount: 100, source: `bank_account:${chq.id}`, date: '2026-11-06', description: 'Too much' }, a), /more than (that|it can pay)|overdraft limit/);
   assert.equal((await get('bank_accounts', chq.id)).balance, -130.85);
 });
 
 test('savings without overdraft refuses going below zero', async () => {
-  await assert.rejects(M.recordExpense({ amount: 6000, source: `bank_account:${sav.id}`, date: '2026-11-06' }, await accounts()), /below its limit/);
+  await assert.rejects(M.recordExpense({ amount: 6000, source: `bank_account:${sav.id}`, date: '2026-11-06' }, await accounts()), /more than (that|it can pay)|overdraft limit/);
 });
 
 test('cash: spend, cannot go below zero', async () => {
   const a = await accounts();
   await M.recordExpense({ amount: 15, source: CASH(), date: '2026-11-07', description: 'Lunch' }, a);
   assert.equal(await cash(), 45);
-  await assert.rejects(M.recordExpense({ amount: 50, source: CASH(), date: '2026-11-07' }, a), /below its limit/);
+  await assert.rejects(M.recordExpense({ amount: 50, source: CASH(), date: '2026-11-07' }, a), /more than (that|it can pay)|overdraft limit/);
   // The server keeps cash at zero or more even when the request carries no limit.
-  await assert.rejects(api('/api/money', { legs: [{ table: 'bank_accounts', id: cashAcct.id, delta: -500 }], rows: [] }), /below its limit/);
+  await assert.rejects(api('/api/money', { legs: [{ table: 'bank_accounts', id: cashAcct.id, delta: -500 }], rows: [] }), /more than (that|it can pay)|overdraft limit/);
   // The old cash setting is gone as a way to move money.
   assert.throws(() => M.parseSource('cash_in_hand'), /Cash is an account now/);
 });
@@ -142,7 +142,7 @@ test('loan payment lowers the loan; paying more than owed is refused', async () 
   const a = await accounts();
   await M.recordLoanPayment({ loanId: loan.id, amount: 400, source: `bank_account:${sav.id}`, date: '2026-11-17' }, a);
   assert.equal((await get('loans', loan.id)).balance, 7600);
-  await assert.rejects(M.recordLoanPayment({ loanId: loan.id, amount: 9000, source: `bank_account:${sav.id}`, date: '2026-11-17' }, a), /below its limit/);
+  await assert.rejects(M.recordLoanPayment({ loanId: loan.id, amount: 9000, source: `bank_account:${sav.id}`, date: '2026-11-17' }, a), /more than (that|it can pay)|overdraft limit/);
   assert.equal((await get('bank_accounts', sav.id)).balance, 4900);
 });
 
@@ -739,4 +739,18 @@ test('a reminder that could not be delivered is tried again, and is still sent o
   assert.equal(got(), 1, 'sent on the next pass');
   await runReminders(new Date(at.getTime() + 30 * 60e3));
   assert.equal(got(), 1, 'not sent again');
+});
+
+test('a refused payment says in plain words what the account has and how far short it is', async () => {
+  const wallet = await add('bank_accounts', { name: 'Wallet', balance: 60, account_type: 'cash' });
+  const od = await add('bank_accounts', { name: 'Overdraft acct', balance: 20, allows_overdraft: true, overdraft_limit: 100 });
+  const owed = await add('loans', { name: 'Small loan', balance: 300 });
+  const rich = await add('bank_accounts', { name: 'Rich', balance: 5000 });
+  const a = await accounts();
+  await assert.rejects(M.recordExpense({ amount: 100, source: `bank_account:${wallet.id}`, date: '2026-11-23', description: 'x' }, a),
+    /Wallet has \$60\.00\. \$100\.00 is \$40\.00 more than it can pay\.$/);
+  await assert.rejects(M.recordExpense({ amount: 150, source: `bank_account:${od.id}`, date: '2026-11-23', description: 'x' }, a),
+    /Overdraft acct would be \$130\.00 below zero\. Its overdraft limit is \$100\.00\.$/);
+  await assert.rejects(M.recordLoanPayment({ loanId: owed.id, amount: 400, source: `bank_account:${rich.id}`, date: '2026-11-23' }, a),
+    /You owe \$300\.00 on Small loan\. \$400\.00 is more than that\.$/);
 });

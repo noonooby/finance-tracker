@@ -358,7 +358,7 @@ export default function AddTransaction({
       
       onClose();
     } else {
-      showToast.error(`Failed to save transaction: ${result?.error || 'Unknown error'}`);
+      showToast.error(`Not saved. ${result?.error || 'Something went wrong; try again.'}`);
     }
   };
 
@@ -656,7 +656,7 @@ export default function AddTransaction({
                         value={`${pm.type}:${pm.id}`}
                       >
                         {pm.name}
-                        {pm.type === 'bank_account' && pm.balance !== undefined && ` ($${pm.balance.toFixed(2)} available)`}
+                        {pm.type === 'bank_account' && pm.balance !== undefined && ` (${formatCurrency(pm.balance)} available)`}
                         {pm.isPrimary && ' (primary)'}
                       </option>
                     ))}
@@ -666,7 +666,7 @@ export default function AddTransaction({
                 <optgroup label="Accounts">
                   {bankAccounts && bankAccounts.length > 0 && bankAccounts.map(account => (
                     <option key={account.id} value={`bank_account:${account.id}`}>
-                      {account.name} (${account.balance.toFixed(2)} available){account.is_primary ? ' (primary)' : ''}
+                      {account.name} ({formatCurrency(account.balance)} available){account.is_primary ? ' (primary)' : ''}
                     </option>
                   ))}
                 </optgroup>
@@ -685,7 +685,7 @@ export default function AddTransaction({
                   <optgroup label="Gift Cards">
                     {creditCards.filter(c => c.is_gift_card && c.balance > 0).map(card => (
                       <option key={card.id} value={`credit_card:${card.id}`}>
-                        {card.name} (${card.balance.toFixed(2)} available)
+                        {card.name} ({formatCurrency(card.balance)} available)
                       </option>
                     ))}
                   </optgroup>
@@ -707,12 +707,12 @@ export default function AddTransaction({
                 <option value="">Select {formData.paymentMethod === 'credit_card' ? 'credit card' : 'loan'}</option>
                 {formData.paymentMethod === 'credit_card' && creditCards && creditCards.map(card => (
                   <option key={card.id} value={card.id}>
-                    {card.name} {card.is_gift_card ? `($${card.balance.toFixed(2)} balance)` : `($${card.balance.toFixed(2)} owed)`}
+                    {card.name} {card.is_gift_card ? `(${formatCurrency(card.balance)} balance)` : `(${formatCurrency(card.balance)} owed)`}
                   </option>
                 ))}
                 {formData.paymentMethod === 'loan' && loans && loans.map(loan => (
                   <option key={loan.id} value={loan.id}>
-                    {loan.name} (${loan.balance.toFixed(2)} remaining)
+                    {loan.name} ({formatCurrency(loan.balance)} remaining)
                   </option>
                 ))}
               </select>
