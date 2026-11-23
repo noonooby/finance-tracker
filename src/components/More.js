@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, FileText, Scale, PiggyBank, Repeat, Target, Gauge } from 'lucide-react';
+import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, FileText, Scale, PiggyBank, Repeat, Target, Gauge, MessageCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { OTHER_APPS } from '../utils/apps';
@@ -54,6 +54,10 @@ export default function More() {
           ))}
         </div>
       </section>
+
+      <Section title="Ask">
+        <Item icon={MessageCircle} label="Ask or tell" hint="Ask about your money, or type what you spent and check it before it is saved" to="/ask" />
+      </Section>
 
       <Section title="Money">
         <Item icon={Scale} label="Where you stand" hint="Net worth today, what is out of date, and the month ahead" to="/position" />

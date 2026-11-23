@@ -141,7 +141,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     setReading(true); setError(''); setDone(null); setOpen(null);
     try {
       if (image.csv && !csvAccount) throw new Error('Choose which account the file is from.');
-      const p = await api('/api/read-screenshot', { image: image.url, mime: image.type, note: note.trim() || undefined, account: image.csv ? csvAccount : undefined, today: new Date().toLocaleDateString('en-CA') });
+      // Something you typed to the assistant is read again by the assistant.
+      const p = image.typed ? (await api('/api/ask', { text: image.text, today: new Date().toLocaleDateString('en-CA') })).proposal || { lines: [], balances: [], new_accounts: [], unknown_accounts: [], notes: 'Nothing to record was found in what you typed.' } : await api('/api/read-screenshot', { image: image.url, mime: image.type, note: note.trim() || undefined, account: image.csv ? csvAccount : undefined, today: new Date().toLocaleDateString('en-CA') });
       applyProposal(p);
       savePending({ image, note, proposal: p });
     } catch (err) {
@@ -395,12 +396,12 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf,text/csv,.csv" onChange={pick} className="sr-only" />
           </label>
         </div>
-        {image && resumed && <p className="text-sm text-muted">Picked up where you left off. This picture was kept on this device.</p>}
+        {image && resumed && !image.typed && <p className="text-sm text-muted">Picked up where you left off. This picture was kept on this device.</p>}
         {image && (
           <div className="flex flex-col sm:flex-row gap-3 items-start">
             <div className="space-y-2">
               {image.pdf ? <div className="text-sm font-medium">{image.name}</div> : <img src={image.url} alt="The screenshot to read" className="max-h-64 rounded-xl border border-line" />}
-              <button type="button" onClick={removePicture} className="press text-sm text-muted underline">Remove picture</button>
+              <button type="button" onClick={removePicture} className="press text-sm text-muted underline">{image.typed ? 'Discard' : image.pdf ? 'Remove file' : 'Remove picture'}</button>
             </div>
             <div className="w-full space-y-2">
               {image.csv && (
@@ -414,7 +415,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                   </select>
                 </label>
               )}
-              {!image.csv && <label className="block text-sm">
+              {!image.csv && !image.typed && <label className="block text-sm">
                 <span className="text-muted">Note about this picture (optional)</span>
                 <textarea rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)}
                   placeholder="For example: this is my Visa ending 1234, or only the grocery lines"
@@ -606,7 +607,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           <div className="max-w-3xl mx-auto px-4 py-3 flex gap-2">
           <button type="button" onClick={read} disabled={reading || saving}
             className={`press px-4 py-3 rounded-xl font-medium disabled:opacity-50 ${proposal ? 'border border-line bg-surface text-fg' : 'flex-1 bg-accent text-accent-contrast hover:opacity-90'}`}>
-            {reading ? 'Reading...' : proposal ? 'Read again' : image.csv ? 'Read file' : image.pdf ? 'Read statement' : 'Read screenshot'}
+            {reading ? 'Reading...' : proposal ? 'Read again' : image.typed ? 'Read again' : image.csv ? 'Read file' : image.pdf ? 'Read statement' : 'Read screenshot'}
           </button>
           {proposal && (
             <button type="button" onClick={save} disabled={saving || reading || !chosen || blocked > 0}

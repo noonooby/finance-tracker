@@ -28,6 +28,7 @@ const Position = lazy(() => import('../components/Position'));
 const Investments = lazy(() => import('../components/Investments'));
 const Bills = lazy(() => import('../components/Bills'));
 const Goals = lazy(() => import('../components/Goals'));
+const Ask = lazy(() => import('../components/Ask'));
 const CreditScore = lazy(() => import('../components/CreditScore'));
 
 /**
@@ -275,6 +276,7 @@ export function AppRoutes() {
         <Route path="/position" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Position} /></Suspense>} />
         <Route path="/investments" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Investments} /></Suspense>} />
         <Route path="/bills" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Bills} /></Suspense>} />
+        <Route path="/ask" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Ask} /></Suspense>} />
         <Route path="/goals" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Goals} /></Suspense>} />
         <Route path="/credit" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={CreditScore} /></Suspense>} />
         <Route path="/help" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Help} /></Suspense>} />

@@ -731,6 +731,16 @@ route('GET', '/api/config', () => ({ google: !!(G_ID && G_SECRET), dev: !!DEV_US
 // The Gemini key: whether it is set and whether this user may set it. Never the key itself.
 route('GET', '/api/gemini-key', (req) => { const u = authUser(req); const ks = require('./keystore'); return { set: ks.isSet(), canSet: !ks.isSet() && ks.mayManage(db, u) }; });
 route('POST', '/api/gemini-key', async (req, b) => { const u = authUser(req); await require('./keystore').set(db, u, b.key, fail); return { set: true }; });
+// The text assistant: a question is answered from the person's own figures; a typed note becomes lines to check and save.
+route('POST', '/api/ask', async (req, b) => {
+  const uid = authUser(req).id;
+  const all = (t) => selectRows(uid, { table: t, filters: [] });
+  const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
+  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), bills: all('bills'),
+    schedules: all('income_schedules'), goals: all('goals'), scores: all('credit_scores'),
+    transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: isDay(b.today) ? b.today : today(), db };
+  try { return await require('./assistant').ask(uid, b, ctx); } catch (e) { if (e.status) fail(e.status, e.message); throw e; }
+});
 // A pay slip or a payroll screen (Workday and the like): what the pay is and which accounts it lands in. Nothing is saved.
 route('POST', '/api/read-pay', async (req, b) => {
   const uid = authUser(req).id;

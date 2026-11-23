@@ -89,3 +89,42 @@ export function freeAtMonthEnd({ atEnd, budgets = [], unpaidBills = [], goalNeed
   }, 0));
   return { free: round2((Number(atEnd) || 0) - budgetLeft - (Number(goalNeed) || 0)), budgetLeft, goalNeed: round2(goalNeed) };
 }
+
+// Charges in the last 14 days worth a second look. -> [{ id, kind, title, text, date, amount }]
+//  - unusual: at least twice what you usually pay that merchant (three or more earlier purchases), and at least $20 more
+//  - double: the same merchant, amount and account twice on one day
+// seen: ids already answered ("Seen"), left out.
+export function chargesToCheck(transactions, today = new Date(), seen = []) {
+  const done = new Set(seen || []);
+  const day0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const recent = (t) => { const d = parse(t.date); return d && (day0 - d) / 864e5 <= 14 && d <= day0; };
+  const spend = (transactions || []).filter((t) => live(t) && t.type === 'expense' && Number(t.amount) > 0 && mkey(t.description).length >= 3);
+  const by = new Map();
+  for (const t of spend) { const k = mkey(t.description); if (!by.has(k)) by.set(k, []); by.get(k).push(t); }
+  const median = (a) => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const out = [];
+  for (const list of by.values()) {
+    list.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    list.forEach((t, i) => {
+      if (!recent(t)) return;
+      const before = list.slice(0, i).map((x) => Number(x.amount));
+      const usual = before.length >= 3 ? median(before) : null;
+      const amount = round2(t.amount);
+      if (usual && amount >= usual * 2 && amount - usual >= 20) {
+        out.push({ id: `unusual:${t.id}`, kind: 'unusual', title: t.description, date: String(t.date).slice(0, 10), amount, usual: round2(usual) });
+      }
+    });
+    const pairs = new Map();
+    for (const t of list.filter(recent)) {
+      if (Array.isArray(t.splits) && t.splits.length) continue;
+      const k = [String(t.date).slice(0, 10), round2(t.amount), t.payment_method_id || ''].join('|');
+      if (!pairs.has(k)) pairs.set(k, []);
+      pairs.get(k).push(t);
+    }
+    for (const same of pairs.values()) {
+      if (same.length < 2) continue;
+      out.push({ id: `double:${same.map((t) => t.id).sort().join('+')}`, kind: 'double', title: same[0].description, date: String(same[0].date).slice(0, 10), amount: round2(same[0].amount), count: same.length });
+    }
+  }
+  return out.filter((x) => !done.has(x.id)).sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
+}

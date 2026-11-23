@@ -1337,3 +1337,20 @@ test('pay split: one pay lands in up to three accounts, stays one line, and one 
   await db.from('income_schedules').delete().eq('id', ok.data.id);
   for (const a of accounts) await db.from('bank_accounts').delete().eq('id', a.id);
 });
+
+test('charges to check: far above the usual, or the same charge twice in a day', () => {
+  const today = new Date(2026, 10, 23);
+  const e = (id, description, amount, date, more) => ({ id, type: 'expense', description, amount, date, payment_method_id: 'visa', ...more });
+  const tx = [
+    e(1, 'Hydro One', 80, '2026-08-10'), e(2, 'Hydro One', 85, '2026-09-10'), e(3, 'Hydro One', 82, '2026-10-10'), e(4, 'Hydro One', 190, '2026-11-12'),
+    e(5, 'Coffee Bar', 4, '2026-11-01'), e(6, 'Coffee Bar', 4, '2026-11-05'), e(7, 'Coffee Bar', 4, '2026-11-08'), e(8, 'Coffee Bar', 12, '2026-11-20'), // three times the usual, but only $8 more
+    e(9, 'New Shop', 900, '2026-11-21'),                                            // nothing to compare with
+    e(10, 'Parking Lot', 15, '2026-11-22'), e(11, 'PARKING LOT', 15, '2026-11-22'), // twice in a day
+    e(12, 'Parking Lot', 15, '2026-11-22', { payment_method_id: 'chq' }),           // another account
+    e(13, 'Old Double', 9, '2026-10-01'), e(14, 'Old Double', 9, '2026-10-01'),     // too long ago
+    e(15, 'Hydro One', 400, '2026-11-15', { status: 'undone' }),
+  ];
+  const c = P.chargesToCheck(tx, today);
+  assert.deepEqual(c.map((x) => [x.kind, x.title, x.amount, x.usual || x.count]), [['double', 'Parking Lot', 15, 2], ['unusual', 'Hydro One', 190, 82]]);
+  assert.deepEqual(P.chargesToCheck(tx, today, [c[0].id]).map((x) => x.kind), ['unusual']);
+});

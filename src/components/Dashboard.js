@@ -4,7 +4,7 @@ import { ChevronRight, Camera, AlertTriangle, CheckCircle2, Repeat, Hand, Check 
 import { useFinanceData } from '../hooks/useFinanceData';
 import { api } from '../utils/server';
 import { position, monthEndFor, monthlyCost, upcoming, billDates } from '../utils/finance';
-import { goalsProgress, goalsThisMonth, freeAtMonthEnd } from '../utils/plans';
+import { goalsProgress, goalsThisMonth, freeAtMonthEnd, chargesToCheck, priceChanges } from '../utils/plans';
 import { server } from '../utils/server';
 import { budgetMonth, monthOf, findRecurring } from '../utils/spending';
 import { formatCurrency, formatDate, parseDay } from '../utils/helpers';
@@ -47,6 +47,20 @@ export default function Dashboard() {
     const goalNeed = goalsThisMonth(goalsProgress(goals, { bankAccounts: d.bankAccounts, investments: d.investments }, today));
     return freeAtMonthEnd({ atEnd: m.atEnd, budgets, unpaidBills, goalNeed });
   }, [d.bills, d.transactions, d.bankAccounts, d.investments, goals, budgets, m.atEnd, today]);
+  // Things worth a second look: a charge much larger than usual, the same charge twice in a day, a bill whose price moved,
+  // a goal whose date has passed. "Seen" is remembered on this device.
+  const [seen, setSeen] = useState(() => { try { return JSON.parse(localStorage.getItem('finance_seen_notices') || '[]'); } catch { return []; } });
+  const markSeen = (id) => { const next = [...seen, id].slice(-200); setSeen(next); try { localStorage.setItem('finance_seen_notices', JSON.stringify(next)); } catch { /* kept for this visit only */ } };
+  const notices = useMemo(() => {
+    const out = chargesToCheck(d.transactions, today, seen).map((c) => ({ id: c.id, to: '/transactions', title: c.title, canSee: true,
+      text: c.kind === 'unusual' ? `${formatCurrency(c.amount)} on ${short(c.date)}. You usually pay about ${formatCurrency(c.usual)}.`
+        : `${formatCurrency(c.amount)} charged ${c.count} times on ${short(c.date)}. Check it is not doubled.` }));
+    for (const c of priceChanges(d.bills, d.transactions)) out.push({ id: `price:${c.bill.id}`, to: '/bills', title: c.bill.name, text: `Charged ${formatCurrency(c.now)}; the usual amount is ${formatCurrency(c.was)}.` });
+    for (const g of goalsProgress(goals, { bankAccounts: d.bankAccounts, investments: d.investments }, today)) {
+      if (g.late && !g.done) out.push({ id: `goal:${g.id}`, to: '/goals', title: g.name, text: `The date has passed with ${formatCurrency(g.left)} still to go.` });
+    }
+    return out;
+  }, [d.transactions, d.bills, d.bankAccounts, d.investments, goals, seen, today]);
   const found = useMemo(() => findRecurring(d.transactions, d.bills, today), [d.transactions, d.bills, today]);
   const nextPay = useMemo(() => schedules.filter((s) => s.is_active !== false && s.next_date).sort((a, b) => String(a.next_date).localeCompare(String(b.next_date)))[0], [schedules]);
   const recent = useMemo(() => [...(d.transactions || [])].filter((t) => t.status !== 'undone' && t.status !== 'deleted')
@@ -121,6 +135,24 @@ export default function Dashboard() {
         <div className="flex items-center gap-2 px-1 text-xs text-positive"><CheckCircle2 size={14} aria-hidden="true" /> Every balance is current and adds up.</div>
       )}
 
+      {notices.length > 0 && (
+        <Section title="To look at">
+          <Card padded={false} className="divide-y divide-line overflow-hidden">
+            {notices.slice(0, 6).map((n) => (
+              <div key={n.id} className="flex items-center gap-2 pr-3">
+                <Row onClick={() => navigate(n.to)}>
+                  <AlertTriangle size={16} className="text-warning shrink-0" aria-hidden="true" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium truncate">{n.title}</span>
+                    <span className="block text-xs text-muted">{n.text}</span>
+                  </span>
+                </Row>
+                {n.canSee && <button type="button" onClick={() => markSeen(n.id)} className="press shrink-0 text-xs font-medium text-accent px-2 py-1 rounded-lg bg-accent-soft">Seen</button>}
+              </div>
+            ))}
+          </Card>
+        </Section>
+      )}
       <Section title="Next 30 days" action={youPay > 0 ? <span className="text-xs text-muted">You pay {formatCurrency(youPay)}</span> : null}>
         <Card padded={false} className="divide-y divide-line overflow-hidden">
           {due.length === 0 && <p className="px-4 py-3 text-sm text-muted">Nothing due.</p>}

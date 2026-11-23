@@ -456,3 +456,30 @@ test('statement: the opening balance and the lines must give the closing balance
   assert.deepEqual(reader.plan(st('TD Visa', 300, 240), ctx, 's').statement.check, { adds_up: true, expected: 240, off: 0, lines: 2 });
   assert.equal(reader.plan(st('TD Visa', null, 240), ctx, 's').statement.check, undefined);
 });
+
+test('assistant: the figures it may use are worked out from the records', () => {
+  const a = mod('assistant.js');
+  const f = a.facts({ today: '2026-11-23',
+    bankAccounts: [{ name: 'Chequing', balance: 1000.004 }, { name: 'Savings', balance: 250 }],
+    creditCards: [{ name: 'Visa', balance: 300, credit_limit: 5000, due_date: '2026-12-05' }, { name: 'Coffee card', balance: 20, is_gift_card: true }],
+    loans: [{ name: 'Car', balance: 9000, payment_amount: 300, frequency: 'monthly', next_payment_date: '2026-12-01' }], investments: [{ name: 'TFSA', balance: 5000 }],
+    bills: [{ name: 'Netflix', amount: 18.99, frequency: 'monthly', next_date: '2026-12-05', status: 'active' }, { name: 'Old', status: 'ignored' }],
+    schedules: [{ source: 'Acme', amount: 2000, frequency: 'biweekly', next_date: '2026-11-27' }, { source: 'Paused', amount: 5, is_active: false }],
+    goals: [{ name: 'Trip', target: 3000, date: '2027-06-01' }], scores: [{ bureau: 'Equifax', score: 718, date: '2026-11-20' }],
+    transactions: [
+      { type: 'expense', amount: 100, date: '2026-11-03', category_name: 'Groceries', description: 'Loblaws' },
+      { type: 'refund', amount: 30, date: '2026-11-04', category_name: 'Groceries', description: 'Loblaws' },
+      { type: 'expense', amount: 50, date: '2026-11-05', description: 'Split', splits: [{ category_name: 'Dining', amount: 20 }, { category_name: 'Groceries', amount: 30 }] },
+      { type: 'expense', amount: 999, date: '2026-11-06', category_name: 'Dining', status: 'undone' },
+      { type: 'expense', amount: 25, date: '2026-11-07', category_name: 'Dining', gift_card_id: 'g' },
+      { type: 'expense', amount: 40, date: '2026-10-07', category_name: 'Dining' },
+      { type: 'income', amount: 2000, date: '2026-11-13', description: 'Acme' },
+      { type: 'expense', amount: 7, date: '2026-07-01', category_name: 'Dining' },
+    ] });
+  assert.deepEqual(f.spending_by_month_and_category['2026-11'], { Groceries: 100, Dining: 20 });
+  assert.deepEqual(f.spending_total_by_month, { '2026-11': 120, '2026-10': 40, '2026-09': 0 });
+  assert.equal(f.income_by_month['2026-11'], 2000);
+  assert.deepEqual(f.totals, { in_accounts: 1250, owed_on_cards: 300, owed_on_loans: 9000 });
+  assert.deepEqual([f.cards.length, f.gift_cards.length, f.bills.length, f.pay.length], [1, 1, 1, 1]);
+  assert.ok(!JSON.stringify(f).includes('999'));
+});
