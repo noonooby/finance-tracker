@@ -527,6 +527,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <h2 className="text-lg font-semibold">Check before saving</h2>
             {queue.length > 0 && <span className="text-sm text-muted shrink-0">{queue.length} more waiting</span>}
           </div>
+          {chosen === 0 && <p role="status" className="text-sm rounded-lg bg-accent-soft text-accent px-3 py-2">There is nothing to save from this one. {queue.length > 0 ? 'Tap Skip to the next at the bottom, or add a note and read it again.' : 'Tap Close at the bottom, or add a note and read it again.'}</p>}
           {!image.pdf && !image.typed && <button type="button" className="press text-sm font-medium text-accent" onClick={() => setBig(image.url)}>See the picture large</button>}
           <section className="rounded-xl border border-line bg-surface-2 px-3 py-3 space-y-1 text-sm">
             <h3 className="font-semibold text-base">What was understood</h3>
@@ -717,7 +718,16 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             className={`press px-4 py-3 rounded-xl font-medium disabled:opacity-50 ${proposal ? 'border border-line bg-surface text-fg' : 'flex-1 bg-accent text-accent-contrast hover:opacity-90'}`}>
             {reading ? 'Reading...' : proposal ? 'Read again' : image.typed ? 'Read again' : queue.length > 0 ? `Start reading (${queue.length + 1} chosen)` : image.csv ? 'Read file' : image.pdf ? 'Read statement' : 'Read screenshot'}
           </button>
-          {proposal && (
+          {proposal && chosen === 0 && (
+            <button type="button" onClick={() => { setDone(null); advance(true); }} disabled={saving || reading}
+              className="press flex-1 px-4 py-3 rounded-xl bg-accent text-accent-contrast font-medium hover:opacity-90 disabled:opacity-50">
+              {queue.length > 0 ? `Skip to the next (${queue.length} waiting)` : 'Close'}
+            </button>
+          )}
+          {proposal && chosen > 0 && queue.length > 0 && (
+            <button type="button" onClick={() => { setDone(null); advance(true); }} disabled={saving || reading} className="press px-3 py-3 rounded-xl border border-line bg-surface text-fg font-medium disabled:opacity-50">Skip</button>
+          )}
+          {proposal && chosen > 0 && (
             <button type="button" onClick={save} disabled={saving || reading || !chosen || blocked > 0}
               className="press flex-1 px-4 py-3 rounded-xl bg-accent text-accent-contrast font-medium hover:opacity-90 disabled:opacity-50">
               {saving ? 'Saving...' : blocked ? `Answer ${blocked} ${blocked === 1 ? 'question' : 'questions'} first` : `Save ${chosen} ${chosen === 1 ? 'item' : 'items'}`}
