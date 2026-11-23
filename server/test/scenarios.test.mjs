@@ -1083,3 +1083,17 @@ test('deleting a category takes what was learned for it along, and its budget is
   const shown = S.budgetMonth(tx, { [cat.id]: 50, [keep.id]: 80 }, cats, '2026-11', new Date(2026, 10, 23)).map((b) => b.name);
   assert.deepEqual(shown, ['Garden']);
 });
+
+test('removing an account turns off automatic payment on the loans and cards that used it', async () => {
+  const gone = await add('bank_accounts', { name: 'Closing', balance: 0 });
+  const stays = await add('bank_accounts', { name: 'Open', balance: 0 });
+  const link = (id) => ({ connected_payment_source: 'bank_account', connected_payment_source_id: id });
+  const l1 = await add('loans', { name: 'Auto A', balance: 100, payment_amount: 10, ...link(gone.id) });
+  const l2 = await add('loans', { name: 'Auto B', balance: 100, payment_amount: 10, ...link(stays.id) });
+  const c1 = await add('credit_cards', { name: 'Auto card', balance: 50, ...link(gone.id) });
+  await db.from('bank_accounts').delete().eq('id', gone.id);
+  const src = async (t, id) => { const r = await get(t, id); return [r.connected_payment_source ?? null, r.connected_payment_source_id ?? null]; };
+  assert.deepEqual(await src('loans', l1.id), [null, null]);
+  assert.deepEqual(await src('credit_cards', c1.id), [null, null]);
+  assert.deepEqual(await src('loans', l2.id), ['bank_account', stays.id]);
+});

@@ -267,6 +267,16 @@ function deleteRows(uid, tbl, filters, orGroups) {
   for (const r of rs) {
     if (tbl === 'transactions' && r._legs && r.status !== 'undone' && r.status !== 'deleted') fail(409, 'Undo this transaction first so its money goes back');
     db.prepare('DELETE FROM rows WHERE tbl = ? AND id = ? AND user_id = ?').run(tbl, String(r.id), uid);
+    // A loan or card that was paid automatically from an account that is gone goes back to "you pay it yourself"
+    // (so its reminders come back), instead of failing quietly at every due date.
+    if (tbl === 'bank_accounts' || tbl === 'credit_cards') {
+      for (const t of ['loans', 'credit_cards']) {
+        for (const x of selectRows(uid, { table: t, filters: [['connected_payment_source_id', 'eq', String(r.id)]] })) {
+          const n = { ...x, connected_payment_source: null, connected_payment_source_id: null, updated_at: now() };
+          db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), t, String(x.id), uid);
+        }
+      }
+    }
     // What was learned for a category goes with it, so a new purchase is not filed under a category that is gone.
     if (tbl === 'categories') db.prepare("DELETE FROM rows WHERE tbl = 'category_rules' AND user_id = ? AND json_extract(data, '$.category_id') = ?").run(uid, String(r.id));
   }
