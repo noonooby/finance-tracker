@@ -1040,3 +1040,24 @@ test('another account cannot see, change, move, undo or wipe this account\'s dat
   const bare = await realFetch(base + '/api/db', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer nope' }, body: JSON.stringify({ table: 'bank_accounts', action: 'select', filters: [] }) });
   assert.equal(bare.status, 401);
 });
+
+test('the transaction list finds everything that involved an account, card or loan', async () => {
+  const bank = await add('bank_accounts', { name: 'Filter Bank', balance: 2000 });
+  const other = await add('bank_accounts', { name: 'Filter Savings', balance: 0 });
+  const visa = await add('credit_cards', { name: 'Filter Visa', balance: 0, credit_limit: 1000 });
+  const car = await add('loans', { name: 'Filter loan', balance: 500, payment_amount: 100 });
+  const src = `bank_account:${bank.id}`;
+  await M.recordExpense({ amount: 10, source: src, date: '2026-11-23', description: 'From the bank' }, await accounts());
+  await M.recordExpense({ amount: 20, source: `credit_card:${visa.id}`, date: '2026-11-23', description: 'On the card' }, await accounts());
+  await M.recordIncome({ amount: 30, target: src, date: '2026-11-23', description: 'Pay' }, await accounts());
+  await M.recordTransfer({ amount: 40, from: src, to: `bank_account:${other.id}`, date: '2026-11-23', description: 'To savings' }, await accounts());
+  await M.recordCardPayment({ cardId: visa.id, amount: 20, source: src, date: '2026-11-23' }, await accounts());
+  await M.recordLoanPayment({ loanId: car.id, amount: 100, source: src, date: '2026-11-23' }, await accounts());
+  const all = (await db.from('transactions').select('*')).data;
+  const found = (table, id) => all.filter((t) => S.touchesAccount(t, table, id)).map((t) => t.description).sort();
+  assert.deepEqual(found('bank_accounts', bank.id), ['From the bank', 'Pay', 'Payment to Filter Visa', 'Payment to Filter loan', 'To savings']);
+  assert.deepEqual(found('bank_accounts', other.id), ['To savings']);
+  assert.deepEqual(found('credit_cards', visa.id), ['On the card', 'Payment to Filter Visa']);
+  assert.deepEqual(found('loans', car.id), ['Payment to Filter loan']);
+  assert.deepEqual(found('loans', 'nothing'), []);
+});

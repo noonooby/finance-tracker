@@ -24,6 +24,7 @@ import {
   SaveFilterDialog
 } from './transactions';
 import { showToast } from '../utils/toast';
+import { categoryParts, touchesAccount } from '../utils/spending';
 
 /**
  * Transaction History Component
@@ -126,45 +127,25 @@ export default function TransactionHistory({
     }
 
     if (filters.category !== 'all') {
-      filtered = filtered.filter(t => t.category_id === filters.category);
+      // A split purchase is found under each of its parts.
+      filtered = filtered.filter(t => categoryParts(t).some(p => p.category_id === String(filters.category)));
     }
 
     if (filters.dateFrom) {
-      filtered = filtered.filter(t => t.date >= filters.dateFrom);
+      filtered = filtered.filter(t => String(t.date || '').slice(0, 10) >= filters.dateFrom);
     }
     if (filters.dateTo) {
-      filtered = filtered.filter(t => t.date <= filters.dateTo);
+      filtered = filtered.filter(t => String(t.date || '').slice(0, 10) <= filters.dateTo);
     }
 
     if (filters.paymentMethod !== 'all') {
       filtered = filtered.filter(t => t.payment_method === filters.paymentMethod);
     }
 
-    if (filters.creditCard !== 'all') {
-      filtered = filtered.filter(t => {
-        if (t.payment_method === 'credit_card' && t.card_id === filters.creditCard) return true;
-        if (t.payment_method_id === filters.creditCard && t.payment_method === 'credit_card') return true;
-        if ((t.type === 'credit_card_payment' || t.type === 'payment') && t.card_id === filters.creditCard) return true;
-        return false;
-      });
-    }
-
-    if (filters.loan !== 'all') {
-      filtered = filtered.filter(t => {
-        if (t.payment_method === 'loan' && t.loan_id === filters.loan) return true;
-        if (t.payment_method_id === filters.loan && t.payment_method === 'loan') return true;
-        if ((t.type === 'loan_payment' || t.type === 'payment') && t.loan_id === filters.loan) return true;
-        return false;
-      });
-    }
-
-    if (filters.bankAccount !== 'all') {
-      filtered = filtered.filter(t => {
-        if (t.bank_account_id === filters.bankAccount) return true;
-        if (t.from_account_id === filters.bankAccount || t.to_account_id === filters.bankAccount) return true;
-        return false;
-      });
-    }
+    // Everything that involved the chosen card, account or loan: paid from it, paid to it, or moved to or from it.
+    if (filters.creditCard !== 'all') filtered = filtered.filter(t => touchesAccount(t, 'credit_cards', filters.creditCard));
+    if (filters.loan !== 'all') filtered = filtered.filter(t => touchesAccount(t, 'loans', filters.loan));
+    if (filters.bankAccount !== 'all') filtered = filtered.filter(t => touchesAccount(t, 'bank_accounts', filters.bankAccount));
 
     if (filters.incomeSource !== 'all') {
       filtered = filtered.filter(t => {

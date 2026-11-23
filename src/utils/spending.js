@@ -24,6 +24,20 @@ export const spendingSign = (t) => (!live(t) || t.gift_card_id ? 0 : t.type === 
 export const isCardPayment = (t) => !!t && (t.type === 'credit_card_payment' || (t.type === 'payment' && !t.loan_id));
 export const isPayment = (t) => !!t && (t.type === 'payment' || t.type === 'loan_payment' || t.type === 'credit_card_payment');
 
+// Whether a transaction involved an account, card or loan: it was paid from it, paid to it, or changed its balance.
+// table: 'bank_accounts' | 'credit_cards' | 'loans'.
+export function touchesAccount(t, table, id) {
+  if (!t || id == null) return false;
+  const k = String(id), is = (x) => x != null && String(x) === k;
+  if ((t._legs || []).some((l) => l && l.table === table && is(l.id))) return true;
+  const kind = { bank_accounts: 'bank_account', credit_cards: 'credit_card', loans: 'loan' }[table];
+  if (t.payment_method === kind && is(t.payment_method_id)) return true;
+  if (table === 'bank_accounts') return is(t.bank_account_id) || is(t.from_account_id) || is(t.to_account_id);
+  if (table === 'credit_cards') return is(t.card_id) || is(t.gift_card_id);
+  if (table === 'loans') return is(t.loan_id);
+  return false;
+}
+
 export function spentByCategory(transactions, from, to) {
   const out = {};
   for (const t of transactions || []) {
