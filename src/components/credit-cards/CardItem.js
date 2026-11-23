@@ -130,9 +130,11 @@ export default function CardItem({
           <span className={'text-muted'}>Due Date:</span>
           <div className="text-right">
             <div className="font-medium">{formatDate(card.due_date)}</div>
-            {daysToDue >= 0 && (
+            {!(Number(card.balance) > 0) ? (
+              <div className={`text-xs ${muted}`}>Nothing owed</div>
+            ) : daysToDue >= 0 && (
               <div className={`text-xs ${daysToDue <= (card.alert_days || 7) ? 'text-red-600 font-semibold' : muted}`}>
-                {daysToDue === 0 ? 'Due Today!' : `${daysToDue} days`}
+                {daysToDue === 0 ? 'Due today' : daysToDue === 1 ? '1 day' : `${daysToDue} days`}
               </div>
             )}
           </div>

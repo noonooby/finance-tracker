@@ -1,7 +1,7 @@
 // Unified Transaction Hooks - Routes to specialized business logic based on transaction type
 
 import { useState, useCallback } from 'react';
-import { recordExpense, recordCardPayment, recordLoanPayment } from '../utils/money';
+import { recordExpense, recordCardPayment, recordLoanPayment, paymentSourceOf } from '../utils/money';
 import { logActivity } from '../utils/activityLogger';
 import { formatCurrency } from '../utils/helpers';
 import {
@@ -76,17 +76,17 @@ export function useTransactionOperations({
 // Expense processing
 async function processExpense(formData, { creditCards, bankAccounts, categories }) {
   const amount = parseFloat(formData.amount);
-  const category = categories?.find(c => c.id === formData.categoryId);
+  const category = categories?.find(c => String(c.id) === String(formData.categoryId));
   const method = formData.paymentMethod;
   const source = `${method}:${formData.paymentMethodId}`;
 
   let entity;
   if (method === 'credit_card') {
-    const card = creditCards?.find(c => c.id === formData.paymentMethodId);
+    const card = creditCards?.find(c => String(c.id) === String(formData.paymentMethodId));
     if (!card) throw new Error('Credit card not found');
     entity = { type: 'card', id: card.id, name: card.name, snap: { cardId: card.id, previousBalance: card.balance, isGiftCard: card.is_gift_card } };
   } else if (method === 'bank_account') {
-    const account = bankAccounts?.find(a => a.id === formData.paymentMethodId);
+    const account = bankAccounts?.find(a => String(a.id) === String(formData.paymentMethodId));
     if (!account) throw new Error('Bank account not found');
     entity = { type: 'bank_account', id: account.id, name: account.name, snap: { accountId: account.id, previousBalance: Number(account.balance) || 0 } };
   } else {
@@ -138,27 +138,9 @@ async function processExpense(formData, { creditCards, bankAccounts, categories 
   };
 }
 
-// Where a payment comes from: the money.js source and its display name.
-function paymentSourceOf(formData, { bankAccounts, creditCards }) {
-  const [sourceType, sourceId] = formData.paymentSource?.includes(':')
-    ? formData.paymentSource.split(':')
-    : [formData.paymentSource || '', null];
-  if (sourceType === 'bank_account' && sourceId) {
-    const account = bankAccounts?.find(a => a.id === sourceId);
-    if (!account) throw new Error('Bank account not found');
-    return { sourceType, sourceId, source: `bank_account:${sourceId}`, sourceName: account.name };
-  }
-  if (sourceType === 'credit_card' && sourceId) {
-    const card = creditCards?.find(c => c.id === sourceId);
-    if (!card) throw new Error('Payment card not found');
-    return { sourceType, sourceId, source: `credit_card:${sourceId}`, sourceName: card.name };
-  }
-  throw new Error('Choose the account it is paid from.');
-}
-
 // Card payment processing
 async function processCardPayment(formData, { creditCards, bankAccounts, loans }) {
-  const card = creditCards?.find(c => c.id === formData.paymentMethodId);
+  const card = creditCards?.find(c => String(c.id) === String(formData.paymentMethodId));
   if (!card) throw new Error('Credit card not found');
 
   const amount = parseFloat(formData.amount);
@@ -211,7 +193,7 @@ async function processCardPayment(formData, { creditCards, bankAccounts, loans }
 
 // Loan payment processing
 async function processLoanPayment(formData, { loans, bankAccounts, creditCards }) {
-  const loan = loans?.find(l => l.id === formData.paymentMethodId);
+  const loan = loans?.find(l => String(l.id) === String(formData.paymentMethodId));
   if (!loan) throw new Error('Loan not found');
 
   const amount = parseFloat(formData.amount);

@@ -793,3 +793,16 @@ test('a card payment comes from somewhere else: not the card itself, not a gift 
   assert.equal(ok.transaction.description, 'Payment to Pay Visa');
   assert.deepEqual([Number((await get('credit_cards', visa.id)).balance), Number((await get('bank_accounts', bank.id)).balance)], [180, 480]);
 });
+
+test('the payment form names its source account by kind and id, together or apart, as text or number', () => {
+  const lists = { bankAccounts: [{ id: 'chq1', name: 'Chequing' }, { id: 7, name: 'Old numbered' }], creditCards: [{ id: 'v1', name: 'Visa' }] };
+  const src = (f) => M.paymentSourceOf(f, lists);
+  assert.deepEqual(src({ paymentSource: 'bank_account', paymentSourceId: 'chq1' }), { sourceType: 'bank_account', sourceId: 'chq1', source: 'bank_account:chq1', sourceName: 'Chequing' });
+  assert.equal(src({ paymentSource: 'bank_account:chq1' }).source, 'bank_account:chq1');
+  assert.equal(src({ paymentSource: 'bank_account', paymentSourceId: '7' }).sourceName, 'Old numbered');
+  assert.equal(src({ paymentSource: 'credit_card', paymentSourceId: 'v1' }).sourceName, 'Visa');
+  for (const f of [{}, { paymentSource: 'bank_account' }, { paymentSource: 'bank_account', paymentSourceId: '' }, { paymentSource: '', paymentSourceId: 'chq1' }, { paymentSource: 'loan', paymentSourceId: 'x' }]) {
+    assert.throws(() => src(f), /Choose the account it is paid from/);
+  }
+  assert.throws(() => src({ paymentSource: 'bank_account', paymentSourceId: 'gone' }), /no longer exists/);
+});

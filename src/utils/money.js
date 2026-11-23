@@ -32,6 +32,19 @@ export function parseSource(source, id) {
   return { type: s, id: id ?? null };
 }
 
+// Where a payment comes from, as the forms give it: the kind and the id separately (paymentSource, paymentSourceId),
+// or "kind:id" in one. -> { sourceType, sourceId, source, sourceName }
+export function paymentSourceOf(formData, { bankAccounts = [], creditCards = [] } = {}) {
+  const raw = String(formData.paymentSource || '');
+  const [sourceType, inline] = raw.includes(':') ? raw.split(':') : [raw, null];
+  const sourceId = inline || (formData.paymentSourceId != null && formData.paymentSourceId !== '' ? String(formData.paymentSourceId) : null);
+  const list = sourceType === 'bank_account' ? bankAccounts : sourceType === 'credit_card' ? creditCards : null;
+  if (!list || !sourceId) throw new Error('Choose the account it is paid from.');
+  const hit = (list || []).find((x) => String(x.id) === sourceId);
+  if (!hit) throw new Error(sourceType === 'bank_account' ? 'That bank account no longer exists.' : 'That card no longer exists.');
+  return { sourceType, sourceId: hit.id, source: `${sourceType}:${hit.id}`, sourceName: hit.name };
+}
+
 // The leg that takes `amount` out of a source of money (paying with it).
 // accounts = { bankAccounts, creditCards } so the right limit can be checked.
 export function payFrom(source, amount, { bankAccounts = [], creditCards = [] } = {}) {
