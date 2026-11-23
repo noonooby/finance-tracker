@@ -185,6 +185,11 @@ function checkFigures(tbl, v) {
     if (!(f in v) || v[f] == null || v[f] === '') continue;
     if (!Number.isFinite(Number(v[f])) || Number(v[f]) < 0) fail(400, `Enter ${f.replace(/_/g, ' ')} as a number, zero or more.`);
   }
+  // Due dates on cards and loans are real calendar days (reminders and month end step from them).
+  for (const f of ['due_date', 'next_payment_date', 'start_date']) {
+    if (!(f in v) || v[f] == null || v[f] === '') continue;
+    if (!isDay(String(v[f]).slice(0, 10))) fail(400, 'That date does not exist. Choose a real day.');
+  }
 }
 // Pay that repeats: who it is from, an amount above zero, a known rhythm and a real next day (while it is running).
 const PAY_FREQ = new Set(['weekly', 'biweekly', 'semimonthly', 'monthly', 'bimonthly', 'quarterly', 'yearly']);

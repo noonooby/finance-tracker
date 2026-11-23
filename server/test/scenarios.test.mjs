@@ -1208,3 +1208,15 @@ test('month end takes off what each card payment will really take', () => {
   assert.equal(going({ ...auto, due_date: '2026-12-02' }), 0);             // due after the month ends
   assert.equal(going({ minimum_payment: 500 }), 300);
 });
+
+test('due dates on cards and loans must be real days', async () => {
+  const bad = async (t, v) => { const { error } = await db.from(t).insert(v).select().single(); return error && error.message; };
+  assert.match(await bad('credit_cards', { name: 'Bad date card', balance: 0, due_date: '2026-02-31' }), /does not exist/);
+  assert.match(await bad('loans', { name: 'Bad date loan', balance: 10, next_payment_date: 'soon' }), /does not exist/);
+  const card = await add('credit_cards', { name: 'Real date card', balance: 0, due_date: '2026-12-28' });
+  const { error } = await db.from('credit_cards').update({ due_date: '2026-13-01' }).eq('id', card.id);
+  assert.match(error.message, /does not exist/);
+  assert.equal((await get('credit_cards', card.id)).due_date, '2026-12-28');
+  assert.equal((await db.from('credit_cards').update({ due_date: null }).eq('id', card.id)).error, null);
+  await db.from('credit_cards').delete().eq('id', card.id);
+});
