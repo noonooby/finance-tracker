@@ -85,6 +85,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const [drafts, setDrafts] = useState([]);
   const [fixes, setFixes] = useState([]);
   const [loanDrafts, setLoanDrafts] = useState([]);
+  const [invDrafts, setInvDrafts] = useState([]);
+  const [scoreDraft, setScoreDraft] = useState(null);
   const [removals, setRemovals] = useState({});
   const [open, setOpen] = useState(null);
   const [done, setDone] = useState(null);
@@ -155,7 +157,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const advance = (readIt) => {
     const [next, ...rest] = queueRef.current;
     putQueue(rest); setShowWaiting(false);
-    setProposal(null); setDrafts([]); setRows([]); setFixes([]); setLoanDrafts([]); setError(''); setResumed(false);
+    setProposal(null); setDrafts([]); setRows([]); setFixes([]); setLoanDrafts([]); setInvDrafts([]); setScoreDraft(null); setError(''); setResumed(false);
     if (!next) { setImage(null); setNote(''); clearPending(); return; }
     setImage(next.image); setNote(next.note || '');
     savePending({ queue: rest, image: next.image, note: next.note || '' });
@@ -240,6 +242,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         return mine === r ? { ...r, items: items.map((x) => ({ name: String(x.name).slice(0, 60), amount: Math.round(Number(x.amount) * 100) / 100, category_id: '' })) } : r;
       }));
       setFixes(p.balances.map((b) => ({ ...b, on: true })));
+      setInvDrafts((p.new_investments || []).map((x) => ({ ...x, on: true, balance: x.balance == null ? '' : String(x.balance) })));
+      setScoreDraft(p.credit_score ? { on: true, bureau: p.credit_score.bureau || '', score: String(p.credit_score.score), date: p.credit_score.date || new Date().toLocaleDateString('en-CA') } : null);
       setLoanDrafts((p.new_loans || []).map((l) => ({ ...l, on: true, balance: l.balance == null ? '' : String(l.balance), payment_amount: l.payment_amount == null ? '' : String(l.payment_amount),
         next_payment_date: l.next_payment_date || '', interest_rate: l.interest_rate == null ? '' : String(l.interest_rate) })));
       setRemovals({});
@@ -329,6 +333,22 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         result.created.push(l.name);
       } catch (err) { result.failed.push(`${l.name}: ${err.message}`); }
     }
+    // 1c. Investments and a credit score found on the picture.
+    for (const x of invDrafts.filter((v) => v.on)) {
+      try {
+        if (!x.name.trim() || !Number.isFinite(Number(x.balance)) || x.balance === '') throw new Error('Enter its name and value');
+        const { error: e } = await server.from('investments').insert({ id: generateId(), name: x.name.trim(), kind: x.kind || 'Other', balance: Math.round(Number(x.balance) * 100) / 100, created_at: new Date().toISOString() });
+        if (e) throw new Error(e.message);
+        result.created.push(x.name);
+      } catch (err) { result.failed.push(`${x.name}: ${err.message}`); }
+    }
+    if (scoreDraft && scoreDraft.on) {
+      try {
+        const { error: e } = await server.from('credit_scores').insert({ bureau: scoreDraft.bureau.trim().slice(0, 40), score: Number(scoreDraft.score), date: scoreDraft.date, note: null, created_at: new Date().toISOString() });
+        if (e) throw new Error(e.message);
+        result.created.push(`credit score ${scoreDraft.score}`);
+      } catch (err) { result.failed.push(`Credit score: ${err.message}`); }
+    }
     const accounts = { bankAccounts: banks, creditCards: cards, loans };
     const real = (v) => (v && v.startsWith('new:') ? realRef[v] || null : v);
     // 2. The lines.
@@ -409,17 +429,19 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   // In plain words, what the reading made of the picture: what it is, whose it is, and what will happen to each part.
   const understood = (p, rs, ds, fx) => {
     const out = [];
-    const what = { statement: 'A statement', receipt: 'A receipt', transactions: 'A list of transactions', balance: 'A balance', other: 'Not clearly a statement, a receipt or a list of transactions' }[p.kind] || 'A picture';
+    const what = { statement: 'A statement', receipt: 'A receipt', transactions: 'A list of transactions', balance: 'A balance', credit_score: 'A credit score', other: 'Not clearly a statement, a receipt or a list of transactions' }[p.kind] || 'A picture';
     out.push(`It is: ${what.charAt(0).toLowerCase()}${what.slice(1)}.`);
     const names = [...new Set([...(p.statement && p.statement.account ? [p.statement.account.name] : []), ...rs.map((r) => r.account && r.account.name).filter(Boolean)])];
     const isCard = (n) => creditCards.some((c) => c.name === n) || ds.some((d) => d.name === n && d.type === 'credit_card');
     if (names.length) out.push(`${names.length === 1 ? 'Account' : 'Accounts'}: ${names.map((n) => `${n} (${isCard(n) ? 'card' : 'bank account'}${ds.some((d) => d.name === n) ? ', new' : ''})`).join(', ')}${p.note_account ? `. Your note pointed to ${p.note_account}` : ''}.`);
-    else out.push(rs.length ? 'Account: not clear from the picture. Choose it on each line, or add a note with the bank or card name and read again.' : loanDrafts.length ? 'No bank account or card is shown.' : 'No account was recognised.');
+    else out.push(rs.length ? 'Account: not clear from the picture. Choose it on each line, or add a note with the bank or card name and read again.' : loanDrafts.length || invDrafts.length || scoreDraft || fx.length ? 'No bank account or card is shown.' : 'No account was recognised.');
     const n = (a) => rs.filter((r) => r.action === a).length;
     const parts = [[n('record'), 'new, to be recorded'], [n('mark_posted'), 'already here as pending, to be marked posted'], [n('already'), 'look already recorded, left alone'], [n('choose_account'), 'need you to choose the account'], [n('skip'), 'could not be read']]
       .filter(([c]) => c > 0).map(([c, t]) => `${c} ${t}`);
     out.push(rs.length ? `Lines found: ${rs.length}${parts.length ? `. ${parts.join('; ')}` : ''}.` : 'Lines found: none.');
     if (fx.length) out.push(`${fx.length === 1 ? 'A balance was' : `${fx.length} balances were`} read and will be checked against the app.`);
+    if (scoreDraft) out.push(`A credit score was read: ${scoreDraft.score}${scoreDraft.bureau ? ` from ${scoreDraft.bureau}` : ''}.`);
+    if (invDrafts.length) out.push(`${invDrafts.length === 1 ? 'An investment was' : `${invDrafts.length} investments were`} found that the app does not have: ${invDrafts.map((x) => x.name).join(', ')}.`);
     if (loanDrafts.length) out.push(`${loanDrafts.length === 1 ? 'A loan was' : `${loanDrafts.length} loans were`} found that the app does not have: ${loanDrafts.map((l) => l.name).join(', ')}. Fill in what the picture does not show, below.`);
     if (ds.length) out.push(`${ds.length === 1 ? 'One account is' : `${ds.length} accounts are`} not in the app yet and will be added if you leave ${ds.length === 1 ? 'it' : 'them'} ticked.`);
     return out;
@@ -427,9 +449,11 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const setLoan = (id, patch) => setLoanDrafts((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   const loanNeeds = (l) => (!l.on ? null : !l.name.trim() ? 'Enter a name' : !(Number(l.balance) > 0) ? 'Enter what is still owed' : !(Number(l.payment_amount) > 0) ? 'Not on the picture: enter the amount of each payment'
     : !/^\d{4}-\d{2}-\d{2}$/.test(l.next_payment_date || '') ? 'Not on the picture: enter the next payment day' : null);
-  const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length + loanDrafts.filter((l) => l.on).length;
+  const invNeeds = (x) => (!x.on ? null : !x.name.trim() ? 'Enter a name' : x.balance === '' || !Number.isFinite(Number(x.balance)) ? 'Not on the picture: enter its value today' : null);
+  const scoreNeeds = (x) => (!x || !x.on ? null : !x.bureau.trim() ? 'Not on the picture: say which bureau it is from' : !(Number.isInteger(Number(x.score)) && Number(x.score) >= 300 && Number(x.score) <= 900) ? 'A score is a whole number from 300 to 900' : !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '') ? 'Choose the day' : null);
+  const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length + loanDrafts.filter((l) => l.on).length + invDrafts.filter((x) => x.on).length + (scoreDraft && scoreDraft.on ? 1 : 0);
   const draftNeeds = (d) => (!d.on ? null : !d.name.trim() ? 'Enter a name' : d.balance === '' || !Number.isFinite(Number(d.balance)) ? `Not on the screenshot: enter ${d.type === 'credit_card' ? 'what you owe on it' : 'its balance'} today` : null);
-  const blocked = rows.filter((r) => r.on && missing(r)).length + drafts.filter(draftNeeds).length + loanDrafts.filter(loanNeeds).length;
+  const blocked = rows.filter((r) => r.on && missing(r)).length + drafts.filter(draftNeeds).length + loanDrafts.filter(loanNeeds).length + invDrafts.filter(invNeeds).length + (scoreNeeds(scoreDraft) ? 1 : 0);
   const snapDay = (v) => {
     if (!v) return null;
     const [t, id] = v.split(':');
@@ -618,6 +642,58 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                 </div>
               ))}
               <p className={`text-xs ${muted}`}>The lines below are recorded on the new account and its balance ends at the figure above.</p>
+            </section>
+          )}
+          {scoreDraft && (
+            <section className="space-y-2">
+              <h3 className="text-base font-semibold">Credit score</h3>
+              <div className="rounded-lg border p-3 space-y-2 border-line">
+                <label className="flex items-center gap-3 text-base font-medium">
+                  <input type="checkbox" className="w-5 h-5" checked={scoreDraft.on} onChange={(e) => setScoreDraft({ ...scoreDraft, on: e.target.checked })} />
+                  Save this score
+                </label>
+                {scoreDraft.on && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block text-sm"><span className={muted}>Score</span>
+                      <input className={input} type="number" step="1" min="300" max="900" inputMode="numeric" value={scoreDraft.score} onChange={(e) => setScoreDraft({ ...scoreDraft, score: e.target.value })} /></label>
+                    <label className="block text-sm"><span className={muted}>Bureau</span>
+                      <input className={input} list="scan-bureaus" maxLength={40} placeholder="Equifax, TransUnion" value={scoreDraft.bureau} onChange={(e) => setScoreDraft({ ...scoreDraft, bureau: e.target.value })} />
+                      <datalist id="scan-bureaus"><option value="Equifax" /><option value="TransUnion" /><option value="Experian" /></datalist></label>
+                    <label className="block text-sm col-span-2"><span className={muted}>Day</span>
+                      <input className={input} type="date" value={scoreDraft.date} onChange={(e) => setScoreDraft({ ...scoreDraft, date: e.target.value })} /></label>
+                  </div>
+                )}
+                {scoreNeeds(scoreDraft) && <div className="text-sm text-amber-600">{scoreNeeds(scoreDraft)}</div>}
+              </div>
+            </section>
+          )}
+          {invDrafts.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-base font-semibold">Investments to add</h3>
+              {invDrafts.map((x) => {
+                const setInv = (patch) => setInvDrafts((xs) => xs.map((y) => (y.id === x.id ? { ...y, ...patch } : y)));
+                return (
+                  <div key={x.id} className="rounded-lg border p-3 space-y-2 border-line">
+                    <label className="flex items-center gap-3 text-base font-medium">
+                      <input type="checkbox" className="w-5 h-5" checked={x.on} onChange={(e) => setInv({ on: e.target.checked })} />
+                      Add {x.name}
+                    </label>
+                    {x.on && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block text-sm"><span className={muted}>Name</span>
+                          <input className={input} value={x.name} maxLength={60} onChange={(e) => setInv({ name: e.target.value })} /></label>
+                        <label className="block text-sm"><span className={muted}>Kind</span>
+                          <select className={input} value={x.kind} onChange={(e) => setInv({ kind: e.target.value })}>
+                            {['TFSA', 'RRSP', 'FHSA', 'RESP', 'Brokerage', 'Pension', 'Crypto', 'Other'].map((k) => <option key={k}>{k}</option>)}
+                          </select></label>
+                        <label className="block text-sm col-span-2"><span className={muted}>Value today</span>
+                          <input className={input} type="number" step="0.01" inputMode="decimal" value={x.balance} placeholder="Not shown" onChange={(e) => setInv({ balance: e.target.value })} /></label>
+                      </div>
+                    )}
+                    {invNeeds(x) && <div className="text-sm text-amber-600">{invNeeds(x)}</div>}
+                  </div>
+                );
+              })}
             </section>
           )}
           {loanDrafts.length > 0 && (

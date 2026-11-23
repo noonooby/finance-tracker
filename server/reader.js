@@ -15,9 +15,10 @@ const HOME = (process.env.HOME_CURRENCY || 'CAD').toUpperCase();
 
 const PROMPT = `You read one screenshot or statement (PDF) from a banking app, credit card app, or a receipt. Report only what is visible; never guess.
 Return JSON:
-{"kind":"transactions"|"statement"|"receipt"|"balance"|"other",
+{"kind":"transactions"|"statement"|"receipt"|"balance"|"credit_score"|"other",
+ "credit_score":{"bureau":"Equifax, TransUnion or Experian as shown, or null","score":whole number,"date":"YYYY-MM-DD it is dated or was updated, or null"} or null (only when the screen shows a credit score),
  "statement":{"account_name":"","last4":"or null","period_start":"YYYY-MM-DD","period_end":"YYYY-MM-DD","opening_balance":number,"closing_balance":number} or null (only for a statement),
- "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null,"statement_balance":number or null,"autopay":true|false|null,"loan_kind":"loan|mortgage|line_of_credit|car_lease|bnpl|plan|student or null","payment_amount":number or null,"payment_frequency":"weekly|biweekly|semimonthly|monthly or null","interest_rate":number or null}],
+ "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|investment|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null,"statement_balance":number or null,"autopay":true|false|null,"loan_kind":"loan|mortgage|line_of_credit|car_lease|bnpl|plan|student or null","payment_amount":number or null,"payment_frequency":"weekly|biweekly|semimonthly|monthly or null","interest_rate":number or null}],
  "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null",
    "type":"purchase|income|refund|card_payment|transfer|fee|interest","currency":"3-letter code only when the line shows a currency other than the account's (e.g. USD), else null","original_amount":"the amount in that other currency when the line also shows the converted amount, else null","other_account":"for card_payment or transfer: the other account's name or last 4 digits as shown, else null",
    "category":"one short category: for a purchase or fee (Groceries, Dining, Transport, Fuel, Bills, Utilities, Phone, Shopping, Entertainment, Health, Travel, Subscriptions, Rent, Insurance, Education, Personal care, Gifts, Fees); for income (Salary, Freelance, Interest, Government, Refund, Other income); else null"}],
@@ -25,6 +26,7 @@ Return JSON:
  "notes":"anything unclear, short"}
 Rules: a screen that shows an account or card summary (balance, statement balance, due date, autopay, rewards) and no list of transactions is kind "balance": fill accounts and leave lines empty. Summary figures such as cash back, rewards, available credit or the statement amount are never lines.
 A loan, mortgage, line of credit, car lease or loan, student loan, or a pay-later plan (Klarna, Affirm, PayPal Pay in 4 and the like) is an account of type "loan": balance is what is still owed, due_date the next payment day, payment_amount the amount of each payment, interest_rate the yearly percentage, each only when shown. Name it as shown; when no name is visible, name it by the provider or by what it is ("Pay later").
+An investment or registered account (TFSA, RRSP, FHSA, RESP, brokerage, crypto, pension, GIC) is an account of type "investment" with its value as balance. A screen showing a credit score is kind "credit_score": the score is the main number (300 to 900), never a rating word, a change or a range.
 Payroll, salary or direct deposit from an employer is income with category Salary; a payment to a credit card (e.g. "PAYMENT THANK YOU", "VISA PAYMENT") is card_payment; money moved between the person's own accounts is transfer; pay and deposits are income.
 For a statement, list every transaction in the period and report the closing balance as the account's balance; for a credit card, balances are what is owed.
 Amounts are positive numbers; direction "out" is money spent or charged, "in" is money received, refunds and payments to the card.
@@ -231,15 +233,31 @@ function plan(reading, ctx, sourceId) {
   const new_loans = [];
   for (const a of (reading.accounts || []).filter((x) => x && x.type === 'loan')) {
     const name = String(a.name || 'Loan').trim().slice(0, 60) || 'Loan';
-    if (resolveAccount(have, { name, last4: a.last4 }) || new_loans.some((l) => norm(l.name) === norm(name))) continue;
+    const mine = resolveAccount(have, { name, last4: a.last4 });
+    // A loan the app has: the figure on the picture is a balance to check, like any other account's.
+    if (mine) { if (pos(a.balance) != null) balances.push({ account: { type: 'loan', id: mine.id, name: mine.name }, shown: pos(a.balance), current: Math.round(Number(mine.balance || 0) * 100) / 100, differs: pos(a.balance) !== Math.round(Number(mine.balance || 0) * 100) / 100, snapshot_date: mine.snapshot_date || null }); continue; }
+    if (new_loans.some((l) => norm(l.name) === norm(name))) continue;
     new_loans.push({ id: 'newloan:' + new_loans.length, name, loan_type: LOAN_KINDS.has(a.loan_kind) ? a.loan_kind : 'loan', balance: pos(a.balance),
       payment_amount: pos(a.payment_amount) || pos(a.minimum_payment), frequency: LOAN_FREQS.has(a.payment_frequency) ? a.payment_frequency : 'monthly',
       next_payment_date: realDay(a.due_date),
       interest_rate: Number.isFinite(Number(a.interest_rate)) && a.interest_rate !== null && Number(a.interest_rate) >= 0 && Number(a.interest_rate) <= 100 ? Number(a.interest_rate) : null });
   }
-  const unknown = (reading.accounts || []).filter(a => a.type !== 'loan' && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
+  // Investments: one the app has gets its value checked; any other is offered to add.
+  const holdings = (ctx.investments || []).map((x) => ({ ...x, _type: 'investment' }));
+  const new_investments = [];
+  for (const a of (reading.accounts || []).filter((x) => x && x.type === 'investment')) {
+    const name = String(a.name || 'Investment').trim().slice(0, 60) || 'Investment';
+    const mine = resolveAccount(holdings, { name, last4: a.last4 });
+    const value = Number.isFinite(Number(a.balance)) && a.balance !== null ? Math.round(Math.abs(Number(a.balance)) * 100) / 100 : null;
+    if (mine) { if (value != null) balances.push({ account: { type: 'investment', id: mine.id, name: mine.name }, shown: value, current: Math.round(Number(mine.balance || 0) * 100) / 100, differs: value !== Math.round(Number(mine.balance || 0) * 100) / 100, snapshot_date: mine.snapshot_date || null }); continue; }
+    if (!new_investments.some((l) => norm(l.name) === norm(name))) new_investments.push({ id: 'newinv:' + new_investments.length, name, balance: value,
+      kind: (String(name).toUpperCase().match(/\b(TFSA|RRSP|FHSA|RESP)\b/) || [])[1] || (/crypto|bitcoin|ethereum/i.test(name) ? 'Crypto' : /pension/i.test(name) ? 'Pension' : /broker|trading|invest|stocks/i.test(name) ? 'Brokerage' : 'Other') });
+  }
+  const sc = reading.credit_score ? planScore(reading.credit_score, ctx.today || new Date().toLocaleDateString('en-CA')) : null;
+  const credit_score = sc && sc.score != null ? { bureau: sc.bureau, score: sc.score, date: sc.date } : null;
+  const unknown = (reading.accounts || []).filter(a => a.type !== 'loan' && a.type !== 'investment' && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
-  return { source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
+  return { source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, new_investments, credit_score, unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
 }
 
 // The optional note: plain text, one paragraph, at most 300 characters, with the quote markers removed.

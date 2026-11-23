@@ -573,3 +573,17 @@ test('a loan or pay-later balance on a picture is offered to add, unless the app
     { id: 'newloan:1', name: 'Student line', loan_type: 'loan', balance: 5000, payment_amount: 150, frequency: 'biweekly', next_payment_date: null, interest_rate: 6.2 }]); // owed shown as a minus is still owed; a day that does not exist is asked for
   assert.deepEqual([p.unknown_accounts, p.new_accounts], [[], []]); // loans are no longer listed as left out, nor offered as bank accounts
 });
+
+test('a picture can also bring an investment, a credit score, and a new figure for a loan the app has', () => {
+  const reader = mod('reader.js');
+  const ctx = { bankAccounts: [], creditCards: [], loans: [{ id: 'l1', name: 'Car lease', balance: 9000 }], investments: [{ id: 'i1', name: 'Wealthsimple TFSA', balance: 1000 }], transactions: [], today: '2026-11-23' };
+  const reading = { kind: 'credit_score', lines: [], credit_score: { bureau: 'Equifax', score: 742, date: '2026-11-20' }, accounts: [
+    { name: 'Car lease', type: 'loan', balance: 8600 }, { name: 'Wealthsimple TFSA', type: 'investment', balance: 1250.5 },
+    { name: 'Questrade RRSP', type: 'investment', balance: 5000 }, { name: 'Coinbase crypto', type: 'investment', balance: null }] };
+  const p = reader.plan(reading, ctx, 'src3');
+  assert.deepEqual(p.credit_score, { bureau: 'Equifax', score: 742, date: '2026-11-20' });
+  assert.deepEqual(p.balances.map((b) => [b.account.type, b.account.id, b.shown, b.current, b.differs]), [['loan', 'l1', 8600, 9000, true], ['investment', 'i1', 1250.5, 1000, true]]);
+  assert.deepEqual(p.new_investments, [{ id: 'newinv:0', name: 'Questrade RRSP', balance: 5000, kind: 'RRSP' }, { id: 'newinv:1', name: 'Coinbase crypto', balance: null, kind: 'Crypto' }]);
+  assert.deepEqual([p.new_loans, p.unknown_accounts], [[], []]);
+  assert.equal(reader.plan({ kind: 'credit_score', lines: [], accounts: [], credit_score: { score: 950 } }, ctx, 's').credit_score, null); // not a real score
+});
