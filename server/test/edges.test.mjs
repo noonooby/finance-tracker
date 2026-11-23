@@ -375,3 +375,15 @@ test('reports: refunds come off spending, gift card loads are not spending, and 
   const month = R.groupByTimePeriod(tx, 'monthly')[0];
   assert.deepEqual([month.income, month.expenses, month.payments, month.net], [3000, 150, 710, 2350]);
 });
+
+test('reports by payment method: spending and payments only, refunds come off, transfers are left out', () => {
+  const tx = [
+    { type: 'expense', amount: 100, payment_method: 'credit_card' },
+    { type: 'refund', amount: 30, payment_method: 'credit_card' },
+    { type: 'transfer', amount: 500, payment_method: 'bank_account' },
+    { type: 'adjustment', amount: 20, payment_method: 'bank_account' },
+    { type: 'income', amount: 900, payment_method: 'bank_account' },
+    { type: 'loan_payment', amount: 250, payment_method: 'bank_account' },
+  ];
+  assert.deepEqual(R.groupByPaymentMethod(tx).map((m) => [m.method, m.total]), [['bank_account', 250], ['credit_card', 70]]);
+});

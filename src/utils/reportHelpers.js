@@ -204,8 +204,9 @@ export const groupByPaymentMethod = (transactions) => {
   const grouped = {};
 
   transactions.forEach(t => {
-    // Only include expenses and payments, NOT income
-    if (t.type !== 'income') {
+    // Spending (refunds come off) and payments only: not income, transfers between your own accounts or stated balances.
+    const sign = spendingSign(t) || (isPayment(t) ? 1 : 0);
+    if (sign) {
       const method = t.payment_method || 'unknown';
       if (!grouped[method]) {
         grouped[method] = {
@@ -216,7 +217,7 @@ export const groupByPaymentMethod = (transactions) => {
           transactions: []
         };
       }
-      grouped[method].total += Number(t.amount) || 0;
+      grouped[method].total += sign * (Number(t.amount) || 0);
       grouped[method].count += 1;
       grouped[method].transactions.push(t);
     }

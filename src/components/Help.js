@@ -68,6 +68,7 @@ const SECTIONS = [
       <p>Under More, Cards. A credit card's balance is what you owe. A gift card's balance is the value left on it; spending from it lowers it, and it can't go below zero. Buying a gift card takes the price from what you paid with and adds the value to the card in one step.</p>
       <ul>
         <li><b>Autopay.</b> Choose whether the card is paid by you or automatically, from which account, and how much: the statement balance, the minimum, or a fixed amount. Automatic payments are made on the due date, once. If a date passed while the app was closed, it is paid the next time you open it, never more than what you owe.</li>
+        <li><b>Paying it yourself.</b> A payment you record within 25 days before the due date, or after it, moves the due date to the same day next month. Undoing the payment puts the date back.</li>
         <li><b>Rates and fees.</b> Enter the purchase rate, cash advance rate, annual fee and any promotional rate with its end date. <b>Look up rates</b> fills in the card's public rates; only the card's name is sent. If you have a personal rate, type it over.</li>
       </ul>
     </>
