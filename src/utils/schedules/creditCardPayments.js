@@ -76,6 +76,7 @@ export async function processOverdueCreditCardPayments(creditCards, bankAccounts
       if (owed <= 0) {
         // Nothing owed for this period: just move to the next due date.
         await server.from('credit_cards').update({ due_date: nextDate }).eq('id', card.id).eq('due_date', dueDate);
+        results.moved = true; // a date changed with no payment: the screens need the new date
         dueDate = nextDate;
         continue;
       }
@@ -97,6 +98,7 @@ export async function processOverdueCreditCardPayments(creditCards, bankAccounts
       }
       if (result.repeated) {
         await server.from('credit_cards').update({ due_date: nextDate }).eq('id', card.id).eq('due_date', dueDate);
+        results.moved = true; // a date changed with no payment: the screens need the new date
       } else {
         results.processed.push({ card: card.name, amount, dueDate, source: result.sourceName, sourceType });
         card = { ...card, balance: round2(owed - amount) };

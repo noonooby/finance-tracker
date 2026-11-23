@@ -164,7 +164,7 @@ export function FinanceDataProvider({ children }) {
         const loanRes = await processOverdueLoanPayments(loansData || [], cards || [], accounts || []);
         const cardRes = await processOverdueCreditCardPayments(cards || [], accounts || []);
         paid = (loanRes?.processed?.length || 0) + (cardRes?.processed?.length || 0);
-        if (paid) {
+        if (paid || loanRes?.moved || cardRes?.moved) {
           setLoans((await dbOperation('loans', 'getAll')) || []);
           setCreditCards((await dbOperation('creditCards', 'getAll')) || []);
         }

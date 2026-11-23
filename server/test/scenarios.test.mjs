@@ -923,3 +923,16 @@ test('month end counts pay and loan payments every time they fall in the month, 
     ] }, today);
   assert.deepEqual([m.coming, m.going], [2000 + 1000 + 140, 250 + 80]);
 });
+
+test('undo still works after one of the accounts was removed: the money goes back to the one that is left', async () => {
+  const bank = await add('bank_accounts', { name: 'Stays', balance: 500 });
+  const old = await add('credit_cards', { name: 'Closed card', balance: 200, credit_limit: 1000 });
+  const paid = await M.recordCardPayment({ cardId: old.id, amount: 150, source: `bank_account:${bank.id}`, date: '2026-11-23' }, await accounts());
+  assert.equal(Number((await get('bank_accounts', bank.id)).balance), 350);
+  await db.from('credit_cards').delete().eq('id', old.id);
+  await M.reverseTransaction(paid.transaction.id);
+  assert.equal(Number((await get('bank_accounts', bank.id)).balance), 500);
+  assert.equal((await get('transactions', paid.transaction.id)).status, 'undone');
+  await M.reverseTransaction(paid.transaction.id); // repeating changes nothing
+  assert.equal(Number((await get('bank_accounts', bank.id)).balance), 500);
+});

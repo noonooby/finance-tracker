@@ -391,7 +391,9 @@ function reverseInner(uid, id, b = {}) {
     if (!t) fail(404, 'Transaction not found');
     if (t.status === 'undone' || t.status === 'deleted') return { transaction: t, legs: [], repeated: true };
     // Undoing a line dated before the account's snapshot leaves today's balance as seen (the snapshot is the truth).
-    const legs = applyLegs(uid, (t._legs || []).map(l => ({ ...l, delta: -l.delta })), t);
+    // An account removed since has no balance to put back: its part is left out, the rest still goes back.
+    const there = (l) => l && MONEY_FIELDS[l.table] && selectRows(uid, { table: l.table, filters: [['id', 'eq', l.id]], limit: 1 })[0];
+    const legs = applyLegs(uid, (t._legs || []).filter(there).map(l => ({ ...l, delta: -l.delta })), t);
     // Fields the step changed go back to what they were, unless something changed them again since.
     for (const u of t._undo || []) {
       if (!TABLES.has(u.table) || SERVER_ONLY.has(u.table)) continue;

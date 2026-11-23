@@ -99,6 +99,7 @@ export async function processOverdueLoanPayments(loans, creditCards = [], bankAc
       }
       if (result.repeated) {
         await server.from('loans').update({ next_payment_date: nextDate }).eq('id', loan.id).eq('next_payment_date', dueDate);
+        results.moved = true; // a date changed with no payment: the screens need the new date
       } else {
         results.processed.push({ loan: loan.name, amount, dueDate, source: result.sourceName, sourceType });
         loan = { ...loan, balance: round2(owed - amount), recurring_occurrences_completed: (loan.recurring_occurrences_completed || 0) + 1 };
