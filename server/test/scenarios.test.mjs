@@ -690,3 +690,12 @@ test('a bill already recorded gets no reminder', () => {
   assert.equal(push.dueFor(rows(false), '2026-11-21', '2026-11-23').length, 1);
   assert.equal(push.dueFor(rows(true), '2026-11-21', '2026-11-23').length, 0);
 });
+
+test('a bill on the 31st shows on the last day of shorter months and on the 31st in the others', () => {
+  const b = { id: 'rent', name: 'Rent', key: 'rent', amount: 1500, frequency: 'monthly', next_date: '2026-01-31', status: 'active' };
+  assert.equal(S.rollForward('2026-01-31', 'monthly', new Date(2026, 1, 1)), '2026-02-28');
+  assert.equal(S.rollForward('2026-01-31', 'monthly', new Date(2026, 2, 1)), '2026-03-31');
+  assert.equal(S.rollForward('2024-02-29', 'yearly', new Date(2028, 0, 1)), '2028-02-29');
+  const days = F.billDates([b], [], new Date(2026, 1, 5), '2026-05-31').map((x) => x.date);
+  assert.deepEqual(days, ['2026-02-28', '2026-03-31', '2026-04-30', '2026-05-31']);
+});

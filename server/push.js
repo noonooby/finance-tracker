@@ -68,10 +68,11 @@ async function send(db, sub, message, subject) {
 // ---------- what is due ----------
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const parse = (s) => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
-function nextBill(date, frequency) {
+// anchorDay: the day of the month the bill belongs to, so one on the 31st returns to the 31st after a shorter month.
+function nextBill(date, frequency, anchorDay) {
   const d = parse(date); if (!d) return null;
   const months = { monthly: 1, quarterly: 3, yearly: 12 }[frequency];
-  if (months) { const day = d.getDate(); const n = new Date(d.getFullYear(), d.getMonth() + months, 1); n.setDate(Math.min(day, new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate())); return iso(n); }
+  if (months) { const day = anchorDay || d.getDate(); const n = new Date(d.getFullYear(), d.getMonth() + months, 1); n.setDate(Math.min(day, new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate())); return iso(n); }
   d.setDate(d.getDate() + (frequency === 'weekly' ? 7 : 14)); return iso(d);
 }
 const money = (n) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(Number(n) || 0);
@@ -95,7 +96,8 @@ function dueFor(rows, today, soon) {
   for (const b of rows('bills')) {
     if (b.status !== 'active' || b.remind === false || !b.next_date) continue;
     let d = String(b.next_date).slice(0, 10);
-    for (let i = 0; d && d < today && i < 600; i++) d = nextBill(d, b.frequency);
+    const anchor = parse(d) ? parse(d).getDate() : undefined;
+    for (let i = 0; d && d < today && i < 600; i++) d = nextBill(d, b.frequency, anchor);
     // Already recorded (same merchant within 4 days, amount within 15%): no reminder.
     const at = parse(d);
     const paid = at && rows('transactions').some((t) => t.type === 'expense' && t.status !== 'undone' && t.status !== 'deleted'

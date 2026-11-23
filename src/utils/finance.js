@@ -1,4 +1,4 @@
-import { nextBillDate, billPaid } from './spending';
+import { nextBillDate, billPaid, dayOfMonth } from './spending';
 // Money arithmetic that does not change anything: interest, amortization, how current each figure is, and where you stand.
 // Pure functions, so the screens and the scenario tests use the same rules.
 
@@ -222,9 +222,10 @@ export function billDates(bills, transactions, today, end) {
     if (b.status !== 'active' || !b.next_date) continue;
     // the last due day before today counts when it is not recorded yet (it may be a day or two late)
     let d = String(b.next_date).slice(0, 10), prev = null;
-    for (let i = 0; d < t && i < 600; i++) { prev = d; d = nextBillDate(d, b.frequency); }
+    const anchor = dayOfMonth(d);
+    for (let i = 0; d < t && i < 600; i++) { prev = d; d = nextBillDate(d, b.frequency, anchor); }
     if (prev && (today - parse(prev)) / dayMs <= 3 && !billPaid(b, transactions, prev)) out.push({ bill: b, date: prev, paid: null });
-    for (let i = 0; d && d <= end && i < 60; i++) { out.push({ bill: b, date: d, paid: billPaid(b, transactions, d) }); d = nextBillDate(d, b.frequency); }
+    for (let i = 0; d && d <= end && i < 60; i++) { out.push({ bill: b, date: d, paid: billPaid(b, transactions, d) }); d = nextBillDate(d, b.frequency, anchor); }
   }
   return out;
 }

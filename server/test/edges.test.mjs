@@ -1,0 +1,285 @@
+// Edge cases for the small server modules, run directly (no server, no network): exchange rates, the rate lookup,
+// matching a screenshot to an account, the scan note, and what counts as due for a reminder.
+// Every outside call is replaced with a fixed answer. Run: npm run test:scenarios
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
+
+delete process.env.FX_STUB;
+delete process.env.LOOKUP_STUB;
+delete process.env.HOME_CURRENCY;
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const mod = (f) => require(path.join(here, '..', f));
+const fx = mod('fx.js');
+const rates = mod('rates.js');
+const reader = mod('reader.js');
+const push = mod('push.js');
+const keystore = mod('keystore.js');
+const gemini = mod('gemini.js');
+
+const memDb = () => { const d = new DatabaseSync(':memory:'); d.exec('CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT)'); return d; };
+const realFetch = globalThis.fetch;
+// Replace fetch for one call; returns the list of URLs asked for.
+async function withFetch(answer, run) {
+  const asked = [];
+  globalThis.fetch = async (u) => { asked.push(String(u)); return answer(String(u)); };
+  try { await run(asked); } finally { globalThis.fetch = realFetch; }
+}
+const reply = (status, body) => ({ status, ok: status >= 200 && status < 300, json: async () => body });
+
+// ---------- exchange rates ----------
+test('exchange rate: the same currency is 1 and asks nobody', async () => {
+  await withFetch(() => { throw new Error('should not be called'); }, async (asked) => {
+    assert.deepEqual(await fx.rate(memDb(), 'cad', 'CAD', '2026-11-20'), { rate: 1, date: '2026-11-20', from: 'CAD', to: 'CAD' });
+    assert.equal(asked.length, 0);
+  });
+});
+
+test('exchange rate: codes must be three letters, and the message says what to do', async () => {
+  for (const bad of ['', 'US', 'USDX', 'U$D', null, '123']) {
+    await assert.rejects(fx.rate(memDb(), bad, 'CAD', '2026-11-20'), (e) => e.status === 400 && /Choose a currency/.test(e.message));
+  }
+  await assert.rejects(fx.rate(memDb(), 'USD', 'C', '2026-11-20'), (e) => e.status === 400);
+});
+
+test('exchange rate: a dated rate is looked up once and then kept; only currencies and the date are sent', async () => {
+  const db = memDb();
+  await withFetch(() => reply(200, { date: '2026-11-19', rates: { CAD: 1.3712 } }), async (asked) => {
+    const a = await fx.rate(db, 'usd', 'cad', '2026-11-20');
+    const b = await fx.rate(db, 'USD', 'CAD', '2026-11-20');
+    assert.deepEqual(a, { rate: 1.3712, date: '2026-11-19', from: 'USD', to: 'CAD' }); // the rate's own day (last published)
+    assert.deepEqual(b, a);
+    assert.deepEqual(asked, ['https://api.frankfurter.dev/v1/2026-11-20?base=USD&symbols=CAD']);
+  });
+});
+
+test('exchange rate: without a usable date the latest rate is used and not kept', async () => {
+  const db = memDb();
+  await withFetch(() => reply(200, { date: '2026-11-21', rates: { CAD: 1.4 } }), async (asked) => {
+    for (const day of [undefined, 'yesterday', '2026-1-5', '20261120']) await fx.rate(db, 'USD', 'CAD', day);
+    assert.equal(asked.length, 4);
+    assert.ok(asked.every((u) => u.includes('/v1/latest?')));
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM meta').get().n, 0);
+  });
+});
+
+test('exchange rate: an unknown currency, a failing service and an unreachable service each say so', async () => {
+  const db = memDb();
+  for (const status of [404, 422]) {
+    await withFetch(() => reply(status, {}), async () => {
+      await assert.rejects(fx.rate(db, 'XXX', 'CAD', '2026-11-20'), (e) => e.status === 400 && /No exchange rate is published for XXX/.test(e.message));
+    });
+  }
+  await withFetch(() => reply(500, {}), async () => {
+    await assert.rejects(fx.rate(db, 'USD', 'CAD', '2026-11-20'), (e) => e.status === 502 && /right now/.test(e.message));
+  });
+  await withFetch(() => { throw new TypeError('fetch failed'); }, async () => {
+    await assert.rejects(fx.rate(db, 'USD', 'CAD', '2026-11-20'), (e) => e.status === 502 && /Could not reach/.test(e.message));
+  });
+  // Nothing wrong was kept for later.
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM meta').get().n, 0);
+});
+
+test('exchange rate: an answer without a positive rate is refused, not saved as zero', async () => {
+  const db = memDb();
+  for (const body of [{}, { rates: {} }, { rates: { CAD: 0 } }, { rates: { CAD: -1 } }, { rates: { CAD: 'abc' } }, { rates: { EUR: 0.9 } }]) {
+    await withFetch(() => reply(200, body), async () => {
+      await assert.rejects(fx.rate(db, 'USD', 'CAD', '2026-11-20'), (e) => e.status === 400);
+    });
+  }
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM meta').get().n, 0);
+});
+
+test('converting rounds to whole cents', () => {
+  assert.equal(fx.convert(10, 1.4), 14);
+  assert.equal(fx.convert(10.25, 1.4), 14.35);
+  assert.equal(fx.convert(19.99, 1.3712), 27.41);
+  assert.equal(fx.convert(0, 1.4), 0);
+  assert.equal(fx.convert('12.50', 2), 25);
+  assert.equal(fx.convert(0.01, 0.4), 0); // less than half a cent
+  assert.equal(fx.convert(1234567.89, 1.4), 1728395.05);
+});
+
+// ---------- rate lookup ----------
+test('rate lookup: needs a known kind and a real product name', async () => {
+  for (const [kind, name] of [['mortgage', 'TD Fixed'], ['credit_card', ''], ['credit_card', 'ab'], ['loan', '@@@@@@'], [undefined, 'Amex Cobalt']]) {
+    await assert.rejects(rates.lookup(kind, name), (e) => e.status === 400 && /Enter the product name/.test(e.message));
+  }
+});
+
+test('rate lookup: without the key it says where to set it', async () => {
+  const get = keystore.get; keystore.get = () => null;
+  try { await assert.rejects(rates.lookup('credit_card', 'Amex Cobalt'), (e) => e.status === 503 && /Settings/.test(e.message)); }
+  finally { keystore.get = get; }
+});
+
+test('rate lookup: the answer is cleaned (numbers in range, https source only, short text) and only the name is sent', async () => {
+  const get = keystore.get, generate = gemini.generate;
+  let sent = '';
+  keystore.get = () => 'test-key';
+  try {
+    gemini.generate = async (key, body) => { sent = JSON.stringify(body); return 'Here you go:\n```json\n' + JSON.stringify({
+      found: true, product: 'P'.repeat(200), issuer: 'I'.repeat(200), purchase_rate: 21.99, cash_rate: '22.99', annual_fee: -5,
+      overdraft_rate: 1e9, rate_low: 'n/a', rate_high: null, setup_fee: 0, offers_plans: 'yes', source_url: 'http://not-secure.example/x', notes: 'N'.repeat(500),
+    }) + '\n```'; };
+    const o = await rates.lookup('credit_card', 'Amex <script>Cobalt</script> "Card"; balance 5000$');
+    assert.equal(o.found, true);
+    assert.equal(o.product.length, 80); assert.equal(o.issuer.length, 60); assert.equal(o.notes.length, 200);
+    assert.deepEqual([o.purchase_rate, o.cash_rate, o.annual_fee, o.overdraft_rate, o.rate_low, o.setup_fee], [21.99, 22.99, null, null, null, 0]);
+    assert.equal(o.offers_plans, null);   // only a real yes/no counts
+    assert.equal(o.source_url, null);     // not https
+    assert.match(o.checked, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(!/[<>"$;]/.test(sent.match(/the credit card \\"(.*?)\\" in Canada/)[1]), 'the name is sent without markup or symbols');
+
+    gemini.generate = async () => 'Sorry, I could not find that.';
+    const none = await rates.lookup('loan', 'Some Loan');
+    assert.deepEqual([none.found, none.product, none.source_url, none.purchase_rate], [false, 'Some Loan', null, null]);
+
+    gemini.generate = async () => '{"found": true, "purchase_rate": 19.99,';   // cut off
+    assert.equal((await rates.lookup('loan', 'Some Loan')).found, false);
+  } finally { keystore.get = get; gemini.generate = generate; }
+});
+
+// ---------- which account a screenshot belongs to ----------
+const ACCTS = [
+  { id: 1, name: 'TD Chequing', last4: '1111' },
+  { id: 2, name: 'TD Savings', last4: '2222' },
+  { id: 3, name: 'Amex Cobalt', last_four: '3333' },
+  { id: 4, name: 'Visa', card_number: '4500 0000 0000 4444' },
+  { id: 5, name: 'Old Visa', last4: '4444' },
+];
+
+test('account match: card digits win when they point at one account, the name decides otherwise', () => {
+  assert.equal(reader.resolveAccount(ACCTS, { last4: '1111' }).id, 1);
+  assert.equal(reader.resolveAccount(ACCTS, { last4: '3333', name: 'something else' }).id, 3);
+  assert.equal(reader.resolveAccount(ACCTS, { last4: 'xxxx-2222' }).id, 2);       // longer text ending in the digits
+  assert.equal(reader.resolveAccount(ACCTS, { last4: '4444', name: 'Old Visa' }).id, 5); // two accounts share the digits: name decides
+  assert.equal(reader.resolveAccount(ACCTS, { last4: '4444' }), null);            // shared digits and no name: not guessed
+  assert.equal(reader.resolveAccount(ACCTS, { last4: '9999', name: 'amex-cobalt' }).id, 3);
+});
+
+test('account match: names ignore case and punctuation; anything that fits two accounts is not guessed', () => {
+  assert.equal(reader.resolveAccount(ACCTS, { name: 'td  CHEQUING!' }).id, 1);
+  assert.equal(reader.resolveAccount(ACCTS, { name: 'Cobalt' }).id, 3);                       // part of one name
+  assert.equal(reader.resolveAccount(ACCTS, { name: 'American Express Amex Cobalt Card' }).id, 3); // name inside a longer one
+  assert.equal(reader.resolveAccount(ACCTS, { name: 'TD' }), null);                           // fits chequing and savings
+  assert.equal(reader.resolveAccount(ACCTS, { name: 'Visa' }).id, 4);                         // exact beats "Old Visa"
+  assert.equal(reader.resolveAccount(ACCTS, { name: 'Scotia' }), null);
+  assert.equal(reader.resolveAccount(ACCTS, { name: '' }), null);
+  assert.equal(reader.resolveAccount(ACCTS, { name: '***' }), null);
+  assert.equal(reader.resolveAccount(ACCTS, {}), null);
+  assert.equal(reader.resolveAccount([], { last4: '1111', name: 'TD Chequing' }), null);
+  assert.equal(reader.resolveAccount([{ id: 9, name: '' }], { name: 'Anything' }), null);     // an unnamed account matches nothing
+});
+
+test('merchant key: payment-app prefixes, store numbers and case do not make a new merchant', () => {
+  const same = ['SQ *Blue Bottle Coffee', 'sq*BLUE BOTTLE COFFEE #1234', 'Blue Bottle Coffee 0042', 'PAYPAL * Blue Bottle Coffee'];
+  assert.equal(new Set(same.map(reader.mkey)).size, 1);
+  assert.equal(reader.mkey('SQ *Blue Bottle Coffee'), 'bluebottlecoffee');
+  assert.notEqual(reader.mkey('Square One Mall'), reader.mkey('One Mall'));   // "sq" only counts before a star
+  assert.equal(reader.mkey('A Very Long Merchant Name That Keeps Going On').length, 24);
+  assert.equal(reader.mkey(''), ''); assert.equal(reader.mkey(null), ''); assert.equal(reader.mkey('12345'), '');
+});
+
+test('scan note: stays one plain line of at most 300 characters', () => {
+  assert.equal(reader.cleanNote('  card ending\n\t4321,\r\n   only the Amazon lines  '), 'card ending 4321, only the Amazon lines');
+  assert.equal(reader.cleanNote('a>>>b<<<c >> d'), 'a b c d');
+  assert.equal(reader.cleanNote('2 < 3 and 5 > 4'), '2 < 3 and 5 > 4');   // a single bracket is ordinary text
+  assert.equal(reader.cleanNote('x'.repeat(1000)).length, 300);
+  for (const empty of [undefined, null, '', '   ', '\n\n', '>>>']) assert.equal(reader.cleanNote(empty), '');
+  assert.equal(reader.cleanNote(4321), '4321');
+});
+
+// ---------- what is due ----------
+const TODAY = '2026-11-21', SOON = '2026-11-23';
+const due = (tables) => push.dueFor((t) => tables[t] || [], TODAY, SOON);
+const titles = (tables) => due(tables).map((x) => x.title);
+
+test('due: a card is reminded only when you pay it yourself and something is owed', () => {
+  const list = due({ credit_cards: [
+    { id: 1, name: 'Today', balance: 50, due_date: TODAY, minimum_payment: 10 },
+    { id: 2, name: 'Soon', balance: 50, due_date: `${SOON}T00:00:00.000Z` },
+    { id: 3, name: 'Tomorrow', balance: 50, due_date: '2026-11-22' },
+    { id: 4, name: 'Yesterday', balance: 50, due_date: '2026-11-20' },
+    { id: 5, name: 'Paid off', balance: 0, due_date: TODAY },
+    { id: 6, name: 'In credit', balance: -20, due_date: TODAY },
+    { id: 7, name: 'Gift', balance: 50, due_date: TODAY, is_gift_card: true },
+    { id: 8, name: 'Autopay', balance: 50, due_date: TODAY, connected_payment_source: 'bank_account' },
+    { id: 9, name: 'No date', balance: 50 },
+  ] });
+  assert.deepEqual(list.map((x) => x.title), ['Today payment due today', 'Soon payment due in 2 days']);
+  assert.match(list[0].body, /50\.00.*minimum.*10\.00/);
+  assert.doesNotMatch(list[1].body, /minimum/);
+  assert.deepEqual(list.map((x) => x.id), [`card:1:${TODAY}:0`, `card:2:${SOON}:2`]); // a different id for each of the two reminders
+  assert.ok(list.every((x) => x.url === '/cards'));
+});
+
+test('due: a loan asks for its payment, or what is left when that is less; plans on a card and automatic ones are skipped', () => {
+  const list = due({ loans: [
+    { id: 1, name: 'Car', balance: 5000, payment_amount: 400, next_payment_date: TODAY },
+    { id: 2, name: 'Last one', balance: 120, payment_amount: 400, next_payment_date: SOON },
+    { id: 3, name: 'No amount', balance: 300, next_payment_date: TODAY },
+    { id: 4, name: 'On card', balance: 300, payment_amount: 50, next_payment_date: TODAY, on_card_id: 7 },
+    { id: 5, name: 'Auto', balance: 300, payment_amount: 50, next_payment_date: TODAY, connected_payment_source: 'bank_account' },
+    { id: 6, name: 'Done', balance: 0, payment_amount: 50, next_payment_date: TODAY },
+  ] });
+  assert.deepEqual(list.map((x) => x.title), ['Car payment due today', 'Last one payment due in 2 days', 'No amount payment due today']);
+  assert.match(list[0].body, /400\.00 to pay/); assert.match(list[1].body, /120\.00 to pay/); assert.match(list[2].body, /300\.00 to pay/);
+});
+
+test('due: a bill is brought forward from an old date by its own rhythm', () => {
+  const bill = (name, frequency, next_date, more = {}) => ({ id: name, name, key: name.toLowerCase(), amount: 60, frequency, next_date, status: 'active', ...more });
+  assert.deepEqual(titles({ bills: [
+    bill('Weekly', 'weekly', '2026-10-31'),        // +7 x3 = Nov 21
+    bill('Biweekly', 'biweekly', '2026-10-26'),    // +14 x2 = Nov 23
+    bill('Monthly', 'monthly', '2026-08-21'),
+    bill('Quarterly', 'quarterly', '2026-05-23'),
+    bill('Yearly', 'yearly', '2024-11-21'),
+    bill('Offbeat', 'weekly', '2026-11-01'),       // lands on Nov 22: not today, not in 2 days
+    bill('Later', 'monthly', '2026-12-21'),        // a future date is left alone
+  ] }), ['Weekly due today', 'Biweekly due in 2 days', 'Monthly due today', 'Quarterly due in 2 days', 'Yearly due today']);
+});
+
+test('due: stopped bills, bills with reminders off and bills without a date stay quiet', () => {
+  const b = { id: 1, name: 'Hydro', key: 'hydro', amount: 60, frequency: 'monthly', next_date: TODAY, status: 'active' };
+  assert.deepEqual(titles({ bills: [b] }), ['Hydro due today']);
+  assert.deepEqual(titles({ bills: [{ ...b, status: 'stopped' }, { ...b, remind: false }, { ...b, next_date: null }, { ...b, next_date: '' }] }), []);
+  assert.deepEqual(titles({ bills: [{ ...b, remind: true }, { ...b, id: 2, remind: undefined }] }), ['Hydro due today', 'Hydro due today']);
+  assert.match(due({ bills: [{ ...b, payment_method_name: 'TD Chequing' }] })[0].body, /60\.00 from TD Chequing/);
+});
+
+test('due: a bill already recorded is quiet only when merchant, date and amount all fit', () => {
+  const b = { id: 1, name: 'Hydro', key: 'hydroone', amount: 100, frequency: 'monthly', next_date: TODAY, status: 'active' };
+  const tx = (more) => ({ type: 'expense', description: 'HYDRO ONE #4411', amount: 100, date: TODAY, status: 'active', ...more });
+  const quiet = (t) => titles({ bills: [b], transactions: [t] }).length === 0;
+  assert.ok(quiet(tx({})));
+  assert.ok(quiet(tx({ date: '2026-11-17', amount: 115 })));        // 4 days early, 15% more
+  assert.ok(quiet(tx({ date: '2026-11-25', amount: 85 })));         // 4 days late, 15% less
+  assert.ok(!quiet(tx({ date: '2026-11-16' })), '5 days away is last month\'s or another payment');
+  assert.ok(!quiet(tx({ amount: 116 })), 'more than 15% off is a different charge');
+  assert.ok(!quiet(tx({ amount: 84 })));
+  assert.ok(!quiet(tx({ description: 'Enbridge Gas' })));
+  assert.ok(!quiet(tx({ status: 'undone' })));
+  assert.ok(!quiet(tx({ status: 'deleted' })));
+  assert.ok(!quiet(tx({ type: 'income' })));
+  assert.ok(!quiet(tx({ date: null })));
+});
+
+test('due: a bill on the 31st falls on the last day of a shorter month and returns to the 31st after it', () => {
+  const b = { id: 1, name: 'Rent', key: 'rent', amount: 1500, frequency: 'monthly', next_date: '2026-01-31', status: 'active' };
+  const on = (day) => push.dueFor((t) => (t === 'bills' ? [b] : []), day, 'never').length === 1;
+  assert.ok(on('2026-02-28'), 'February has no 31st: due on the 28th');
+  assert.ok(on('2026-04-30'), 'April has no 31st: due on the 30th');
+  assert.ok(on('2026-03-31'), 'March has a 31st: due on the 31st again, not the 28th');
+  assert.ok(!on('2026-03-28'));
+});
+
+test('due: nothing set up means nothing due', () => {
+  assert.deepEqual(due({}), []);
+  assert.deepEqual(due({ credit_cards: [], loans: [], bills: [], transactions: [] }), []);
+});

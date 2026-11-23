@@ -65,11 +65,13 @@ const FREQS = [
 ];
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : 0; };
 
-// The day after `date` that a bill with this frequency falls on.
-export function nextBillDate(date, frequency) {
+// The day after `date` that a bill with this frequency falls on. anchorDay: the day of the month the bill belongs to,
+// so a bill on the 31st that fell on Feb 28 returns to the 31st instead of staying on the 28th.
+export const dayOfMonth = (date) => { const d = parse(date); return d ? d.getDate() : undefined; };
+export function nextBillDate(date, frequency, anchorDay) {
   const d = parse(date);
   if (!d) return null;
-  const day = d.getDate();
+  const day = anchorDay || d.getDate();
   const months = { monthly: 1, quarterly: 3, yearly: 12 }[frequency];
   if (months) {
     const n = new Date(d.getFullYear(), d.getMonth() + months, 1);
@@ -82,8 +84,8 @@ export function nextBillDate(date, frequency) {
 // The first due day on or after today, stepping from a known date.
 export function rollForward(date, frequency, today = new Date()) {
   let d = String(date || '').slice(0, 10);
-  const t = iso(today);
-  for (let i = 0; d && d < t && i < 600; i++) d = nextBillDate(d, frequency);
+  const t = iso(today), anchor = dayOfMonth(d);
+  for (let i = 0; d && d < t && i < 600; i++) d = nextBillDate(d, frequency, anchor);
   return d;
 }
 
