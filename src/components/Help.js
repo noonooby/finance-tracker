@@ -112,6 +112,24 @@ const SECTIONS = [
       <p>Tracked bills show in the next 30 days on Home, marked when the payment is recorded. A bill paid from a bank account counts in the month end; one charged to a card is paid when the card is. The app never pays a bill: you record the payment as usual. You can change the name, amount, how often and the next date, or stop tracking.</p>
     </>
   )],
+  ['goals', 'Savings goals', (
+    <p>Under More, Savings goals: give a goal a name, an amount and, if you like, a date and the account the money is kept in. The goal reads that account's balance; two goals in one account are filled in the order you made them, so no dollar counts twice. With a date, the app shows what to put aside each month. The app never moves money for a goal.</p>
+  )],
+  ['pay-split', 'Pay that lands in more than one account', (
+    <p>When you add income, tap "Send part of it to another account" to send a fixed amount to one or two other accounts; the rest goes to the main one. It stays one line, so one undo puts all of it back. "Fill in from a pay slip or Workday screenshot" reads who pays, how much, the pay day and the accounts, and fills the form for you to check. An account it could not match is named so you can choose it.</p>
+  )],
+  ['bank-files', 'Bank files and statements', (
+    <p>On Scan you can also choose a file exported by your bank (CSV). Say which account it is from and every line is read exactly as written, with no guessing; anything the file leaves open is stated above the lines. For a statement PDF, the app checks that the opening balance and the lines read give the closing balance, and says by how much they differ if a line was missed.</p>
+  )],
+  ['ask', 'Ask or tell', (
+    <p>Under More, Ask or tell: ask a question such as "How much did I spend on groceries this month?" and the answer comes from the app's own figures. Or type what you spent or received, such as "coffee 4.50 on my Visa yesterday": it opens the same check screen as a screenshot, and nothing is saved until you tap Save.</p>
+  )],
+  ['notices', 'Things to look at', (
+    <p>Home lists charges worth a second look: one at least twice what you usually pay that merchant, the same charge twice in one day, a bill whose price moved, and a goal whose date has passed. Tap "Seen" to clear a charge. On Bills, a changed price can be taken as the new usual amount or kept as it was.</p>
+  )],
+  ['credit', 'Credit score', (
+    <p>Under More, Credit score: enter the score from Equifax, TransUnion or any other bureau on the day you check it. The app keeps each one and shows how it moved since the one before.</p>
+  )],
   ['split', 'Splitting a purchase', (
     <>
       <p>On the + button, under the category, choose Split across categories and give each part a category and amount. The parts must add up to the purchase. The money moves once; reports and budgets count each part.</p>
