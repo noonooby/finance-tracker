@@ -295,6 +295,30 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   }, []);
 
   const setRow = (i, patch) => setRows((rs) => rs.map((r) => (r.i === i ? { ...r, ...patch } : r)));
+  // The account the picture was matched to can be wrong: every line and balance on it moves to the one chosen.
+  const REF_FIELDS = ['target', 'from', 'to', 'card', 'source'];
+  const usedRefs = [...new Set([...rows.flatMap((r) => REF_FIELDS.map((f) => r[f])), ...fixes.map((f) => `${f.account.type}:${f.account.id}`)].filter(Boolean))];
+  const moveAll = (old, next) => {
+    if (!next || next === old) return;
+    const label = (accountOptions.find((o) => o.value === next) || {}).label || '';
+    const [type, ...rest] = next.split(':');
+    const account = { type, id: rest.join(':'), name: label.replace(/^New: /, '') };
+    setRows((rs) => rs.map((r) => {
+      if (!REF_FIELDS.some((f) => r[f] === old)) return r;
+      const out = { ...r };
+      for (const f of REF_FIELDS) {
+        if (r[f] !== old) continue;
+        // A card payment needs a card on one side and an account on the other; a choice that does not fit is left to choose.
+        out[f] = (f === 'card' && !isCardRef(next)) || (f === 'source' && isCardRef(next)) ? '' : next;
+      }
+      if (r.account && `${r.account.type}:${r.account.id}` === old) out.account = account;
+      else if (r.account && r.account.id === old) out.account = account;
+      return out;
+    }));
+    if (!next.startsWith('new:')) setFixes((fs) => fs.map((f) => (`${f.account.type}:${f.account.id}` === old ? { ...f, account } : f)));
+    // A new account nothing points to any more is not added.
+    if (old.startsWith('new:')) setDrafts((ds) => ds.map((d) => (d.id === old ? { ...d, on: false } : d)));
+  };
   const setDraft = (id, patch) => setDrafts((ds) => ds.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   const changeKind = (r, kind) => {
     const base = r.target || r.from || r.card || r.source || '';
@@ -631,6 +655,20 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <h3 className="font-semibold text-base">What was understood</h3>
             {understood(proposal, rows, drafts, fixes).map((t) => <p key={t}>{t}</p>)}
           </section>
+          {usedRefs.some((ref) => accountOptions.some((o) => o.value === ref)) && accountOptions.length > 1 && (
+            <section className="space-y-2 text-sm">
+              <h3 className="font-semibold">Wrong account?</h3>
+              {usedRefs.filter((ref) => accountOptions.some((o) => o.value === ref)).map((ref) => (
+                <label key={ref} className="block">
+                  <span className={muted}>Everything shown on {nameOf(ref)} belongs to</span>
+                  <select className={`${input} mt-1 py-2.5 text-base`} value={ref} onChange={(e) => moveAll(ref, e.target.value)}>
+                    {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </label>
+              ))}
+              <p className={`text-xs ${muted}`}>One line on a different account: tap Edit on that line.</p>
+            </section>
+          )}
           {proposal.notes && <p className={`text-sm ${muted}`}>{proposal.notes}</p>}
           {proposal.statement && (
             <section className="space-y-1 text-sm">
