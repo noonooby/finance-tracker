@@ -237,6 +237,13 @@ function updateRows(uid, tbl, filters, values, orGroups) {
     if (r._legs) n._legs = r._legs;
     if (r._undo) n._undo = r._undo;
     if (tbl === 'transactions' && ('splits' in v || 'amount' in v)) checkSplits(n);
+    // A transaction that moved money keeps its amount, kind and account in a plain edit: the balances it moved would no
+    // longer match. Undoing it (which puts the money back) and recording it again is the way to change those.
+    if (tbl === 'transactions' && Array.isArray(r._legs) && r._legs.length && r.status !== 'undone' && r.status !== 'deleted') {
+      const fixed = ['amount', 'type', 'payment_method', 'payment_method_id', 'card_id', 'loan_id', 'status'];
+      const same = (x, y) => (x == null && y == null) || String(x) === String(y) || (x !== '' && y !== '' && Number(x) === Number(y));
+      if (fixed.some((k) => k in v && !same(v[k], r[k]))) fail(409, 'This transaction moved money. Undo it and record it again to change the amount, kind or account.');
+    }
     if (tbl === 'bills') checkBill(uid, n);
     if (tbl === 'categories' && ('name' in v || 'is_income' in v)) checkCategory(uid, n);
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), tbl, String(r.id), uid);

@@ -936,3 +936,20 @@ test('undo still works after one of the accounts was removed: the money goes bac
   await M.reverseTransaction(paid.transaction.id); // repeating changes nothing
   assert.equal(Number((await get('bank_accounts', bank.id)).balance), 500);
 });
+
+test('a plain edit cannot change the amount, kind, account or status of a transaction that moved money', async () => {
+  const bank = await add('bank_accounts', { name: 'Edit Bank', balance: 500 });
+  const spent = await M.recordExpense({ amount: 40, source: `bank_account:${bank.id}`, date: '2026-11-23', description: 'Edit test' }, await accounts());
+  const id = spent.transaction.id;
+  const edit = async (values) => (await db.from('transactions').update(values).eq('id', id)).error;
+  for (const values of [{ amount: 4 }, { type: 'income' }, { payment_method_id: 'other' }, { status: 'undone' }])
+    assert.match((await edit(values)).message, /moved money/);
+  // What does not touch the money can be changed, and saving the same amount again is fine.
+  assert.equal(await edit({ description: 'Edit test, renamed', notes: 'x', amount: 40, date: '2026-11-22' }), null);
+  const t = await get('transactions', id);
+  assert.deepEqual([t.amount, t.description, t.status], [40, 'Edit test, renamed', 'active']);
+  assert.equal(Number((await get('bank_accounts', bank.id)).balance), 460);
+  // Undo still works, and afterwards the line is only history.
+  await M.reverseTransaction(id);
+  assert.equal(Number((await get('bank_accounts', bank.id)).balance), 500);
+});
