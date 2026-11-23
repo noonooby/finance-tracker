@@ -16,10 +16,18 @@ export function categoryParts(t) {
 }
 
 // What each category cost between two days (inclusive): purchases add, refunds take away. -> { [category_id]: amount }
+// What counts as spending, for budgets and reports alike: purchases add and refunds take away. Loading money onto a
+// gift card you track is not spending (what you buy with the card is), and a card payment settles purchases already counted.
+// -> 1 for a purchase, -1 for a refund, 0 for anything else.
+export const spendingSign = (t) => (!live(t) || t.gift_card_id ? 0 : t.type === 'expense' ? 1 : t.type === 'refund' ? -1 : 0);
+// A payment to a credit card (not to a loan).
+export const isCardPayment = (t) => !!t && (t.type === 'credit_card_payment' || (t.type === 'payment' && !t.loan_id));
+export const isPayment = (t) => !!t && (t.type === 'payment' || t.type === 'loan_payment' || t.type === 'credit_card_payment');
+
 export function spentByCategory(transactions, from, to) {
   const out = {};
   for (const t of transactions || []) {
-    if (!live(t) || (t.type !== 'expense' && t.type !== 'refund')) continue;
+    if (!spendingSign(t)) continue;
     const d = String(t.date || '').slice(0, 10);
     if (d < from || d > to) continue;
     const sign = t.type === 'refund' ? -1 : 1;

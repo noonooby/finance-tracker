@@ -354,3 +354,24 @@ test('due: a date left in the past comes round again (a card each month, a loan 
   assert.deepEqual(on(loan({ frequency: 'bimonthly' }), '2026-11-02'), []);
   assert.deepEqual(on(loan({}), '2026-11-02'), ['2026-11-02']);
 });
+
+test('reports: refunds come off spending, gift card loads are not spending, and a card payment is not taken off twice', () => {
+  const tx = [
+    { type: 'income', amount: 3000, date: '2026-11-01' },
+    { type: 'expense', amount: 200, date: '2026-11-02', category_id: 'g', category_name: 'Groceries' },
+    { type: 'refund', amount: 50, date: '2026-11-03', category_id: 'g', category_name: 'Groceries' },
+    { type: 'expense', amount: 40, date: '2026-11-04', category_id: 'd', category_name: 'Dining' },
+    { type: 'refund', amount: 40, date: '2026-11-05', category_id: 'd', category_name: 'Dining' },
+    { type: 'expense', amount: 100, date: '2026-11-06', gift_card_id: 'gc', category_id: 's', category_name: 'Shopping' },
+    { type: 'credit_card_payment', amount: 150, date: '2026-11-10', card_id: 'v' },
+    { type: 'payment', amount: 60, date: '2026-11-11', card_id: 'v' },
+    { type: 'loan_payment', amount: 400, date: '2026-11-12', loan_id: 'l' },
+    { type: 'payment', amount: 100, date: '2026-11-13', loan_id: 'l' },
+    { type: 'expense', amount: 999, date: '2026-11-14', status: 'undone', category_id: 'g' },
+  ];
+  const sum = R.calculateSummary(tx);
+  assert.deepEqual([sum.totalIncome, sum.totalExpenses, sum.totalPayments, sum.cardPayments, sum.netCashflow], [3000, 150, 710, 210, 2350]);
+  assert.deepEqual(R.groupByCategory(tx, []).map((c) => [c.name, c.total]), [['Groceries', 150]]);
+  const month = R.groupByTimePeriod(tx, 'monthly')[0];
+  assert.deepEqual([month.income, month.expenses, month.payments, month.net], [3000, 150, 710, 2350]);
+});

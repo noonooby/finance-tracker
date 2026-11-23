@@ -1003,3 +1003,37 @@ test('next 30 days lists every loan payment in the window, down to what is still
   assert.deepEqual(of('Late'), [['2026-11-10', 50, 'past due'], ['2026-11-24', 50, null], ['2026-12-08', 50, null], ['2026-12-22', 50, null]]);
   assert.deepEqual(of('Paid off'), []);
 });
+
+test('another account cannot see, change, move, undo or wipe this account\'s data', async () => {
+  const mine = await add('bank_accounts', { name: 'Mine only', balance: 700 });
+  const spent = await M.recordExpense({ amount: 20, source: `bank_account:${mine.id}`, date: '2026-11-23', description: 'Mine' }, await accounts());
+  const { token } = await (await realFetch(base + '/api/dev-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'stranger@test.local' }) })).json();
+  const as = async (path, body) => {
+    const r = await realFetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(body) });
+    return { status: r.status, body: await r.json().catch(() => ({})) };
+  };
+  const q = (table, action, more = {}) => as('/api/db', { table, action, filters: [['id', 'eq', mine.id]], or: [], order: [], ...more });
+  // Reading: nothing of mine comes back, by id or in a full list.
+  assert.deepEqual((await q('bank_accounts', 'select')).body.data, []);
+  assert.equal(((await as('/api/db', { table: 'transactions', action: 'select', filters: [], or: [], order: [] })).body.data || []).length, 0);
+  // Changing and deleting by id touch nothing.
+  await q('bank_accounts', 'update', { values: { balance: 1, name: 'Taken' } });
+  await q('bank_accounts', 'delete');
+  // Writing a row under my id is refused.
+  assert.equal((await as('/api/db', { table: 'bank_accounts', action: 'insert', values: { id: mine.id, name: 'Clash', balance: 0 }, filters: [], or: [], order: [] })).status, 409);
+  assert.equal((await as('/api/db', { table: 'bank_accounts', action: 'upsert', values: { id: mine.id, name: 'Clash', balance: 0 }, filters: [], or: [], order: [] })).status, 409);
+  // Money cannot be moved on my account, my transaction cannot be undone, my rows cannot be restored over.
+  assert.equal((await as('/api/money', { legs: [{ table: 'bank_accounts', id: mine.id, delta: -5 }], rows: [] })).status, 404);
+  assert.equal((await as(`/api/transactions/${spent.transaction.id}/reverse`, {})).status, 404);
+  assert.equal((await as('/api/restore', { table: 'bank_accounts', rows: [{ id: mine.id, name: 'Clash', balance: 0 }] })).status, 409);
+  assert.equal((await as('/api/restore-all', { confirm: 'REPLACE ALL MY DATA', data: { bank_accounts: [{ id: mine.id, name: 'Clash', balance: 0 }] } })).status, 409);
+  // Their own reset and restore leave my data alone.
+  assert.equal((await as('/api/restore-all', { confirm: 'REPLACE ALL MY DATA', data: { bank_accounts: [{ id: 'theirs-1', name: 'Theirs', balance: 3 }] } })).status, 200);
+  assert.equal((await as('/api/reset', { confirm: 'DELETE ALL MY DATA' })).status, 200);
+  const row = await get('bank_accounts', mine.id);
+  assert.deepEqual([row.name, Number(row.balance)], ['Mine only', 680]);
+  assert.equal((await get('transactions', spent.transaction.id)).status, 'active');
+  // No token, or a made-up one: nothing.
+  const bare = await realFetch(base + '/api/db', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer nope' }, body: JSON.stringify({ table: 'bank_accounts', action: 'select', filters: [] }) });
+  assert.equal(bare.status, 401);
+});

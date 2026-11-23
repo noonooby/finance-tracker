@@ -176,7 +176,7 @@ export default function MonthlySummary({
         <SummaryCard
           title="Net Cashflow"
           value={summary.netCashflow}
-          subtitle={summary.netCashflow >= 0 ? 'Positive' : 'Negative'}
+          subtitle="Income less spending and loan payments"
           icon={Activity}
           color={summary.netCashflow >= 0 ? 'green' : 'orange'}
           darkMode={darkMode}

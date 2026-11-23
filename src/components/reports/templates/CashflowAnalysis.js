@@ -180,7 +180,7 @@ export default function CashflowAnalysis({
         <SummaryCard
           title="Net Cashflow"
           value={summary.netCashflow}
-          subtitle={summary.netCashflow >= 0 ? 'Positive flow' : 'Negative flow'}
+          subtitle="Income less spending and loan payments"
           icon={Activity}
           color={summary.netCashflow >= 0 ? 'green' : 'red'}
           darkMode={darkMode}

@@ -1,4 +1,4 @@
-import { categoryParts } from './spending';
+import { categoryParts, spendingSign, isCardPayment, isPayment } from './spending';
 /**
  * Report Helpers
  * Data processing and aggregation utilities for reports
@@ -82,6 +82,7 @@ export const calculateSummary = (transactions) => {
     totalIncome: 0,
     totalExpenses: 0,
     totalPayments: 0,
+    cardPayments: 0,
     netCashflow: 0,
     transactionCount: transactions.length,
     averageTransaction: 0,
@@ -94,10 +95,11 @@ export const calculateSummary = (transactions) => {
     
     if (t.type === 'income') {
       summary.totalIncome += amount;
-    } else if (t.type === 'expense') {
-      summary.totalExpenses += amount;
-    } else if (t.type === 'payment' || t.type === 'loan_payment' || t.type === 'credit_card_payment') {
+    } else if (spendingSign(t)) {
+      summary.totalExpenses += spendingSign(t) * amount;
+    } else if (isPayment(t)) {
       summary.totalPayments += amount;
+      if (isCardPayment(t)) summary.cardPayments += amount;
     }
 
     if (amount > summary.largestTransaction) {
@@ -108,7 +110,9 @@ export const calculateSummary = (transactions) => {
     }
   });
 
-  summary.netCashflow = summary.totalIncome - summary.totalExpenses - summary.totalPayments;
+  // What is left of income after spending and loan payments. A card payment settles purchases that are already in
+  // spending, so it is shown but not taken off a second time.
+  summary.netCashflow = summary.totalIncome - summary.totalExpenses - (summary.totalPayments - summary.cardPayments);
   summary.averageTransaction = transactions.length > 0 
     ? (summary.totalIncome + summary.totalExpenses + summary.totalPayments) / transactions.length 
     : 0;
@@ -164,7 +168,8 @@ export const groupByCategory = (transactions, categories) => {
 
   // A split purchase counts each part in its own category.
   transactions.forEach(t => {
-    if (t.type !== 'expense') return;
+    const sign = spendingSign(t);
+    if (!sign) return;
     categoryParts(t).forEach(part => {
       if (!part.category_id) return;
       const id = part.category_id;
@@ -181,13 +186,14 @@ export const groupByCategory = (transactions, categories) => {
           transactions: []
         };
       }
-      grouped[id].total += part.amount;
+      grouped[id].total += sign * part.amount;
       grouped[id].count += 1;
       grouped[id].transactions.push(t);
     });
   });
 
-  return Object.values(grouped).sort((a, b) => b.total - a.total);
+  // A category refunded in full (or more) drops out.
+  return Object.values(grouped).filter(g => g.total > 0.004).sort((a, b) => b.total - a.total);
 };
 
 /**
@@ -270,13 +276,14 @@ export const groupByTimePeriod = (transactions, period = 'daily') => {
     
     if (t.type === 'income') {
       grouped[key].income += amount;
-    } else if (t.type === 'expense') {
-      grouped[key].expenses += amount;
-    } else if (t.type === 'payment' || t.type === 'loan_payment' || t.type === 'credit_card_payment') {
+    } else if (spendingSign(t)) {
+      grouped[key].expenses += spendingSign(t) * amount;
+    } else if (isPayment(t)) {
       grouped[key].payments += amount;
+      if (isCardPayment(t)) grouped[key].cardPayments = (grouped[key].cardPayments || 0) + amount;
     }
     
-    grouped[key].net = grouped[key].income - grouped[key].expenses - grouped[key].payments;
+    grouped[key].net = grouped[key].income - grouped[key].expenses - (grouped[key].payments - (grouped[key].cardPayments || 0));
     grouped[key].transactions.push(t);
   });
 
