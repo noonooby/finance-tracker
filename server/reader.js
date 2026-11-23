@@ -15,10 +15,11 @@ const HOME = (process.env.HOME_CURRENCY || 'CAD').toUpperCase();
 
 const PROMPT = `You read one screenshot or statement (PDF) from a banking app, credit card app, or a receipt. Report only what is visible; never guess.
 Return JSON:
-{"kind":"transactions"|"statement"|"receipt"|"balance"|"credit_score"|"other",
+{"kind":"transactions"|"statement"|"receipt"|"balance"|"credit_score"|"pay_slip"|"bill"|"other",
+ "bill":{"payee":"who is billed for it, as shown","amount":number,"due_date":"YYYY-MM-DD or null","frequency":"weekly|biweekly|monthly|quarterly|yearly or null"} or null (only for a bill, an invoice or a renewal notice),
  "credit_score":{"bureau":"Equifax, TransUnion or Experian as shown, or null","score":whole number,"date":"YYYY-MM-DD it is dated or was updated, or null"} or null (only when the screen shows a credit score),
  "statement":{"account_name":"","last4":"or null","period_start":"YYYY-MM-DD","period_end":"YYYY-MM-DD","opening_balance":number,"closing_balance":number} or null (only for a statement),
- "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|investment|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null,"statement_balance":number or null,"autopay":true|false|null,"loan_kind":"loan|mortgage|line_of_credit|car_lease|bnpl|plan|student or null","payment_amount":number or null,"payment_frequency":"weekly|biweekly|semimonthly|monthly or null","interest_rate":number or null}],
+ "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|investment|property|gift_card|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null,"statement_balance":number or null,"autopay":true|false|null,"loan_kind":"loan|mortgage|line_of_credit|car_lease|bnpl|plan|student or null","payment_amount":number or null,"payment_frequency":"weekly|biweekly|semimonthly|monthly or null","interest_rate":number or null}],
  "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null",
    "type":"purchase|income|refund|card_payment|transfer|fee|interest","currency":"3-letter code only when the line shows a currency other than the account's (e.g. USD), else null","original_amount":"the amount in that other currency when the line also shows the converted amount, else null","other_account":"for card_payment or transfer: the other account's name or last 4 digits as shown, else null",
    "category":"one short category: for a purchase or fee (Groceries, Dining, Transport, Fuel, Bills, Utilities, Phone, Shopping, Entertainment, Health, Travel, Subscriptions, Rent, Insurance, Education, Personal care, Gifts, Fees); for income (Salary, Freelance, Interest, Government, Refund, Other income); else null"}],
@@ -27,6 +28,7 @@ Return JSON:
 Rules: a screen that shows an account or card summary (balance, statement balance, due date, autopay, rewards) and no list of transactions is kind "balance": fill accounts and leave lines empty. Summary figures such as cash back, rewards, available credit or the statement amount are never lines.
 A loan, mortgage, line of credit, car lease or loan, student loan, or a pay-later plan (Klarna, Affirm, PayPal Pay in 4 and the like) is an account of type "loan": balance is what is still owed, due_date the next payment day, payment_amount the amount of each payment, interest_rate the yearly percentage, each only when shown. Name it as shown; when no name is visible, name it by the provider or by what it is ("Pay later").
 An investment or registered account (TFSA, RRSP, FHSA, RESP, brokerage, crypto, pension, GIC) is an account of type "investment" with its value as balance. A screen showing a credit score is kind "credit_score": the score is the main number (300 to 900), never a rating word, a change or a range.
+A pay slip, pay stub or payroll screen (Workday and the like) is kind "pay_slip" with no lines. A bill, invoice or renewal notice from a company (utility, phone, insurance, tax, condo fees, a subscription) is kind "bill": fill bill and leave lines empty. A home, vehicle or other property shown with its value is an account of type "property". A gift card or store credit shown with what is left on it is an account of type "gift_card".
 Payroll, salary or direct deposit from an employer is income with category Salary; a payment to a credit card (e.g. "PAYMENT THANK YOU", "VISA PAYMENT") is card_payment; money moved between the person's own accounts is transfer; pay and deposits are income.
 For a statement, list every transaction in the period and report the closing balance as the account's balance; for a credit card, balances are what is owed.
 Amounts are positive numbers; direction "out" is money spent or charged, "in" is money received, refunds and payments to the card.
@@ -120,9 +122,9 @@ function plan(reading, ctx, sourceId) {
   const drafts = [];
   for (const a of reading.accounts || []) {
     if (resolveAccount(all, a)) continue;
-    const t = a.type === 'credit_card' ? 'credit_card' : a.type === 'loan' ? null : 'bank_account';
+    const t = a.type === 'credit_card' || a.type === 'gift_card' ? 'credit_card' : ['loan', 'investment', 'property'].includes(a.type) ? null : 'bank_account';
     if (!t) continue;
-    drafts.push({ id: 'new:' + drafts.length, _type: t, name: String(a.name || (t === 'credit_card' ? 'Credit card' : 'Bank account')).slice(0, 60),
+    drafts.push({ id: 'new:' + drafts.length, _type: t, gift: a.type === 'gift_card' || undefined, name: String(a.name || (t === 'credit_card' ? 'Credit card' : 'Bank account')).slice(0, 60),
       last4: a.last4 ? String(a.last4).slice(-4) : null, account_type: a.type === 'savings' ? 'savings' : 'checking',
       credit_limit: Number(a.credit_limit) > 0 ? Number(a.credit_limit) : null, due_date: /^\d{4}-\d{2}-\d{2}$/.test(String(a.due_date || '')) ? a.due_date : null,
       minimum_payment: Number(a.minimum_payment) > 0 ? Number(a.minimum_payment) : null,
@@ -229,12 +231,27 @@ function plan(reading, ctx, sourceId) {
   const LOAN_FREQS = new Set(['weekly', 'biweekly', 'semimonthly', 'monthly']);
   const have = (ctx.loans || []).map((l) => ({ ...l, _type: 'loan' }));
   const pos = (v) => (Number.isFinite(Number(v)) && v !== null && Number(v) !== 0 ? Math.round(Math.abs(Number(v)) * 100) / 100 : null);
+  // What a picture shows about something the app already has, where it differs: { field, label, from, to, kind }.
+  const updates = [];
+  const change = (list, field, label, from, to, kind) => {
+    if (to == null) return;
+    const differs = kind === 'later' ? (!from || to > String(from).slice(0, 10)) : Math.abs((Number(from) || 0) - Number(to)) >= 0.005;
+    if (differs) list.push({ field, label, from: from == null || from === '' ? null : (kind === 'later' ? String(from).slice(0, 10) : Number(from)), to, kind });
+  };
   const realDay = (v) => { const d = String(v || ''); return /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)) && new Date(d + 'T00:00:00Z').toISOString().slice(0, 10) === d ? d : null; };
   const new_loans = [];
   for (const a of (reading.accounts || []).filter((x) => x && x.type === 'loan')) {
     const name = String(a.name || 'Loan').trim().slice(0, 60) || 'Loan';
     const mine = resolveAccount(have, { name, last4: a.last4 });
-    // A loan the app has: the figure on the picture is a balance to check, like any other account's.
+    // A loan the app has: the figure on the picture is a balance to check, like any other account's,
+    // and a payment, payment day or rate that differs from what the app holds is offered as a change.
+    if (mine) {
+      const ch = [];
+      change(ch, 'payment_amount', 'Each payment', mine.payment_amount, pos(a.payment_amount), 'money');
+      change(ch, 'next_payment_date', 'Next payment day', mine.next_payment_date, realDay(a.due_date), 'later');
+      change(ch, 'interest_rate', 'Interest % a year', mine.interest_rate, Number.isFinite(Number(a.interest_rate)) && a.interest_rate !== null && Number(a.interest_rate) > 0 && Number(a.interest_rate) <= 100 ? Number(a.interest_rate) : null, 'number');
+      if (ch.length) updates.push({ account: { type: 'loan', id: mine.id, name: mine.name }, changes: ch });
+    }
     if (mine) { if (pos(a.balance) != null) balances.push({ account: { type: 'loan', id: mine.id, name: mine.name }, shown: pos(a.balance), current: Math.round(Number(mine.balance || 0) * 100) / 100, differs: pos(a.balance) !== Math.round(Number(mine.balance || 0) * 100) / 100, snapshot_date: mine.snapshot_date || null }); continue; }
     if (new_loans.some((l) => norm(l.name) === norm(name))) continue;
     new_loans.push({ id: 'newloan:' + new_loans.length, name, loan_type: LOAN_KINDS.has(a.loan_kind) ? a.loan_kind : 'loan', balance: pos(a.balance),
@@ -242,22 +259,49 @@ function plan(reading, ctx, sourceId) {
       next_payment_date: realDay(a.due_date),
       interest_rate: Number.isFinite(Number(a.interest_rate)) && a.interest_rate !== null && Number(a.interest_rate) >= 0 && Number(a.interest_rate) <= 100 ? Number(a.interest_rate) : null });
   }
-  // Investments: one the app has gets its value checked; any other is offered to add.
-  const holdings = (ctx.investments || []).map((x) => ({ ...x, _type: 'investment' }));
+  // Cards the app has: a limit, due day, minimum payment or statement balance that differs is offered as a change.
+  for (const a of (reading.accounts || []).filter((x) => x && x.type !== 'loan' && x.type !== 'investment' && x.type !== 'property')) {
+    const acct = resolveAccount(all, a);
+    if (!acct || acct._type !== 'credit_card' || acct.is_gift_card) continue;
+    const ch = [];
+    change(ch, 'credit_limit', 'Credit limit', acct.credit_limit, pos(a.credit_limit), 'money');
+    change(ch, 'due_date', 'Payment due', acct.due_date, realDay(a.due_date), 'later');
+    change(ch, 'minimum_payment', 'Minimum payment', acct.minimum_payment, pos(a.minimum_payment), 'money');
+    change(ch, 'statement_balance', 'Statement balance', acct.statement_balance, a.statement_balance == null || !Number.isFinite(Number(a.statement_balance)) ? null : Math.round(Math.abs(Number(a.statement_balance)) * 100) / 100, 'money');
+    if (ch.length && !updates.some((u) => u.account.type === 'credit_card' && u.account.id === acct.id)) updates.push({ account: { type: 'credit_card', id: acct.id, name: acct.name }, changes: ch });
+  }
+  // A bill: one the app tracks gets its new amount or day offered as a change; any other is offered to add.
+  const new_bills = [];
+  const rb = reading.bill;
+  if (rb && String(rb.payee || '').trim()) {
+    const name = String(rb.payee).trim().slice(0, 60);
+    const tracked = (ctx.bills || []).filter((b) => b.status === 'active' && norm(b.name) && (norm(b.name).includes(norm(name)) || norm(name).includes(norm(b.name))));
+    if (tracked.length === 1) {
+      const ch = [];
+      change(ch, 'amount', 'Amount', tracked[0].amount, pos(rb.amount), 'money');
+      change(ch, 'next_date', 'Next due', tracked[0].next_date, realDay(rb.due_date), 'later');
+      if (ch.length) updates.push({ account: { type: 'bill', id: tracked[0].id, name: tracked[0].name }, changes: ch });
+    } else if (!tracked.length) {
+      new_bills.push({ id: 'newbill:0', name, amount: pos(rb.amount), next_date: realDay(rb.due_date), frequency: ['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'].includes(rb.frequency) ? rb.frequency : 'monthly' });
+    }
+  }
+  // Investments and property: one the app has gets its value checked; any other is offered to add.
+  const holdings = [...(ctx.investments || []).map((x) => ({ ...x, _type: 'investment' })), ...(ctx.assets || []).map((x) => ({ ...x, _type: 'asset' }))];
   const new_investments = [];
-  for (const a of (reading.accounts || []).filter((x) => x && x.type === 'investment')) {
-    const name = String(a.name || 'Investment').trim().slice(0, 60) || 'Investment';
-    const mine = resolveAccount(holdings, { name, last4: a.last4 });
+  for (const a of (reading.accounts || []).filter((x) => x && (x.type === 'investment' || x.type === 'property'))) {
+    const prop = a.type === 'property';
+    const name = String(a.name || (prop ? 'Property' : 'Investment')).trim().slice(0, 60) || 'Investment';
+    const mine = resolveAccount(holdings.filter((h) => h._type === (prop ? 'asset' : 'investment')), { name, last4: a.last4 });
     const value = Number.isFinite(Number(a.balance)) && a.balance !== null ? Math.round(Math.abs(Number(a.balance)) * 100) / 100 : null;
-    if (mine) { if (value != null) balances.push({ account: { type: 'investment', id: mine.id, name: mine.name }, shown: value, current: Math.round(Number(mine.balance || 0) * 100) / 100, differs: value !== Math.round(Number(mine.balance || 0) * 100) / 100, snapshot_date: mine.snapshot_date || null }); continue; }
-    if (!new_investments.some((l) => norm(l.name) === norm(name))) new_investments.push({ id: 'newinv:' + new_investments.length, name, balance: value,
-      kind: (String(name).toUpperCase().match(/\b(TFSA|RRSP|FHSA|RESP)\b/) || [])[1] || (/crypto|bitcoin|ethereum/i.test(name) ? 'Crypto' : /pension/i.test(name) ? 'Pension' : /broker|trading|invest|stocks/i.test(name) ? 'Brokerage' : 'Other') });
+    if (mine) { if (value != null) balances.push({ account: { type: mine._type, id: mine.id, name: mine.name }, shown: value, current: Math.round(Number(mine.balance || 0) * 100) / 100, differs: value !== Math.round(Number(mine.balance || 0) * 100) / 100, snapshot_date: mine.snapshot_date || null }); continue; }
+    if (!new_investments.some((l) => norm(l.name) === norm(name))) new_investments.push({ id: 'newinv:' + new_investments.length, name, balance: value, table: prop ? 'assets' : 'investments',
+      kind: prop ? (/home|house|condo|apartment|property/i.test(name) ? 'Home' : /car|vehicle|truck|suv/i.test(name) ? 'Car' : 'Other') : (String(name).toUpperCase().match(/\b(TFSA|RRSP|FHSA|RESP)\b/) || [])[1] || (/crypto|bitcoin|ethereum/i.test(name) ? 'Crypto' : /pension/i.test(name) ? 'Pension' : /broker|trading|invest|stocks/i.test(name) ? 'Brokerage' : 'Other') });
   }
   const sc = reading.credit_score ? planScore(reading.credit_score, ctx.today || new Date().toLocaleDateString('en-CA')) : null;
   const credit_score = sc && sc.score != null ? { bureau: sc.bureau, score: sc.score, date: sc.date } : null;
-  const unknown = (reading.accounts || []).filter(a => a.type !== 'loan' && a.type !== 'investment' && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
+  const unknown = (reading.accounts || []).filter(a => !['loan', 'investment', 'property'].includes(a.type) && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
-  return { source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, new_investments, credit_score, unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
+  return { source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, new_investments, new_bills, updates, credit_score, pay_slip: reading.kind === 'pay_slip', unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
 }
 
 // The optional note: plain text, one paragraph, at most 300 characters, with the quote markers removed.
@@ -265,6 +309,7 @@ function cleanNote(n) {
   return String(n || '').replace(/[<>]{2,}/g, ' ').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
 }
 
+const READINGS = new Map();
 // body: { image: base64 (no data: prefix) or data URL, mime }
 async function read(uid, body, ctx) {
   let b64 = String(body.image || ''), mime = String(body.mime || '');
@@ -286,7 +331,18 @@ async function read(uid, body, ctx) {
     reading = { kind: 'transactions', accounts: [], notes: parsed.notes.join(' '),
       lines: parsed.lines.map((l) => ({ ...l, account_name: acct.name, last4: acct.last4 || acct.last_four || null })) };
     ctx = { ...ctx, onlyAccount: acct };
-  } else { reading = await callGemini(mime, b64, today, note); ctx = { ...ctx, note }; }
+  } else {
+    // What a picture was read as is kept for a few hours, so pictures read ahead while you check another one come up
+    // at once. Matching to your accounts and to what is recorded is always done afresh. "Read again" reads anew.
+    const key = `${uid}:${sourceId}:${note}`, hit = READINGS.get(key);
+    if (hit && !body.fresh && Date.now() - hit.at < 3 * 3600e3) reading = JSON.parse(hit.json);
+    else {
+      reading = await callGemini(mime, b64, today, note);
+      if (!process.env.READER_STUB) { READINGS.delete(key); READINGS.set(key, { at: Date.now(), json: JSON.stringify(reading) }); }
+      if (READINGS.size > 300) READINGS.delete(READINGS.keys().next().value);
+    }
+    ctx = { ...ctx, note };
+  }
   const p = plan(reading, ctx, sourceId);
   // Lines shown only in another currency are converted at that day's published rate; the original is kept on the line.
   for (const l of p.lines.filter((x) => x.needs_fx && x.action !== 'skip')) {

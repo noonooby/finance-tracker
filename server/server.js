@@ -788,7 +788,7 @@ route('POST', '/api/read-screenshot', async (req, b) => {
   const uid = authUser(req).id;
   const all = (t) => selectRows(uid, { table: t, filters: [] });
   const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db };
+  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), assets: all('assets'), bills: all('bills'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db };
   try { return await require('./reader').read(uid, b, ctx); } catch (e) { if (e.status) fail(e.status, e.message); throw e; }
 });
 // Local testing only: DEV_USER signs in without Google. Refused unless NODE_ENV is development.
@@ -865,7 +865,7 @@ const server = http.createServer(async (req, res) => {
         const out = await r.fn(req, body, m.slice(1), url);
         if (/^\/api\/(read-|ask$)/.test(url.pathname) && out && process.env.NODE_ENV !== 'test') {
           const c = out.statement && out.statement.check;
-          console.log(`done ${url.pathname} ${Date.now() - began}ms kind=${out.kind || '-'}${Array.isArray(out.lines) ? ` lines=${out.lines.length}` : ''}${Array.isArray(out.parts) ? ` parts=${out.parts.length}` : ''}${c ? ` adds_up=${c.adds_up} off=${c.off}` : ''}${out.score ? ' score=found' : ''}${Array.isArray(out.new_accounts) ? ` new_accounts=${out.new_accounts.length} new_loans=${(out.new_loans || []).length} balances=${(out.balances || []).length}` : ''}`);
+          console.log(`done ${url.pathname} ${Date.now() - began}ms kind=${out.kind || '-'}${Array.isArray(out.lines) ? ` lines=${out.lines.length}` : ''}${Array.isArray(out.parts) ? ` parts=${out.parts.length}` : ''}${c ? ` adds_up=${c.adds_up} off=${c.off}` : ''}${out.score ? ' score=found' : ''}${Array.isArray(out.new_accounts) ? ` new_accounts=${out.new_accounts.length} new_loans=${(out.new_loans || []).length} new_bills=${(out.new_bills || []).length} changes=${(out.updates || []).length} balances=${(out.balances || []).length}` : ''}`);
         }
         return send(200, out);
       }

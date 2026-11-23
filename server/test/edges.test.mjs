@@ -583,7 +583,32 @@ test('a picture can also bring an investment, a credit score, and a new figure f
   const p = reader.plan(reading, ctx, 'src3');
   assert.deepEqual(p.credit_score, { bureau: 'Equifax', score: 742, date: '2026-11-20' });
   assert.deepEqual(p.balances.map((b) => [b.account.type, b.account.id, b.shown, b.current, b.differs]), [['loan', 'l1', 8600, 9000, true], ['investment', 'i1', 1250.5, 1000, true]]);
-  assert.deepEqual(p.new_investments, [{ id: 'newinv:0', name: 'Questrade RRSP', balance: 5000, kind: 'RRSP' }, { id: 'newinv:1', name: 'Coinbase crypto', balance: null, kind: 'Crypto' }]);
+  assert.deepEqual(p.new_investments, [{ id: 'newinv:0', name: 'Questrade RRSP', balance: 5000, table: 'investments', kind: 'RRSP' }, { id: 'newinv:1', name: 'Coinbase crypto', balance: null, table: 'investments', kind: 'Crypto' }]);
   assert.deepEqual([p.new_loans, p.unknown_accounts], [[], []]);
   assert.equal(reader.plan({ kind: 'credit_score', lines: [], accounts: [], credit_score: { score: 950 } }, ctx, 's').credit_score, null); // not a real score
+});
+
+test('a picture of things the app has shows what changed: a raised limit, a new due day, a new bill amount', () => {
+  const reader = mod('reader.js');
+  const ctx = { bankAccounts: [], today: '2026-11-23', transactions: [],
+    creditCards: [{ id: 'v', name: 'Rogers Mastercard', balance: 100, credit_limit: 5000, due_date: '2026-11-25', minimum_payment: 10 }],
+    loans: [{ id: 'l1', name: 'Car lease', balance: 9000, payment_amount: 400, next_payment_date: '2026-12-01', interest_rate: 6 }],
+    bills: [{ id: 'b1', name: 'Hydro One', amount: 60, next_date: '2026-11-30', status: 'active' }], investments: [], assets: [{ id: 'h', name: 'Condo', balance: 500000 }] };
+  const reading = { kind: 'balance', lines: [], bill: { payee: 'Hydro One Networks', amount: 72.4, due_date: '2026-12-30' }, accounts: [
+    { name: 'Rogers Mastercard', type: 'credit_card', balance: 100, credit_limit: 7500, due_date: '2026-12-25', minimum_payment: 10, statement_balance: 88.2 },
+    { name: 'Car lease', type: 'loan', balance: 9000, payment_amount: 410, due_date: '2026-11-01' },
+    { name: 'Condo', type: 'property', balance: 510000 }, { name: 'Honda Civic car', type: 'property', balance: 18000 }, { name: 'Starbucks card', type: 'gift_card', balance: 25 }] };
+  const p = reader.plan(reading, ctx, 'src4');
+  const flat = p.updates.map((u) => [u.account.type, u.account.id, u.changes.map((c) => [c.field, c.from, c.to])]);
+  assert.deepEqual(flat, [
+    ['loan', 'l1', [['payment_amount', 400, 410]]], // an earlier payment day is not a change
+    ['credit_card', 'v', [['credit_limit', 5000, 7500], ['due_date', '2026-11-25', '2026-12-25'], ['statement_balance', null, 88.2]]],
+    ['bill', 'b1', [['amount', 60, 72.4], ['next_date', '2026-11-30', '2026-12-30']]]]);
+  assert.deepEqual(p.new_bills, []);
+  assert.deepEqual(p.balances.map((b) => [b.account.type, b.shown]), [['credit_card', 100], ['loan', 9000], ['asset', 510000]]);
+  assert.deepEqual(p.new_investments, [{ id: 'newinv:0', name: 'Honda Civic car', balance: 18000, table: 'assets', kind: 'Car' }]);
+  assert.deepEqual(p.new_accounts.map((a) => [a.name, a.type, a.gift, a.balance]), [['Starbucks card', 'credit_card', true, 25]]); // a gift card, not a bank account
+  const q = reader.plan({ kind: 'bill', lines: [], accounts: [], bill: { payee: 'Bell Mobility', amount: 85, due_date: null, frequency: 'monthly' } }, ctx, 's5');
+  assert.deepEqual(q.new_bills, [{ id: 'newbill:0', name: 'Bell Mobility', amount: 85, next_date: null, frequency: 'monthly' }]);
+  assert.equal(reader.plan({ kind: 'pay_slip', lines: [], accounts: [] }, ctx, 's6').pay_slip, true);
 });

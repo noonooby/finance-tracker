@@ -83,6 +83,9 @@ export default function CardItem({
             card.credit_limit > 0 && (
               <div className={`text-xs ${muted} mt-1`}>
                 Limit: {formatCurrency(card.credit_limit)} ({((card.balance / card.credit_limit) * 100).toFixed(1)}% used)
+                {card.credit_limit_changed_at && card.credit_limit_before != null && Number(card.credit_limit_before) !== Number(card.credit_limit) && (
+                  <span className="block">{Number(card.credit_limit) > Number(card.credit_limit_before) ? 'Raised' : 'Lowered'} from {formatCurrency(card.credit_limit_before)}, seen {card.credit_limit_changed_at}</span>
+                )}
               </div>
             )
           )}

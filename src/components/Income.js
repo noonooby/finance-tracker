@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Plus, X, ListFilter, Zap, Calendar, Pause, Play, Trash2, Camera, Pencil } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, predictNextDate } from '../utils/helpers';
 import { api } from '../utils/server';
@@ -113,15 +114,15 @@ export default function Income({
   const [readingPay, setReadingPay] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null);
   const [payNote, setPayNote] = useState('');
-  const readPaySlip = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
+  const readPaySlip = async (e, given) => {
+    const file = given ? null : e.target.files && e.target.files[0];
+    if (!given) e.target.value = '';
+    if (!file && !given) return;
     setReadingPay(true); setPayNote('');
     try {
-      const image = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('That file could not be opened.')); r.readAsDataURL(file); });
+      const image = given ? given.url : await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('That file could not be opened.')); r.readAsDataURL(file); });
       const today = localDate();
-      const p = await api('/api/read-pay', { image, mime: file.type, today });
+      const p = await api('/api/read-pay', { image, mime: given ? given.type : file.type, today });
       // A slip from a past pay day: the schedule starts at the next one.
       let date = p.date || '';
       for (let i = 0; date && date < today && p.frequency && i < 200; i++) date = predictNextDate(date, p.frequency);
@@ -143,6 +144,12 @@ export default function Income({
       showToast.error(err.message);
     } finally { setReadingPay(false); }
   };
+  // A pay slip sent over from Scan is read here as soon as the screen opens.
+  const handed = useLocation().state;
+  useEffect(() => {
+    if (handed && handed.paySlip) { window.history.replaceState({}, ''); readPaySlip(null, handed.paySlip); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAdd = async () => {
     if ((formData.splits || []).some((sp) => !sp.account_id || !(Number(sp.amount) > 0))) {
