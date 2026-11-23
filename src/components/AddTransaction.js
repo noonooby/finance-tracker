@@ -78,6 +78,9 @@ export default function AddTransaction({
   const [recentPaymentMethods, setRecentPaymentMethods] = useState([]);
   const [recentExpenses, setRecentExpenses] = useState([]);
   const descriptionInputRef = useRef(null);
+  // A card is paid from an account or from another credit card: never from itself, and never from or to a gift card.
+  const payFromCards = (creditCards || []).filter(c => !c.is_gift_card && !(formData.paymentMethod === 'credit_card' && String(c.id) === String(formData.paymentMethodId)));
+  const payToName = ((formData.paymentMethod === 'loan' ? loans : creditCards) || []).find(x => String(x.id) === String(formData.paymentMethodId))?.name;
   
   // Initialize transaction operations hook
   const { processTransaction, processing } = useTransactionOperations({
@@ -325,7 +328,7 @@ export default function AddTransaction({
       type: formData.type,
       amount,
       date: formData.date,
-      description: formData.description,
+      description: String(formData.description || '').trim() || (formData.type === 'payment' ? `Payment to ${payToName || (formData.paymentMethod === 'loan' ? 'loan' : 'card')}` : ''),
       notes: formData.notes,
       categoryId,
       extra: Object.keys(extra).length ? extra : undefined,
@@ -486,7 +489,7 @@ export default function AddTransaction({
           {/* Description Input */}
           <div>
             <label className={`block text-sm font-medium mb-2 text-fg`}>
-              {recentExpenses.length > 0 && formData.type === 'expense' ? 'Or type new expense *' : 'Description *'}
+              {formData.type === 'payment' ? 'Description' : recentExpenses.length > 0 && formData.type === 'expense' ? 'Or type new expense *' : 'Description *'}
             </label>
             <input
               ref={formData.type === 'expense' ? descriptionInputRef : null}
@@ -494,9 +497,9 @@ export default function AddTransaction({
               value={formData.description}
               onChange={(e) => handleDescriptionChange(e.target.value)}
               onBlur={formData.type === 'expense' ? handleDescriptionBlur : undefined}
-              placeholder="Coffee, Gas, Groceries, etc."
+              placeholder={formData.type === 'payment' ? 'Optional' : 'Coffee, Gas, Groceries, etc.'}
               className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
-              required
+              required={formData.type !== 'payment'}
               autoFocus={formData.type === 'expense' && recentExpenses.length === 0}
             />
           </div>
@@ -614,9 +617,9 @@ export default function AddTransaction({
                     ))}
                   </optgroup>
                 )}
-                {creditCards && creditCards.length > 0 && (
+                {payFromCards.length > 0 && (
                   <optgroup label="Credit Cards (Pay with Card)">
-                    {creditCards.map(card => (
+                    {payFromCards.map(card => (
                       <option key={card.id} value={`credit_card:${card.id}`}>
                         {card.name} (Balance: {formatCurrency(card.balance)})
                       </option>
@@ -705,9 +708,9 @@ export default function AddTransaction({
                 required
               >
                 <option value="">Select {formData.paymentMethod === 'credit_card' ? 'credit card' : 'loan'}</option>
-                {formData.paymentMethod === 'credit_card' && creditCards && creditCards.map(card => (
+                {formData.paymentMethod === 'credit_card' && (creditCards || []).filter(card => !card.is_gift_card).map(card => (
                   <option key={card.id} value={card.id}>
-                    {card.name} {card.is_gift_card ? `(${formatCurrency(card.balance)} balance)` : `(${formatCurrency(card.balance)} owed)`}
+                    {card.name} ({formatCurrency(card.balance)} owed)
                   </option>
                 ))}
                 {formData.paymentMethod === 'loan' && loans && loans.map(loan => (

@@ -120,6 +120,13 @@ export async function recordCardPayment({ cardId, amount, source, date, descript
   const a = toAmount(amount);
   const card = (accounts.creditCards || []).find((c) => String(c.id) === String(cardId));
   if (!card) throw new Error('That card no longer exists.');
+  if (card.is_gift_card) throw new Error('A gift card is not paid off. To add value to it, use Manage Balance on the card.');
+  const from = parseSource(source);
+  if (from.type === 'credit_card') {
+    if (String(from.id) === String(card.id)) throw new Error('A card cannot pay itself. Choose the account the payment comes from.');
+    const other = (accounts.creditCards || []).find((c) => String(c.id) === String(from.id));
+    if (other && other.is_gift_card) throw new Error('A gift card cannot pay a credit card. Choose a bank account.');
+  }
   const rows = [];
   if (paymentRow) rows.push({ table: 'credit_card_payments', values: { card_id: card.id, amount: a, payment_date: date, ...paymentRow } });
   rows.push({ table: 'transactions', values: txRow({ type: 'credit_card_payment', amount: a, date, description: description || `Payment to ${card.name}`, ...extra, card_id: card.id }, source, accounts) });

@@ -778,3 +778,18 @@ test('bills: one tracked bill per merchant, each with a name, an amount, a rhyth
   assert.deepEqual([again.id, again.status, again.amount], [other.id, 'active', 95]);
   assert.equal((await db.from('bills').select('*').eq('key', 'rogers')).data.length, 1);
 });
+
+test('a card payment comes from somewhere else: not the card itself, not a gift card, and a gift card is not paid off', async () => {
+  const visa = await add('credit_cards', { name: 'Pay Visa', balance: 200 });
+  const giftc = await add('credit_cards', { name: 'Pay Gift', balance: 50, is_gift_card: true });
+  const bank = await add('bank_accounts', { name: 'Pay Bank', balance: 500 });
+  const a = await accounts();
+  const pay = (cardId, source) => M.recordCardPayment({ cardId, amount: 20, source, date: '2026-11-23' }, a);
+  await assert.rejects(pay(visa.id, `credit_card:${visa.id}`), /cannot pay itself/);
+  await assert.rejects(pay(visa.id, `credit_card:${giftc.id}`), /gift card cannot pay/);
+  await assert.rejects(pay(giftc.id, `bank_account:${bank.id}`), /gift card is not paid off/);
+  assert.deepEqual([Number((await get('credit_cards', visa.id)).balance), Number((await get('credit_cards', giftc.id)).balance), Number((await get('bank_accounts', bank.id)).balance)], [200, 50, 500]);
+  const ok = await pay(visa.id, `bank_account:${bank.id}`);
+  assert.equal(ok.transaction.description, 'Payment to Pay Visa');
+  assert.deepEqual([Number((await get('credit_cards', visa.id)).balance), Number((await get('bank_accounts', bank.id)).balance)], [180, 480]);
+});
