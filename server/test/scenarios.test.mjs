@@ -1403,3 +1403,66 @@ test('paying through a service with a fee: the fee, what each card gives back, a
   assert.match((await db.from('credit_cards').update({ reward_bills_percent: 'lots' }).eq('id', card.id)).error.message, /0 to 10/);
   await db.from('credit_cards').delete().eq('id', card.id);
 });
+
+test('paying debt down: the order, when each debt ends, and what the extra saves', () => {
+  const debts = [{ id: 'visa', name: 'Visa', balance: 1000, rate: 20, min: 50 }, { id: 'car', name: 'Car', balance: 5000, rate: 6, min: 200 }, { id: 'small', name: 'Store card', balance: 300, rate: 0, min: 25 }, { id: 'none', name: 'Paid', balance: 0, rate: 9, min: 10 }];
+  const base = P.payoffPlan(debts, 0, 'rate', false);
+  const fast = P.payoffPlan(debts, 200, 'rate', true);
+  const small = P.payoffPlan(debts, 200, 'small', true);
+  assert.equal(fast.total, 6300);
+  assert.ok(fast.months < base.months && fast.interest < base.interest);
+  assert.equal(fast.cleared[0].name, 'Visa');           // the highest rate gets the extra first
+  assert.equal(small.cleared[0].name, 'Store card');    // or the smallest balance
+  assert.ok(small.interest >= fast.interest);
+  assert.equal(fast.cleared.length, 3);
+  // A debt with no interest and no extra: balance over payment, to the month.
+  assert.deepEqual([P.payoffPlan([debts[2]], 0).months, P.payoffPlan([debts[2]], 0).interest], [12, 0]);
+  // A payment that does not cover the interest never ends.
+  const stuck = P.payoffPlan([{ id: 'x', name: 'Stuck', balance: 10000, rate: 24, min: 100 }], 0);
+  assert.deepEqual([stuck.months, stuck.stuck], [null, ['Stuck']]);
+  assert.deepEqual(P.payoffPlan([], 100).months, 0);
+});
+
+test('the weeks ahead: what is left after each day, with pay in and only cash payments out', () => {
+  const today = new Date(2026, 10, 23);
+  const c = P.cashCalendar({ liquid: 500, pay: [{ name: 'Acme', amount: 2000, dates: ['2026-11-27', '2026-12-11'] }],
+    items: [
+      { date: '2026-11-20', name: 'Late loan', amount: 300, kind: 'loan', cash: true, auto: false },     // past due: counts today
+      { date: '2026-11-25', name: 'Rent', amount: 1500, kind: 'bill', cash: true, auto: false },
+      { date: '2026-11-25', name: 'Netflix', amount: 19, kind: 'bill', cash: false, auto: true },         // on a card
+      { date: '2026-11-27', name: 'Visa', amount: 400, kind: 'card', cash: true, auto: true },
+      { date: '2026-12-01', name: 'Promo ends', amount: null, kind: 'promo_end' },
+    ] }, today);
+  assert.deepEqual(c.days.map((x) => [x.date, x.balance]), [['2026-11-23', 200], ['2026-11-25', -1300], ['2026-11-27', 300], ['2026-12-11', 2300]]);
+  assert.deepEqual(c.lowest, { date: '2026-11-25', balance: -1300 });
+  assert.deepEqual(c.days[2].entries.map((e) => e.amount), [2000, -400]);
+  assert.deepEqual(P.cashCalendar({ liquid: 80 }, today), { days: [], lowest: { date: '2026-11-23', balance: 80 } });
+  // The upcoming list says which payments take cash.
+  const up = F.upcoming({ creditCards: [{ id: 'v', name: 'Visa', balance: 100, due_date: '2026-11-30' }], bankAccounts: [],
+    loans: [{ id: 'l', name: 'Lease', balance: 900, payment_amount: 300, next_payment_date: '2026-11-28', connected_payment_source: 'credit_card', connected_payment_source_id: 'v' }],
+    bills: [{ id: 'b', key: 'netflix', name: 'Netflix', amount: 19, frequency: 'monthly', next_date: '2026-11-29', status: 'active', payment_method: 'credit_card' }, { id: 'r', key: 'rent', name: 'Rent', amount: 1500, frequency: 'monthly', next_date: '2026-12-01', status: 'active' }], transactions: [] }, today, 14);
+  assert.deepEqual(up.map((x) => [x.name, x.cash]), [['Lease', false], ['Netflix', false], ['Visa', true], ['Rent', true]]);
+});
+
+test('spending against your usual: only clear differences are kept', () => {
+  const p = P.spendingPace({ food: 400, fun: 110, gas: 60, newcat: 300, tiny: 10 }, { food: 250, fun: 100, gas: 130, tiny: 2 });
+  assert.deepEqual(p, [{ category_id: 'food', now: 400, usual: 250, diff: 150 }, { category_id: 'gas', now: 60, usual: 130, diff: -70 }]);
+});
+
+test('a service fee on a payment charged to a card is its own purchase, and only then', async () => {
+  const visa = await add('credit_cards', { name: 'Fee visa', balance: 0, credit_limit: 5000 });
+  const chq = await add('bank_accounts', { name: 'Fee chequing', balance: 1000 });
+  const accounts = { bankAccounts: [chq], creditCards: [visa] };
+  const lease = { id: 'lease1', name: 'Car lease', paid_through: 'Chexy', fee_percent: 1.75 };
+  const r = await M.recordThroughFee({ item: lease, amount: 600, source: `credit_card:${visa.id}`, date: '2026-11-20', key: 'loan-fee:lease1:2026-11-20' }, accounts);
+  assert.deepEqual([r.transaction.amount, r.transaction.description, r.transaction.category_name], [10.5, 'Chexy fee for Car lease', 'Fees']);
+  assert.equal((await get('credit_cards', visa.id)).balance, 10.5);
+  // The same due date is charged once.
+  assert.equal((await M.recordThroughFee({ item: lease, amount: 600, source: `credit_card:${visa.id}`, date: '2026-11-20', key: 'loan-fee:lease1:2026-11-20' }, accounts)).repeated, true);
+  assert.equal((await get('credit_cards', visa.id)).balance, 10.5);
+  // Paid from the bank, or with no fee set: nothing is added.
+  assert.equal(await M.recordThroughFee({ item: lease, amount: 600, source: `bank_account:${chq.id}`, date: '2026-11-20' }, accounts), null);
+  assert.equal(await M.recordThroughFee({ item: { name: 'Plain' }, amount: 600, source: `credit_card:${visa.id}`, date: '2026-11-20' }, accounts), null);
+  await api(`/api/transactions/${r.transaction.id}/reverse`, {});
+  await db.from('credit_cards').delete().eq('id', visa.id); await db.from('bank_accounts').delete().eq('id', chq.id);
+});

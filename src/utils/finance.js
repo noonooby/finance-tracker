@@ -203,7 +203,7 @@ export function monthlyCost({ creditCards = [], loans = [], bankAccounts = [] },
 }
 
 // Everything due in the next `days` days, soonest first, and whether it pays itself or you pay it.
-// -> [{ date, name, amount, kind: 'card'|'loan'|'plan'|'promo_end', auto, from, note }]
+// -> [{ date, name, amount, kind: 'card'|'loan'|'plan'|'bill'|'promo_end', auto, from, note, cash }]  cash: it takes money out of an account
 export function upcoming({ creditCards = [], loans = [], bankAccounts = [], bills = [], transactions = [] }, today = new Date(), days = 30) {
   const t = iso(today), end = iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + days));
   const inWindow = (d) => d && d >= t && d <= end;
@@ -218,7 +218,7 @@ export function upcoming({ creditCards = [], loans = [], bankAccounts = [], bill
       const mode = c.autopay_mode || 'statement';
       const min = Number(c.minimum_payment) || Math.min(bal, Math.max(10, round2(bal * 0.03)));
       const amount = mode === 'fixed' ? Math.min(bal, Number(c.autopay_fixed) || bal) : mode === 'minimum' ? min : bal;
-      out.push({ date: d, name: c.name, amount: round2(amount), kind: 'card', auto: !!c.connected_payment_source, from: c.connected_payment_source ? nameOf(c.connected_payment_source, c.connected_payment_source_id) : null,
+      out.push({ date: d, name: c.name, amount: round2(amount), kind: 'card', cash: true, auto: !!c.connected_payment_source, from: c.connected_payment_source ? nameOf(c.connected_payment_source, c.connected_payment_source_id) : null,
         note: late(d) ? 'past due' : !c.connected_payment_source ? `minimum ${round2(min)}` : mode === 'minimum' ? 'autopay pays the minimum; interest applies on the rest' : null });
     }
     if (c.promo_end && inWindow(c.promo_end) && c.promo_rate != null && c.promo_rate !== '') {
@@ -236,9 +236,9 @@ export function upcoming({ creditCards = [], loans = [], bankAccounts = [], bill
       const amount = Math.min(left, Number(l.payment_amount) || left);
       left = round2(left - amount);
       if (l.on_card_id) {
-        out.push({ date: d, name: l.name, amount: round2(amount), kind: 'plan', auto: true, from: card ? card.name : 'the card', note: 'installment billed on the card' });
+        out.push({ date: d, name: l.name, amount: round2(amount), kind: 'plan', cash: false, auto: true, from: card ? card.name : 'the card', note: 'installment billed on the card' });
       } else {
-        out.push({ date: d, name: l.name, amount: round2(amount), kind: 'loan', auto: !!l.connected_payment_source,
+        out.push({ date: d, name: l.name, amount: round2(amount), kind: 'loan', cash: l.connected_payment_source !== 'credit_card', auto: !!l.connected_payment_source,
           from: l.connected_payment_source ? nameOf(l.connected_payment_source, l.connected_payment_source_id) : null, note: late(d) ? 'past due' : null });
       }
     }
@@ -246,7 +246,7 @@ export function upcoming({ creditCards = [], loans = [], bankAccounts = [], bill
   for (const { bill: b, date, paid } of billDates(bills, transactions, today, end)) {
     // A bill charged to a card is paid when the card is paid, so it is not another payment you make.
     const onCard = b.payment_method === 'credit_card';
-    out.push({ date, name: b.name, amount: round2(Number(b.amount) || 0), kind: 'bill', auto: !!paid || onCard, paid: !!paid, from: b.payment_method_name || null,
+    out.push({ date, name: b.name, amount: round2(Number(b.amount) || 0), kind: 'bill', cash: !paid && !onCard, auto: !!paid || onCard, paid: !!paid, from: b.payment_method_name || null,
       note: paid ? 'recorded' : onCard ? `charged to the card, repeats ${b.frequency}` : `repeats ${b.frequency}` });
   }
   return out.sort((a, b) => String(a.date).localeCompare(String(b.date)));

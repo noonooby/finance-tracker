@@ -4,9 +4,9 @@ import { ChevronRight, Camera, AlertTriangle, CheckCircle2, Repeat, Hand, Check 
 import { useFinanceData } from '../hooks/useFinanceData';
 import { api } from '../utils/server';
 import { position, monthEndFor, monthlyCost, upcoming, billDates } from '../utils/finance';
-import { goalsProgress, goalsThisMonth, freeAtMonthEnd, chargesToCheck, priceChanges } from '../utils/plans';
+import { goalsProgress, goalsThisMonth, freeAtMonthEnd, chargesToCheck, priceChanges, spendingPace } from '../utils/plans';
 import { server } from '../utils/server';
-import { budgetMonth, monthOf, findRecurring } from '../utils/spending';
+import { budgetMonth, monthOf, findRecurring, spentByCategory, monthRange, prevMonth } from '../utils/spending';
 import { formatCurrency, formatDate, parseDay } from '../utils/helpers';
 import { Card, Section, Stat, Badge, Button } from './shared/ui';
 
@@ -59,8 +59,23 @@ export default function Dashboard() {
     for (const g of goalsProgress(goals, { bankAccounts: d.bankAccounts, investments: d.investments }, today)) {
       if (g.late && !g.done) out.push({ id: `goal:${g.id}`, to: '/goals', title: g.name, text: `The date has passed with ${formatCurrency(g.left)} still to go.` });
     }
+    // A category running well above your usual: this month to today against the same days of the last three months
+    // (months with nothing recorded are left out; with fewer than two to compare, nothing is said).
+    const m = monthOf(today);
+    const upTo = (month) => { const [from, last] = monthRange(month); return [from, `${month}-${String(Math.min(today.getDate(), Number(last.slice(8)))).padStart(2, '0')}`]; };
+    const before = [1, 2, 3].map((b) => spentByCategory(d.transactions, ...upTo(prevMonth(m, b)))).filter((x) => Object.keys(x).length);
+    if (before.length >= 2) {
+      const usual = {};
+      for (const x of before) for (const [k, v] of Object.entries(x)) usual[k] = (usual[k] || 0) + v / before.length;
+      for (const c of spendingPace(spentByCategory(d.transactions, ...upTo(m)), usual).filter((x) => x.diff > 0).slice(0, 3)) {
+        const cat = (d.categories || []).find((x) => String(x.id) === c.category_id);
+        const id = `pace:${m}:${c.category_id}`;
+        if (!seen.includes(id)) out.push({ id, to: '/reports', canSee: true, title: cat ? cat.name : 'No category',
+          text: `${formatCurrency(c.now)} so far this month. By this day you have usually spent about ${formatCurrency(c.usual)}.` });
+      }
+    }
     return out;
-  }, [d.transactions, d.bills, d.bankAccounts, d.investments, goals, seen, today]);
+  }, [d.transactions, d.bills, d.bankAccounts, d.investments, d.categories, goals, seen, today]);
   const found = useMemo(() => findRecurring(d.transactions, d.bills, today), [d.transactions, d.bills, today]);
   const nextPay = useMemo(() => schedules.filter((s) => s.is_active !== false && s.next_date).sort((a, b) => String(a.next_date).localeCompare(String(b.next_date)))[0], [schedules]);
   const recent = useMemo(() => [...(d.transactions || [])].filter((t) => t.status !== 'undone' && t.status !== 'deleted')

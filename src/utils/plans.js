@@ -160,3 +160,71 @@ export function rewardsEarned(card, transactions, month) {
   }
   return round2(cents / 100);
 }
+
+// ---------- Debt payoff ----------
+// debts: [{ id, name, balance, rate (yearly %), min (what you pay a month) }]. extra: more you can put in each month.
+// order: 'rate' (highest interest first, costs least) or 'small' (smallest balance first, clears debts soonest).
+// Each month every debt gets its interest and its minimum; the extra, and the minimums of debts already cleared,
+// go to the first debt in the order. With extra 0 and roll false it is "minimums only": nothing is rolled over.
+// -> { months, interest, cleared: [{ id, name, month }], stuck: [names that never clear], total }
+export function payoffPlan(debts, extra = 0, order = 'rate', roll = true) {
+  const list = (debts || []).filter((d) => Number(d.balance) > 0).map((d) => ({ id: d.id, name: d.name, c: Math.round(Number(d.balance) * 100), rate: Number(d.rate) || 0, min: Math.round((Number(d.min) || 0) * 100) }));
+  const rank = (a, b) => (order === 'small' ? a.c - b.c || b.rate - a.rate : b.rate - a.rate || a.c - b.c);
+  const cleared = [];
+  let interest = 0, months = 0, freed = 0;
+  const pool0 = Math.round((Number(extra) || 0) * 100);
+  while (list.some((d) => d.c > 0) && months < 720) {
+    months++;
+    let pool = pool0 + (roll ? freed : 0);
+    for (const d of list) {
+      if (d.c <= 0) continue;
+      const i = Math.round(d.c * d.rate / 1200);
+      interest += i; d.c += i;
+      const pay = Math.min(d.c, d.min);
+      d.c -= pay;
+    }
+    for (const d of list.filter((x) => x.c > 0).sort(rank)) {
+      if (pool <= 0) break;
+      const pay = Math.min(d.c, pool);
+      d.c -= pay; pool -= pay;
+    }
+    for (const d of list) if (d.c <= 0 && !cleared.some((x) => x.id === d.id)) { cleared.push({ id: d.id, name: d.name, month: months }); freed += d.min; }
+  }
+  const stuck = list.filter((d) => d.c > 0).map((d) => d.name);
+  return { months: stuck.length ? null : months, interest: round2(interest / 100), cleared, stuck, total: round2((debts || []).reduce((s, d) => s + Math.max(0, Number(d.balance) || 0), 0)) };
+}
+
+// ---------- Cash calendar ----------
+// What comes in and goes out of your accounts day by day, and what is left after each day.
+// items: from finance.upcoming (each says whether it takes cash). pay: [{ name, amount, dates: [YYYY-MM-DD] }].
+// Anything already past due counts today. -> { days: [{ date, entries: [{ name, amount, kind }], balance }], lowest: { date, balance } }
+export function cashCalendar({ items = [], pay = [], liquid = 0 }, today = new Date()) {
+  const t = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const by = new Map();
+  const put = (date, e) => { const d = date < t ? t : date; if (!by.has(d)) by.set(d, []); by.get(d).push(e); };
+  for (const x of items) if (x.amount != null && x.date) put(String(x.date).slice(0, 10), { name: x.name, amount: x.cash ? -round2(x.amount) : 0, kind: x.kind, note: x.cash ? (x.auto ? 'pays itself' : 'you pay') : x.paid ? 'recorded' : 'on a card' });
+  for (const p of pay) for (const d of p.dates || []) put(d, { name: p.name, amount: round2(p.amount), kind: 'pay', note: 'coming in' });
+  let balance = round2(liquid);
+  let lowest = { date: t, balance };
+  const days = [...by.keys()].sort().map((date) => {
+    const entries = by.get(date).sort((a, b) => b.amount - a.amount);
+    balance = round2(balance + entries.reduce((s, e) => s + e.amount, 0));
+    if (balance < lowest.balance) lowest = { date, balance };
+    return { date, entries, balance };
+  });
+  return { days, lowest };
+}
+
+// ---------- Spending compared with your usual ----------
+// This month so far against the same stretch of each of the last three months (the 1st to today's day), by category.
+// now / usual: { category_id: amount } maps (usual already averaged). Only differences of at least $25 and 25% are kept.
+// -> [{ category_id, now, usual, diff }] the largest rise first
+export function spendingPace(now = {}, usual = {}) {
+  const out = [];
+  for (const k of new Set([...Object.keys(now), ...Object.keys(usual)])) {
+    const a = round2(now[k] || 0), b = round2(usual[k] || 0), diff = round2(a - b);
+    if (Math.abs(diff) < 25 || Math.abs(diff) < Math.max(a, b) * 0.25 || !(b > 0)) continue;
+    out.push({ category_id: k, now: a, usual: b, diff });
+  }
+  return out.sort((x, y) => y.diff - x.diff);
+}

@@ -118,6 +118,9 @@ const SECTIONS = [
   ['through', 'Card rewards, and paying through a service such as Chexy', (
     <p>On a card, enter its rewards rate, and its rate on bill payments if that is different. Cards then shows about what each card gave back this month and last. On a loan, lease or bill that you pay by card through a service, enter the service's name and its fee (for example Chexy, 1.75). The app shows the fee each time and which of your cards comes out best once its rewards are counted. When you record a loan or lease payment from a card, the fee is added as its own purchase on that card. If the fee or a card's rate changes, change the number and everything follows.</p>
   )],
+  ['ahead', 'The weeks ahead and paying debt down', (
+    <p>Under More, The weeks ahead lists pay coming in and payments going out of your accounts day by day, with what is left after each day and the lowest point. Everyday spending is not guessed. Paying debt down shows which debt to put extra money on, when each one ends, and how much interest that saves against your usual payments. Neither screen moves money.</p>
+  )],
   ['goals', 'Savings goals', (
     <p>Under More, Savings goals: give a goal a name, an amount and, if you like, a date and the account the money is kept in. The goal reads that account's balance; two goals in one account are filled in the order you made them, so no dollar counts twice. With a date, the app shows what to put aside each month. The app never moves money for a goal.</p>
   )],

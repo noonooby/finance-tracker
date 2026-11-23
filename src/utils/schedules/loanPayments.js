@@ -1,6 +1,7 @@
 import { server } from '../server';
 import { predictNextDate, formatCurrency, localDate, generateId } from '../helpers';
-import { recordLoanPayment, reverseTransaction } from '../money';
+import { recordLoanPayment, recordThroughFee, reverseTransaction } from '../money';
+import { showToast } from '../toast';
 import { logActivity } from '../activityLogger';
 
 /**
@@ -157,6 +158,12 @@ export async function createLoanPayment(paymentData, loan, paymentSource, accoun
       } }],
     }, { ...acc, loans: [current] });
     if (r.repeated) return { success: true, repeated: true };
+    // Charged to a card through a service with a fee: the fee is its own purchase, once for this due date.
+    try {
+      await recordThroughFee({ item: current, amount, source, date: paymentData.paymentDate, forId: txId, key: `loan-fee:${current.id}:${String(dueDate).split('T')[0]}` }, acc);
+    } catch (e) {
+      showToast.error(`The payment for ${current.name} is saved, but its fee was not: ${e.message} Add it as a purchase.`);
+    }
 
     const paymentRecord = (r.rows || []).find((x) => x.loan_id === current.id && !x.type) || null;
     await logActivity(

@@ -147,6 +147,19 @@ export function payParts(amount, mainId, splits, bankAccounts = []) {
   return [{ target: `bank_account:${main.id}`, id: main.id, name: main.name, amount: rest }, ...others];
 }
 
+// A payment charged to a card through a service that takes a fee (Chexy and the like): the fee is its own purchase
+// on that card, so it counts as spending and can be undone on its own. item: the loan or bill (name, paid_through, fee_percent).
+// -> the saved step, or null when no fee applies (no fee set, or not paid by card).
+export async function recordThroughFee({ item, amount, source, date, forId, key }, accounts) {
+  const pct = Number(item && item.fee_percent) || 0;
+  if (!(pct > 0) || parseSource(source).type !== 'credit_card') return null;
+  const fee = round2(round2(amount) * pct / 100);
+  if (!(fee > 0)) return null;
+  const service = String(item.paid_through || '').trim() || 'Service';
+  return recordExpense({ amount: fee, source, date, description: `${service} fee for ${item.name}`, category_id: null, category_name: 'Fees', key,
+    extra: { through_fee_for: forId || item.id } }, accounts);
+}
+
 // A refund of an earlier purchase: money comes back to where it was paid from.
 export async function recordRefund({ amount, target, date, description, key, extra }, accounts) {
   const a = toAmount(amount);
