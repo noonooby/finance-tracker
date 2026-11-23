@@ -759,6 +759,13 @@ route('POST', '/api/ask', async (req, b) => {
     transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: isDay(b.today) ? b.today : today(), db };
   try { return await require('./assistant').ask(uid, b, ctx); } catch (e) { if (e.status) fail(e.status, e.message); throw e; }
 });
+// A fault on someone's screen (a crash, or a promise nobody caught) is written to the log so it can be fixed.
+const one = (s, n) => String(s || '').replace(/\s+/g, ' ').slice(0, n);
+route('POST', '/api/client-error', (req, b) => {
+  authUser(req);
+  console.error(`screen ${one(b.path, 60)} | ${one(b.message, 300)} | ${one(b.stack, 500)}`);
+  return { ok: true };
+});
 // A screenshot of a credit score (a bureau's app or a bank's): the bureau, the score and the day. Nothing is saved.
 route('POST', '/api/read-score', async (req, b) => {
   authUser(req);
@@ -836,18 +843,31 @@ const server = http.createServer(async (req, res) => {
     return fs.createReadStream(file).pipe(res);
   }
   const send = (s, o) => { res.writeHead(s, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o)); };
+  // One line in the log for each request that was refused, and for each reading: what it was and how it came out.
+  // No names, descriptions or balances are written.
+  const began = Date.now();
+  let what = '';
   try {
     let raw = '', size = 0;
     for await (const c of req) { size += c.length; if (size > LIMIT) { res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' }); res.end('{"error":"That request is too large."}'); req.destroy(); return; } raw += c; }
     let body = {}; try { body = raw ? JSON.parse(raw) : {}; } catch { fail(400, 'That request is not valid JSON.'); }
     if (!body || typeof body !== 'object' || Array.isArray(body)) fail(400, 'That request is not valid JSON.');
+    if (typeof body.table === 'string') what = ` ${body.table.slice(0, 30)}.${String(body.action || '').slice(0, 12)}`;
     for (const r of routes) {
       const m = r.method === req.method && url.pathname.match(r.re);
-      if (m) return send(200, await r.fn(req, body, m.slice(1), url));
+      if (m) {
+        const out = await r.fn(req, body, m.slice(1), url);
+        if (/^\/api\/(read-|ask$)/.test(url.pathname) && out && process.env.NODE_ENV !== 'test') {
+          const c = out.statement && out.statement.check;
+          console.log(`done ${url.pathname} ${Date.now() - began}ms kind=${out.kind || '-'}${Array.isArray(out.lines) ? ` lines=${out.lines.length}` : ''}${Array.isArray(out.parts) ? ` parts=${out.parts.length}` : ''}${c ? ` adds_up=${c.adds_up} off=${c.off}` : ''}${out.score ? ' score=found' : ''}`);
+        }
+        return send(200, out);
+      }
     }
     send(404, { error: 'Not found' });
   } catch (e) {
     if (!(e instanceof HttpError)) console.error(e);
+    if (process.env.NODE_ENV !== 'test') console.error(`refused ${req.method} ${url.pathname}${what} ${e.status || 500} ${Date.now() - began}ms ${String(e instanceof HttpError ? e.message : 'Server error').replace(/\s+/g, ' ').slice(0, 200)}`);
     send(e.status || 500, { error: e instanceof HttpError ? e.message : 'Server error' });
   }
 });
