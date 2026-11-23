@@ -72,7 +72,7 @@ const parse = (s) => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})
 // anchorDay: the day of the month the bill belongs to, so one on the 31st returns to the 31st after a shorter month.
 function nextBill(date, frequency, anchorDay) {
   const d = parse(date); if (!d) return null;
-  const months = { monthly: 1, quarterly: 3, yearly: 12 }[frequency];
+  const months = { monthly: 1, bimonthly: 2, quarterly: 3, yearly: 12 }[frequency];
   if (months) { const day = anchorDay || d.getDate(); const n = new Date(d.getFullYear(), d.getMonth() + months, 1); n.setDate(Math.min(day, new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate())); return iso(n); }
   d.setDate(d.getDate() + (frequency === 'weekly' ? 7 : 14)); return iso(d);
 }
@@ -82,15 +82,23 @@ const money = (n) => new Intl.NumberFormat('en-CA', { style: 'currency', currenc
 function dueFor(rows, today, soon) {
   const out = [];
   const when = (d) => (d === today ? 'today' : 'in 2 days');
+  // A due date left in the past (nothing was recorded against it) still comes round again: the next one on or after today.
+  const coming = (date, frequency, anchorDate) => {
+    let d = String(date || '').slice(0, 10);
+    if (!parse(d)) return '';
+    const anchor = (parse(anchorDate) || parse(d)).getDate();
+    for (let i = 0; d && d < today && i < 600; i++) d = nextBill(d, frequency, anchor);
+    return d || '';
+  };
   for (const c of rows('credit_cards')) {
     if (c.is_gift_card || c.connected_payment_source || !(Number(c.balance) > 0)) continue;
-    const d = String(c.due_date || '').slice(0, 10);
+    const d = coming(c.due_date, 'monthly');
     if (d === today || d === soon) out.push({ id: `card:${c.id}:${d}:${d === today ? 0 : 2}`, date: d, title: `${c.name} payment due ${when(d)}`,
       body: `Balance ${money(c.balance)}${Number(c.minimum_payment) > 0 ? `, minimum ${money(c.minimum_payment)}` : ''}.`, url: '/cards' });
   }
   for (const l of rows('loans')) {
     if (l.on_card_id || l.connected_payment_source || !(Number(l.balance) > 0)) continue;
-    const d = String(l.next_payment_date || '').slice(0, 10);
+    const d = coming(l.next_payment_date, l.frequency || 'monthly', ['weekly', 'biweekly'].includes(l.frequency) ? null : l.start_date);
     if (d === today || d === soon) out.push({ id: `loan:${l.id}:${d}:${d === today ? 0 : 2}`, date: d, title: `${l.name} payment due ${when(d)}`,
       body: `${money(Math.min(Number(l.balance), Number(l.payment_amount) || Number(l.balance)))} to pay.`, url: '/loans' });
   }

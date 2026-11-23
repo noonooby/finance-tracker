@@ -340,3 +340,17 @@ test('scan: a purchase in another currency that is already saved is recognised, 
   assert.equal(otherCurrency.action, 'record');                                       // 10 EUR is not 10 USD
   assert.equal(plain.action, 'record');                                               // 10 CAD is not the 20 CAD already saved
 });
+
+test('due: a date left in the past comes round again (a card each month, a loan by its rhythm)', () => {
+  const on = (tables, day) => push.dueFor((t) => tables[t] || [], day, 'never').map((x) => x.date);
+  const card = { credit_cards: [{ id: 1, name: 'Visa', balance: 80, due_date: '2026-08-31' }] };
+  assert.deepEqual(on(card, '2026-09-30'), ['2026-09-30']);   // September has no 31st
+  assert.deepEqual(on(card, '2026-10-31'), ['2026-10-31']);   // and it returns to the 31st
+  assert.deepEqual(on(card, '2026-10-30'), []);
+  const loan = (more) => ({ loans: [{ id: 1, name: 'Car', balance: 500, payment_amount: 100, next_payment_date: '2026-10-02', ...more }] });
+  assert.deepEqual(on(loan({ frequency: 'biweekly' }), '2026-11-13'), ['2026-11-13']);
+  assert.deepEqual(on(loan({ frequency: 'monthly' }), '2026-12-02'), ['2026-12-02']);
+  assert.deepEqual(on(loan({ frequency: 'bimonthly' }), '2026-12-02'), ['2026-12-02']);
+  assert.deepEqual(on(loan({ frequency: 'bimonthly' }), '2026-11-02'), []);
+  assert.deepEqual(on(loan({}), '2026-11-02'), ['2026-11-02']);
+});

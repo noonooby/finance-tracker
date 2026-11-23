@@ -212,3 +212,22 @@ export async function recordSnapshot({ target, value, date, source, apply = true
   return api('/api/snapshot', { ...where, value: Math.round(n * 100) / 100, date, source, apply });
 }
 export const resolveSnapshot = (id, action) => api(`/api/snapshots/${id}/resolve`, { action });
+
+// A card's due date after a payment you record yourself. The payment settles the bill that is due when it is made
+// within 25 days before the due date (or after it): the due date then moves to the same day of the next month.
+// A card that pays itself keeps its date (the automatic payment moves it), unless the payment cleared the card.
+// -> the new due date (YYYY-MM-DD), or null when it stays as it is.
+export function cardDueAfterPayment(card, payDate, balanceAfter) {
+  const at = (v) => { const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
+  const due = at(card && card.due_date), paid = at(payDate);
+  if (!due || !paid || card.is_gift_card) return null;
+  if (card.connected_payment_source && card.connected_payment_source_id && round2(balanceAfter) > 0) return null;
+  if ((due - paid) / 864e5 > 25) return null;
+  const day = due.getDate();
+  let d = due;
+  do {
+    const last = new Date(d.getFullYear(), d.getMonth() + 2, 0).getDate();
+    d = new Date(d.getFullYear(), d.getMonth() + 1, Math.min(day, last));
+  } while (d <= paid);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}

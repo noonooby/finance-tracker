@@ -52,12 +52,12 @@ async function freshAccounts() {
 export async function processOverdueCreditCardPayments(creditCards, bankAccounts = []) {
   const todayString = localDate();
   const results = { processed: [], failed: [], skipped: [] };
-  if (!(creditCards || []).some((c) => c.connected_payment_source && !c.is_gift_card && c.due_date && String(c.due_date).split('T')[0] <= todayString && (Number(c.balance) || 0) > 0)) return results;
+  if (!(creditCards || []).some((c) => c.connected_payment_source && !c.is_gift_card && c.due_date && String(c.due_date).split('T')[0] <= todayString)) return results;
   const accounts = await freshAccounts();
 
   const ids = new Set((creditCards || []).map((c) => String(c.id)));
   const due = accounts.creditCards.filter((c) => ids.has(String(c.id)) && !c.is_gift_card && c.due_date
-    && String(c.due_date).split('T')[0] <= todayString && (Number(c.balance) || 0) > 0);
+    && String(c.due_date).split('T')[0] <= todayString);
 
   for (const start of due) {
     let card = start;

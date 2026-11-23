@@ -871,3 +871,18 @@ test('restoring a backup: everything comes back as it was, and a bad file change
   assert.equal(await get('bank_accounts', extra.id), null);
   assert.deepEqual(await dump(), before);
 });
+
+test('a card payment you record moves the due date to next month when it settles the bill that is due', () => {
+  const c = (more) => ({ id: 'c', name: 'Visa', balance: 300, due_date: '2026-11-28', ...more });
+  const f = M.cardDueAfterPayment;
+  assert.equal(f(c(), '2026-11-23', 100), '2026-12-28');                 // paid a few days before it is due
+  assert.equal(f(c(), '2026-11-30', 0), '2026-12-28');                   // paid late
+  assert.equal(f(c({ due_date: '2026-08-28' }), '2026-11-23', 0), '2026-11-28'); // a date long past: the next one after the payment
+  assert.equal(f(c({ due_date: '2027-01-31' }), '2027-01-20', 0), '2027-02-28'); // short month
+  assert.equal(f(c({ due_date: '2026-12-28' }), '2026-11-23', 100), null); // more than 25 days ahead: an extra payment
+  assert.equal(f(c({ due_date: null }), '2026-11-23', 0), null);
+  assert.equal(f(c({ is_gift_card: true }), '2026-11-23', 0), null);
+  const auto = { connected_payment_source: 'bank_account', connected_payment_source_id: 'b1' };
+  assert.equal(f(c(auto), '2026-11-23', 100), null);                     // the automatic payment will take the rest
+  assert.equal(f(c(auto), '2026-11-23', 0), '2026-12-28');               // nothing left for it to take
+});

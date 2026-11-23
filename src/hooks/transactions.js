@@ -1,7 +1,7 @@
 // Unified Transaction Hooks - Routes to specialized business logic based on transaction type
 
 import { useState, useCallback } from 'react';
-import { recordExpense, recordCardPayment, recordLoanPayment, paymentSourceOf } from '../utils/money';
+import { recordExpense, recordCardPayment, recordLoanPayment, paymentSourceOf, cardDueAfterPayment } from '../utils/money';
 import { logActivity } from '../utils/activityLogger';
 import { formatCurrency } from '../utils/helpers';
 import {
@@ -149,13 +149,15 @@ async function processCardPayment(formData, { creditCards, bankAccounts, loans }
   const amount = parseFloat(formData.amount);
   const { sourceType, sourceId, source, sourceName } = paymentSourceOf(formData, { bankAccounts, creditCards });
 
+  const nextDue = cardDueAfterPayment(card, formData.date, (Number(card.balance) || 0) - amount);
   const res = await recordCardPayment({
     cardId: card.id,
     amount,
     source,
     date: formData.date,
     description: `Payment for '${card.name}' from ${sourceName}`,
-    updates: [{ table: 'credit_cards', id: card.id, values: { last_payment_date: formData.date, last_payment_amount: amount } }],
+    updates: [{ table: 'credit_cards', id: card.id, values: { last_payment_date: formData.date, last_payment_amount: amount,
+      ...(nextDue ? { due_date: nextDue } : {}) } }],
     extra: {
       type: 'payment',
       category_id: formData.category || 'credit_card_payment',
@@ -207,7 +209,9 @@ async function processLoanPayment(formData, { loans, bankAccounts, creditCards }
   const recurring = loan.frequency && loan.frequency !== 'onetime';
   let nextPaymentDate = loan.next_payment_date;
   if (recurring) {
-    nextPaymentDate = predictNextDate(loan.next_payment_date, loan.frequency);
+    // The day of the month comes from the loan's start, so a short month does not shift later payments.
+    const startDay = loan.start_date ? Number(String(loan.start_date).slice(8, 10)) || undefined : undefined;
+    nextPaymentDate = predictNextDate(loan.next_payment_date, loan.frequency, startDay);
     const occurrencesCompleted = (loan.recurring_occurrences_completed || 0) + 1;
     if (loan.recurring_duration_type === 'occurrences' &&
         loan.recurring_occurrences_total &&
