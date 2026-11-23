@@ -69,7 +69,7 @@ export default function TransferForm({
           darkMode={darkMode}
           label="From Account *"
           value={transferData.fromAccount}
-          onChange={(e) => setTransferData({ ...transferData, fromAccount: e.target.value })}
+          onChange={(e) => setTransferData({ ...transferData, fromAccount: e.target.value, toAccount: String(transferData.toAccount) === String(e.target.value) ? '' : transferData.toAccount })}
           bankAccounts={bankAccounts}
         />
         <AccountSelect
@@ -77,7 +77,7 @@ export default function TransferForm({
           label="To Account *"
           value={transferData.toAccount}
           onChange={(e) => setTransferData({ ...transferData, toAccount: e.target.value })}
-          bankAccounts={bankAccounts}
+          bankAccounts={bankAccounts.filter(account => String(account.id) !== String(transferData.fromAccount))}
         />
       </div>
 

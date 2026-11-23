@@ -163,9 +163,12 @@ const buildActivityDetails = (activity, snapshot = {}) => {
     }
   }
 
-  if (snapshot.previousBalance !== undefined && snapshot.entity?.balance !== undefined) {
+  // Before and after: the balance the step ended on when it was recorded. Older entries only kept the balance before,
+  // so a line that would read the same on both sides is left out.
+  const after = snapshot.newBalance !== undefined ? snapshot.newBalance : snapshot.entity?.balance;
+  if (snapshot.previousBalance !== undefined && after !== undefined && Number(after) !== Number(snapshot.previousBalance)) {
     const prev = formatCurrency(snapshot.previousBalance);
-    const next = formatCurrency(snapshot.entity.balance);
+    const next = formatCurrency(after);
     if (prev && next) {
       details.push({ label: 'Balance', value: `${prev} → ${next}` });
     }
@@ -555,7 +558,6 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
             <option value="loan">Loans</option>
             <option value="bank_account">Bank Accounts</option>
             <option value="income">Income</option>
-            <option value="fund">Reserved Funds</option>
             <option value="category_budget">Category Budgets</option>
           </select>
 

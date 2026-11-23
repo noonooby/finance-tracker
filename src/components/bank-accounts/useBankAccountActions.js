@@ -283,18 +283,18 @@ export default function useBankAccountActions({
     if (saving) return;
 
     if (!transferData.fromAccount || !transferData.toAccount) {
-      showToast.error('Select both source and destination accounts');
+      showToast.error('Choose the account the money leaves and the one it goes to.');
       return;
     }
-    if (transferData.fromAccount === transferData.toAccount) {
-      showToast.error('Cannot transfer to the same account');
+    if (String(transferData.fromAccount) === String(transferData.toAccount)) {
+      showToast.error('Choose two different accounts.');
       return;
     }
 
     const rawAmount = parseFloat(transferData.amount);
     const amount = Math.round(rawAmount * 100) / 100;
     if (!Number.isFinite(amount) || amount <= 0) {
-      showToast.error('Enter a valid transfer amount');
+      showToast.error('Enter an amount above zero.');
       return;
     }
 

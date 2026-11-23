@@ -137,6 +137,7 @@ function clean(values) {
   const v = { ...values };
   for (const k of Object.keys(v)) if (!COL.test(k)) fail(400, 'Unknown field: ' + k);
   delete v._legs; // only /api/money writes the record of what a transaction moved
+  delete v._undo; // and the record of the plain fields it changed along the way
   return v;
 }
 // A purchase split across categories: 2 to 20 parts, each a positive amount, adding up to the purchase to the cent.
@@ -225,6 +226,7 @@ function updateRows(uid, tbl, filters, values, orGroups) {
   for (const r of selectRows(uid, { table: tbl, filters, or: orGroups })) {
     const n = { ...r, ...v, id: r.id, user_id: uid, updated_at: now() };
     if (r._legs) n._legs = r._legs;
+    if (r._undo) n._undo = r._undo;
     if (tbl === 'transactions' && ('splits' in v || 'amount' in v)) checkSplits(n);
     if (tbl === 'bills') checkBill(uid, n);
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), tbl, String(r.id), uid);
@@ -351,7 +353,23 @@ function money(uid, b) {
       }
       return v;
     });
-    for (const u of b.updates || []) updateRows(uid, u.table, [['id', 'eq', u.id]], u.values);
+    // Plain fields changed in the same step (a loan's next payment date, a card's last payment): what each was before is
+    // kept on the transaction, so undoing the transaction puts those back too.
+    const undo = [];
+    for (const u of b.updates || []) {
+      // In a money step a balance moves only by the step's own amounts, never by a field written alongside.
+      if (u.values && (MONEY_FIELDS[u.table] || []).some((f) => f in u.values)) fail(400, 'A balance cannot be set inside a payment. Record the amount instead.');
+      const was = selectRows(uid, { table: u.table, filters: [['id', 'eq', u.id]], limit: 1 })[0];
+      updateRows(uid, u.table, [['id', 'eq', u.id]], u.values);
+      if (!was || !u.values || typeof u.values !== 'object') continue;
+      const keys = Object.keys(u.values).filter((k) => COL.test(k) && k !== 'id' && k !== 'user_id' && !(MONEY_FIELDS[u.table] || []).includes(k));
+      if (keys.length) undo.push({ table: u.table, id: was.id, before: Object.fromEntries(keys.map((k) => [k, was[k] ?? null])), set: Object.fromEntries(keys.map((k) => [k, u.values[k] ?? null])) });
+    }
+    const line0 = rows.find((r) => r && r.type && r._legs) || rows.find((r) => r && r.type);
+    if (undo.length && line0) {
+      line0._undo = undo;
+      db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(line0), 'transactions', String(line0.id), uid);
+    }
     const result = { legs, rows, replaced: replaced.map(r => r.transaction.id) };
     if (key) db.prepare('INSERT INTO money_keys (user_id, k, result) VALUES (?,?,?)').run(uid, key, JSON.stringify(result));
     return result;
@@ -364,6 +382,20 @@ function reverseInner(uid, id, b = {}) {
     if (t.status === 'undone' || t.status === 'deleted') return { transaction: t, legs: [], repeated: true };
     // Undoing a line dated before the account's snapshot leaves today's balance as seen (the snapshot is the truth).
     const legs = applyLegs(uid, (t._legs || []).map(l => ({ ...l, delta: -l.delta })), t);
+    // Fields the step changed go back to what they were, unless something changed them again since.
+    for (const u of t._undo || []) {
+      if (!TABLES.has(u.table) || SERVER_ONLY.has(u.table)) continue;
+      const row = selectRows(uid, { table: u.table, filters: [['id', 'eq', u.id]], limit: 1 })[0];
+      if (!row) continue;
+      let changed = false;
+      for (const [k, v] of Object.entries(u.set || {})) {
+        if ((MONEY_FIELDS[u.table] || []).includes(k) || JSON.stringify(row[k] ?? null) !== JSON.stringify(v)) continue;
+        const was = (u.before || {})[k];
+        if (was == null) delete row[k]; else row[k] = was;
+        changed = true;
+      }
+      if (changed) db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify({ ...row, updated_at: now() }), u.table, String(row.id), uid);
+    }
     const n = { ...t, status: b.remove ? 'deleted' : 'undone', undone_at: now(), updated_at: now() };
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), 'transactions', String(id), uid);
     return { transaction: n, legs };

@@ -138,6 +138,9 @@ async function processExpense(formData, { creditCards, bankAccounts, categories 
   };
 }
 
+// The balance an account ended on in a saved money step (from what the server reports it moved).
+const balanceAfter = (res, table, id) => (res?.legs || []).find((l) => l.table === table && String(l.id) === String(id))?.after;
+
 // Card payment processing
 async function processCardPayment(formData, { creditCards, bankAccounts, loans }) {
   const card = creditCards?.find(c => String(c.id) === String(formData.paymentMethodId));
@@ -173,10 +176,11 @@ async function processCardPayment(formData, { creditCards, bankAccounts, loans }
       paymentAmount: amount,
       date: formData.date,
       previousBalance: card.balance,
+      newBalance: balanceAfter(res, 'credit_cards', card.id),
       paymentSource: sourceType,
       paymentSourceId: sourceId,
       paymentSourceName: sourceName,
-      paymentMethodName: card.name,
+      paymentMethodName: sourceName,
       transactionId,
       isManualPayment: true
     }
@@ -248,10 +252,11 @@ async function processLoanPayment(formData, { loans, bankAccounts, creditCards }
       paymentAmount: amount,
       date: formData.date,
       previousBalance: loan.balance,
+      newBalance: balanceAfter(res, 'loans', loan.id),
       paymentSource: sourceType,
       paymentSourceId: sourceId,
       paymentSourceName: sourceName,
-      paymentMethodName: loan.name,
+      paymentMethodName: sourceName,
       transactionId,
       nextPaymentDate
     }

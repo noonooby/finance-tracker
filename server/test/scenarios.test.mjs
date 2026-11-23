@@ -806,3 +806,33 @@ test('the payment form names its source account by kind and id, together or apar
   }
   assert.throws(() => src({ paymentSource: 'bank_account', paymentSourceId: 'gone' }), /no longer exists/);
 });
+
+test('undoing a payment also puts back the dates the payment moved, unless they were changed again since', async () => {
+  const src = await add('bank_accounts', { name: 'Undo Bank', balance: 3000 });
+  const mk = () => add('loans', { name: 'Undo loan', balance: 1000, payment_amount: 100, next_payment_date: '2026-12-01' });
+  const payIt = async (loan) => M.recordLoanPayment({ loanId: loan.id, amount: 100, source: `bank_account:${src.id}`, date: '2026-11-23',
+    updates: [{ table: 'loans', id: loan.id, values: { next_payment_date: '2027-01-01', last_payment_date: '2026-11-23' } }] }, await accounts());
+  const one = await mk();
+  const paid = await payIt(one);
+  let row = await get('loans', one.id);
+  assert.deepEqual([row.next_payment_date, row.last_payment_date], ['2027-01-01', '2026-11-23']);
+  await M.reverseTransaction(paid.transaction.id);
+  row = await get('loans', one.id);
+  assert.deepEqual([row.next_payment_date, row.last_payment_date ?? null], ['2026-12-01', null]);
+  await M.reverseTransaction(paid.transaction.id); // safe to repeat
+  assert.equal((await get('loans', one.id)).next_payment_date, '2026-12-01');
+  // The date was changed by hand after the payment: undo leaves that newer date alone.
+  const two = await mk();
+  const paid2 = await payIt(two);
+  await db.from('loans').update({ next_payment_date: '2027-02-15' }).eq('id', two.id);
+  await M.reverseTransaction(paid2.transaction.id);
+  row = await get('loans', two.id);
+  assert.deepEqual([row.next_payment_date, row.last_payment_date ?? null], ['2027-02-15', null]);
+  // A balance cannot be slipped in next to a payment, and nothing of that step is saved.
+  await assert.rejects(M.recordLoanPayment({ loanId: two.id, amount: 100, source: `bank_account:${src.id}`, date: '2026-11-23',
+    updates: [{ table: 'loans', id: two.id, values: { balance: 5 } }] }, await accounts()), /cannot be set inside a payment/);
+  assert.equal(Number((await get('loans', two.id)).balance), 1000);
+  // The browser cannot write the undo record itself.
+  const t = await add('transactions', { type: 'expense', amount: 1, date: '2026-11-23', description: 'x', status: 'active', _undo: [{ table: 'loans', id: two.id, before: { name: 'hacked' }, set: { name: 'Undo loan' } }] });
+  assert.equal((await get('transactions', t.id))._undo, undefined);
+});
