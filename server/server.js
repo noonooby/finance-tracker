@@ -172,6 +172,28 @@ function checkBill(uid, b) {
   const twin = selectRows(uid, { table: 'bills', filters: [['key', 'eq', b.key], ['status', 'eq', 'active']] }).find((x) => String(x.id) !== String(b.id));
   if (twin) fail(409, `${twin.name} is already tracked. Change that one instead.`);
 }
+// Figures on an account, card or loan are numbers: a balance may be below zero, the rest may not.
+const AMOUNTS = ['credit_limit', 'overdraft_limit', 'payment_amount', 'minimum_payment', 'interest_rate', 'annual_fee', 'autopay_fixed', 'principal'];
+function checkFigures(tbl, v) {
+  if (!MONEY_FIELDS[tbl]) return;
+  for (const f of MONEY_FIELDS[tbl]) {
+    if (!(f in v) || v[f] == null || v[f] === '') continue;
+    if (!Number.isFinite(Number(v[f]))) fail(400, 'Enter the balance as a number.');
+    v[f] = fromCents(cents(v[f]));
+  }
+  for (const f of AMOUNTS) {
+    if (!(f in v) || v[f] == null || v[f] === '') continue;
+    if (!Number.isFinite(Number(v[f])) || Number(v[f]) < 0) fail(400, `Enter ${f.replace(/_/g, ' ')} as a number, zero or more.`);
+  }
+}
+// Only one account is the main one: making an account the main one takes the mark off the others.
+function onePrimary(uid, row) {
+  if (!row || !row.is_primary) return;
+  for (const x of selectRows(uid, { table: 'bank_accounts', filters: [] })) {
+    if (String(x.id) === String(row.id) || !x.is_primary) continue;
+    db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify({ ...x, is_primary: false, updated_at: now() }), 'bank_accounts', String(x.id), uid);
+  }
+}
 // A category needs a name, and only one category of each kind (spending or income) may carry that name.
 function checkCategory(uid, c) {
   const name = String(c.name || '').trim().toLowerCase();
@@ -185,6 +207,7 @@ function insertRow(uid, tbl, values, upsertOn) {
   if (tbl === 'transactions') checkSplits(v);
   v.user_id = uid;
   if (tbl === 'categories') checkCategory(uid, v);
+  checkFigures(tbl, v);
   if (tbl === 'bills') {
     checkBill(uid, v);
     // A merchant you turned down earlier and now add yourself: that row becomes the tracked bill.
@@ -207,6 +230,7 @@ function insertRow(uid, tbl, values, upsertOn) {
   db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)').run(tbl, String(v.id), uid, JSON.stringify(v));
   for (const f of MONEY_FIELDS[tbl] || []) if (f in v) stamp(uid, tbl, v, f, values.balance_as_of);
   if (tbl === 'transactions') learnCategory(uid, v);
+  if (tbl === 'bank_accounts') onePrimary(uid, v);
   return v;
 }
 // ---------- learning categories ----------
@@ -235,6 +259,7 @@ function learnCategory(uid, t) {
 }
 function updateRows(uid, tbl, filters, values, orGroups) {
   const v = clean(values); delete v.user_id; delete v.id;
+  checkFigures(tbl, v);
   const out = [];
   // A plain edit that sets a balance is the user stating the figure (opening balance or a correction from the edit form).
   // Purchases, payments, income and transfers change balances only through /api/money.
@@ -258,6 +283,7 @@ function updateRows(uid, tbl, filters, values, orGroups) {
     // Stating a balance (even the same figure) confirms it as of today, or as of the date given.
     for (const f of MONEY_FIELDS[tbl] || []) if (f in v) stamp(uid, tbl, n, f, values.balance_as_of);
     if (tbl === 'transactions' && ('category_id' in v || 'splits' in v)) learnCategory(uid, n);
+    if (tbl === 'bank_accounts' && 'is_primary' in v) onePrimary(uid, n);
     out.push(n);
   }
   return out;

@@ -1097,3 +1097,28 @@ test('removing an account turns off automatic payment on the loans and cards tha
   assert.deepEqual(await src('credit_cards', c1.id), [null, null]);
   assert.deepEqual(await src('loans', l2.id), ['bank_account', stays.id]);
 });
+
+test('only one account is the main one', async () => {
+  const mains = async () => ((await db.from('bank_accounts').select('*')).data || []).filter((a) => a.is_primary).map((a) => a.name);
+  const a = await add('bank_accounts', { name: 'Main A', balance: 0, is_primary: true });
+  assert.deepEqual(await mains(), ['Main A']);
+  const b = await add('bank_accounts', { name: 'Main B', balance: 0, is_primary: true });
+  assert.deepEqual(await mains(), ['Main B']);
+  await db.from('bank_accounts').update({ is_primary: true }).eq('id', a.id);
+  assert.deepEqual(await mains(), ['Main A']);
+  await db.from('bank_accounts').update({ name: 'Main B, renamed' }).eq('id', b.id); // an edit that does not touch the mark
+  assert.deepEqual(await mains(), ['Main A']);
+});
+
+test('figures on accounts, cards and loans must be numbers', async () => {
+  const ins = async (t, v) => (await db.from(t).insert(v).select().single());
+  assert.match((await ins('bank_accounts', { name: 'Bad', balance: 'lots' })).error.message, /balance as a number/);
+  assert.match((await ins('credit_cards', { name: 'Bad', balance: 10, credit_limit: -5 })).error.message, /credit limit/);
+  assert.match((await ins('loans', { name: 'Bad', balance: 10, payment_amount: 'x' })).error.message, /payment amount/);
+  const ok = (await ins('bank_accounts', { name: 'Fine', balance: '12.345', overdraft_limit: '' })).data;
+  assert.equal(ok.balance, 12.35);                       // text from a form is kept as a number, to the cent
+  const neg = (await ins('bank_accounts', { name: 'Overdrawn', balance: -40 })).data;
+  assert.equal(neg.balance, -40);                        // a balance may be below zero
+  assert.match((await db.from('bank_accounts').update({ balance: 'NaN' }).eq('id', ok.id)).error.message, /balance as a number/);
+  assert.equal((await get('bank_accounts', ok.id)).balance, 12.35);
+});
