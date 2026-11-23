@@ -216,12 +216,14 @@ export default function useBankAccountActions({
 
       return { accountName: savedAccount.name, isNew: !editingItem };
     });
+    // Also after a refused save, so the form can be corrected and saved again.
+    setSaving(false);
 
     if (result.success) {
       const action = result.data.isNew ? 'added' : 'updated';
       showToast.success(`Bank account '${result.data.accountName}' ${action}`);
     } else {
-      showToast.error(`Failed to save account: ${result.error.message}`);
+      showToast.error(`Not saved. ${result.error?.message || 'Try again.'}`);
     }
   };
 
