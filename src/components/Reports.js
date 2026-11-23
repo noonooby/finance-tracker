@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, 
   FileText, 
-  Settings, 
   Save, 
   Star, 
   Trash2, 
@@ -36,7 +35,7 @@ export default function Reports({ darkMode, categories }) {
   const [transactions, setTransactions] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState('quick'); // 'quick' or 'builder'
+  const activeView = 'quick';
   const [activeTemplate, setActiveTemplate] = useState('monthly'); // 'monthly', 'category', 'payment', 'cashflow', 'annual'
   
   // Template management state
@@ -539,35 +538,6 @@ export default function Reports({ darkMode, categories }) {
         </div>
       )}
 
-      {/* View Selector */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setActiveView('quick')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
-            activeView === 'quick'
-              ? 'bg-accent text-accent-contrast'
-              : 'bg-surface-2 hover:bg-line/60'
-          }`}
-        >
-          <FileText size={18} />
-          Quick Reports
-        </button>
-        <button
-          onClick={() => setActiveView('builder')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
-            activeView === 'builder'
-              ? 'bg-accent text-accent-contrast'
-              : 'bg-surface-2 hover:bg-line/60'
-          }`}
-          disabled
-        >
-          <Settings size={18} />
-          Report Builder
-          <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded">Coming Soon</span>
-        </button>
-      </div>
-
-      {/* Quick Reports View */}
       {activeView === 'quick' && (
         <div className="space-y-6">
           {/* Template Selector */}
@@ -715,28 +685,6 @@ export default function Reports({ darkMode, categories }) {
         </div>
       )}
 
-      {/* Report Builder View */}
-      {activeView === 'builder' && (
-        <div className={`bg-surface rounded-lg p-8 text-center`}>
-          <div className="max-w-md mx-auto">
-            <Settings size={64} className="mx-auto mb-4 text-muted" />
-            <h2 className="text-2xl font-bold mb-2">Report Builder Coming Soon</h2>
-            <p className="text-muted mb-4">
-              The drag-and-drop report builder is under development. You'll soon be able to create fully customized reports with your choice of widgets, charts, and data visualizations.
-            </p>
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-left">
-              <h3 className="font-semibold mb-2">Planned Features:</h3>
-              <ul className="text-sm space-y-1 text-fg">
-                <li>Drag and drop widgets</li>
-                <li>Resize and rearrange elements</li>
-                <li>Custom chart configurations</li>
-                <li>Save report templates</li>
-                <li>Schedule automated reports</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

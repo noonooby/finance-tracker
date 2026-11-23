@@ -24,7 +24,7 @@ export default function CategoryPieChart({ data, darkMode }) {
       const data = payload[0].payload;
       return (
         <div className={`bg-surface border-line p-3 rounded-2xl shadow-lg border`}>
-          <p className="font-medium">{data.icon} {data.name}</p>
+          <p className="font-medium">{data.name}</p>
           <p className="text-sm text-green-600 font-semibold">{formatCurrency(data.value)}</p>
           <p className="text-xs text-muted">{((data.value / chartData.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%</p>
         </div>
@@ -56,7 +56,7 @@ export default function CategoryPieChart({ data, darkMode }) {
             verticalAlign="bottom" 
             height={40}
             wrapperStyle={{ paddingTop: '10px' }}
-            formatter={(value, entry) => `${entry.payload.icon} ${value}`}
+            formatter={(value) => value}
           />
         </PieChart>
       </ResponsiveContainer>

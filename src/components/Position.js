@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { server } from '../utils/server';
-import { position, monthEnd, STALE_DAYS } from '../utils/finance';
+import { position, monthEndFor, STALE_DAYS } from '../utils/finance';
 import { formatCurrency, formatDate } from '../utils/helpers';
 import UpdateValue from './position/UpdateValue';
 import Checks from './position/Checks';
@@ -42,7 +42,6 @@ function Sparkline({ data }) {
 
 export default function Position({ darkMode }) {
   const d = useFinanceData();
-  const schedules = d.incomeSchedules;
   const [points, setPoints] = useState([]);
   useEffect(() => {
     if (d.dataLoading) return;
@@ -50,7 +49,7 @@ export default function Position({ darkMode }) {
   }, [d.dataLoading, d.bankAccounts, d.loans, d.creditCards, d.investments, d.assets]);
 
   const p = useMemo(() => position({ bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets }), [d]);
-  const m = useMemo(() => monthEnd({ liquid: p.liquid, incomeSchedules: schedules, loans: d.loans, creditCards: d.creditCards }), [p.liquid, schedules, d.loans, d.creditCards]);
+  const m = useMemo(() => monthEndFor(d, p.liquid), [d, p.liquid]);
   const hist = useMemo(() => history(points, new Set(d.creditCards.filter((c) => c.is_gift_card).map((c) => String(c.id)))), [points, d.creditCards]);
   const accounts = { bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments };
 
@@ -89,7 +88,7 @@ export default function Position({ darkMode }) {
         <dl className="mt-2 grid grid-cols-2 gap-y-1 text-sm">
           <dt className={muted}>Spendable now (bank and cash)</dt><dd className="text-right tabular-nums">{formatCurrency(m.now)}</dd>
           <dt className={muted}>Pay coming in</dt><dd className="text-right tabular-nums text-green-600">+{formatCurrency(m.coming)}</dd>
-          <dt className={muted}>Loan and card payments due</dt><dd className="text-right tabular-nums text-red-600">-{formatCurrency(m.going)}</dd>
+          <dt className={muted}>Loan, card and bill payments due</dt><dd className="text-right tabular-nums text-red-600">-{formatCurrency(m.going)}</dd>
           <dt className="font-semibold">Left at month end</dt><dd className={`text-right font-semibold tabular-nums ${m.atEnd < 0 ? 'text-red-600' : ''}`}>{formatCurrency(m.atEnd)}</dd>
         </dl>
       </section>

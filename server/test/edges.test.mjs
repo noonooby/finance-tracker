@@ -283,3 +283,44 @@ test('due: nothing set up means nothing due', () => {
   assert.deepEqual(due({}), []);
   assert.deepEqual(due({ credit_cards: [], loans: [], bills: [], transactions: [] }), []);
 });
+
+// ---------- reports (the app's own code, loaded as-is) ----------
+import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
+const root = path.join(here, '..', '..');
+const cache = path.join(root, 'node_modules', '.cache');
+fs.mkdirSync(cache, { recursive: true });
+const lib = fs.mkdtempSync(path.join(cache, 'finance-edges-'));
+for (const f of ['reportHelpers.js', 'helpers.js', 'spending.js', 'categoryRules.js']) {
+  const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
+  fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
+}
+const R = await import(pathToFileURL(path.join(lib, 'reportHelpers.mjs')));
+test.after(() => fs.rmSync(lib, { recursive: true, force: true }));
+
+test('report periods: last month is the calendar month before, on any day of the month', () => {
+  const on = (y, m, d) => R.getDateRangePreset('lastMonth', new Date(y, m - 1, d));
+  assert.deepEqual(on(2026, 3, 31), { startDate: '2026-02-01', endDate: '2026-02-28' });
+  assert.deepEqual(on(2026, 3, 1), { startDate: '2026-02-01', endDate: '2026-02-28' });
+  assert.deepEqual(on(2026, 5, 31), { startDate: '2026-04-01', endDate: '2026-04-30' });
+  assert.deepEqual(on(2026, 1, 15), { startDate: '2025-12-01', endDate: '2025-12-31' });
+  assert.deepEqual(on(2028, 3, 30), { startDate: '2028-02-01', endDate: '2028-02-29' });
+  assert.deepEqual(R.getDateRangePreset('thisMonth', new Date(2026, 1, 10)), { startDate: '2026-02-01', endDate: '2026-02-28' });
+  assert.deepEqual(R.getDateRangePreset('thisYear', new Date(2026, 6, 4)), { startDate: '2026-01-01', endDate: '2026-12-31' });
+  assert.deepEqual(R.getDateRangePreset('allTime', new Date(2026, 10, 23)), { startDate: '2000-01-01', endDate: '2026-11-23' });
+  assert.deepEqual(R.getDateRangePreset('nonsense', new Date(2026, 10, 23)), R.getDateRangePreset('last30', new Date(2026, 10, 23)));
+});
+
+test('reports count a transaction once: undone and replaced ones are left out, and the last day of the range is in', () => {
+  const tx = (more) => ({ type: 'expense', amount: 10, date: '2026-11-23', status: 'active', ...more });
+  const list = [tx({ id: 1 }), tx({ id: 2, status: 'undone' }), tx({ id: 3, status: 'deleted' }), tx({ id: 4, date: '2026-11-23T18:30:00.000Z' }),
+    tx({ id: 5, date: '2026-11-24' }), tx({ id: 6, date: '2026-10-31' }), tx({ id: 7, date: '2026-11-01' })];
+  const got = R.filterTransactions(list, { startDate: '2026-11-01', endDate: '2026-11-23' }).map((t) => t.id);
+  assert.deepEqual(got, [1, 4, 7]);
+});
+
+test('chart axis money stays readable for small and large amounts', () => {
+  assert.deepEqual([0, 40, 149.6, 999, 1000, 1250, 9960, 15000, 125400, -75, -2500].map(R.axisMoney),
+    ['$0', '$40', '$150', '$999', '$1k', '$1.3k', '$10k', '$15k', '$125k', '-$75', '-$2.5k']);
+  assert.equal(R.axisMoney('abc'), '$0');
+});

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronRight, Camera, AlertTriangle, CheckCircle2, Repeat, Hand, Check } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { api } from '../utils/server';
-import { position, monthEnd, monthlyCost, upcoming } from '../utils/finance';
+import { position, monthEndFor, monthlyCost, upcoming } from '../utils/finance';
 import { budgetMonth, monthOf, findRecurring } from '../utils/spending';
 import { formatCurrency, formatDate, parseDay } from '../utils/helpers';
 import { Card, Section, Stat, Badge, Button } from './shared/ui';
@@ -32,7 +32,7 @@ export default function Dashboard() {
 
   const today = useMemo(() => new Date(), []);
   const p = useMemo(() => position({ bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets }, today), [d, today]);
-  const m = useMemo(() => monthEnd({ liquid: p.liquid, incomeSchedules: schedules, loans: d.loans, creditCards: d.creditCards, bills: d.bills, transactions: d.transactions }, today), [p.liquid, schedules, d.loans, d.creditCards, d.bills, d.transactions, today]);
+  const m = useMemo(() => monthEndFor(d, p.liquid, today), [d, p.liquid, today]);
   const cost = useMemo(() => monthlyCost({ creditCards: d.creditCards, loans: d.loans, bankAccounts: d.bankAccounts }, today), [d.creditCards, d.loans, d.bankAccounts, today]);
   const due = useMemo(() => upcoming({ creditCards: d.creditCards, loans: d.loans, bankAccounts: d.bankAccounts, bills: d.bills, transactions: d.transactions }, today, 30), [d.creditCards, d.loans, d.bankAccounts, d.bills, d.transactions, today]);
   const budgets = useMemo(() => budgetMonth(d.transactions, d.budgets, d.categories, monthOf(today), today), [d.transactions, d.budgets, d.categories, today]);

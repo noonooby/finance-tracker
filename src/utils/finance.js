@@ -134,6 +134,10 @@ export function monthEnd({ liquid, incomeSchedules = [], loans = [], creditCards
   return { end, now: round2(liquid), coming: round2(coming), going: round2(going), atEnd: round2(liquid + coming - going) };
 }
 
+// The month-end figure for the app's loaded data. Every screen that shows it uses this, so they always agree.
+export const monthEndFor = (d, liquid, today = new Date()) =>
+  monthEnd({ liquid, incomeSchedules: d.incomeSchedules, loans: d.loans, creditCards: d.creditCards, bills: d.bills, transactions: d.transactions }, today);
+
 // The rate a card charges today: a promo rate while it lasts, otherwise the purchase rate.
 export function cardRate(card, today = new Date()) {
   const t = iso(today);

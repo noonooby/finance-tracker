@@ -78,7 +78,8 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
           .order('created_at', { ascending: false });
         
         if (error) throw error;
-        return results || [];
+        // A transaction replaced by an edit or removed is kept by the server only as a record; no screen shows or counts it.
+        return (results || []).filter((r) => !(tableName === 'transactions' && r.status === 'deleted'));
       }
 
       case 'get': {

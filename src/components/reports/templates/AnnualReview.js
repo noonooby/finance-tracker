@@ -14,7 +14,7 @@ import {
   formatCurrency
 } from '../../../utils/reportHelpers';
 import { startOfYear, endOfYear, subYears, format } from 'date-fns';
-import { parseDay } from '../../../utils/helpers';
+import { parseDay, formatDate } from '../../../utils/helpers';
 
 export default function AnnualReview({ 
   darkMode, 
@@ -160,7 +160,7 @@ export default function AnnualReview({
               ))}
             </select>
             <p className="text-sm text-muted">
-              {new Date(filters.startDate).toLocaleDateString()} - {new Date(filters.endDate).toLocaleDateString()}
+              {formatDate(filters.startDate)} - {formatDate(filters.endDate)}
             </p>
           </div>
         </div>

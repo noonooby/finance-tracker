@@ -14,7 +14,7 @@ import {
   getDateRangePreset,
   formatCurrency
 } from '../../../utils/reportHelpers';
-import { parseDay } from '../../../utils/helpers';
+import { parseDay, formatDate } from '../../../utils/helpers';
 
 export default function MonthlySummary({ 
   darkMode, 
@@ -106,7 +106,7 @@ export default function MonthlySummary({
         <div>
           <h2 className="text-2xl font-bold">Monthly Summary</h2>
           <p className="text-sm text-muted">
-            {new Date(filters.startDate).toLocaleDateString()} - {new Date(filters.endDate).toLocaleDateString()}
+            {formatDate(filters.startDate)} - {formatDate(filters.endDate)}
           </p>
         </div>
         <div className="flex gap-2">
@@ -329,7 +329,7 @@ export default function MonthlySummary({
                     className={`border-b border-line`}
                   >
                     <td className="py-2 px-3 whitespace-nowrap">
-                      {parseDay(transaction.date).toLocaleDateString()}
+                      {formatDate(transaction.date)}
                     </td>
                     <td className="py-2 px-3">
                       <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${

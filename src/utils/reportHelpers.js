@@ -4,7 +4,8 @@ import { categoryParts } from './spending';
  * Data processing and aggregation utilities for reports
  */
 
-import { format, startOfMonth, endOfMonth, subDays, startOfYear, endOfYear, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, subDays, subMonths, startOfYear, endOfYear, parseISO } from 'date-fns';
+import { formatCurrency as appCurrency } from './helpers';
 
 /**
  * Filter transactions based on report filters
@@ -13,13 +14,13 @@ export const filterTransactions = (transactions, filters) => {
   let filtered = [...transactions];
 
   // Filter out undone transactions
-  filtered = filtered.filter(t => t.status !== 'undone');
+  filtered = filtered.filter(t => t.status !== 'undone' && t.status !== 'deleted');
 
   // Date range filter
   if (filters.startDate && filters.endDate) {
     // Simple date comparison (works with ISO format YYYY-MM-DD)
     filtered = filtered.filter(t => {
-      const transactionDateStr = t.date;
+      const transactionDateStr = String(t.date || '').slice(0, 10);
       return transactionDateStr >= filters.startDate && transactionDateStr <= filters.endDate;
     });
   }
@@ -285,8 +286,8 @@ export const groupByTimePeriod = (transactions, period = 'daily') => {
 /**
  * Get date range presets
  */
-export const getDateRangePreset = (preset) => {
-  const now = new Date();
+export const getDateRangePreset = (preset, today = new Date()) => {
+  const now = today;
   let start, end;
 
   switch (preset) {
@@ -299,8 +300,8 @@ export const getDateRangePreset = (preset) => {
       end = endOfMonth(now);
       break;
     case 'lastMonth':
-      start = startOfMonth(subDays(now, 30));
-      end = endOfMonth(subDays(now, 30));
+      start = startOfMonth(subMonths(now, 1));
+      end = endOfMonth(subMonths(now, 1));
       break;
     case 'last3Months':
       start = subDays(now, 90);
@@ -311,7 +312,7 @@ export const getDateRangePreset = (preset) => {
       end = endOfYear(now);
       break;
     case 'allTime':
-      start = new Date('2000-01-01');
+      start = new Date(2000, 0, 1);
       end = now;
       break;
     default:
@@ -325,14 +326,15 @@ export const getDateRangePreset = (preset) => {
   };
 };
 
-/**
- * Format currency
- */
-export const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD'
-  }).format(amount);
+// Money as the rest of the app shows it.
+export const formatCurrency = (amount) => appCurrency(amount);
+
+// Short money for a chart axis: $850, $1.2k, $15k.
+export const axisMoney = (value) => {
+  const v = Number(value) || 0, a = Math.abs(v), sign = v < 0 ? '-' : '';
+  if (a < 1000) return `${sign}$${Math.round(a)}`;
+  const k = a / 1000;
+  return `${sign}$${k < 10 && Math.round(k * 10) % 10 ? k.toFixed(1) : Math.round(k)}k`;
 };
 
 /**

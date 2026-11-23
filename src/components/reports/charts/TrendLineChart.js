@@ -1,7 +1,7 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Activity } from 'lucide-react';
-import { formatCurrency } from '../../../utils/reportHelpers';
+import { formatCurrency, axisMoney } from '../../../utils/reportHelpers';
 
 export default function TrendLineChart({ data, darkMode, dataKeys = [] }) {
   if (!data || data.length === 0) {
@@ -57,7 +57,7 @@ export default function TrendLineChart({ data, darkMode, dataKeys = [] }) {
         <YAxis 
           stroke={darkMode ? '#9CA3AF' : '#6B7280'}
           style={{ fontSize: '12px' }}
-          tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+          tickFormatter={axisMoney}
         />
         <Tooltip content={<CustomTooltip />} />
         <Legend />
