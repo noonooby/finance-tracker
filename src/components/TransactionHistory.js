@@ -3,6 +3,7 @@ import { Save, FolderOpen } from 'lucide-react';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import { reverseTransaction } from '../utils/money';
+import EditTransaction from './transactions/EditTransaction';
 import AddTransaction from './AddTransaction';
 import {
   getAllSavedFilters,
@@ -330,6 +331,7 @@ export default function TransactionHistory({
     }
   };
 
+  const [editing, setEditing] = useState(null);
   // === CRITICAL FINANCIAL LOGIC (STAYS HERE - DO NOT EXTRACT) ===
   // Money goes back through the server: exactly what the transaction moved, on the same accounts.
   // A transaction with no recorded legs moved nothing through this path, so it is only marked.
@@ -405,6 +407,10 @@ export default function TransactionHistory({
 
   return (
     <div className="space-y-4">
+      {editing && (
+        <EditTransaction transaction={editing} categories={categories} bankAccounts={bankAccounts} creditCards={creditCards} loans={loans}
+          onClose={() => setEditing(null)} onSaved={async () => { await onUpdate(); await loadTransactions(); }} />
+      )}
       {/* Add Transaction Modal */}
       {showAddModal && (
         <AddTransaction
@@ -528,6 +534,7 @@ export default function TransactionHistory({
               transaction={transaction}
               darkMode={darkMode}
               onDelete={handleDelete}
+              onEdit={setEditing}
             />
           ))
         )}

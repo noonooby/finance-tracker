@@ -1354,3 +1354,24 @@ test('charges to check: far above the usual, or the same charge twice in a day',
   assert.deepEqual(c.map((x) => [x.kind, x.title, x.amount, x.usual || x.count]), [['double', 'Parking Lot', 15, 2], ['unusual', 'Hydro One', 190, 82]]);
   assert.deepEqual(P.chargesToCheck(tx, today, [c[0].id]).map((x) => x.kind), ['unusual']);
 });
+
+test('changing a purchase: the old line is taken back and the new one recorded in one step', async () => {
+  const chq = await add('bank_accounts', { name: 'Edit chequing', balance: 500 });
+  const visa = await add('credit_cards', { name: 'Edit visa', balance: 100, credit_limit: 1000 });
+  const accounts = { bankAccounts: [chq], creditCards: [visa] };
+  const first = await M.recordExpense({ amount: 40, source: `bank_account:${chq.id}`, date: '2026-11-20', description: 'Edit shop' }, accounts);
+  assert.equal((await get('bank_accounts', chq.id)).balance, 460);
+  // Wrong amount and wrong account: it was 45 on the card.
+  const second = await M.replaceTransaction(first.transaction.id, () => M.recordExpense({ amount: 45, source: `credit_card:${visa.id}`, date: '2026-11-21', description: 'Edit shop' }, accounts));
+  assert.deepEqual([(await get('bank_accounts', chq.id)).balance, (await get('credit_cards', visa.id)).balance], [500, 145]);
+  assert.equal((await get('transactions', first.transaction.id)).status, 'deleted');
+  assert.deepEqual([second.transaction.amount, second.transaction.date, second.transaction.status], [45, '2026-11-21', 'active']);
+  // A change that cannot be saved leaves the old line and the balances as they were.
+  await assert.rejects(M.replaceTransaction(second.transaction.id, () => M.recordExpense({ amount: 45, source: `credit_card:${visa.id}`, date: '2026-02-31', description: 'Edit shop' }, accounts)), /does not exist/);
+  assert.deepEqual([(await get('transactions', second.transaction.id)).status, (await get('credit_cards', visa.id)).balance], ['active', 145]);
+  // The description and category change in place; the amount of a line that moved money does not.
+  assert.equal((await db.from('transactions').update({ description: 'Edit shop renamed', notes: 'gift' }).eq('id', second.transaction.id)).error, null);
+  assert.match((await db.from('transactions').update({ amount: 1 }).eq('id', second.transaction.id)).error.message, /moved money/);
+  await api(`/api/transactions/${second.transaction.id}/reverse`, {});
+  await db.from('bank_accounts').delete().eq('id', chq.id); await db.from('credit_cards').delete().eq('id', visa.id);
+});

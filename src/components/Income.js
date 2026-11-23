@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Plus, X, ListFilter, Zap, Calendar, Pause, Play, Trash2, Camera } from 'lucide-react';
+import { Plus, X, ListFilter, Zap, Calendar, Pause, Play, Trash2, Camera, Pencil } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, predictNextDate } from '../utils/helpers';
 import { api } from '../utils/server';
+import ScheduleEdit from './income/ScheduleEdit';
 import { formatFrequency } from '../utils/sentenceCase';
 import { processDueIncomeSchedules, getIncomeSchedules, toggleIncomeSchedule, deleteIncomeSchedule } from '../utils/schedules';
 import useAsyncAction from '../hooks/useAsyncAction';
@@ -110,6 +111,7 @@ export default function Income({
   // A pay slip or payroll screenshot fills the form: who pays, how much, when, and which accounts it lands in.
   // Nothing is saved until you press the button below.
   const [readingPay, setReadingPay] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(null);
   const [payNote, setPayNote] = useState('');
   const readPaySlip = async (e) => {
     const file = e.target.files && e.target.files[0];
@@ -622,6 +624,14 @@ export default function Income({
                       </div>
                       <div className="flex gap-1">
                         <button
+                          onClick={() => setEditingSchedule(editingSchedule === schedule.id ? null : schedule.id)}
+                          className="p-2 hover:bg-line/60 rounded"
+                          title="Change schedule"
+                          aria-label={`Change the pay schedule for ${schedule.source}`}
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
                           onClick={() => handleToggleSchedule(schedule.id, !schedule.is_active)}
                           className={`p-2 hover:bg-line/60 rounded`}
                           title={schedule.is_active ? 'Pause schedule' : 'Resume schedule'}
@@ -637,6 +647,10 @@ export default function Income({
                         </button>
                       </div>
                     </div>
+                    {editingSchedule === schedule.id && (
+                      <ScheduleEdit schedule={schedule} bankAccounts={bankAccounts} onCancel={() => setEditingSchedule(null)}
+                        onSaved={async () => { setEditingSchedule(null); await loadSchedules(); if (onUpdate) await onUpdate(); }} />
+                    )}
                   </div>
                 );
               })}

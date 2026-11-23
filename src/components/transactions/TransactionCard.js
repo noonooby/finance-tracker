@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { Trash2, TrendingUp, TrendingDown, DollarSign, Pencil } from 'lucide-react';
 import { parseDay } from '../../utils/helpers';
 
 /**
@@ -10,7 +10,8 @@ import { parseDay } from '../../utils/helpers';
 export default function TransactionCard({
   transaction,
   darkMode,
-  onDelete
+  onDelete,
+  onEdit
 }) {
   const isUndone = transaction.status === 'undone';
   
@@ -191,6 +192,16 @@ export default function TransactionCard({
             {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
           </p>
           
+          {onEdit && !isUndone && transaction.status !== 'deleted' && (
+            <button
+              onClick={() => onEdit(transaction)}
+              className="p-2 rounded-lg hover:bg-surface-2 text-muted"
+              title="Change"
+              aria-label={`Change ${transaction.description || 'this line'}`}
+            >
+              <Pencil size={18} />
+            </button>
+          )}
           <button
             onClick={() => onDelete(transaction)}
             className={`p-2 rounded-lg hover:bg-surface-2 text-red-600`}
