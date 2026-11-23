@@ -953,3 +953,12 @@ test('a plain edit cannot change the amount, kind, account or status of a transa
   await M.reverseTransaction(id);
   assert.equal(Number((await get('bank_accounts', bank.id)).balance), 500);
 });
+
+test('money is recorded on a real day', async () => {
+  const bank = await add('bank_accounts', { name: 'Date Bank', balance: 100 });
+  const spend = async (date) => M.recordExpense({ amount: 1, source: `bank_account:${bank.id}`, date, description: 'Date test' }, await accounts());
+  for (const bad of ['2026-02-31', '2026-13-01', 'yesterday', '23/11/2026']) await assert.rejects(spend(bad), /does not exist/);
+  assert.equal(Number((await get('bank_accounts', bank.id)).balance), 100);
+  assert.equal((await spend('2028-02-29')).transaction.date, '2028-02-29');
+  assert.match((await spend(undefined)).transaction.date, /^\d{4}-\d{2}-\d{2}$/);
+});

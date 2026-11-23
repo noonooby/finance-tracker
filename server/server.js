@@ -39,7 +39,13 @@ const SERVER_ONLY = new Set(['balance_points', 'snapshots', 'push_subscriptions'
 // The user's calendar day (balances are dated by it). APP_TZ defaults to Toronto, like the Telegram bot.
 const APP_TZ = process.env.APP_TZ || 'America/Toronto';
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: APP_TZ });
-const isDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
+// A real calendar day written YYYY-MM-DD (February 31st is not one).
+const isDay = (d) => {
+  if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const [y, m, day] = d.split('-').map(Number);
+  const x = new Date(Date.UTC(y, m - 1, day));
+  return x.getUTCFullYear() === y && x.getUTCMonth() === m - 1 && x.getUTCDate() === day;
+};
 
 class HttpError extends Error { constructor(s, m) { super(m); this.status = s; } }
 const fail = (s, m) => { throw new HttpError(s, m); };
@@ -357,6 +363,11 @@ function money(uid, b) {
     // replace: an edit undoes the old transaction in the same step, so a failed edit leaves the old one as it was
     const replaced = (b.replace || []).map(id => reverseInner(uid, String(id), { remove: true }));
     const line = ((b.rows || []).find(x => x.table === 'transactions') || {}).values;
+    // Money is recorded on a real day; with no date given it is today.
+    if (line) {
+      if (line.date == null || line.date === '') line.date = today();
+      else if (!isDay(String(line.date).slice(0, 10))) fail(400, 'That date does not exist. Choose the day it happened.');
+    }
     const legs = applyLegs(uid, b.legs, line);
     const rows = (b.rows || []).map(({ table, values }) => {
       const v = insertRow(uid, table, values);
