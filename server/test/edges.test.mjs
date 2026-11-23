@@ -493,3 +493,24 @@ test('credit score from a picture: only a real score and a real past day are pas
   assert.equal(reader.planScore({ score: 700, date: '2026-02-30' }, '2026-11-23').date, null);
   assert.equal(reader.planScore(null, '2026-11-23').score, null);
 });
+
+test('a short note names the account: one clear match, or none', () => {
+  const reader = mod('reader.js');
+  const all = [
+    { id: 'r', _type: 'credit_card', name: 'Rogers Mastercard', last4: '4321' },
+    { id: 't', _type: 'credit_card', name: 'TD Visa', last4: '9876' },
+    { id: 'c', _type: 'bank_account', name: 'TD Chequing', institution: 'TD', last4: '1111' },
+    { id: 's', _type: 'bank_account', name: 'Savings', institution: 'Tangerine' },
+  ];
+  const id = (n, list = all) => (reader.noteAccount(n, list) || {}).id || null;
+  assert.deepEqual(['rogers', 'Rogers credit card', 'this is my rogers', 'rog', 'ending 4321', 'td credit card', 'td chequing', 'tangerine', 'td visa'].map((n) => id(n)), ['r', 'r', 'r', 'r', 'r', 't', 'c', 's', 't']);
+  assert.deepEqual(['td', 'credit card', 'only the grocery lines', '', 'visa mastercard'].map((n) => id(n)), [null, null, null, null, null]);
+  assert.equal(id('credit card', [all[0], all[2]]), 'r'); // the only card
+  // The picture calls the card something the app does not know; the note says it is the Rogers card: no new account.
+  const ctx = { bankAccounts: [{ id: 'c', name: 'TD Chequing', balance: 0 }], creditCards: [{ id: 'r', name: 'Rogers Mastercard', balance: 0 }], transactions: [], today: '2026-11-23' };
+  const reading = { kind: 'transactions', accounts: [{ name: 'World Elite', type: 'credit_card', balance: 120 }], lines: [{ date: '2026-11-20', merchant: 'Loblaws', amount: 40, direction: 'out', account_name: 'World Elite' }, { date: '2026-11-21', merchant: 'Shell', amount: 30, direction: 'out' }] };
+  const p = reader.plan(reading, { ...ctx, note: 'rogers' }, 'src1');
+  assert.deepEqual([p.new_accounts.length, p.lines.map((l) => l.account && l.account.id), p.balances.map((b) => b.account.id)], [0, ['r', 'r'], ['r']]);
+  const q = reader.plan(reading, ctx, 'src1'); // without the note it is offered as a new card, as before
+  assert.equal(q.new_accounts.length, 1);
+});

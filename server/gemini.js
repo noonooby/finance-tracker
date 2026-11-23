@@ -34,7 +34,19 @@ function explain(status, gmsg, what) {
 const LIGHT = process.env.GEMINI_LIGHT_MODEL || 'gemini-flash-lite-latest';
 
 // body: a generateContent request body. Returns the reply's text.
-async function generate(key, body, { what, timeoutMs = 45000 } = {}) {
+// A busy answer (503) is usually over in seconds: both models are tried again after a short wait, twice at most.
+async function generate(key, body, opts = {}) {
+  const wait = process.env.GEMINI_RETRY_MS == null ? 5000 : Number(process.env.GEMINI_RETRY_MS);
+  for (let round = 0; ; round++) {
+    try { return await once(key, body, opts); }
+    catch (e) {
+      if (e.status !== 503 || round >= 2) throw e;
+      console.error(`gemini ${opts.what}: busy, trying again in ${(wait * (round + 1)) / 1000}s`);
+      await new Promise((r) => setTimeout(r, wait * (round + 1)));
+    }
+  }
+}
+async function once(key, body, { what, timeoutMs = 45000 } = {}) {
   let switched = false, last = null;
   const queue = [model, LIGHT].filter((m, i, a) => a.indexOf(m) === i);
   for (let i = 0; i < queue.length; i++) {

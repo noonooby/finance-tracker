@@ -68,3 +68,17 @@ test('a busy model falls back to the lighter model', async () => {
   assert.equal(await gemini.generate('k', {}, { what: 'read the screenshot' }), '{"ok":1}');
   assert.ok(used[1].includes('gemini-flash-lite-latest:'));
 });
+
+test('a busy answer is tried again after a wait, and gives up after three rounds', async () => {
+  const g = gemini; g._setModel('gemini-3.8-flash');
+  const keep = global.fetch, before = process.env.GEMINI_RETRY_MS;
+  process.env.GEMINI_RETRY_MS = '0';
+  try {
+    let calls = 0;
+    global.fetch = async () => { calls += 1; return calls <= 4 ? reply(503, { error: { message: 'high demand' } }) : ok('{"ok":1}'); };
+    assert.equal(await g.generate('k', {}, { what: 'read the screenshot' }), '{"ok":1}'); // two busy rounds of two models, then it works
+    calls = -100;
+    await assert.rejects(g.generate('k', {}, { what: 'read the screenshot' }), (e) => e.status === 503);
+    assert.equal(calls, -94); // three rounds, two models each
+  } finally { global.fetch = keep; if (before == null) delete process.env.GEMINI_RETRY_MS; else process.env.GEMINI_RETRY_MS = before; }
+});

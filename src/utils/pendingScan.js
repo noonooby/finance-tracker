@@ -17,9 +17,18 @@ function legacy() {
   });
 }
 
+// The pictures waiting their turn are kept apart from the one on screen, and written only when that list changes.
+const QUEUE = 'scan-queue';
+let lastQueue;
 export async function loadPending() {
   const v = (await getLocal(KEY)) || (await legacy());
-  return v && v.image && Date.now() - (v.savedAt || 0) <= MAX_AGE ? v : null;
+  if (!(v && v.image && Date.now() - (v.savedAt || 0) <= MAX_AGE)) return null;
+  const q = await getLocal(QUEUE);
+  lastQueue = Array.isArray(q) ? q : [];
+  return { ...v, queue: lastQueue };
 }
-export const savePending = (value) => setLocal(KEY, { ...value, savedAt: Date.now() });
-export const clearPending = () => removeLocal(KEY);
+export const savePending = ({ queue, ...value }) => {
+  if (queue !== undefined && queue !== lastQueue) { lastQueue = queue; setLocal(QUEUE, queue); }
+  return setLocal(KEY, { ...value, savedAt: Date.now() });
+};
+export const clearPending = () => { lastQueue = undefined; removeLocal(QUEUE); return removeLocal(KEY); };

@@ -19,7 +19,7 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "server": "node --experimental-sqlite server/server.js",
-    "test:scenarios": "node --experimental-sqlite --test server/test/scenarios.test.mjs server/test/gemini.test.mjs server/test/edges.test.mjs"
+    "test:scenarios": "GEMINI_RETRY_MS=0 node --experimental-sqlite --test server/test/scenarios.test.mjs server/test/gemini.test.mjs server/test/edges.test.mjs"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",

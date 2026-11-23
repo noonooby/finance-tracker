@@ -27,7 +27,7 @@ const SECTIONS = [
   )],
   ['scan', 'Adding from a screenshot or a photo', (
     <>
-      <p>On the <Link to="/screenshot">Scan</Link> tab, take a photo of a receipt, or choose a screenshot of your bank or card app. You can choose several at once: they wait in a list, each with its own note, and each is read when the one before it is saved. The app reads it and lists every line it found. Nothing is saved until you tick the lines you want and tap <b>Record</b>.</p>
+      <p>On the <Link to="/screenshot">Scan</Link> tab, take a photo of a receipt, or choose a screenshot of your bank or card app. You can choose several at once: up to forty wait in a list, each with its own note (the name of the bank or card is enough), and each is read when the one before it is saved. The app reads it and lists every line it found. Nothing is saved until you tick the lines you want and tap <b>Record</b>.</p>
       <ul>
         <li>Each line is matched to your account by the last four digits of the card, or by the account's name. If it can't tell, it asks you to choose.</li>
         <li>Two identical lines in one screenshot (two coffees on the same day) are two purchases.</li>
