@@ -638,8 +638,11 @@ export default function Loans({
                 </div>
               </div>
 
-              {/* Next Payment */}
-              {loan.next_payment_date && (
+              {/* Next Payment: nothing is due on a loan with nothing left to pay */}
+              {!(Number(loan.balance) > 0) && (
+                <div className="mb-3 text-sm pb-3 border-b border-line text-muted">Paid off</div>
+              )}
+              {loan.next_payment_date && Number(loan.balance) > 0 && (
                 <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b border-line`}>
                   <span className={'text-muted'}>Next Payment:</span>
                   <div className="text-right">

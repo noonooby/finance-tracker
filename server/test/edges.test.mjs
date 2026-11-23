@@ -387,3 +387,18 @@ test('reports by payment method: spending and payments only, refunds come off, t
   ];
   assert.deepEqual(R.groupByPaymentMethod(tx).map((m) => [m.method, m.total]), [['bank_account', 250], ['credit_card', 70]]);
 });
+
+test('days until a date are whole calendar days, also across the day the clocks change', async () => {
+  const was = process.env.TZ;
+  process.env.TZ = 'America/Toronto';
+  try {
+    const H = await import(pathToFileURL(path.join(lib, 'helpers.mjs')));
+    // Clocks go back on 1 November 2026 and forward on 14 March 2027.
+    assert.equal(H.getDaysUntil('2026-11-03', new Date(2026, 9, 30, 15)), 4);
+    assert.equal(H.getDaysUntil('2026-10-30', new Date(2026, 10, 3, 9)), -4);
+    assert.equal(H.getDaysUntil('2027-03-16', new Date(2027, 2, 12, 23)), 4);
+    assert.equal(H.getDaysUntil('2027-03-12', new Date(2027, 2, 16)), -4);
+    assert.equal(H.getDaysUntil('2026-11-23T00:00:00.000Z', new Date(2026, 10, 23, 22)), 0);
+    assert.equal(H.getDaysUntil('2026-11-24', new Date(2026, 10, 23)), 1);
+  } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
+});

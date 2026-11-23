@@ -22,10 +22,10 @@ export const formatDate = (date) => {
   return localDate.toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
-export const getDaysUntil = (date) => {
+export const getDaysUntil = (date, now = new Date()) => {
   if (!date) return 0;
   // Parse dates without timezone conversion
-  const today = new Date();
+  const today = new Date(now);
   today.setHours(0, 0, 0, 0);
   
   const [year, month, day] = date.split('T')[0].split('-');
@@ -33,7 +33,8 @@ export const getDaysUntil = (date) => {
   targetDate.setHours(0, 0, 0, 0);
   
   const diffTime = targetDate - today;
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  // Rounded, not rounded up: the day the clocks change is 23 or 25 hours long.
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
   return diffDays;
 };
 
