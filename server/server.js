@@ -427,6 +427,8 @@ function money(uid, b) {
     const line = ((b.rows || []).find(x => x.table === 'transactions') || {}).values;
     // Money is recorded on a real day; with no date given it is today.
     if (line) {
+      // Every line is for an amount above zero (which way the money went is in its kind, not its sign).
+      if (!Number.isFinite(Number(line.amount)) || !(cents(line.amount) > 0)) fail(400, 'Enter an amount above zero.');
       if (line.date == null || line.date === '') line.date = today();
       else if (!isDay(String(line.date).slice(0, 10))) fail(400, 'That date does not exist. Choose the day it happened.');
     }

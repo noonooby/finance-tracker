@@ -968,6 +968,10 @@ test('money is recorded on a real day', async () => {
   for (const bad of ['2026-02-31', '2026-13-01', 'yesterday', '23/11/2026']) await assert.rejects(spend(bad), /does not exist/);
   assert.equal(Number((await get('bank_accounts', bank.id)).balance), 100);
   assert.equal((await spend('2028-02-29')).transaction.date, '2028-02-29');
+  // And for an amount above zero, whatever the browser sends.
+  for (const amount of [0, -5, 'abc', null])
+    await assert.rejects(api('/api/money', { legs: [{ table: 'bank_accounts', id: bank.id, delta: -1 }],
+      rows: [{ table: 'transactions', values: { type: 'expense', amount, date: '2026-11-23', description: 'Bad amount', status: 'active' } }] }), /above zero/);
   assert.match((await spend(undefined)).transaction.date, /^\d{4}-\d{2}-\d{2}$/);
 });
 
