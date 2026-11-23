@@ -9,7 +9,7 @@
 //  - a balance the screenshot shows is offered as a correction when it differs from the app's figure
 const crypto = require('node:crypto');
 
-const TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif', 'application/pdf']);
+const TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif', 'application/pdf', 'text/csv']);
 const MAX_BYTES = 8_000_000;
 const HOME = (process.env.HOME_CURRENCY || 'CAD').toUpperCase();
 
@@ -82,7 +82,7 @@ function plan(reading, ctx, sourceId) {
       balance: a.balance == null || !Number.isFinite(Number(a.balance)) ? null : Math.round(Math.abs(Number(a.balance)) * 100) / 100 });
   }
   const withDrafts = [...all, ...drafts];
-  const only = (reading.accounts || []).length === 1 ? resolveAccount(withDrafts, reading.accounts[0]) : (!(reading.accounts || []).length && drafts.length === 1 ? drafts[0] : null);
+  const only = ctx.onlyAccount ? ctx.onlyAccount : (reading.accounts || []).length === 1 ? resolveAccount(withDrafts, reading.accounts[0]) : (!(reading.accounts || []).length && drafts.length === 1 ? drafts[0] : null);
   const KINDS = new Set(['purchase', 'income', 'refund', 'card_payment', 'transfer', 'fee', 'interest']);
   const seen = new Map();
   const lines = (reading.lines || []).map((l, i) => {
@@ -161,6 +161,18 @@ function plan(reading, ctx, sourceId) {
     statement = { account: acct ? { type: acct._type, id: acct.id, name: acct.name } : null, period_start: st.period_start || null, period_end: st.period_end,
       opening_balance: Number.isFinite(Number(st.opening_balance)) ? Number(st.opening_balance) : null,
       closing_balance: Number.isFinite(Number(st.closing_balance)) ? Math.abs(Number(st.closing_balance)) : null, not_on_statement: notOn };
+    // The proof that every line was read: the opening balance and the lines must give the closing balance.
+    // For a card, what is owed goes up with charges and down with payments; for a bank account it is the other way round.
+    const has = (v) => v != null && v !== '' && Number.isFinite(Number(v));
+    const read = lines.filter((l) => l.action !== 'skip');
+    if (has(st.opening_balance) && has(st.closing_balance) && read.length) {
+      const card = acct ? acct._type === 'credit_card' : (reading.accounts || []).some((a) => a.type === 'credit_card');
+      const c = (n) => Math.round(Number(n) * 100);
+      const moved = read.reduce((s, l) => s + (l.direction === 'in' ? 1 : -1) * c(l.amount), 0);
+      const open = card ? Math.abs(c(st.opening_balance)) : c(st.opening_balance), close = card ? Math.abs(c(st.closing_balance)) : c(st.closing_balance);
+      const expected = card ? open - moved : open + moved;
+      statement.check = { adds_up: expected === close, expected: expected / 100, off: (close - expected) / 100, lines: read.length };
+    }
   }
   const unknown = (reading.accounts || []).filter(a => !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
@@ -182,7 +194,18 @@ async function read(uid, body, ctx) {
   const sourceId = crypto.createHash('sha256').update(b64).digest('hex').slice(0, 16);
   const today = ctx.today || new Date().toLocaleDateString('en-CA');
   const note = cleanNote(body.note);
-  const reading = await callGemini(mime, b64, today, note);
+  let reading;
+  if (mime === 'text/csv') {
+    // A file exported by the bank: read line by line, with no model. The person says which account it is from.
+    const all = [...ctx.bankAccounts.map((a) => ({ ...a, _type: 'bank_account' })), ...ctx.creditCards.map((c) => ({ ...c, _type: 'credit_card' }))];
+    const acct = all.find((a) => `${a._type}:${a.id}` === String(body.account || ''));
+    if (!acct) { const e = new Error('Choose which account the file is from.'); e.status = 400; throw e; }
+    const parsed = require('./csv').parse(Buffer.from(b64, 'base64').toString('utf8'));
+    if (!parsed.lines.length) { const e = new Error(parsed.notes.join(' ')); e.status = 422; throw e; }
+    reading = { kind: 'transactions', accounts: [], notes: parsed.notes.join(' '),
+      lines: parsed.lines.map((l) => ({ ...l, account_name: acct.name, last4: acct.last4 || acct.last_four || null })) };
+    ctx = { ...ctx, onlyAccount: acct };
+  } else reading = await callGemini(mime, b64, today, note);
   const p = plan(reading, ctx, sourceId);
   // Lines shown only in another currency are converted at that day's published rate; the original is kept on the line.
   for (const l of p.lines.filter((x) => x.needs_fx && x.action !== 'skip')) {

@@ -417,3 +417,42 @@ test('pay slip: deposits are matched to accounts, the remainder is the main one,
   assert.deepEqual(q.parts.map((x) => [x.account.id, x.amount]), [['b', 800], ['c', 200]]);
   assert.deepEqual(reader.planPay({}, accounts).parts, []);
 });
+
+test('bank files (CSV): lines come straight from the file, whatever its layout', () => {
+  const csv = mod('csv.js');
+  // No header, money out and money in in their own columns, then the balance (TD).
+  const td = csv.parse('11/03/2026,TIM HORTONS #12,4.50,,995.50\n11/04/2026,"PAYROLL, ACME",,2000.00,2995.50\n11/15/2026,RENT,1500.00,,1495.50\n');
+  assert.deepEqual(td.lines.map((l) => [l.date, l.merchant, l.amount, l.direction]),
+    [['2026-11-03', 'TIM HORTONS #12', 4.5, 'out'], ['2026-11-04', 'PAYROLL, ACME', 2000, 'in'], ['2026-11-15', 'RENT', 1500, 'out']]);
+  // A header and one signed amount, newest first, with a running balance that settles which sign is spending.
+  const one = csv.parse('Date,Description,Amount,Balance\n2026-11-05,Refund,"$20.00","$1,015.50"\n2026-11-04,Groceries,-80.00,995.50\n2026-11-03,Coffee,(4.50),"1,075.50"\n');
+  assert.deepEqual(one.lines.map((l) => [l.merchant, l.amount, l.direction]), [['Refund', 20, 'in'], ['Groceries', 80, 'out'], ['Coffee', 4.5, 'out']]);
+  assert.match(one.notes.join(' '), /running balance/);
+  // A card file where purchases carry no minus sign: most lines are spending.
+  const card = csv.parse('Transaction Date;Posted Date;Merchant;Amount\n20/11/2026;21/11/2026;UBER;12,00\n');
+  assert.equal(card.lines.length, 0); // a decimal comma is not read as dollars: the row is left out, not guessed
+  const amex = csv.parse('Date,Description,Amount\n13/11/2026,UBER,12.00\n14/11/2026,NETFLIX,18.99\n15/11/2026,PAYMENT RECEIVED,-500.00\n');
+  assert.deepEqual(amex.lines.map((l) => [l.date, l.direction]), [['2026-11-13', 'out'], ['2026-11-14', 'out'], ['2026-11-15', 'in']]); // the day comes first: 13 cannot be a month
+  assert.match(amex.notes.join(' '), /without a minus sign/);
+  // Dates that could be read two ways are read month first, and the person is told.
+  assert.match(csv.parse('Date,Description,Debit,Credit\n03/04/2026,Shop,5.00,\n').notes.join(' '), /month\/day\/year/);
+  // Rows with no date or amount are counted, not invented.
+  const good = Array.from({ length: 30 }, (_, i) => `2026-10-${String(i + 1).padStart(2, '0')},Shop ${i},5.00,`).join('\n');
+  const rough = csv.parse(`Date,Description,Debit,Credit\n${good}\n2026-02-30,Bad day,5.00,\nTotal,,150.00,\n2026-11-02,No amount,,\n`);
+  assert.deepEqual([rough.lines.length, rough.skipped], [30, 3]);
+  assert.match(csv.parse('Name,Note\nA,B\n').notes.join(' '), /No column of dates/);
+  assert.deepEqual(csv.parse('').lines, []);
+  assert.deepEqual([csv.money('1,234.56'), csv.money('(12.00)'), csv.money('12.00 CR'), csv.money('$-3'), csv.money('abc'), csv.money('')], [1234.56, -12, 12, -3, null, null]);
+});
+
+test('statement: the opening balance and the lines must give the closing balance', () => {
+  const reader = mod('reader.js');
+  const ctx = { bankAccounts: [{ id: 'chq', name: 'TD Chequing', balance: 0 }], creditCards: [{ id: 'visa', name: 'TD Visa', balance: 0 }], transactions: [] };
+  const lines = [{ date: '2026-10-03', merchant: 'Shop', amount: 40, direction: 'out' }, { date: '2026-10-10', merchant: 'Pay', amount: 100, direction: 'in' }];
+  const st = (name, open, close) => ({ kind: 'statement', statement: { account_name: name, period_start: '2026-10-01', period_end: '2026-10-31', opening_balance: open, closing_balance: close }, accounts: [], lines });
+  assert.deepEqual(reader.plan(st('TD Chequing', 500, 560), ctx, 's').statement.check, { adds_up: true, expected: 560, off: 0, lines: 2 });
+  assert.deepEqual(reader.plan(st('TD Chequing', 500, 548.01), ctx, 's').statement.check, { adds_up: false, expected: 560, off: -11.99, lines: 2 });
+  // A card: charges raise what is owed, payments lower it.
+  assert.deepEqual(reader.plan(st('TD Visa', 300, 240), ctx, 's').statement.check, { adds_up: true, expected: 240, off: 0, lines: 2 });
+  assert.equal(reader.plan(st('TD Visa', null, 240), ctx, 's').statement.check, undefined);
+});

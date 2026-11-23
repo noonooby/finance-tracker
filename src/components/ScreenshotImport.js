@@ -21,6 +21,8 @@ const readFile = (file) => new Promise((resolve, reject) => {
 async function prepare(file) {
   const original = await readFile(file);
   if (file.type === 'application/pdf') return { url: original, type: 'application/pdf', pdf: true };
+  // A file exported by the bank (CSV): sent as it is and read line by line.
+  if (/\.csv$/i.test(file.name || '') || file.type === 'text/csv') return { url: `data:text/csv;base64,${original.slice(original.indexOf(',') + 1)}`, type: 'text/csv', pdf: true, csv: true };
   try {
     const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = original; });
     // Every picture is made smaller before it is read or kept: 1600 pixels on the long side, JPEG. Text stays sharp.
@@ -105,6 +107,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const muted = 'text-muted';
   const input = `px-2 py-1.5 rounded border text-sm w-full bg-surface border-line text-fg`;
 
+  const [csvAccount, setCsvAccount] = useState('');
   const pick = async (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
@@ -137,7 +140,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const read = async () => {
     setReading(true); setError(''); setDone(null); setOpen(null);
     try {
-      const p = await api('/api/read-screenshot', { image: image.url, mime: image.type, note: note.trim() || undefined, today: new Date().toLocaleDateString('en-CA') });
+      if (image.csv && !csvAccount) throw new Error('Choose which account the file is from.');
+      const p = await api('/api/read-screenshot', { image: image.url, mime: image.type, note: note.trim() || undefined, account: image.csv ? csvAccount : undefined, today: new Date().toLocaleDateString('en-CA') });
       applyProposal(p);
       savePending({ image, note, proposal: p });
     } catch (err) {
@@ -368,7 +372,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       <div>
         <h1 className={`text-2xl font-bold text-fg`}>Scan</h1>
         <p className={`text-sm ${muted}`}>
-          Take a photo of a receipt, or choose a screenshot of your bank or card app, or a statement PDF. The app fills in everything it can: new accounts, the account for each line,
+          Take a photo of a receipt, or choose a screenshot of your bank or card app, a statement PDF, or a file exported by your bank (CSV). The app fills in everything it can: new accounts, the account for each line,
           the kind of line and a category. Check it, change anything with Edit, then tap Save. Nothing is saved before that.
         </p>
       </div>
@@ -388,7 +392,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           <label className="press cursor-pointer flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-line py-5 font-medium">
             <ImageIcon size={26} aria-hidden="true" />
             Screenshot or statement
-            <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf" onChange={pick} className="sr-only" />
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf,text/csv,.csv" onChange={pick} className="sr-only" />
           </label>
         </div>
         {image && resumed && <p className="text-sm text-muted">Picked up where you left off. This picture was kept on this device.</p>}
@@ -399,12 +403,23 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               <button type="button" onClick={removePicture} className="press text-sm text-muted underline">Remove picture</button>
             </div>
             <div className="w-full space-y-2">
-              <label className="block text-sm">
+              {image.csv && (
+                <label className="block text-sm">
+                  <span className="text-muted">Which account is this file from</span>
+                  <select value={csvAccount} onChange={(e) => setCsvAccount(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2 text-fg focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none">
+                    <option value="">Choose an account</option>
+                    {bankAccounts.map((a) => <option key={a.id} value={`bank_account:${a.id}`}>{a.name}</option>)}
+                    {creditCards.filter((c) => !c.is_gift_card).map((c) => <option key={c.id} value={`credit_card:${c.id}`}>{c.name}</option>)}
+                  </select>
+                </label>
+              )}
+              {!image.csv && <label className="block text-sm">
                 <span className="text-muted">Note about this picture (optional)</span>
                 <textarea rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)}
                   placeholder="For example: this is my Visa ending 1234, or only the grocery lines"
                   className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2 text-fg placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none" />
-              </label>
+              </label>}
             </div>
           </div>
         )}
@@ -420,6 +435,9 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               <h3 className="font-semibold">Statement</h3>
               <div>{proposal.statement.account ? proposal.statement.account.name : 'Account not found'}{proposal.statement.period_start ? `, ${proposal.statement.period_start} to ${proposal.statement.period_end}` : `, to ${proposal.statement.period_end}`}
                 {proposal.statement.closing_balance != null && `, closing balance ${formatCurrency(proposal.statement.closing_balance)}`}</div>
+              {proposal.statement.check && (proposal.statement.check.adds_up
+                ? <p className="text-xs text-positive">The opening balance and the {proposal.statement.check.lines} lines read give the closing balance exactly: nothing was missed.</p>
+                : <p role="alert" className="text-sm text-negative">The lines read do not add up to the closing balance: they are {formatCurrency(Math.abs(proposal.statement.check.off))} {proposal.statement.check.off > 0 ? 'short' : 'over'}. A line was missed or misread. Read it again, or check the lines against the statement before saving.</p>)}
               <p className={`text-xs ${muted}`}>Lines before your latest balance are added as history and don't change today's balance. The closing balance is checked against the app after saving.</p>
               {proposal.statement.not_on_statement.length > 0 && (
                 <div className="mt-2 space-y-1">
@@ -588,7 +606,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           <div className="max-w-3xl mx-auto px-4 py-3 flex gap-2">
           <button type="button" onClick={read} disabled={reading || saving}
             className={`press px-4 py-3 rounded-xl font-medium disabled:opacity-50 ${proposal ? 'border border-line bg-surface text-fg' : 'flex-1 bg-accent text-accent-contrast hover:opacity-90'}`}>
-            {reading ? 'Reading...' : proposal ? 'Read again' : image.pdf ? 'Read statement' : 'Read screenshot'}
+            {reading ? 'Reading...' : proposal ? 'Read again' : image.csv ? 'Read file' : image.pdf ? 'Read statement' : 'Read screenshot'}
           </button>
           {proposal && (
             <button type="button" onClick={save} disabled={saving || reading || !chosen || blocked > 0}
