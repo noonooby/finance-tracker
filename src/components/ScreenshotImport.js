@@ -266,7 +266,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       setChanges((p.updates || []).flatMap((u) => u.changes.map((c) => ({ ...c, account: u.account, key: `${u.account.type}:${u.account.id}:${c.field}`, on: true }))));
       setBillDrafts((p.new_bills || []).map((b) => ({ ...b, on: true, amount: b.amount == null ? '' : String(b.amount), next_date: b.next_date || '' })));
       setInvDrafts((p.new_investments || []).map((x) => ({ ...x, on: true, balance: x.balance == null ? '' : String(x.balance) })));
-      setScoreDraft(p.credit_score ? { on: true, bureau: p.credit_score.bureau || '', score: String(p.credit_score.score), date: p.credit_score.date || new Date().toLocaleDateString('en-CA') } : null);
+      setScoreDraft(p.credit_score ? { on: !p.credit_score.same, bureau: p.credit_score.bureau || '', score: String(p.credit_score.score), date: p.credit_score.date || new Date().toLocaleDateString('en-CA') } : null);
       setLoanDrafts((p.new_loans || []).map((l) => ({ ...l, on: true, balance: l.balance == null ? '' : String(l.balance), payment_amount: l.payment_amount == null ? '' : String(l.payment_amount),
         next_payment_date: l.next_payment_date || '', interest_rate: l.interest_rate == null ? '' : String(l.interest_rate) })));
       setRemovals({});
@@ -353,6 +353,9 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         const effect = chosenRows.reduce((s, r) => s + effectOn(r, d.id, d.type === 'credit_card'), 0);
         if (shown == null || !Number.isFinite(shown)) throw new Error('Enter its balance today');
         const opening = Math.round((shown - effect) * 100) / 100;
+        // Already in the app under the same last four digits (added a moment ago, or on another device): that one is used.
+        const twin = d.last4 && (d.type === 'credit_card' ? cards : banks).find((a) => String(a.last4 || a.last_four || '').slice(-4) === String(d.last4).slice(-4));
+        if (twin) { realRef[d.id] = `${d.type}:${twin.id}`; continue; }
         const id = generateId();
         const table = d.type === 'credit_card' ? 'credit_cards' : 'bank_accounts';
         const row = d.type === 'credit_card'
@@ -399,7 +402,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         // A limit that moved keeps what it was and the day it was seen, so the card can show it.
         const lim = list.find((c) => c.field === 'credit_limit');
         if (lim) { patch.credit_limit_before = lim.from; patch.credit_limit_changed_at = new Date().toLocaleDateString('en-CA'); }
-        const { error: e } = await server.from({ credit_card: 'credit_cards', loan: 'loans', bill: 'bills' }[type]).update(patch).eq('id', id);
+        const { error: e } = await server.from({ credit_card: 'credit_cards', bank_account: 'bank_accounts', loan: 'loans', bill: 'bills' }[type]).update(patch).eq('id', id);
         if (e) throw new Error(e.message);
         result.changed = (result.changed || 0) + list.length;
       } catch (err) { result.failed.push(`${name}: ${err.message}`); }
@@ -416,7 +419,10 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     }
     if (scoreDraft && scoreDraft.on) {
       try {
-        const { error: e } = await server.from('credit_scores').insert({ bureau: scoreDraft.bureau.trim().slice(0, 40), score: Number(scoreDraft.score), date: scoreDraft.date, note: null, created_at: new Date().toISOString() });
+        const same = proposal.credit_score && proposal.credit_score.existing_id && scoreDraft.date === proposal.credit_score.date && scoreDraft.bureau.trim().toLowerCase() === String(proposal.credit_score.bureau || '').toLowerCase();
+        const { error: e } = same
+          ? await server.from('credit_scores').update({ score: Number(scoreDraft.score) }).eq('id', proposal.credit_score.existing_id)
+          : await server.from('credit_scores').insert({ bureau: scoreDraft.bureau.trim().slice(0, 40), score: Number(scoreDraft.score), date: scoreDraft.date, note: null, created_at: new Date().toISOString() });
         if (e) throw new Error(e.message);
         result.created.push(`credit score ${scoreDraft.score}`);
       } catch (err) { result.failed.push(`Credit score: ${err.message}`); }
@@ -516,7 +522,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     if (p.pay_slip) out.push('It is a pay slip: set the pay up from the button below.');
     for (const c of changes) out.push(`${c.account.name}: ${c.label.toLowerCase()} is ${showValue(c, c.to)} on the picture, ${showValue(c, c.from)} in the app.`);
     if (billDrafts.length) out.push(`A bill was found that the app does not track: ${billDrafts.map((b) => b.name).join(', ')}.`);
-    if (scoreDraft) out.push(`A credit score was read: ${scoreDraft.score}${scoreDraft.bureau ? ` from ${scoreDraft.bureau}` : ''}.`);
+    if (scoreDraft) out.push(`A credit score was read: ${scoreDraft.score}${scoreDraft.bureau ? ` from ${scoreDraft.bureau}` : ''}.${p.credit_score && p.credit_score.same ? ' It is already recorded for that day, so it is left alone.' : p.credit_score && p.credit_score.existing_id ? ` The one recorded for that day (${p.credit_score.was}) will be updated.` : ''}`);
     if (invDrafts.length) out.push(`${invDrafts.length === 1 ? 'An investment was' : `${invDrafts.length} investments were`} found that the app does not have: ${invDrafts.map((x) => x.name).join(', ')}.`);
     if (loanDrafts.length) out.push(`${loanDrafts.length === 1 ? 'A loan was' : `${loanDrafts.length} loans were`} found that the app does not have: ${loanDrafts.map((l) => l.name).join(', ')}. Fill in what the picture does not show, below.`);
     if (ds.length) out.push(`${ds.length === 1 ? 'One account is' : `${ds.length} accounts are`} not in the app yet and will be added if you leave ${ds.length === 1 ? 'it' : 'them'} ticked.`);
@@ -526,7 +532,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const loanNeeds = (l) => (!l.on ? null : !l.name.trim() ? 'Enter a name' : !(Number(l.balance) > 0) ? 'Enter what is still owed' : !(Number(l.payment_amount) > 0) ? 'Not on the picture: enter the amount of each payment'
     : !/^\d{4}-\d{2}-\d{2}$/.test(l.next_payment_date || '') ? 'Not on the picture: enter the next payment day' : null);
   const billNeeds = (b) => (!b.on ? null : !b.name.trim() ? 'Enter a name' : !(Number(b.amount) > 0) ? 'Not on the picture: enter the amount' : !/^\d{4}-\d{2}-\d{2}$/.test(b.next_date || '') ? 'Not on the picture: enter the day it is next due' : null);
-  const showValue = (c, v) => (v == null ? 'not set' : c.kind === 'money' ? formatCurrency(v) : c.kind === 'later' ? (formatDate(v) || v) : `${v}%`);
+  const showValue = (c, v) => (v == null ? 'not set' : c.kind === 'text' ? String(v) : c.kind === 'money' ? formatCurrency(v) : c.kind === 'later' ? (formatDate(v) || v) : `${v}%`);
   const invNeeds = (x) => (!x.on ? null : !x.name.trim() ? 'Enter a name' : x.balance === '' || !Number.isFinite(Number(x.balance)) ? 'Not on the picture: enter its value today' : null);
   const scoreNeeds = (x) => (!x || !x.on ? null : !x.bureau.trim() ? 'Not on the picture: say which bureau it is from' : !(Number.isInteger(Number(x.score)) && Number(x.score) >= 300 && Number(x.score) <= 900) ? 'A score is a whole number from 300 to 900' : !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '') ? 'Choose the day' : null);
   const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length + loanDrafts.filter((l) => l.on).length + invDrafts.filter((x) => x.on).length + (scoreDraft && scoreDraft.on ? 1 : 0) + changes.filter((c) => c.on).length + billDrafts.filter((b) => b.on).length;

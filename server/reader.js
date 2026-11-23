@@ -53,19 +53,35 @@ async function callGemini(mime, b64, today, note) {
 }
 
 // Which of the user's accounts a screenshot line belongs to. -> { type, id, name } or null
-function resolveAccount(accounts, { last4, name }) {
+function resolveAccount(accounts, { last4, name, type }) {
   if (last4) {
     const hit = accounts.filter(a => String(a.last4 || a.last_four || a.card_number || '').slice(-4) === String(last4).slice(-4));
     if (hit.length === 1) return hit[0];
     // Several accounts ending in the same digits: the one whose name fits, else the first. Never a new account.
     if (hit.length > 1) { const m = norm(name); return hit.find(a => m && norm(a.name) === m) || hit.find(a => m && norm(a.name) && (norm(a.name).includes(m) || m.includes(norm(a.name)))) || hit[0]; }
   }
+  const fit = nameFits(accounts, { name, type });
+  return fit.length === 1 ? fit[0] : null;
+}
+
+// The accounts a name on a picture could mean, best kind of fit first: the same name; one name inside the other; or
+// every word of the shorter name found in the longer ("Rogers Mastercard" is "Rogers Red World Elite Mastercard").
+// Words every account has ("card", "bank", "account") do not count. When several fit, the kind shown on the picture
+// (a card, a bank account) narrows them. One left is the answer; several left means it cannot be told.
+const NAME_SKIP = new Set(['card', 'cards', 'credit', 'account', 'acct', 'bank', 'the', 'of', 'from', 'and', 'my']);
+const nameWords = (s) => [...new Set(String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !NAME_SKIP.has(w)))];
+function nameFits(accounts, { name, type }) {
   const n = norm(name);
-  if (!n) return null;
-  const exact = accounts.filter(a => norm(a.name) === n);
-  if (exact.length === 1) return exact[0];
-  const part = accounts.filter(a => norm(a.name) && (norm(a.name).includes(n) || n.includes(norm(a.name))));
-  return part.length === 1 ? part[0] : null;
+  if (!n) return [];
+  const kind = type === 'credit_card' || type === 'gift_card' ? 'credit_card' : ['chequing', 'savings'].includes(type) ? 'bank_account' : null;
+  const narrow = (list) => { if (list.length < 2 || !kind) return list; const k = list.filter((a) => a._type === kind); return k.length ? k : list; };
+  const exact = narrow(accounts.filter(a => norm(a.name) === n));
+  if (exact.length) return exact;
+  const part = narrow(accounts.filter(a => norm(a.name) && (norm(a.name).includes(n) || n.includes(norm(a.name)))));
+  if (part.length) return part;
+  const w = nameWords(name);
+  if (!w.length) return [];
+  return narrow(accounts.filter((a) => { const v = nameWords(a.name); if (!v.length) return false; const [few, many] = v.length <= w.length ? [v, w] : [w, v]; return few.every((x) => many.includes(x)); }));
 }
 
 // The account a note points at, when it points at exactly one. A note is often a word or two ("rogers",
@@ -159,6 +175,10 @@ function plan(reading, ctx, sourceId) {
   const drafts = [];
   for (const a of reading.accounts || []) {
     if (resolveAccount(all, a)) continue;
+    // A name that fits several of the person's accounts, with no digits to tell them apart, is one of them: the
+    // person says which on the screen. A new account is offered only when nothing they have fits.
+    const several = nameFits(all, a);
+    if (several.length > 1 && (!a.last4 || several.some((x) => !(x.last4 || x.last_four || x.card_number)))) continue;
     const t = a.type === 'credit_card' || a.type === 'gift_card' ? 'credit_card' : ['loan', 'investment', 'property'].includes(a.type) ? null : 'bank_account';
     if (!t) continue;
     drafts.push({ id: 'new:' + drafts.length, _type: t, gift: a.type === 'gift_card' || undefined, name: String(a.name || (t === 'credit_card' ? 'Credit card' : 'Bank account')).slice(0, 60),
@@ -307,12 +327,20 @@ function plan(reading, ctx, sourceId) {
     change(ch, 'statement_balance', 'Statement balance', acct.statement_balance, a.statement_balance == null || !Number.isFinite(Number(a.statement_balance)) ? null : Math.round(Math.abs(Number(a.statement_balance)) * 100) / 100, 'money');
     if (ch.length && !updates.some((u) => u.account.type === 'credit_card' && u.account.id === acct.id)) updates.push({ account: { type: 'credit_card', id: acct.id, name: acct.name }, changes: ch });
   }
+  // An account or card the app has without its last four digits gets them from the picture, so later pictures match it by them.
+  for (const a of (reading.accounts || []).filter((x) => x && /^\d{4}$/.test(String(x.last4 || '').slice(-4)) && !['loan', 'investment', 'property'].includes(x.type))) {
+    const acct = resolveAccount(all, a);
+    if (!acct || acct.last4 || acct.last_four || acct.card_number) continue;
+    const c = { field: 'last4', label: 'Last four digits', from: null, to: String(a.last4).slice(-4), kind: 'text' };
+    const u = updates.find((x) => x.account.type === acct._type && x.account.id === acct.id);
+    if (u) { if (!u.changes.some((x) => x.field === 'last4')) u.changes.push(c); } else updates.push({ account: { type: acct._type, id: acct.id, name: acct.name }, changes: [c] });
+  }
   // A bill: one the app tracks gets its new amount or day offered as a change; any other is offered to add.
   const new_bills = [];
   const rb = reading.bill;
   if (rb && String(rb.payee || '').trim()) {
     const name = String(rb.payee).trim().slice(0, 60);
-    const tracked = (ctx.bills || []).filter((b) => b.status === 'active' && norm(b.name) && (norm(b.name).includes(norm(name)) || norm(name).includes(norm(b.name))));
+    const tracked = (ctx.bills || []).filter((b) => norm(b.name) && (norm(b.name).includes(norm(name)) || norm(name).includes(norm(b.name))));
     if (tracked.length === 1) {
       const ch = [];
       change(ch, 'amount', 'Amount', tracked[0].amount, pos(rb.amount), 'money');
@@ -335,7 +363,9 @@ function plan(reading, ctx, sourceId) {
       kind: prop ? (/home|house|condo|apartment|property/i.test(name) ? 'Home' : /car|vehicle|truck|suv/i.test(name) ? 'Car' : 'Other') : (String(name).toUpperCase().match(/\b(TFSA|RRSP|FHSA|RESP)\b/) || [])[1] || (/crypto|bitcoin|ethereum/i.test(name) ? 'Crypto' : /pension/i.test(name) ? 'Pension' : /broker|trading|invest|stocks/i.test(name) ? 'Brokerage' : 'Other') });
   }
   const sc = reading.credit_score ? planScore(reading.credit_score, ctx.today || new Date().toLocaleDateString('en-CA')) : null;
-  const credit_score = sc && sc.score != null ? { bureau: sc.bureau, score: sc.score, date: sc.date } : null;
+  // A score from the same bureau for the same day is the one already recorded: it is updated, or left alone when the same.
+  const hadScore = sc && sc.score != null ? (ctx.scores || []).find((x) => norm(x.bureau) === norm(sc.bureau) && String(x.date || '').slice(0, 10) === sc.date) : null;
+  const credit_score = sc && sc.score != null ? { bureau: sc.bureau, score: sc.score, date: sc.date, ...(hadScore ? { existing_id: hadScore.id, was: Number(hadScore.score), same: Number(hadScore.score) === Number(sc.score) } : {}) } : null;
   const unknown = (reading.accounts || []).filter(a => !['loan', 'investment', 'property'].includes(a.type) && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
   return { source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, new_investments, new_bills, updates, credit_score, pay_slip: reading.kind === 'pay_slip', unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
@@ -485,4 +515,4 @@ async function readScore(body, ctx) {
   return p;
 }
 
-module.exports = { read, plan, resolveAccount, noteAccount, sameAccounts, mkey, cleanNote, readPay, planPay, readScore, planScore };
+module.exports = { read, plan, resolveAccount, nameFits, noteAccount, sameAccounts, mkey, cleanNote, readPay, planPay, readScore, planScore };

@@ -409,7 +409,7 @@ test('pay slip: deposits are matched to accounts, the remainder is the main one,
   const p = reader.planPay({ employer: 'Acme Corp', net_pay: 2000, gross_pay: 2900, pay_date: '2026-11-20', frequency: 'biweekly',
     deposits: [{ bank: 'EQ Bank', last4: null, amount: 300 }, { bank: 'Toronto Dominion', last4: '991234', remainder: true }, { bank: 'Unknown CU', last4: '7777', percent: 10 }] }, accounts);
   assert.deepEqual([p.source, p.amount, p.gross, p.date, p.frequency], ['Acme Corp', 2000, 2900, '2026-11-20', 'biweekly']);
-  assert.deepEqual(p.parts.map((x) => [x.account && x.account.id, x.amount, x.rest]), [['a', 1500, true], [null, 300, false], [null, 200, false]]);
+  assert.deepEqual(p.parts.map((x) => [x.account && x.account.id, x.amount, x.rest]), [['a', 1500, true], ['b', 300, false], [null, 200, false]]); // "EQ Bank" is the one EQ account
   assert.equal(p.parts[2].hint, 'Unknown CU ending 7777');
   // With no remainder marked the largest is the main one; a rhythm or date that is not clear is left for the person.
   const q = reader.planPay({ net_pay: 1000, pay_date: 'Friday', frequency: 'fortnightly', deposits: [{ bank: 'Tangerine', amount: 200 }, { bank: 'EQ Savings', amount: 800 }] }, accounts);
@@ -634,4 +634,30 @@ test('one card shown under two names on a picture is one card, and its lines are
   // The app already holds two cards ending the same (added before this rule): a picture matches one of them, never a third.
   const two = [{ id: 'a', _type: 'credit_card', name: 'Rogers Bank', last4: '4131' }, { id: 'b', _type: 'credit_card', name: 'Rogers Red World Elite Mastercard', last4: '4131' }];
   assert.deepEqual(['Rogers Red World Elite Mastercard', 'World Elite', 'Something else', ''].map((n) => reader.resolveAccount(two, { last4: '4131', name: n }).id), ['b', 'b', 'a', 'a']);
+});
+
+test('already in the app: matched and updated; not there: created; cannot tell which: asked, never doubled', () => {
+  const reader = mod('reader.js');
+  const cards = [{ id: 'r', name: 'Rogers Red World Elite Mastercard', balance: 100, credit_limit: 0 }, { id: 'w', name: 'Wealthsimple Visa', last4: '0254', balance: 5 }];
+  const banks = [{ id: 'c', name: 'TD Chequing', balance: 1 }, { id: 's', name: 'TD Savings', balance: 2 }, { id: 'rb', name: 'Rogers Bank Savings', balance: 3 }];
+  const ctx = { bankAccounts: banks, creditCards: cards, loans: [{ id: 'l', name: 'Honda Civic car loan', balance: 9000 }], investments: [{ id: 'i', name: 'Wealthsimple TFSA', balance: 10 }], assets: [],
+    bills: [{ id: 'b', name: 'Rogers Internet', status: 'paused', amount: 80, next_date: '2026-11-01' }], scores: [{ id: 'sc', bureau: 'Equifax', score: 700, date: '2026-11-20' }], transactions: [], today: '2026-11-23' };
+  // Words in another order, and the kind on the picture, find the card: its limit and digits are updates, nothing is new.
+  let p = reader.plan({ kind: 'balance', accounts: [{ name: 'Rogers Mastercard', type: 'credit_card', last4: '4131', balance: 250, credit_limit: 16900 }], lines: [] }, ctx, 'm1');
+  assert.deepEqual([p.new_accounts.length, p.balances.map((b) => b.account.id), p.updates.map((u) => [u.account.id, u.changes.map((c) => c.field)])], [0, ['r'], [['r', ['credit_limit', 'last4']]]]);
+  // "Rogers" as a card is the card, not the savings account that also has the word.
+  assert.equal(reader.resolveAccount([...banks.map((a) => ({ ...a, _type: 'bank_account' })), ...cards.map((a) => ({ ...a, _type: 'credit_card' }))], { name: 'Rogers', type: 'credit_card' }).id, 'r');
+  // "TD" fits two accounts and shows no digits: neither is guessed and no third is made.
+  p = reader.plan({ kind: 'balance', accounts: [{ name: 'TD', type: 'chequing', balance: 40 }], lines: [] }, { ...ctx, bankAccounts: banks.map((b) => ({ ...b, account_type: 'checking' })) }, 'm2');
+  assert.deepEqual([p.new_accounts.length, p.unknown_accounts.map((a) => a.name)], [0, ['TD']]);
+  // Nothing fits: created.
+  p = reader.plan({ kind: 'balance', accounts: [{ name: 'Scotia Momentum Visa', type: 'credit_card', last4: '7777', balance: 12 }], lines: [] }, ctx, 'm3');
+  assert.deepEqual(p.new_accounts.map((a) => [a.name, a.last4]), [['Scotia Momentum Visa', '7777']]);
+  // A loan, an investment, a paused bill and a score the app has are matched, not added again.
+  p = reader.plan({ kind: 'balance', accounts: [{ name: 'Honda Civic', type: 'loan', balance: 8800 }, { name: 'TFSA Wealthsimple', type: 'investment', balance: 12 }], lines: [],
+    bill: { payee: 'Rogers Internet', amount: 85, due_date: '2026-12-01' }, credit_score: { bureau: 'Equifax', score: 712, date: '2026-11-20' } }, ctx, 'm4');
+  assert.deepEqual([p.new_loans.length, p.new_investments.length, p.new_bills.length, p.balances.map((b) => b.account.id).sort(), p.updates.map((u) => u.account.id)], [0, 0, 0, ['i', 'l'], ['b']]);
+  assert.deepEqual([p.credit_score.existing_id, p.credit_score.was, p.credit_score.same], ['sc', 700, false]);
+  p = reader.plan({ kind: 'credit_score', accounts: [], lines: [], credit_score: { bureau: 'equifax', score: 700, date: '2026-11-20' } }, ctx, 'm5');
+  assert.equal(p.credit_score.same, true);
 });
