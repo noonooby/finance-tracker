@@ -24,7 +24,7 @@ import {
   SaveFilterDialog
 } from './transactions';
 import { showToast } from '../utils/toast';
-import { categoryParts, touchesAccount } from '../utils/spending';
+import { categoryParts, touchesAccount, spendingSign } from '../utils/spending';
 
 /**
  * Transaction History Component
@@ -82,12 +82,13 @@ export default function TransactionHistory({
     };
 
     filteredTransactions.forEach(t => {
-      if (t.status === 'undone') return;
+      if (t.status === 'undone' || t.status === 'deleted') return;
       const amount = Number(t.amount) || 0;
       if (t.type === 'income') {
         totals.income += amount;
-      } else if (t.type === 'expense') {
-        totals.expense += amount;
+      } else if (spendingSign(t)) {
+        // Refunds come off; loading a gift card is not spending (as in budgets and reports).
+        totals.expense += spendingSign(t) * amount;
       } else if (isPaymentType(t.type)) {
         totals.payment += amount;
       }
@@ -156,6 +157,9 @@ export default function TransactionHistory({
     }
 
 
+    // Newest day first; within a day, the one entered last comes first.
+    const day = (t) => String(t.date || '').slice(0, 10);
+    filtered.sort((x, y) => day(y).localeCompare(day(x)) || String(y.created_at || '').localeCompare(String(x.created_at || '')));
     setFilteredTransactions(filtered);
   }, [transactions, filters]);
 
