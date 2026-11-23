@@ -402,3 +402,18 @@ test('days until a date are whole calendar days, also across the day the clocks 
     assert.equal(H.getDaysUntil('2026-11-24', new Date(2026, 10, 23)), 1);
   } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
 });
+
+test('pay slip: deposits are matched to accounts, the remainder is the main one, and percentages become amounts', () => {
+  const reader = mod('reader.js');
+  const accounts = [{ id: 'a', name: 'TD Chequing', last4: '1234' }, { id: 'b', name: 'EQ Savings' }, { id: 'c', name: 'Tangerine' }];
+  const p = reader.planPay({ employer: 'Acme Corp', net_pay: 2000, gross_pay: 2900, pay_date: '2026-11-20', frequency: 'biweekly',
+    deposits: [{ bank: 'EQ Bank', last4: null, amount: 300 }, { bank: 'Toronto Dominion', last4: '991234', remainder: true }, { bank: 'Unknown CU', last4: '7777', percent: 10 }] }, accounts);
+  assert.deepEqual([p.source, p.amount, p.gross, p.date, p.frequency], ['Acme Corp', 2000, 2900, '2026-11-20', 'biweekly']);
+  assert.deepEqual(p.parts.map((x) => [x.account && x.account.id, x.amount, x.rest]), [['a', 1500, true], [null, 300, false], [null, 200, false]]);
+  assert.equal(p.parts[2].hint, 'Unknown CU ending 7777');
+  // With no remainder marked the largest is the main one; a rhythm or date that is not clear is left for the person.
+  const q = reader.planPay({ net_pay: 1000, pay_date: 'Friday', frequency: 'fortnightly', deposits: [{ bank: 'Tangerine', amount: 200 }, { bank: 'EQ Savings', amount: 800 }] }, accounts);
+  assert.deepEqual([q.date, q.frequency, q.source], [null, null, null]);
+  assert.deepEqual(q.parts.map((x) => [x.account.id, x.amount]), [['b', 800], ['c', 200]]);
+  assert.deepEqual(reader.planPay({}, accounts).parts, []);
+});

@@ -1,6 +1,6 @@
 import { server } from '../server';
 import { predictNextDate, formatCurrency, localDate, generateId } from '../helpers';
-import { recordIncome, reverseTransaction } from '../money';
+import { recordIncome, reverseTransaction, payParts } from '../money';
 import { logActivity } from '../activityLogger';
 
 /**
@@ -25,6 +25,7 @@ export async function createIncomeSchedule(scheduleData) {
       next_date: scheduleData.startDate,
       deposit_target: 'bank',
       deposit_account_id: scheduleData.depositAccountId || null,
+      splits: scheduleData.splits || [],
       auto_deposit: scheduleData.autoDeposit !== false,
       recurring_duration_type: scheduleData.recurringDurationType || 'indefinite',
       recurring_until_date: scheduleData.recurringUntilDate || null,
@@ -344,12 +345,15 @@ async function processIncomeOccurrence(schedule, date, schedUpdate, accounts) {
   const bank = depositAccountFor(schedule, accounts);
   if (!bank) throw new Error('No account to deposit into');
   const target = `bank_account:${bank.id}`;
-  const depositAccountName = bank.name;
+  // Part of the pay may go to other accounts; the rest lands in the main one.
+  const parts = payParts(schedule.amount, bank.id, schedule.splits, accounts.bankAccounts);
+  const depositAccountName = parts.map((p) => p.name).join(', ');
   const txId = newTxId();
 
   const r = await recordIncome({
     amount: schedule.amount,
     target,
+    parts,
     date,
     source_name: schedule.source,
     description: `${schedule.source} (from schedule)`,

@@ -196,4 +196,62 @@ async function read(uid, body, ctx) {
   return p;
 }
 
-module.exports = { read, plan, resolveAccount, mkey, cleanNote };
+// ---------- Pay slips and payroll screens ----------
+const PAY_PROMPT = `You read one screenshot or PDF from a payroll system (for example Workday: a pay slip, "Pay", or "Payment Elections") or a pay stub. Report only what is visible; never guess.
+Return JSON:
+{"employer":"company name or null","net_pay":number or null,"gross_pay":number or null,"pay_date":"YYYY-MM-DD or null","period_start":"YYYY-MM-DD or null","period_end":"YYYY-MM-DD or null",
+ "frequency":"weekly|biweekly|semimonthly|monthly or null (only when the screen states it, or two pay dates on it show it)",
+ "deposits":[{"bank":"bank or account name as shown","last4":"last 4 digits of the account number or null","amount":number or null,"percent":number or null,"remainder":true|false}],
+ "notes":"anything unclear, short"}
+Rules: net_pay is the take-home amount of one pay (not year to date). deposits are the accounts the net pay is paid into, in the order shown; "remainder" is true for the one marked balance, remainder or remaining amount. Amounts are positive numbers. Never include full account numbers, only the last 4 digits.
+A year missing from a date: use YEAR_NOW unless that puts the date in the future, then the year before. Today is TODAY.`;
+const PAY_FREQS = new Set(['weekly', 'biweekly', 'semimonthly', 'monthly']);
+const r2 = (n) => Math.round(Number(n) * 100) / 100;
+
+// Matches what was read to the person's accounts. -> { source, amount, date, frequency, parts: [{ account, hint, amount, rest }], notes }
+// The part marked as the remainder (or, with none marked, the largest) is the main one and comes first; its amount is what the others leave.
+function planPay(reading, bankAccounts) {
+  const amount = Number(reading.net_pay) > 0 ? r2(reading.net_pay) : null;
+  const list = (Array.isArray(reading.deposits) ? reading.deposits : []).slice(0, 6).map((d) => {
+    const acct = resolveAccount(bankAccounts, { last4: d.last4, name: d.bank });
+    let part = Number(d.amount) > 0 ? r2(d.amount) : null;
+    if (part == null && amount != null && Number(d.percent) > 0 && Number(d.percent) <= 100) part = r2(amount * Number(d.percent) / 100);
+    const last4 = d.last4 ? String(d.last4).replace(/\D/g, '').slice(-4) : '';
+    return { account: acct ? { id: acct.id, name: acct.name } : null, hint: [String(d.bank || '').slice(0, 40), last4 ? `ending ${last4}` : ''].filter(Boolean).join(' '), amount: part, rest: d.remainder === true };
+  });
+  let main = list.findIndex((p) => p.rest);
+  if (main < 0 && list.length) main = list.reduce((best, p, i) => ((p.amount || 0) > (list[best].amount || 0) ? i : best), 0);
+  const parts = main >= 0 ? [list[main], ...list.filter((_, i) => i !== main)] : [];
+  if (parts.length) {
+    parts[0].rest = true;
+    const fixed = parts.slice(1).reduce((s, p) => s + (p.amount || 0), 0);
+    if (amount != null) parts[0].amount = r2(amount - fixed);
+  }
+  const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : null);
+  return { source: reading.employer ? String(reading.employer).slice(0, 60) : null, amount, gross: Number(reading.gross_pay) > 0 ? r2(reading.gross_pay) : null,
+    date: day(reading.pay_date), frequency: PAY_FREQS.has(reading.frequency) ? reading.frequency : null, parts, notes: String(reading.notes || '').slice(0, 200) };
+}
+async function readPay(body, ctx) {
+  let b64 = String(body.image || ''), mime = String(body.mime || '');
+  const m = b64.match(/^data:([\w/+.-]+);base64,(.*)$/s);
+  if (m) { mime = m[1]; b64 = m[2]; }
+  if (!TYPES.has(mime)) { const e = new Error('Send a screenshot or photo (PNG, JPEG, WebP, HEIC) or a PDF.'); e.status = 400; throw e; }
+  if (Buffer.byteLength(b64, 'base64') > MAX_BYTES) { const e = new Error('That file is too large (8 MB at most).'); e.status = 413; throw e; }
+  const today = ctx.today || new Date().toLocaleDateString('en-CA');
+  let reading;
+  if (process.env.PAY_STUB) reading = JSON.parse(require('node:fs').readFileSync(process.env.PAY_STUB, 'utf8'));
+  else {
+    const key = require('./keystore').get();
+    if (!key) { const e = new Error('Screenshot reading is not set up yet: the owner adds the Gemini key once in Settings.'); e.status = 503; throw e; }
+    const text = await require('./gemini').generate(key, {
+      contents: [{ parts: [{ text: PAY_PROMPT.replace('YEAR_NOW', today.slice(0, 4)).replace('TODAY', today) }, { inline_data: { mime_type: mime, data: b64 } }] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0 },
+    }, { what: 'read the pay slip' });
+    try { reading = JSON.parse(text); } catch { const e = new Error('The pay slip could not be read. Try a clearer screenshot.'); e.status = 422; throw e; }
+  }
+  const p = planPay(reading || {}, ctx.bankAccounts || []);
+  if (p.amount == null && !p.parts.length) { const e = new Error('No pay amount or deposit account was found in that picture.'); e.status = 422; throw e; }
+  return p;
+}
+
+module.exports = { read, plan, resolveAccount, mkey, cleanNote, readPay, planPay };

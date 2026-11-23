@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Plus, X, ListFilter, Zap, Calendar, Pause, Play, Trash2 } from 'lucide-react';
-import { formatCurrency, formatDate, getDaysUntil } from '../utils/helpers';
+import { Plus, X, ListFilter, Zap, Calendar, Pause, Play, Trash2, Camera } from 'lucide-react';
+import { formatCurrency, formatDate, getDaysUntil, predictNextDate } from '../utils/helpers';
+import { api } from '../utils/server';
 import { formatFrequency } from '../utils/sentenceCase';
 import { processDueIncomeSchedules, getIncomeSchedules, toggleIncomeSchedule, deleteIncomeSchedule } from '../utils/schedules';
 import useAsyncAction from '../hooks/useAsyncAction';
@@ -106,7 +107,46 @@ export default function Income({
     return undefined;
   }, [focusTarget, onClearFocus]);
 
+  // A pay slip or payroll screenshot fills the form: who pays, how much, when, and which accounts it lands in.
+  // Nothing is saved until you press the button below.
+  const [readingPay, setReadingPay] = useState(false);
+  const [payNote, setPayNote] = useState('');
+  const readPaySlip = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setReadingPay(true); setPayNote('');
+    try {
+      const image = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('That file could not be opened.')); r.readAsDataURL(file); });
+      const today = localDate();
+      const p = await api('/api/read-pay', { image, mime: file.type, today });
+      // A slip from a past pay day: the schedule starts at the next one.
+      let date = p.date || '';
+      for (let i = 0; date && date < today && p.frequency && i < 200; i++) date = predictNextDate(date, p.frequency);
+      const main = p.parts[0] && p.parts[0].account;
+      const others = p.parts.slice(1);
+      const matched = others.filter((x) => x.account && x.amount > 0).slice(0, 2);
+      setFormData((prev) => ({ ...prev,
+        source: p.source || prev.source, amount: p.amount != null ? String(p.amount) : prev.amount,
+        date: date && date >= today ? date : prev.date, frequency: p.frequency || prev.frequency,
+        depositTarget: 'bank', depositAccountId: main ? main.id : prev.depositAccountId,
+        splits: matched.map((x) => ({ account_id: x.account.id, amount: String(x.amount) })) }));
+      const unmatched = [...(p.parts[0] && !main ? [p.parts[0]] : []), ...others.filter((x) => !matched.includes(x))];
+      const notes = ['Check each field before saving.'];
+      if (p.date && !(date >= today)) notes.push(`The slip is dated ${formatDate(p.date)}: set the next pay day.`);
+      if (!p.frequency) notes.push('Choose how often the pay comes.');
+      if (unmatched.length) notes.push(`Not matched to an account here: ${unmatched.map((x) => `${x.hint || 'an account'}${x.amount ? ` (${formatCurrency(x.amount)})` : ''}`).join('; ')}.`);
+      setPayNote(notes.join(' '));
+    } catch (err) {
+      showToast.error(err.message);
+    } finally { setReadingPay(false); }
+  };
+
   const handleAdd = async () => {
+    if ((formData.splits || []).some((sp) => !sp.account_id || !(Number(sp.amount) > 0))) {
+      showToast.error('Finish each extra account (an amount and an account), or remove it.');
+      return;
+    }
     // Validate form
     const validation = validateIncomeForm(formData);
     if (!validation.isValid) {
@@ -279,6 +319,17 @@ export default function Income({
       {showAddForm && (
         <div className={`bg-surface border-line rounded-2xl border p-4 space-y-3`}>
           <h3 className="font-semibold text-lg">{editingItem ? 'Edit Income' : 'Add Income'}</h3>
+
+          {!editingItem && (
+            <div className="space-y-1">
+              <label className="press inline-flex items-center gap-2 text-sm font-medium text-accent cursor-pointer">
+                <input type="file" accept="image/*,application/pdf" className="sr-only" onChange={readPaySlip} disabled={readingPay} />
+                <Camera size={16} aria-hidden="true" />
+                {readingPay ? 'Reading the pay slip' : 'Fill in from a pay slip or Workday screenshot'}
+              </label>
+              {payNote && <p className="text-xs text-muted">{payNote}</p>}
+            </div>
+          )}
           
           {recentSources.length > 0 && !editingItem && (
             <div>
@@ -360,6 +411,7 @@ export default function Income({
               Where is this money going? *
             </label>
             {bankAccounts && bankAccounts.length > 0 ? (
+              <>
               <select
                 value={formData.depositAccountId}
                 onChange={(e) => setFormData({ ...formData, depositTarget: 'bank', depositAccountId: e.target.value })}
@@ -372,6 +424,30 @@ export default function Income({
                   </option>
                 ))}
               </select>
+              {!editingItem && (formData.splits || []).map((sp, i) => {
+                const setSplit = (change) => setFormData({ ...formData, splits: formData.splits.map((x, j) => (j === i ? { ...x, ...change } : x)) });
+                return (
+                  <div key={i} className="flex items-center gap-2 mt-2">
+                    <input type="number" inputMode="decimal" step="0.01" min="0" placeholder="Amount" aria-label={`Amount for extra account ${i + 1}`}
+                      value={sp.amount} onChange={(e) => setSplit({ amount: e.target.value })}
+                      className="w-28 px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl" />
+                    <select aria-label={`Extra account ${i + 1}`} value={sp.account_id} onChange={(e) => setSplit({ account_id: e.target.value })}
+                      className="flex-1 min-w-0 px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl">
+                      <option value="">To which account</option>
+                      {bankAccounts.filter((a) => String(a.id) !== String(formData.depositAccountId)
+                        && !formData.splits.some((x, j) => j !== i && String(x.account_id) === String(a.id))).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <button type="button" aria-label={`Remove extra account ${i + 1}`} className="text-muted p-1"
+                      onClick={() => setFormData({ ...formData, splits: formData.splits.filter((_, j) => j !== i) })}><X size={16} /></button>
+                  </div>
+                );
+              })}
+              {!editingItem && (formData.splits || []).length > 0 && <p className="text-xs text-muted mt-1">The rest goes to the account chosen above.</p>}
+              {!editingItem && bankAccounts.length > 1 && (formData.splits || []).length < 2 && (
+                <button type="button" className="mt-2 text-sm font-medium text-accent"
+                  onClick={() => setFormData({ ...formData, splits: [...(formData.splits || []), { account_id: '', amount: '' }] })}>Send part of it to another account</button>
+              )}
+              </>
             ) : (
               <p className="text-sm text-muted">Add an account under Accounts first (cash is an account too).</p>
             )}
@@ -532,7 +608,10 @@ export default function Income({
                             {isOverdue && <span className="text-red-600 font-medium ml-2">· Overdue</span>}
                             {!isDueToday && !isOverdue && <span className="ml-2">• {daysUntil} days</span>}
                           </div>
-                          <div>Deposits to: {depositAccountName}</div>
+                          <div>Deposits to: {depositAccountName}{(schedule.splits || []).map((sp) => {
+                            const acc = bankAccounts.find((a) => String(a.id) === String(sp.account_id));
+                            return acc ? ` · ${formatCurrency(sp.amount)} to ${acc.name}` : '';
+                          }).join('')}</div>
                           {schedule.recurring_duration_type !== 'indefinite' && (
                             <div>
                               {schedule.recurring_duration_type === 'until_date' && `Until ${formatDate(schedule.recurring_until_date)}`}

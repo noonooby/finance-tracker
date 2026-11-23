@@ -222,6 +222,14 @@ function checkSchedule(sc) {
   if (!(cents(sc.amount) > 0)) fail(400, 'Enter the pay amount, above zero.');
   if (!PAY_FREQ.has(sc.frequency)) fail(400, 'Choose how often the pay comes.');
   if (!isDay(String(sc.next_date || '').slice(0, 10))) fail(400, 'Choose the next pay day.');
+  // Part of the pay sent to other accounts: two at most, each its own account and an amount above zero, and something left for the main one.
+  if (sc.splits != null) {
+    if (!Array.isArray(sc.splits) || sc.splits.length > 2) fail(400, 'Pay can be sent to two other accounts at most.');
+    const ids = sc.splits.map((x) => String((x && x.account_id) || ''));
+    if (ids.some((x) => !x) || new Set(ids).size !== ids.length || ids.includes(String(sc.deposit_account_id || ''))) fail(400, 'Choose a different account for each part of the pay.');
+    if (sc.splits.some((x) => !(cents(x.amount) > 0))) fail(400, 'Enter an amount above zero for each part of the pay.');
+    if (sc.splits.reduce((s, x) => s + cents(x.amount), 0) >= cents(sc.amount)) fail(400, 'The amounts sent to other accounts must leave something for the main account.');
+  }
 }
 // Only one account is the main one: making an account the main one takes the mark off the others.
 function onePrimary(uid, row) {
@@ -723,6 +731,12 @@ route('GET', '/api/config', () => ({ google: !!(G_ID && G_SECRET), dev: !!DEV_US
 // The Gemini key: whether it is set and whether this user may set it. Never the key itself.
 route('GET', '/api/gemini-key', (req) => { const u = authUser(req); const ks = require('./keystore'); return { set: ks.isSet(), canSet: !ks.isSet() && ks.mayManage(db, u) }; });
 route('POST', '/api/gemini-key', async (req, b) => { const u = authUser(req); await require('./keystore').set(db, u, b.key, fail); return { set: true }; });
+// A pay slip or a payroll screen (Workday and the like): what the pay is and which accounts it lands in. Nothing is saved.
+route('POST', '/api/read-pay', async (req, b) => {
+  const uid = authUser(req).id;
+  try { return await require('./reader').readPay(b, { bankAccounts: selectRows(uid, { table: 'bank_accounts', filters: [] }), today: b.today }); }
+  catch (e) { if (e.status) fail(e.status, e.message); throw e; }
+});
 route('POST', '/api/read-screenshot', async (req, b) => {
   const uid = authUser(req).id;
   const all = (t) => selectRows(uid, { table: t, filters: [] });

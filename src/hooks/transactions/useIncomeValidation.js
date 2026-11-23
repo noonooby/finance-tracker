@@ -62,6 +62,7 @@ export const useIncomeValidation = () => {
       recurringOccurrences: '',
       depositTarget: 'bank',
       depositAccountId: primaryAccount?.id || '',
+      splits: [],
       autoDeposit: true
     };
   }, []);

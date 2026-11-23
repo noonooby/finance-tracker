@@ -112,12 +112,39 @@ export async function recordExpense({ amount, source, date, description, notes, 
 }
 
 // Money received into a bank account or cash. incomeRow (optional) is the matching row in the income table.
-export async function recordIncome({ amount, target, date, description, source_name, notes, key, incomeRow, extra, updates }, accounts) {
+// parts (from payParts): the same income landing in more than one account. It stays one line, so one undo puts all of it back.
+export async function recordIncome({ amount, target, date, description, source_name, notes, key, incomeRow, extra, updates, parts }, accounts) {
   const a = toAmount(amount);
+  const many = Array.isArray(parts) && parts.length > 1;
+  if (many && round2(parts.reduce((s, p) => s + p.amount, 0)) !== a) throw new Error('The parts do not add up to the pay.');
   const rows = [];
   if (incomeRow) rows.push({ table: 'income', values: { amount: a, date, source: source_name || description, ...incomeRow } });
-  rows.push({ table: 'transactions', values: txRow({ type: 'income', amount: a, date, description: description || source_name, notes, ...extra }, target, accounts) });
-  return send(key, [payInto(target, a, accounts)], rows, withUpdates(updates));
+  const more = many ? { deposits: parts.map(({ id, name, amount: part }) => ({ account_id: id, name, amount: part })), payment_method_name: parts.map((p) => p.name).join(', ') } : {};
+  rows.push({ table: 'transactions', values: { ...txRow({ type: 'income', amount: a, date, description: description || source_name, notes, ...extra }, many ? parts[0].target : target, accounts), ...more } });
+  return send(key, many ? parts.map((p) => payInto(p.target, p.amount, accounts)) : [payInto(target, a, accounts)], rows, withUpdates(updates));
+}
+
+// Pay that lands in more than one account: fixed amounts go to the others, the rest to the main one.
+// splits: [{ account_id, amount }], two at most. A split whose account is gone, is the main one or is named twice is
+// left out, so its share stays in the main account.
+// -> [{ target, id, name, amount }], the main account first. Throws when the fixed amounts leave nothing for it.
+export function payParts(amount, mainId, splits, bankAccounts = []) {
+  const total = toAmount(amount);
+  const find = (id) => bankAccounts.find((x) => String(x.id) === String(id));
+  const main = find(mainId);
+  if (!main) throw new Error('Choose the account the income goes into.');
+  const seen = new Set([String(main.id)]);
+  const others = [];
+  for (const sp of (Array.isArray(splits) ? splits : []).slice(0, 2)) {
+    const acc = sp && find(sp.account_id);
+    const part = round2(sp && sp.amount);
+    if (!acc || seen.has(String(acc.id)) || !(part > 0)) continue;
+    seen.add(String(acc.id));
+    others.push({ target: `bank_account:${acc.id}`, id: acc.id, name: acc.name, amount: part });
+  }
+  const rest = round2(total - others.reduce((s, p) => s + p.amount, 0));
+  if (!(rest > 0)) throw new Error('The amounts sent to other accounts must leave something for the main account.');
+  return [{ target: `bank_account:${main.id}`, id: main.id, name: main.name, amount: rest }, ...others];
 }
 
 // A refund of an earlier purchase: money comes back to where it was paid from.

@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { dbOperation } from '../../utils/db';
-import { recordIncome, reverseTransaction } from '../../utils/money';
+import { recordIncome, reverseTransaction, payParts } from '../../utils/money';
 import { logActivity } from '../../utils/activityLogger';
 import { formatCurrency, formatDate, generateId } from '../../utils/helpers';
 import { formatFrequency } from '../../utils/sentenceCase';
@@ -54,6 +54,8 @@ export const useIncomeOperations = () => {
           startDate: formData.date,
           depositTarget: 'bank',
           depositAccountId: formData.depositAccountId,
+          // Checked here so a bad split is refused before the schedule is saved.
+          splits: payParts(newAmount, formData.depositAccountId, formData.splits, bankAccounts).slice(1).map((p) => ({ account_id: p.id, amount: p.amount })),
           autoDeposit: formData.autoDeposit !== false,
           recurringDurationType: formData.recurringDurationType || 'indefinite',
           recurringUntilDate: formData.recurringUntilDate || null,
@@ -167,12 +169,14 @@ export const useIncomeOperations = () => {
       const account = bankAccounts.find(a => String(a.id) === String(formData.depositAccountId));
       if (!account) throw new Error('Choose the account the income goes into.');
       const target = `bank_account:${account.id}`;
-      const depositDestination = account.name;
+      const parts = payParts(newAmount, account.id, formData.splits, bankAccounts);
+      const depositDestination = parts.map((p) => p.name).join(', ');
       const previousBalance = Number(account.balance) || 0;
 
       const res = await recordIncome({
         amount: newAmount,
         target,
+        parts,
         date: formData.date,
         source_name: formData.source,
         incomeRow: incomeEntry,

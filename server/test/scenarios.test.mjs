@@ -1301,3 +1301,39 @@ test('credit scores: latest per bureau with its change, and only real scores are
   assert.equal((await get('credit_scores', row.id)).score, 700);
   await db.from('credit_scores').delete().eq('id', row.id);
 });
+
+test('pay split: one pay lands in up to three accounts, stays one line, and one undo puts it all back', async () => {
+  const main = await add('bank_accounts', { name: 'Pay main', balance: 100 });
+  const save = await add('bank_accounts', { name: 'Pay savings', balance: 0 });
+  const bills = await add('bank_accounts', { name: 'Pay bills', balance: 10 });
+  const accounts = [main, save, bills];
+  const parts = M.payParts(2000, main.id, [{ account_id: save.id, amount: 300 }, { account_id: bills.id, amount: 450.5 }], accounts);
+  assert.deepEqual(parts.map((p) => [p.name, p.amount]), [['Pay main', 1249.5], ['Pay savings', 300], ['Pay bills', 450.5]]);
+  // An account that is gone, the main one again, a repeat and a third extra are left out: their share stays in the main account.
+  assert.deepEqual(M.payParts(2000, main.id, [{ account_id: 'gone', amount: 5 }, { account_id: main.id, amount: 5 }], accounts).map((p) => p.amount), [2000]);
+  assert.deepEqual(M.payParts(2000, main.id, [{ account_id: save.id, amount: 5 }, { account_id: save.id, amount: 7 }, { account_id: bills.id, amount: 9 }], accounts).map((p) => p.amount), [1995, 5]);
+  assert.throws(() => M.payParts(500, main.id, [{ account_id: save.id, amount: 500 }], accounts), /leave something/);
+  assert.throws(() => M.payParts(500, 'nope', [], accounts), /Choose the account/);
+
+  const r = await M.recordIncome({ amount: 2000, target: `bank_account:${main.id}`, parts, date: '2026-11-20', source_name: 'Split employer' }, { bankAccounts: accounts });
+  const line = r.rows.find((x) => x.type === 'income');
+  assert.deepEqual([(await get('bank_accounts', main.id)).balance, (await get('bank_accounts', save.id)).balance, (await get('bank_accounts', bills.id)).balance], [1349.5, 300, 460.5]);
+  assert.equal(line.amount, 2000);
+  assert.deepEqual(line.deposits.map((d) => d.amount), [1249.5, 300, 450.5]);
+  assert.ok([main, save, bills].every((a) => S.touchesAccount(line, 'bank_accounts', a.id)));
+  await assert.rejects(M.recordIncome({ amount: 2000, target: `bank_account:${main.id}`, parts: parts.slice(0, 2), date: '2026-11-20', source_name: 'x' }, { bankAccounts: accounts }), /add up/);
+  await api(`/api/transactions/${line.id}/reverse`, {});
+  assert.deepEqual([(await get('bank_accounts', main.id)).balance, (await get('bank_accounts', save.id)).balance, (await get('bank_accounts', bills.id)).balance], [100, 0, 10]);
+
+  // The server keeps the rule on the schedule itself.
+  const sc = (splits, more) => db.from('income_schedules').insert({ source: 'Split employer', amount: 2000, frequency: 'biweekly', next_date: '2026-12-04', deposit_account_id: main.id, is_active: true, splits, ...more }).select().single();
+  assert.match((await sc([{ account_id: main.id, amount: 5 }])).error.message, /different account/);
+  assert.match((await sc([{ account_id: save.id, amount: 5 }, { account_id: save.id, amount: 5 }])).error.message, /different account/);
+  assert.match((await sc([{ account_id: save.id, amount: 0 }])).error.message, /above zero/);
+  assert.match((await sc([{ account_id: save.id, amount: 1500 }, { account_id: bills.id, amount: 500 }])).error.message, /leave something/);
+  assert.match((await sc([{ account_id: save.id, amount: 1 }, { account_id: bills.id, amount: 1 }, { account_id: 'x', amount: 1 }])).error.message, /two other accounts/);
+  const ok = await sc([{ account_id: save.id, amount: 300 }]);
+  assert.equal(ok.error, null);
+  await db.from('income_schedules').delete().eq('id', ok.data.id);
+  for (const a of accounts) await db.from('bank_accounts').delete().eq('id', a.id);
+});
