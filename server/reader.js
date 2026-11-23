@@ -57,6 +57,8 @@ function resolveAccount(accounts, { last4, name }) {
   if (last4) {
     const hit = accounts.filter(a => String(a.last4 || a.last_four || a.card_number || '').slice(-4) === String(last4).slice(-4));
     if (hit.length === 1) return hit[0];
+    // Several accounts ending in the same digits: the one whose name fits, else the first. Never a new account.
+    if (hit.length > 1) { const m = norm(name); return hit.find(a => m && norm(a.name) === m) || hit.find(a => m && norm(a.name) && (norm(a.name).includes(m) || m.includes(norm(a.name)))) || hit[0]; }
   }
   const n = norm(name);
   if (!n) return null;
@@ -102,8 +104,43 @@ function noteAccount(note, accounts) {
   return !named.length && (wantsCard || wantsBank) && pool.length === 1 && pool[0]._type === (wantsCard ? 'credit_card' : 'bank_account') ? pool[0] : null;
 }
 
+// One account is often shown under two names on the same picture (the bank's name in the header, the product's name on
+// the card: "Rogers Bank" and "Rogers Red World Elite Mastercard", both ending 4131). Accounts ending in the same four
+// digits are one account; so are two of the same kind where one name contains the other and their digits do not
+// differ. The fuller name is kept, the lines under the other name move to it, and a line listed under both is one line.
+function sameAccounts(reading) {
+  const kind = (t) => (t === 'credit_card' ? 'card' : !t || ['chequing', 'savings', 'other'].includes(t) ? 'bank' : t);
+  const four = (a) => (a.last4 ? String(a.last4).slice(-4) : null);
+  const kept = [], renamed = new Map();
+  for (const a of reading.accounts || []) {
+    if (!a) continue;
+    const hit = kept.find((b) => (four(a) && four(b) ? four(a) === four(b)
+      : kind(a.type) === kind(b.type) && norm(a.name) && norm(b.name) && (norm(a.name).includes(norm(b.name)) || norm(b.name).includes(norm(a.name)))));
+    if (!hit) { kept.push({ ...a }); continue; }
+    const fuller = String(a.name || '').length > String(hit.name || '').length ? a.name : hit.name;
+    renamed.set(norm(a.name), fuller); renamed.set(norm(hit.name), fuller);
+    for (const [k, v] of Object.entries(a)) if (hit[k] == null || hit[k] === '') hit[k] = v;
+    if (a.type === 'credit_card') hit.type = 'credit_card';
+    hit.name = fuller;
+  }
+  if (!renamed.size) return reading;
+  for (const [k, v] of [...renamed]) for (const [k2, v2] of renamed) if (norm(v2) === k) renamed.set(k2, v);
+  const to = (n) => (n && renamed.get(norm(n))) || n;
+  const seen = new Set(), lines = [];
+  for (const l of reading.lines || []) {
+    const moved = to(l.account_name) !== l.account_name;
+    const key = [l.date, norm(l.merchant), Math.abs(Number(l.amount)), l.direction, norm(to(l.account_name))].join('|');
+    // The same line under both names is one line; two alike under one name are two real lines.
+    if (seen.has(key + '|moved') || (moved && seen.has(key + '|kept'))) continue;
+    seen.add(key + (moved ? '|moved' : '|kept'));
+    lines.push({ ...l, account_name: to(l.account_name), other_account: to(l.other_account) });
+  }
+  return { ...reading, accounts: kept, lines, statement: reading.statement ? { ...reading.statement, account_name: to(reading.statement.account_name) } : reading.statement };
+}
+
 function plan(reading, ctx, sourceId) {
   const { bankAccounts, creditCards, transactions } = ctx;
+  reading = sameAccounts(reading);
   const all = [
     ...bankAccounts.map(a => ({ ...a, _type: 'bank_account' })),
     ...creditCards.map(c => ({ ...c, _type: 'credit_card' })),
@@ -448,4 +485,4 @@ async function readScore(body, ctx) {
   return p;
 }
 
-module.exports = { read, plan, resolveAccount, noteAccount, mkey, cleanNote, readPay, planPay, readScore, planScore };
+module.exports = { read, plan, resolveAccount, noteAccount, sameAccounts, mkey, cleanNote, readPay, planPay, readScore, planScore };

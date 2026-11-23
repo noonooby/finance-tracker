@@ -159,7 +159,7 @@ test('account match: card digits win when they point at one account, the name de
   assert.equal(reader.resolveAccount(ACCTS, { last4: '3333', name: 'something else' }).id, 3);
   assert.equal(reader.resolveAccount(ACCTS, { last4: 'xxxx-2222' }).id, 2);       // longer text ending in the digits
   assert.equal(reader.resolveAccount(ACCTS, { last4: '4444', name: 'Old Visa' }).id, 5); // two accounts share the digits: name decides
-  assert.equal(reader.resolveAccount(ACCTS, { last4: '4444' }), null);            // shared digits and no name: not guessed
+  assert.equal(reader.resolveAccount(ACCTS, { last4: '4444' }).id, 4);            // shared digits and no name: the first of them, never a new account
   assert.equal(reader.resolveAccount(ACCTS, { last4: '9999', name: 'amex-cobalt' }).id, 3);
 });
 
@@ -611,4 +611,27 @@ test('a picture of things the app has shows what changed: a raised limit, a new 
   const q = reader.plan({ kind: 'bill', lines: [], accounts: [], bill: { payee: 'Bell Mobility', amount: 85, due_date: null, frequency: 'monthly' } }, ctx, 's5');
   assert.deepEqual(q.new_bills, [{ id: 'newbill:0', name: 'Bell Mobility', amount: 85, next_date: null, frequency: 'monthly' }]);
   assert.equal(reader.plan({ kind: 'pay_slip', lines: [], accounts: [] }, ctx, 's6').pay_slip, true);
+});
+
+test('one card shown under two names on a picture is one card, and its lines are recorded once', () => {
+  const reader = mod('reader.js');
+  const ctx = { bankAccounts: [], creditCards: [], loans: [], transactions: [], today: '2026-11-23' };
+  const reading = { kind: 'transactions', accounts: [
+    { name: 'Rogers Bank', type: 'credit_card', last4: '4131', balance: 4826.5 },
+    { name: 'Rogers Red World Elite Mastercard', type: 'credit_card', last4: '4131', balance: 4826.5, credit_limit: 16900 }],
+    lines: [
+      { date: '2026-11-22', merchant: 'Starbucks', amount: 50, direction: 'out', account_name: 'Rogers Bank' },
+      { date: '2026-11-22', merchant: 'Starbucks', amount: 50, direction: 'out', account_name: 'Rogers Red World Elite Mastercard' },
+      { date: '2026-11-21', merchant: 'Klarna', amount: 21.9, direction: 'out', account_name: 'Rogers Bank' },
+      { date: '2026-11-20', merchant: 'Tim Hortons', amount: 3, direction: 'out', account_name: 'Rogers Red World Elite Mastercard' },
+      { date: '2026-11-20', merchant: 'Tim Hortons', amount: 3, direction: 'out', account_name: 'Rogers Red World Elite Mastercard' }] };
+  const p = reader.plan(reading, ctx, 'dup1');
+  assert.deepEqual(p.new_accounts.map((a) => [a.name, a.last4, a.credit_limit, a.balance]), [['Rogers Red World Elite Mastercard', '4131', 16900, 4826.5]]);
+  assert.deepEqual(p.lines.map((l) => [l.merchant, l.account && l.account.id]), [['Starbucks', 'new:0'], ['Klarna', 'new:0'], ['Tim Hortons', 'new:0'], ['Tim Hortons', 'new:0']]); // two real coffees stay two
+  // Names alone: "Rogers" and "Rogers Mastercard" of the same kind are one; a chequing and a savings account are not.
+  assert.equal(reader.sameAccounts({ accounts: [{ name: 'Rogers', type: 'credit_card' }, { name: 'Rogers Mastercard', type: 'credit_card' }], lines: [] }).accounts.length, 1);
+  assert.equal(reader.sameAccounts({ accounts: [{ name: 'TD Chequing', type: 'chequing', last4: '1111' }, { name: 'TD Savings', type: 'savings', last4: '2222' }, { name: 'TD', type: 'chequing', last4: '3333' }], lines: [] }).accounts.length, 3);
+  // The app already holds two cards ending the same (added before this rule): a picture matches one of them, never a third.
+  const two = [{ id: 'a', _type: 'credit_card', name: 'Rogers Bank', last4: '4131' }, { id: 'b', _type: 'credit_card', name: 'Rogers Red World Elite Mastercard', last4: '4131' }];
+  assert.deepEqual(['Rogers Red World Elite Mastercard', 'World Elite', 'Something else', ''].map((n) => reader.resolveAccount(two, { last4: '4131', name: n }).id), ['b', 'b', 'a', 'a']);
 });
