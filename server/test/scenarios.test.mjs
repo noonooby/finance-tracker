@@ -850,3 +850,24 @@ test('categories: a name is needed, and the same name cannot be used twice for t
   assert.equal((await db.from('categories').update({ name: 'Pets', color: '#111111' }).eq('id', a.id)).error, null); // saving its own name is fine
   assert.equal((await get('categories', b.id)).name, 'Vet');
 });
+
+test('restoring a backup: everything comes back as it was, and a bad file changes nothing', async () => {
+  const names = ['bank_accounts', 'credit_cards', 'loans', 'transactions', 'categories', 'bills', 'balance_points', 'snapshots', 'settings'];
+  const dump = async () => Object.fromEntries(await Promise.all(names.map(async (t) => [t, ((await db.from(t).select('*')).data || []).sort((x, y) => String(x.id).localeCompare(String(y.id)))])));
+  const before = await dump();
+  assert.ok(before.transactions.length > 5 && before.balance_points.length > 0);
+  // Bad files: nothing is removed.
+  await assert.rejects(api('/api/restore-all', { confirm: 'REPLACE ALL MY DATA', data: {} }), /nothing in it/);
+  await assert.rejects(api('/api/restore-all', { confirm: 'REPLACE ALL MY DATA', data: { transactions: 'x' } }), /not a backup/);
+  await assert.rejects(api('/api/restore-all', { confirm: 'no', data: before }), /Confirm/);
+  // A file that fails part way (a split that does not add up) leaves everything as it was.
+  const broken = { ...before, transactions: [...before.transactions, { id: 'bad-split', type: 'expense', amount: 10, splits: [{ amount: 3 }, { amount: 4 }] }] };
+  await assert.rejects(api('/api/restore-all', { confirm: 'REPLACE ALL MY DATA', data: broken }), /add up/);
+  assert.deepEqual(await dump(), before);
+  // Records made after the backup go; the backup comes back whole, with the balance history.
+  const extra = await add('bank_accounts', { name: 'After the backup', balance: 5 });
+  const done = await api('/api/restore-all', { confirm: 'REPLACE ALL MY DATA', data: before });
+  assert.equal(done.restored.transactions, before.transactions.length);
+  assert.equal(await get('bank_accounts', extra.id), null);
+  assert.deepEqual(await dump(), before);
+});

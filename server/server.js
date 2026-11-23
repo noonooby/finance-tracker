@@ -546,28 +546,55 @@ route('POST', '/api/reset', (req, b) => {
 // Restore rows from a backup file, as they were: ids, dates and each transaction's record of what it moved (_legs),
 // so undo still works afterwards. Balances come from the restored account rows; nothing is applied again.
 // A row id that belongs to someone else is refused. Only legs on this person's own balance tables are kept.
+function restoreRows(uid, table, list) {
+  let n = 0;
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail(400, 'The backup has a row that cannot be read');
+    const legs = raw._legs, undo = raw._undo;
+    const v = clean(raw);
+    if (v.id == null) v.id = crypto.randomUUID();
+    if (table === 'transactions') {
+      checkSplits(v);
+      if (Array.isArray(legs)) v._legs = legs.filter((l) => l && MONEY_FIELDS[l.table] && Number.isFinite(Number(l.delta)))
+        .map((l) => ({ table: l.table, id: l.id, field: MONEY_FIELDS[l.table].includes(l.field) ? l.field : MONEY_FIELDS[l.table][0], delta: Number(l.delta) }));
+    }
+    // The plain fields a payment changed (see _undo in the money step), so undo still puts them back after a restore.
+    if (table === 'transactions' && Array.isArray(undo)) {
+      const keep = undo.filter((u) => u && TABLES.has(u.table) && !SERVER_ONLY.has(u.table) && u.id != null && u.set && typeof u.set === 'object')
+        .map((u) => ({ table: u.table, id: u.id, before: u.before && typeof u.before === 'object' ? u.before : {}, set: u.set }));
+      if (keep.length) v._undo = keep;
+    }
+    const ex = db.prepare('SELECT user_id FROM rows WHERE tbl = ? AND id = ?').get(table, String(v.id));
+    if (ex && ex.user_id !== uid) fail(409, 'A row in the backup belongs to another account');
+    v.user_id = uid;
+    db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?) ON CONFLICT(tbl, id) DO UPDATE SET data = excluded.data').run(table, String(v.id), uid, JSON.stringify(v));
+    n++;
+  }
+  return n;
+}
 route('POST', '/api/restore', (req, b) => {
   const uid = authUser(req).id;
   try { mayWrite(b.table); } catch { fail(400, 'That table cannot be restored'); }
   if (!Array.isArray(b.rows) || b.rows.length > 1000) fail(400, 'Send up to 1000 rows at a time');
+  return tx(() => ({ restored: restoreRows(uid, b.table, b.rows) }));
+});
+// Replace everything with a backup file, in one step: either the whole backup is in, or nothing has changed.
+// The balance history and the balances you checked come back with it. The devices that get reminders are kept as they are.
+const KEPT_ON_RESTORE = 'push_subscriptions';
+route('POST', '/api/restore-all', (req, b) => {
+  const uid = authUser(req).id;
+  if (b.confirm !== 'REPLACE ALL MY DATA') fail(400, 'Confirm the replacement.');
+  const data = b.data && typeof b.data === 'object' && !Array.isArray(b.data) ? b.data : null;
+  if (!data) fail(400, 'That file is not a backup from this app.');
+  const tables = Object.keys(data).filter((t) => TABLES.has(t) && t !== KEPT_ON_RESTORE);
+  for (const t of tables) if (!Array.isArray(data[t])) fail(400, 'That file is not a backup from this app.');
+  if (!tables.some((t) => data[t].length)) fail(400, 'The backup has nothing in it. Nothing was changed.');
   return tx(() => {
-    let n = 0;
-    for (const raw of b.rows) {
-      const legs = raw && raw._legs;
-      const v = clean(raw);
-      if (v.id == null) v.id = crypto.randomUUID();
-      if (b.table === 'transactions') {
-        checkSplits(v);
-        if (Array.isArray(legs)) v._legs = legs.filter((l) => l && MONEY_FIELDS[l.table] && Number.isFinite(Number(l.delta)))
-          .map((l) => ({ table: l.table, id: l.id, field: MONEY_FIELDS[l.table].includes(l.field) ? l.field : MONEY_FIELDS[l.table][0], delta: Number(l.delta) }));
-      }
-      const ex = db.prepare('SELECT user_id FROM rows WHERE tbl = ? AND id = ?').get(b.table, String(v.id));
-      if (ex && ex.user_id !== uid) fail(409, 'A row in the backup belongs to another account');
-      v.user_id = uid;
-      db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?) ON CONFLICT(tbl, id) DO UPDATE SET data = excluded.data').run(b.table, String(v.id), uid, JSON.stringify(v));
-      n++;
-    }
-    return { restored: n };
+    db.prepare('DELETE FROM rows WHERE user_id = ? AND tbl <> ?').run(uid, KEPT_ON_RESTORE);
+    db.prepare('DELETE FROM money_keys WHERE user_id = ?').run(uid);
+    const restored = {};
+    for (const t of tables) restored[t] = restoreRows(uid, t, data[t]);
+    return { restored, total: Object.values(restored).reduce((x, y) => x + y, 0) };
   });
 });
 route('POST', '/api/transactions/:id/reverse', (req, b, [id]) => reverse(authUser(req).id, id, b));

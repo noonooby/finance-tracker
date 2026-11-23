@@ -13,7 +13,7 @@ const TABLES_TO_BACKUP = [
   'settings', 'user_preferences', 'categories', 'category_rules',
   'bank_accounts', 'credit_cards', 'loans', 'investments', 'assets',
   'income', 'income_schedules', 'bills', 'transactions', 'credit_card_payments', 'loan_payments',
-  'activities', 'budget_tracking', 'scheduled_payments', 'known_entities', 'alert_history', 'saved_filters', 'report_templates',
+  'activities', 'budget_tracking', 'balance_points', 'snapshots', 'scheduled_payments', 'known_entities', 'alert_history', 'saved_filters', 'report_templates',
   // Form contexts
   'expense_description_contexts', 'transfer_description_contexts', 'income_source_contexts',
   'loan_creation_contexts', 'loan_payment_contexts', 'card_payment_contexts', 'gift_card_purchase_contexts'
@@ -102,9 +102,7 @@ export async function downloadBackup() {
  * Validate backup file structure
  */
 function validateBackup(backup) {
-  if (!backup.version) throw new Error('Invalid backup: missing version');
-  if (!backup.data) throw new Error('Invalid backup: missing data');
-  if (!backup.userId) throw new Error('Invalid backup: missing userId');
+  if (!backup || !backup.version || !backup.data || typeof backup.data !== 'object') throw new Error('That file is not a backup from this app.');
   
   // Check for critical tables
   const criticalTables = ['settings', 'categories', 'transactions'];
@@ -124,7 +122,7 @@ function validateBackup(backup) {
  * - skipTables: Array of tables to skip during import
  */
 export async function importFullBackup(backupFile, options = {}) {
-  const { clearExisting = true, skipTables = [] } = options;
+  const { skipTables = [] } = options;
 
   try {
     const { data: { user } } = await server.auth.getUser();
@@ -137,78 +135,18 @@ export async function importFullBackup(backupFile, options = {}) {
     // Validate
     validateBackup(backup);
 
-    
-    // Clear existing data if requested
-    if (clearExisting) {
-      await clearAllUserData();
-    }
-
-    // Import each table
-    const results = {};
+    // One server step: the whole backup goes in, or nothing changes.
+    const data = {};
     for (const table of TABLES_TO_BACKUP) {
-      if (skipTables.includes(table)) {
-        results[table] = { skipped: true };
-        continue;
-      }
-
-      const records = backup.data[table] || [];
-      if (records.length === 0) {
-        results[table] = { imported: 0, errors: 0 };
-        continue;
-      }
-
-      try {
-        // Update user_id to current user
-        const recordsToImport = records.map(record => ({
-          ...record,
-          user_id: user.id
-        }));
-
-        // Import in batches of 100
-        const batchSize = 100;
-        let imported = 0;
-        let errors = 0;
-
-        for (let i = 0; i < recordsToImport.length; i += batchSize) {
-          const batch = recordsToImport.slice(i, i + batchSize);
-          const error = await api('/api/restore', { table, rows: batch }).then(() => null, (e) => e);
-
-          if (error) {
-            console.error(`Error importing batch to ${table}:`, error);
-            errors += batch.length;
-          } else {
-            imported += batch.length;
-          }
-        }
-
-        results[table] = { imported, errors };
-      } catch (tableError) {
-        console.error(`Failed to import ${table}:`, tableError);
-        results[table] = { imported: 0, errors: records.length };
-      }
+      if (skipTables.includes(table)) continue;
+      if (Array.isArray(backup.data[table])) data[table] = backup.data[table];
     }
-
-    // Calculate final stats
-    const stats = {
-      totalImported: Object.values(results).reduce((sum, r) => sum + (r.imported || 0), 0),
-      totalErrors: Object.values(results).reduce((sum, r) => sum + (r.errors || 0), 0),
-      tablesProcessed: Object.keys(results).length,
-      details: results
-    };
-
-    return { success: true, stats };
+    const done = await api('/api/restore-all', { confirm: 'REPLACE ALL MY DATA', data });
+    return { success: true, stats: { totalImported: done.total, totalErrors: 0, tablesProcessed: Object.keys(done.restored).length, details: done.restored } };
   } catch (error) {
     console.error('Import failed:', error);
     throw error;
   }
-}
-
-/**
- * Clear all user data (used before import)
- */
-// Everything recorded on this sign-in is removed in one server step (as Settings, Delete all data).
-async function clearAllUserData() {
-  await api('/api/reset', { confirm: 'DELETE ALL MY DATA' });
 }
 
 /**
