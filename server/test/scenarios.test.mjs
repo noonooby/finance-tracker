@@ -754,3 +754,27 @@ test('a refused payment says in plain words what the account has and how far sho
   await assert.rejects(M.recordLoanPayment({ loanId: owed.id, amount: 400, source: `bank_account:${rich.id}`, date: '2026-11-23' }, a),
     /You owe \$300\.00 on Small loan\. \$400\.00 is more than that\.$/);
 });
+
+test('bills: one tracked bill per merchant, each with a name, an amount, a rhythm and a date; a turned-down one can be added later', async () => {
+  const bill = (more) => ({ name: 'Bell Internet', key: 'bellinternet', amount: 80, frequency: 'monthly', next_date: '2026-12-05', status: 'active', ...more });
+  const ins = (v) => db.from('bills').insert(v).select().single();
+  const first = (await ins(bill())).data;
+  assert.ok(first.id);
+  assert.match((await ins(bill({ name: 'BELL internet again' }))).error.message, /Bell Internet is already tracked/);
+  for (const [bad, why] of [[{ key: 'gymmembership', name: 'Gym', amount: 0 }, /above zero/], [{ key: 'gymmembership', name: 'Gym', amount: -5 }, /above zero/],
+    [{ key: 'ab', name: 'ab' }, /at least 3 letters/], [{ key: 'gymmembership', name: '   ' }, /at least 3 letters/],
+    [{ key: 'gymmembership', name: 'Gym', frequency: 'daily' }, /how often/], [{ key: 'gymmembership', name: 'Gym', next_date: 'soon' }, /next due date/]]) {
+    assert.match((await ins(bill(bad))).error.message, why);
+  }
+  assert.equal((await db.from('bills').select('*').eq('key', 'gymmembership')).data.length, 0);
+  // An edit is held to the same rule, and cannot turn one bill into a second copy of another.
+  const other = (await ins(bill({ name: 'Rogers', key: 'rogers' }))).data;
+  assert.match((await db.from('bills').update({ amount: 0 }).eq('id', other.id)).error.message, /above zero/);
+  assert.match((await db.from('bills').update({ key: 'bellinternet' }).eq('id', other.id)).error.message, /already tracked/);
+  assert.equal((await get('bills', other.id)).amount, 80);
+  // Stop tracking, then add it again by hand: the same row is tracked again, not a second one.
+  assert.equal((await db.from('bills').update({ status: 'ignored' }).eq('id', other.id)).error, null);
+  const again = (await ins(bill({ name: 'Rogers', key: 'rogers', amount: 95 }))).data;
+  assert.deepEqual([again.id, again.status, again.amount], [other.id, 'active', 95]);
+  assert.equal((await db.from('bills').select('*').eq('key', 'rogers')).data.length, 1);
+});

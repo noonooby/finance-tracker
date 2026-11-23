@@ -52,13 +52,14 @@ export default function Bills() {
   const insert = async (row) => {
     const { data, error } = await server.from('bills').insert(row).select().single();
     if (error) { showToast.error(error.message); return null; }
-    setBills([...bills, data]);
+    setBills([...bills.filter((x) => x.id !== data.id), data]);
     return data;
   };
   const update = async (b, change) => {
     const { error } = await server.from('bills').update(change).eq('id', b.id);
-    if (error) return showToast.error(error.message);
+    if (error) { showToast.error(error.message); return false; }
     setBills(bills.map((x) => (x.id === b.id ? { ...x, ...change } : x)));
+    return true;
   };
   const remove = async (b) => {
     const { error } = await server.from('bills').delete().eq('id', b.id);
@@ -66,6 +67,14 @@ export default function Bills() {
     setBills(bills.filter((x) => x.id !== b.id));
   };
   const clean = (v) => ({ name: String(v.name).trim().slice(0, 60), amount: Math.round(Number(v.amount) * 100) / 100, frequency: v.frequency, next_date: v.next_date, remind: !!v.remind });
+  // The same check for a new bill and an edited one. A bill you added yourself is matched by its name, so its key follows the name;
+  // one found in your history keeps the merchant it was found by.
+  const checked = (v, bill) => {
+    const c = clean(v);
+    const key = bill && bill.source === 'found' && bill.key ? bill.key : mkey(c.name);
+    if (!(c.amount > 0) || key.length < 3) { showToast.error('Enter a name with at least 3 letters and an amount above zero.'); return null; }
+    return { ...c, key };
+  };
 
   const track = (f) => insert({ key: f.key, name: f.name, amount: f.amount, frequency: f.frequency, next_date: f.next_date, category_id: f.category_id, category_name: f.category_name,
     payment_method: f.payment_method, payment_method_id: f.payment_method_id, payment_method_name: f.payment_method_name, status: 'active', remind: true, source: 'found' });
@@ -110,7 +119,7 @@ export default function Bills() {
             const paid = billPaid(b, transactions, b.due);
             return editing === b.id ? (
               <div key={b.id} className="p-4">
-                <BillForm bill={b} saving={saving} onCancel={() => setEditing(null)} onSave={async (v) => { setSaving(true); await update(b, clean(v)); setSaving(false); setEditing(null); }} />
+                <BillForm bill={b} saving={saving} onCancel={() => setEditing(null)} onSave={async (v) => { const c = checked(v, b); if (!c) return; setSaving(true); const ok = await update(b, c); setSaving(false); if (ok) setEditing(null); }} />
                 <div className="flex gap-2 mt-3 pt-3 border-t border-line">
                   <Button size="sm" variant="secondary" onClick={() => { update(b, { status: 'ignored' }); setEditing(null); }}>Stop tracking</Button>
                 </div>
@@ -130,9 +139,9 @@ export default function Bills() {
           {editing === 'new' && (
             <div className="p-4">
               <BillForm bill={{}} saving={saving} onCancel={() => setEditing(null)} onSave={async (v) => {
-                const c = clean(v);
-                if (!(c.amount > 0) || mkey(c.name).length < 3) return showToast.error('Enter a name with at least 3 letters and an amount above zero.');
-                setSaving(true); const ok = await insert({ ...c, key: mkey(c.name), status: 'active', source: 'added' }); setSaving(false);
+                const c = checked(v);
+                if (!c) return;
+                setSaving(true); const ok = await insert({ ...c, status: 'active', source: 'added' }); setSaving(false);
                 if (ok) setEditing(null);
               }} />
             </div>

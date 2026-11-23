@@ -153,10 +153,28 @@ function checkSplits(t) {
   const sum = t.splits.reduce((x, p) => x + cents(p.amount), 0);
   if (sum !== cents(t.amount)) fail(400, `The parts add up to ${fromCents(sum).toFixed(2)}, not the amount of ${fromCents(cents(t.amount)).toFixed(2)}.`);
 }
+// A tracked bill: a name its payments can be matched by, an amount above zero, a known rhythm, a real date,
+// and only one tracked bill per merchant (two would both remind and both count in the month end).
+const BILL_FREQ = new Set(['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']);
+function checkBill(uid, b) {
+  if (b.status !== 'active') return;
+  if (!String(b.name || '').trim() || String(b.key || '').length < 3) fail(400, 'Give the bill a name with at least 3 letters.');
+  if (!(cents(b.amount) > 0)) fail(400, 'Enter the usual amount, above zero.');
+  if (!BILL_FREQ.has(b.frequency)) fail(400, 'Choose how often the bill repeats.');
+  if (!isDay(String(b.next_date || '').slice(0, 10))) fail(400, 'Choose the next due date.');
+  const twin = selectRows(uid, { table: 'bills', filters: [['key', 'eq', b.key], ['status', 'eq', 'active']] }).find((x) => String(x.id) !== String(b.id));
+  if (twin) fail(409, `${twin.name} is already tracked. Change that one instead.`);
+}
 function insertRow(uid, tbl, values, upsertOn) {
   const v = clean(values);
   if (tbl === 'transactions') checkSplits(v);
   v.user_id = uid;
+  if (tbl === 'bills') {
+    checkBill(uid, v);
+    // A merchant you turned down earlier and now add yourself: that row becomes the tracked bill.
+    const old = v.key && v.id == null && selectRows(uid, { table: 'bills', filters: [['key', 'eq', v.key]], limit: 1 })[0];
+    if (old) return updateRows(uid, tbl, [['id', 'eq', old.id]], v)[0];
+  }
   if (upsertOn && upsertOn !== 'id') {
     const keys = upsertOn.split(',').map(s => s.trim());
     const ex = selectRows(uid, { table: tbl, filters: keys.map(k => [k, 'eq', v[k] ?? null]), limit: 1 })[0];
@@ -208,6 +226,7 @@ function updateRows(uid, tbl, filters, values, orGroups) {
     const n = { ...r, ...v, id: r.id, user_id: uid, updated_at: now() };
     if (r._legs) n._legs = r._legs;
     if (tbl === 'transactions' && ('splits' in v || 'amount' in v)) checkSplits(n);
+    if (tbl === 'bills') checkBill(uid, n);
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), tbl, String(r.id), uid);
     // Stating a balance (even the same figure) confirms it as of today, or as of the date given.
     for (const f of MONEY_FIELDS[tbl] || []) if (f in v) stamp(uid, tbl, n, f, values.balance_as_of);
