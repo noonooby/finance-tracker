@@ -119,6 +119,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   // and each comes up once the one before it is saved or removed.
   const MAX_WAITING = 40, MAX_KEPT = 60_000_000;
   const [showWaiting, setShowWaiting] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
   const [big, setBig] = useState(null);
   // While a picture is being read: how long it has been.
   const [secs, setSecs] = useState(0);
@@ -152,15 +153,16 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     for (const g of got) { if (q.length < MAX_WAITING && size + g.image.url.length <= MAX_KEPT) { q.push(g); size += g.image.url.length; } else left += 1; }
     if (left) bad.push(`${left} ${left === 1 ? 'was' : 'were'} left out: ${MAX_WAITING} can wait at a time, fewer when the files are large. Choose ${left === 1 ? 'it' : 'them'} again once these are saved.`);
     putQueue(q);
-    if (q.length) setShowWaiting(true);
     if (current) savePending({ queue: q, image: current, note: current === image ? note : '', proposal: current === image ? proposal : undefined });
     if (bad.length) setError(bad.join(' '));
+    // Reading starts by itself. A bank file waits, because it needs to be told which account it is from.
+    if (current && !current.csv && !current.typed && !proposal && !reading) readTogether(current, current === image ? note : '', q);
   };
 
   // The picture on screen is finished with (saved or removed): the next one waiting comes up.
   const advance = (readIt) => {
     const [next, ...rest] = queueRef.current;
-    putQueue(rest); setShowWaiting(false);
+    putQueue(rest); setShowWaiting(false); setNoteOpen(false);
     setProposal(null); setDrafts([]); setRows([]); setFixes([]); setLoanDrafts([]); setInvDrafts([]); setScoreDraft(null); setChanges([]); setBillDrafts([]); setError(''); setResumed(false);
     if (!next) { setImage(null); setNote(''); clearPending(); return; }
     setImage(next.image); setNote(next.note || '');
@@ -662,8 +664,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       <div>
         <h1 className={`text-2xl font-bold text-fg`}>Scan</h1>
         <p className={`text-sm ${muted}`}>
-          Take a photo of a receipt, or choose screenshots of your bank or card app (several at once if you like), a statement PDF, or a file exported by your bank (CSV). The app fills in everything it can: new accounts, the account for each line,
-          the kind of line and a category. Check it, change anything with Edit, then tap Save. Nothing is saved before that.
+          Choose screenshots of your bank or card app (as many as you like), a statement, a receipt or a bank file. Reading starts by itself. Check it and tap Save.
         </p>
       </div>
 
@@ -705,8 +706,9 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                   </select>
                 </label>
               )}
-              {!image.csv && !image.typed && <label className="block text-sm">
-                <span className="text-muted">Note about this picture (optional)</span>
+              {!image.csv && !image.typed && !noteOpen && !note && proposal && <button type="button" className="press text-sm font-medium text-accent" onClick={() => setNoteOpen(true)}>Read wrong? Add a note</button>}
+              {!image.csv && !image.typed && (noteOpen || !!note) && <label className="block text-sm">
+                <span className="text-muted">A word or two is enough, such as the bank or card name. Then tap Read again.</span>
                 <textarea rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)}
                   placeholder="For example: this is my Visa ending 1234, or only the grocery lines"
                   className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2 text-fg placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none" />
@@ -746,10 +748,9 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           <div className="space-y-2 border-t border-line pt-3">
             <div className="flex items-center justify-between gap-3">
               <p className="font-medium">Waiting their turn: {queue.length}</p>
-              <button type="button" className="press text-sm font-medium text-accent" aria-expanded={showWaiting} onClick={() => setShowWaiting(!showWaiting)}>{showWaiting ? 'Hide' : 'Show, add notes'}</button>
+              <button type="button" className="press text-sm font-medium text-accent" aria-expanded={showWaiting} onClick={() => setShowWaiting(!showWaiting)}>{showWaiting ? 'Hide' : 'Show'}</button>
             </div>
-            {!proposal && !reading && <p role="status" className="text-sm rounded-lg bg-accent-soft text-accent px-3 py-2">Nothing is read yet. Add notes if you want, then tap Start reading at the bottom. Screens of the same accounts are read together and checked once.</p>}
-            {showWaiting && <p className="text-sm text-muted">A note can be short: the name of the bank or card is enough.</p>}
+            {showWaiting && <p className="text-sm text-muted">A note is optional. The name of the bank or card is enough.</p>}
             {showWaiting && queue.map((q, i) => (
               <div key={i} className="flex items-start gap-3">
                 {q.image.pdf || q.image.csv ? <div className="w-20 shrink-0 text-xs text-muted break-all">{q.image.name}</div>

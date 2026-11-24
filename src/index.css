@@ -73,6 +73,9 @@ input, textarea, select, button {
 }
 
 @media (max-width: 640px) {
+  /* A field smaller than 16px makes a phone zoom the page in when it is tapped, and the page then slides sideways. */
+  input, textarea, select { font-size: 16px !important; }
+  html, body { overflow-x: clip; max-width: 100%; }
   html { font-size: 14px; }
   h1 { font-size: 1.5rem !important; }
   h2 { font-size: 1.25rem !important; }
