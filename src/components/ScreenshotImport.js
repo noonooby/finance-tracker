@@ -119,6 +119,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   // and each comes up once the one before it is saved or removed.
   const MAX_WAITING = 40, MAX_KEPT = 60_000_000;
   const [noteOpen, setNoteOpen] = useState(false);
+  // The fields of something found are folded away until Edit is tapped.
+  const [edit, setEdit] = useState({});
   const [big, setBig] = useState(null);
   // While a picture is being read: how long it has been.
   const [secs, setSecs] = useState(0);
@@ -327,7 +329,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       setScoreDraft(p.credit_score ? { on: !p.credit_score.same, bureau: p.credit_score.bureau || '', score: String(p.credit_score.score), date: p.credit_score.date || new Date().toLocaleDateString('en-CA') } : null);
       setLoanDrafts((p.new_loans || []).map((l) => ({ ...l, on: true, balance: l.balance == null ? '' : String(l.balance), payment_amount: l.payment_amount == null ? '' : String(l.payment_amount),
         next_payment_date: l.next_payment_date || '', interest_rate: l.interest_rate == null ? '' : String(l.interest_rate) })));
-      setRemovals({});
+      setRemovals({}); setEdit({});
   }
 
   // The note is kept with the picture as it is typed.
@@ -588,35 +590,10 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     savePending({ queue: queueRef.current, image, note, proposal: rest });
   };
 
-  // In plain words, what the reading made of the picture: what it is, whose it is, and what will happen to each part.
-  const understood = (p, rs, ds, fx) => {
-    const out = [];
-    const what = { statement: 'A statement', receipt: 'A receipt', transactions: 'A list of transactions', balance: 'A balance', credit_score: 'A credit score', pay_slip: 'A pay slip', bill: 'A bill', other: 'Not clearly a statement, a receipt or a list of transactions' }[p.kind] || 'A picture';
-    out.push(`It is: ${what.charAt(0).toLowerCase()}${what.slice(1)}.`);
-    const names = [...new Set([...(p.statement && p.statement.account ? [p.statement.account.name] : []), ...rs.map((r) => r.account && r.account.name).filter(Boolean), ...fx.map((f) => f.account.name), ...changes.map((c) => c.account.name)])];
-    const kindOf = (n) => { const t = ([...fx, ...changes].find((x) => x.account.name === n) || { account: {} }).account.type; return { loan: 'loan', investment: 'investment', asset: 'property', bill: 'bill' }[t] || null; };
-    const isCard = (n) => creditCards.some((c) => c.name === n) || ds.some((d) => d.name === n && d.type === 'credit_card');
-    if (names.length) out.push(`${names.length === 1 ? 'About' : 'About'}: ${names.map((n) => `${n} (${kindOf(n) || (isCard(n) ? 'card' : 'bank account')}${ds.some((d) => d.name === n) ? ', new' : ''})`).join(', ')}${p.note_account ? `. Your note pointed to ${p.note_account}` : ''}.`);
-    else out.push(rs.length ? 'Account: not clear from the picture. Choose it on each line, or add a note with the bank or card name and read again.' : loanDrafts.length || invDrafts.length || scoreDraft || fx.length || changes.length || billDrafts.length || p.pay_slip ? 'No bank account or card is shown.' : 'No account was recognised.');
-    const n = (a) => rs.filter((r) => r.action === a).length;
-    const parts = [[n('record'), 'new, to be recorded'], [n('mark_posted'), 'already here as pending, to be marked posted'], [n('already'), 'look already recorded, left alone'], [n('choose_account'), 'need you to choose the account'], [n('skip'), 'could not be read']]
-      .filter(([c]) => c > 0).map(([c, t]) => `${c} ${t}`);
-    out.push(rs.length ? `Lines found: ${rs.length}${parts.length ? `. ${parts.join('; ')}` : ''}.` : 'Lines found: none.');
-    if (fx.length) out.push(`${fx.length === 1 ? 'A balance was' : `${fx.length} balances were`} read and will be checked against the app.`);
-    if (p.pay_slip) out.push('It is a pay slip: set the pay up from the button below.');
-    for (const c of changes) out.push(`${c.account.name}: ${c.label.toLowerCase()} is ${showValue(c, c.to)} on the picture, ${showValue(c, c.from)} in the app.`);
-    if (billDrafts.length) out.push(`A bill was found that the app does not track: ${billDrafts.map((b) => b.name).join(', ')}.`);
-    if (scoreDraft) out.push(`A credit score was read: ${scoreDraft.score}${scoreDraft.bureau ? ` from ${scoreDraft.bureau}` : ''}.${p.credit_score && p.credit_score.same ? ' It is already recorded for that day, so it is left alone.' : p.credit_score && p.credit_score.existing_id ? ` The one recorded for that day (${p.credit_score.was}) will be updated.` : ''}`);
-    if (invDrafts.length) out.push(`${invDrafts.length === 1 ? 'An investment was' : `${invDrafts.length} investments were`} found that the app does not have: ${invDrafts.map((x) => x.name).join(', ')}.`);
-    if (loanDrafts.length) out.push(`${loanDrafts.length === 1 ? 'A loan was' : `${loanDrafts.length} loans were`} found that the app does not have: ${loanDrafts.map((l) => l.name).join(', ')}. Fill in what the picture does not show, below.`);
-    if (ds.length) out.push(`${ds.length === 1 ? 'One account is' : `${ds.length} accounts are`} not in the app yet and will be added if you leave ${ds.length === 1 ? 'it' : 'them'} ticked.`);
-    return out;
-  };
   const setLoan = (id, patch) => setLoanDrafts((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   // Only a name is needed to add anything. What the picture does not show stays empty and a later picture fills it in.
   const loanNeeds = (l) => (!l.on ? null : !l.name.trim() ? 'Enter a name' : null);
   const billNeeds = (b) => (!b.on ? null : !b.name.trim() ? 'Enter a name' : null);
-  const later = 'What the picture does not show can stay empty. A later picture fills it in.';
   const showValue = (c, v) => (v == null ? 'not set' : c.kind === 'text' ? String(v) : c.kind === 'money' ? formatCurrency(v) : c.kind === 'later' ? (formatDate(v) || v) : `${v}%`);
   const invNeeds = (x) => (!x.on ? null : !x.name.trim() ? 'Enter a name' : null);
   const scoreNeeds = (x) => (!x || !x.on ? null : !(Number.isInteger(Number(x.score)) && Number(x.score) >= 300 && Number(x.score) <= 900) ? 'A score is a whole number from 300 to 900' : !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '') ? 'Choose the day' : null);
@@ -758,14 +735,10 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       {proposal && (
         <div className={`border rounded-lg p-4 space-y-4 ${card}`}>
           <div className="flex items-baseline justify-between gap-3">
-            <h2 className="text-lg font-semibold">Check before saving</h2>
+            <h2 className="text-lg font-semibold">Found</h2>
             {queue.length > 0 && <span className="text-sm text-muted shrink-0">{queue.length} more waiting</span>}
           </div>
           {chosen === 0 && <p role="status" className="text-sm rounded-lg bg-accent-soft text-accent px-3 py-2">There is nothing to save from this one. {queue.length > 0 ? 'Tap Skip to the next at the bottom, or add a note and read it again.' : 'Tap Close at the bottom, or add a note and read it again.'}</p>}
-          <section className="rounded-xl border border-line bg-surface-2 px-3 py-3 space-y-1 text-sm">
-            <h3 className="font-semibold text-base">What was understood</h3>
-            {understood(proposal, rows, drafts, fixes).map((t) => <p key={t}>{t}</p>)}
-          </section>
           {image.set && image.set.length > 0 && <p className="text-sm">{image.set.length + 1} pictures were read together as one.</p>}
           {toHold > 0 && (
             <section className="rounded-xl border border-line bg-surface-2 px-3 py-3 space-y-3 text-sm">
@@ -793,8 +766,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             </section>
           )}
           {usedRefs.some((ref) => accountOptions.some((o) => o.value === ref)) && accountOptions.length > 1 && (
-            <section className="space-y-2 text-sm">
-              <h3 className="font-semibold">Wrong account?</h3>
+            <details className="text-sm">
+              <summary className="font-medium text-accent py-2 cursor-pointer">On the wrong account?</summary>
               {usedRefs.filter((ref) => accountOptions.some((o) => o.value === ref)).map((ref) => (
                 <label key={ref} className="block">
                   <span className={muted}>Everything shown on {nameOf(ref)} belongs to</span>
@@ -804,7 +777,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                 </label>
               ))}
               <p className={`text-xs ${muted}`}>One line on a different account: tap Edit on that line.</p>
-            </section>
+            </details>
           )}
           {proposal.notes && <p className={`text-sm ${muted}`}>{proposal.notes}</p>}
           {proposal.statement && (
@@ -840,7 +813,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     <input type="checkbox" checked={d.on} onChange={(e) => setDraft(d.id, { on: e.target.checked })} />
                     Add {d.name}{d.last4 ? ` (ending ${d.last4})` : ''}
                   </label>
-                  {d.on && (
+                  {d.on && <div className="flex items-center justify-between gap-3 text-sm text-muted"><span className="min-w-0 truncate">{`${d.type === 'credit_card' ? 'Card' : 'Bank account'}${d.balance !== '' ? ` · ${formatCurrency(Number(d.balance))}${d.type === 'credit_card' ? ' owed' : ''}` : ''}`}</span><button type="button" className="press shrink-0 font-medium text-accent" aria-expanded={!!edit[d.id]} onClick={() => setEdit((e) => ({ ...e, [d.id]: !e[d.id] }))}>{edit[d.id] ? 'Done' : 'Edit'}</button></div>}
+                  {d.on && (edit[d.id] || !!draftNeeds(d)) && (
                     <div className="grid grid-cols-2 gap-2">
                       <label className="block text-xs"><span className={muted}>Name</span>
                         <input className={input} value={d.name} onChange={(e) => setDraft(d.id, { name: e.target.value })} /></label>
@@ -868,10 +842,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     </div>
                   )}
                   {draftNeeds(d) && <div className="text-xs text-amber-600">{draftNeeds(d)}</div>}
-                  {d.on && !draftNeeds(d) && d.balance === '' && <div className={`text-xs ${muted}`}>Its balance is not on the picture, so it starts from the lines here. Enter it if you know it, or scan a picture that shows it later.</div>}
                 </div>
               ))}
-              <p className={`text-xs ${muted}`}>The lines below are recorded on the new account and its balance ends at the figure above.</p>
             </section>
           )}
           {proposal.pay_slip && (
@@ -909,7 +881,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                       <input type="checkbox" className="w-5 h-5" checked={b.on} onChange={(e) => setBill({ on: e.target.checked })} />
                       Track {b.name}
                     </label>
-                    {b.on && (
+                  {b.on && <div className="flex items-center justify-between gap-3 text-sm text-muted"><span className="min-w-0 truncate">{`${Number(b.amount) > 0 ? formatCurrency(Number(b.amount)) : 'Amount not known yet'}${b.next_date ? ` · due ${formatDate(b.next_date) || b.next_date}` : ''}`}</span><button type="button" className="press shrink-0 font-medium text-accent" aria-expanded={!!edit[b.id]} onClick={() => setEdit((e) => ({ ...e, [b.id]: !e[b.id] }))}>{edit[b.id] ? 'Done' : 'Edit'}</button></div>}
+                    {b.on && (edit[b.id] || !!billNeeds(b)) && (
                       <div className="grid grid-cols-2 gap-2">
                         <label className="block text-sm col-span-2"><span className={muted}>Name</span>
                           <input className={input} value={b.name} maxLength={60} onChange={(e) => setBill({ name: e.target.value })} /></label>
@@ -924,7 +897,6 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                       </div>
                     )}
                     {billNeeds(b) && <div className="text-sm text-amber-600">{billNeeds(b)}</div>}
-                    {b.on && (!(Number(b.amount) > 0) || !b.next_date) && <div className={`text-xs ${muted}`}>{later}</div>}
                   </div>
                 );
               })}
@@ -939,7 +911,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                   <input type="checkbox" className="w-5 h-5" checked={scoreDraft.on} onChange={(e) => setScoreDraft({ ...scoreDraft, on: e.target.checked })} />
                   Save this score
                 </label>
-                {scoreDraft.on && (
+                  {scoreDraft.on && <div className="flex items-center justify-between gap-3 text-sm text-muted"><span className="min-w-0 truncate">{`${scoreDraft.score}${scoreDraft.bureau ? ` · ${scoreDraft.bureau}` : ''}`}</span><button type="button" className="press shrink-0 font-medium text-accent" aria-expanded={!!edit['score']} onClick={() => setEdit((e) => ({ ...e, score: !e.score }))}>{edit['score'] ? 'Done' : 'Edit'}</button></div>}
+                {scoreDraft.on && (edit['score'] || !!scoreNeeds(scoreDraft)) && (
                   <div className="grid grid-cols-2 gap-2">
                     <label className="block text-sm"><span className={muted}>Score</span>
                       <input className={input} type="number" step="1" min="300" max="900" inputMode="numeric" value={scoreDraft.score} onChange={(e) => setScoreDraft({ ...scoreDraft, score: e.target.value })} /></label>
@@ -965,7 +938,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                       <input type="checkbox" className="w-5 h-5" checked={x.on} onChange={(e) => setInv({ on: e.target.checked })} />
                       Add {x.name}
                     </label>
-                    {x.on && (
+                  {x.on && <div className="flex items-center justify-between gap-3 text-sm text-muted"><span className="min-w-0 truncate">{`${x.kind || 'Other'} · ${x.balance !== '' ? formatCurrency(Number(x.balance)) : 'Value not known yet'}`}</span><button type="button" className="press shrink-0 font-medium text-accent" aria-expanded={!!edit[x.id]} onClick={() => setEdit((e) => ({ ...e, [x.id]: !e[x.id] }))}>{edit[x.id] ? 'Done' : 'Edit'}</button></div>}
+                    {x.on && (edit[x.id] || !!invNeeds(x)) && (
                       <div className="grid grid-cols-2 gap-2">
                         <label className="block text-sm"><span className={muted}>Name</span>
                           <input className={input} value={x.name} maxLength={60} onChange={(e) => setInv({ name: e.target.value })} /></label>
@@ -992,7 +966,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     <input type="checkbox" className="w-5 h-5" checked={l.on} onChange={(e) => setLoan(l.id, { on: e.target.checked })} />
                     Add {l.name}
                   </label>
-                  {l.on && (
+                  {l.on && <div className="flex items-center justify-between gap-3 text-sm text-muted"><span className="min-w-0 truncate">{`${l.balance !== '' ? `${formatCurrency(Number(l.balance))} owed` : 'Balance not known yet'}${Number(l.payment_amount) > 0 ? ` · ${formatCurrency(Number(l.payment_amount))} each payment` : ''}`}</span><button type="button" className="press shrink-0 font-medium text-accent" aria-expanded={!!edit[l.id]} onClick={() => setEdit((e) => ({ ...e, [l.id]: !e[l.id] }))}>{edit[l.id] ? 'Done' : 'Edit'}</button></div>}
+                  {l.on && (edit[l.id] || !!loanNeeds(l)) && (
                     <div className="grid grid-cols-2 gap-2">
                       <label className="block text-sm"><span className={muted}>Name</span>
                         <input className={input} value={l.name} maxLength={60} onChange={(e) => setLoan(l.id, { name: e.target.value })} /></label>
@@ -1016,10 +991,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     </div>
                   )}
                   {loanNeeds(l) && <div className="text-sm text-amber-600">{loanNeeds(l)}</div>}
-                  {l.on && l.loan_type !== 'line_of_credit' && (!(Number(l.payment_amount) > 0) || !l.next_payment_date) && <div className={`text-xs ${muted}`}>{later}</div>}
                 </div>
               ))}
-              <p className={`text-sm ${muted}`}>Untick one to leave it out. More details (who it is paid through, autopay) can be set later under More, Loans.</p>
             </section>
           )}
           {proposal.unknown_accounts.length > 0 && (
@@ -1045,7 +1018,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                           {formatDate(r.date) || r.date}{r.pending ? ', pending' : ''} · {KIND_TEXT[r.kind] || r.kind} · {lineSummary(r)}{cat ? ` · ${cat.name}` : ''}
                         </div>
                         {r.action !== 'record' && r.action !== 'choose_account' && <div className={`text-xs ${muted}`}>{r.why || STATUS_TEXT[r.action]}</div>}
-                        {need && <div className="text-sm text-amber-600">{need}</div>}
+                        {need && (homelessRow(r) ? <div className={`text-xs ${muted}`}>No account yet: kept for later</div> : <div className="text-sm text-amber-600">{need}</div>)}
                         {historyOnly(r) && <div className={`text-xs ${muted}`}>Before your snapshot of {historyOnly(r)}: kept as history, today's balance does not change</div>}
                         {r.fx_note && <div className={`text-xs ${r.fx_failed ? 'text-warning' : muted}`}>{r.fx_note}</div>}
                         {r.items && <div className={`text-xs ${muted}`}>{r.items.length} items from the receipt{receiptSplits(r).splits ? `, split into ${receiptSplits(r).splits.length} categories` : ''}. Open Edit to give items their own category.</div>}
@@ -1117,11 +1090,10 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                   <div>{f.account.name}: {formatCurrency(f.shown)} today{f.differs ? ` (the app has ${formatCurrency(f.current)} before these lines)` : ', matches the app'}</div>
                   <label className={`flex items-center gap-2 text-xs ${muted}`}>
                     <input type="checkbox" checked={f.on} onChange={(e) => setFixes((fs) => fs.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)))} />
-                    If the lines don't explain it, correct it to the screenshot (you can undo it)
+                    Correct the app to this if the lines do not explain it
                   </label>
                 </div>
               ))}
-              <p className={`text-xs ${muted}`}>The balance is checked after the lines are saved. Anything that still doesn't add up is shown, never hidden. Unticked, the difference stays open on Where you stand.</p>
             </section>
           )}
         </div>
