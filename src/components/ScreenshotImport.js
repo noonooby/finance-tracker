@@ -118,7 +118,6 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   // Several pictures can be chosen at once. The first is shown; the others wait their turn, each with its own note,
   // and each comes up once the one before it is saved or removed.
   const MAX_WAITING = 40, MAX_KEPT = 60_000_000;
-  const [showWaiting, setShowWaiting] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [big, setBig] = useState(null);
   // While a picture is being read: how long it has been.
@@ -162,7 +161,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   // The picture on screen is finished with (saved or removed): the next one waiting comes up.
   const advance = (readIt) => {
     const [next, ...rest] = queueRef.current;
-    putQueue(rest); setShowWaiting(false); setNoteOpen(false);
+    putQueue(rest); setNoteOpen(false);
     setProposal(null); setDrafts([]); setRows([]); setFixes([]); setLoanDrafts([]); setInvDrafts([]); setScoreDraft(null); setChanges([]); setBillDrafts([]); setError(''); setResumed(false);
     if (!next) { setImage(null); setNote(''); clearPending(); return; }
     setImage(next.image); setNote(next.note || '');
@@ -236,7 +235,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       const rest = [...joined.filter((x) => !inSet(x)), ...queueRef.current.filter((x) => !inSet(x))];
       const shown = used.length > 1 ? { ...first, set: used.slice(1).map((u) => ({ image: u.p.image, note: u.p.note || '' })) } : first;
       const p = used.length > 1 ? set.proposal : got[0];
-      putQueue(rest); setImage(shown); setShowWaiting(false);
+      putQueue(rest); setImage(shown);
       applyProposal(p);
       savePending({ queue: rest, image: shown, note: nt, proposal: p });
     } catch (err) {
@@ -246,7 +245,6 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       setReading(false); setReadCount(null);
     }
   };
-  const setWaiting = (i, change) => putQueue(queueRef.current.map((x, j) => (j === i ? { ...x, ...change } : x)));
   const keepWaiting = () => { if (image) savePending({ queue: queueRef.current, image, note, proposal }); };
 
   // A category for a purchase: how this merchant was categorised before, else the reader's guess matched to your categories.
@@ -311,6 +309,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           const acctIsCard = acct.startsWith('credit_card:') || (l.account && l.account.type === 'credit_card');
           r.card = acctIsCard ? acct : oth; r.source = acctIsCard ? oth : acct;
           if (r.card && !r.source) r.source = 'outside';
+          if (!r.card && r.source) { r.kind = 'transfer'; r.from = r.source; r.to = 'outside'; }
         }
         return r;
       }).map((r, _, all) => {
@@ -690,12 +689,13 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         </div>
         {image && resumed && !image.typed && <p className="text-sm text-muted">Picked up where you left off. This picture was kept on this device.</p>}
         {image && (
-          <div className="flex flex-col sm:flex-row gap-3 items-start">
-            <div className="space-y-2">
-              {image.pdf ? <div className="text-sm font-medium">{image.name}</div> : <button type="button" className="press block" aria-label="Look at it closely" onClick={() => setBig(image.url)}><img src={image.url} alt="The screenshot to read" className="max-h-64 rounded-xl border border-line" /></button>}
-              {!image.pdf && !image.typed && <p className="text-xs text-muted">Tap it to see it large.</p>}
-              <button type="button" onClick={removePicture} className="press text-sm text-muted underline">{image.typed ? 'Discard' : image.pdf ? 'Remove file' : image.set && image.set.length ? 'Remove these pictures' : 'Remove picture'}</button>
+          <div className="space-y-3">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {[{ image }, ...(image.set || []), ...queue].map((x, i) => (x.image.pdf || x.image.csv || x.image.typed
+                ? <div key={i} className="shrink-0 w-20 h-20 rounded-xl border border-line bg-surface-2 p-2 text-xs text-muted break-all overflow-hidden">{x.image.typed ? 'Typed' : x.image.name}</div>
+                : <button key={i} type="button" className="press shrink-0" aria-label={`Look at picture ${i + 1} closely`} onClick={() => setBig(x.image.url)}><img src={x.image.url} alt="" className="w-20 h-20 object-cover rounded-xl border border-line" /></button>))}
             </div>
+            {(image.pdf || image.csv || image.typed) && <button type="button" onClick={removePicture} className="press text-sm text-muted underline">{image.typed ? 'Discard' : 'Remove file'}</button>}
             <div className="w-full space-y-2">
               {image.csv && (
                 <label className="block text-sm">
@@ -719,7 +719,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           </div>
         )}
         {kept > 0 && !image && <p className="text-xs text-muted">{kept === 1 ? 'One picture is' : `${kept} pictures are`} kept with what was read from {kept === 1 ? 'it' : 'them'}.</p>}
-        {held.length > 0 && !proposal && (
+        {held.length > 0 && !image && (
           <div className="space-y-2 border-t border-line pt-3 text-sm">
             <p className="font-medium">Waiting for an account: {held.length}</p>
             <p className="text-muted">Lines from earlier pictures whose account was not shown. A later picture that shows it files them by itself. Or choose it here.</p>
@@ -746,32 +746,10 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             ))}
           </div>
         )}
-        {queue.length > 0 && (
-          <div className="space-y-2 border-t border-line pt-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-medium">Waiting their turn: {queue.length}</p>
-              <button type="button" className="press text-sm font-medium text-accent" aria-expanded={showWaiting} onClick={() => setShowWaiting(!showWaiting)}>{showWaiting ? 'Hide' : 'Show'}</button>
-            </div>
-            {showWaiting && <p className="text-sm text-muted">A note is optional. The name of the bank or card is enough.</p>}
-            {showWaiting && queue.map((q, i) => (
-              <div key={i} className="flex items-start gap-3">
-                {q.image.pdf || q.image.csv ? <div className="w-20 shrink-0 text-xs text-muted break-all">{q.image.name}</div>
-                  : <button type="button" className="press shrink-0" aria-label={`Look at waiting number ${i + 1} closely`} onClick={() => setBig(q.image.url)}><img src={q.image.url} alt="" className="w-20 h-20 object-cover rounded-lg border border-line" /></button>}
-                <div className="flex-1 min-w-0 space-y-1">
-                  {!q.image.csv && <input type="text" maxLength={300} value={q.note || ''} aria-label={`Note about waiting picture ${i + 1}`} placeholder="Note (optional)"
-                    onChange={(e) => setWaiting(i, { note: e.target.value })} onBlur={keepWaiting}
-                    className="w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-base text-fg placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none" />}
-                  <button type="button" className="press text-sm text-muted underline" onClick={() => { putQueue(queueRef.current.filter((_, j) => j !== i)); keepWaiting(); }}>Remove</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
         {reading && (
           <div role="status" className="rounded-xl border border-line bg-surface-2 px-3 py-3 space-y-1">
-            <p className="font-medium">{readCount ? `Reading ${readCount.of} pictures together: ${readCount.done} read (${secs}s)` : `Reading${image && image.name ? ` ${image.name}` : ''} (${secs}s)`}</p>
-            <p className="text-sm text-muted">{secs < 4 ? 'Sending it.' : secs < 25 ? 'Working out what it shows: which account or card, each line, and any balance. Then each line is matched to your accounts and to what is already recorded.'
-              : 'Still reading. When the reading service is busy it is tried again by itself, which can take up to a minute or two.'}</p>
+            <p className="font-medium">{readCount ? `Reading ${readCount.of} pictures: ${readCount.done} done` : 'Reading'} ({secs}s)</p>
+            {secs >= 25 && <p className="text-sm text-muted">Still reading. A busy reading service is tried again by itself, which can take a minute or two.</p>}
           </div>
         )}
         {error && <p role="alert" className="text-base text-negative">{error}</p>}
@@ -784,19 +762,11 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             {queue.length > 0 && <span className="text-sm text-muted shrink-0">{queue.length} more waiting</span>}
           </div>
           {chosen === 0 && <p role="status" className="text-sm rounded-lg bg-accent-soft text-accent px-3 py-2">There is nothing to save from this one. {queue.length > 0 ? 'Tap Skip to the next at the bottom, or add a note and read it again.' : 'Tap Close at the bottom, or add a note and read it again.'}</p>}
-          {!image.pdf && !image.typed && <button type="button" className="press text-sm font-medium text-accent" onClick={() => setBig(image.url)}>See the picture large</button>}
           <section className="rounded-xl border border-line bg-surface-2 px-3 py-3 space-y-1 text-sm">
             <h3 className="font-semibold text-base">What was understood</h3>
             {understood(proposal, rows, drafts, fixes).map((t) => <p key={t}>{t}</p>)}
           </section>
-          {image.set && image.set.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-sm">{image.set.length + 1} pictures were read together as one.</p>
-              <div className="flex gap-2 overflow-x-auto">
-                {[image, ...image.set.map((x) => x.image)].map((x, i) => <button key={i} type="button" className="press shrink-0" aria-label={`Look at picture ${i + 1} closely`} onClick={() => setBig(x.url)}><img src={x.url} alt="" className="w-14 h-14 object-cover rounded-lg border border-line" /></button>)}
-              </div>
-            </div>
-          )}
+          {image.set && image.set.length > 0 && <p className="text-sm">{image.set.length + 1} pictures were read together as one.</p>}
           {toHold > 0 && (
             <section className="rounded-xl border border-line bg-surface-2 px-3 py-3 space-y-3 text-sm">
               <h3 className="font-semibold text-base">{toHold === 1 ? 'One line has no account yet' : `${toHold} lines have no account yet`}</h3>
@@ -1159,7 +1129,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
 
       {big && createPortal(
         <div className="fixed inset-0 z-50 bg-black/90 flex flex-col" role="dialog" aria-modal="true" aria-label="The picture, large">
-          <div className="flex justify-end p-3"><button type="button" className="press rounded-xl bg-white text-black px-4 py-2 font-medium" onClick={() => setBig(null)}>Close</button></div>
+          <div className="flex justify-end p-3">{(big === image?.url || queue.some((q) => q.image.url === big)) && <button type="button" className="press rounded-xl border border-white/60 text-white px-4 py-2 font-medium mr-2" onClick={() => { if (big === image.url) removePicture(); else { putQueue(queueRef.current.filter((q) => q.image.url !== big)); keepWaiting(); } setBig(null); }}>Remove</button>}<button type="button" className="press rounded-xl bg-white text-black px-4 py-2 font-medium" onClick={() => setBig(null)}>Close</button></div>
           <div className="flex-1 overflow-auto px-2 pb-6" style={{ touchAction: 'pinch-zoom pan-x pan-y' }}><img src={big} alt="The picture, large" className="w-full max-w-3xl mx-auto" /></div>
         </div>
       , document.body)}
