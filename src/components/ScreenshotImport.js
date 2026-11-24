@@ -165,25 +165,50 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     if (!next) { setImage(null); setNote(''); clearPending(); return; }
     setImage(next.image); setNote(next.note || '');
     savePending({ queue: rest, image: next.image, note: next.note || '' });
-    if (readIt && !next.image.csv) read(next.image, next.note || '', true);
+    if (readIt && !next.image.csv) readTogether(next.image, next.note || '', rest, true);
   };
   const removePicture = () => advance(false);
-  // While you check one picture, the ones waiting are read one after another, so each comes up at once on its turn.
-  const [ahead, setAhead] = useState(0);
-  const aheadRef = React.useRef({ running: false, done: new Set() });
-  const readAhead = async () => {
-    const st = aheadRef.current;
-    if (st.running) return;
-    st.running = true;
+  // Pictures chosen together are read together: each is read, then the ones that belong together (screens of the same
+  // accounts) are shown as one thing to check and save once. A statement, a receipt, a bill and the like keep their own turn.
+  const [readCount, setReadCount] = useState(null);
+  const today = () => new Date().toLocaleDateString('en-CA');
+  const readTogether = async (image0, note0, queue0, keepDone, fresh) => {
+    const img = image0 || image, nt = typeof note0 === 'string' ? note0 : note, waiting = queue0 || queueRef.current;
+    const { set: joined = [], ...first } = img;
+    const pics = [{ image: first, note: nt }, ...joined, ...waiting.filter((q) => !q.image.csv && !q.image.pdf)];
+    if (first.csv || first.pdf || first.typed || pics.length < 2) return readOne(img, nt, keepDone, fresh);
+    setReading(true); setError(''); if (!keepDone) setDone(null); setOpen(null); setReadCount({ done: 0, of: pics.length });
     try {
-      for (;;) {
-        const next = queueRef.current.find((q) => !q.image.csv && !st.done.has(`${q.image.url.length}:${q.image.name}:${q.note || ''}`));
-        if (!next) break;
-        st.done.add(`${next.image.url.length}:${next.image.name}:${next.note || ''}`);
-        try { await api('/api/read-screenshot', { image: next.image.url, mime: next.image.type, note: (next.note || '').trim() || undefined, today: new Date().toLocaleDateString('en-CA') }); } catch { /* it is read again on its turn, where a fault is shown */ }
-        setAhead(queueRef.current.filter((q) => st.done.has(`${q.image.url.length}:${q.image.name}:${q.note || ''}`)).length);
+      const got = new Array(pics.length);
+      let at = 0;
+      await Promise.all([0, 1, 2].map(async () => {
+        while (at < pics.length) {
+          const k = at++;
+          try { got[k] = await api('/api/read-screenshot', { image: pics[k].image.url, mime: pics[k].image.type, note: (pics[k].note || '').trim() || undefined, fresh: fresh || undefined, today: today() }); } catch (err) { got[k] = { error: err.message }; }
+          setReadCount((c) => (c ? { ...c, done: c.done + 1 } : c));
+        }
+      }));
+      if (got[0].error) throw new Error(got[0].error);
+      const ok = pics.map((p, k) => ({ p, g: got[k] })).filter((x) => !x.g.error && !x.g.alone);
+      let set = null;
+      if (!got[0].alone && ok.length > 1) {
+        try { set = await api('/api/read-set', { ids: ok.map((x) => ({ id: x.g.source_id, note: (x.p.note || '').trim() || undefined })), today: today() }); } catch { set = null; }
       }
-    } finally { st.running = false; }
+      const used = set && set.proposal && set.used.includes(got[0].source_id) ? ok.filter((x) => set.used.includes(x.g.source_id)) : [];
+      const inSet = (x) => used.some((u) => u.p.image === x.image);
+      // Pictures not put together go back to wait their turn, the ones that were joined before first.
+      const rest = [...joined.filter((x) => !inSet(x)), ...queueRef.current.filter((x) => !inSet(x))];
+      const shown = used.length > 1 ? { ...first, set: used.slice(1).map((u) => ({ image: u.p.image, note: u.p.note || '' })) } : first;
+      const p = used.length > 1 ? set.proposal : got[0];
+      putQueue(rest); setImage(shown); setShowWaiting(false);
+      applyProposal(p);
+      savePending({ queue: rest, image: shown, note: nt, proposal: p });
+    } catch (err) {
+      setError(`${err.message} Your pictures are kept here, so you can try again without choosing them again.`);
+      savePending({ queue: queueRef.current, image: img, note: nt });
+    } finally {
+      setReading(false); setReadCount(null);
+    }
   };
   const setWaiting = (i, change) => putQueue(queueRef.current.map((x, j) => (j === i ? { ...x, ...change } : x)));
   const keepWaiting = () => { if (image) savePending({ queue: queueRef.current, image, note, proposal }); };
@@ -203,11 +228,6 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     return hit ? String(hit.id) : '';
   };
 
-  const read = async (image0, note0, keepDone) => {
-    // Called with nothing for the picture on screen, or with the next picture just after a save.
-    const img = image0 && image0.url !== undefined ? image0 : image, nt = typeof note0 === 'string' ? note0 : note;
-    return readOne(img, nt, keepDone === true);
-  };
   const readOne = async (image, note, keepDone, fresh) => {
     setReading(true); setError(''); if (!keepDone) setDone(null); setOpen(null);
     try {
@@ -247,11 +267,14 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         const acct = ref(l.account), oth = ref(l.other);
         const out = l.direction === 'out';
         const kind = l.kind || (out ? 'purchase' : 'income');
-        const r = { ...l, kind, on: l.action === 'record' || l.action === 'mark_posted', target: acct, category_id: kind === 'purchase' || kind === 'income' ? suggestCategory(l.merchant, l.category_guess, kind === 'income') : '' };
-        if (kind === 'transfer') { r.from = out ? acct : oth; r.to = out ? oth : acct; }
+        const r = { ...l, kind, on: l.action === 'record' || l.action === 'mark_posted' || l.action === 'choose_account', target: acct, category_id: kind === 'purchase' || kind === 'income' ? suggestCategory(l.merchant, l.category_guess, kind === 'income') : '' };
+        // The other side of a payment or transfer, when it is not one of your accounts, is an account not in the app:
+        // only your side changes. It can be changed on the line.
+        if (kind === 'transfer') { r.from = out ? acct : oth; r.to = out ? oth : acct; if (r.from && !r.to) r.to = 'outside'; else if (r.to && !r.from) r.from = 'outside'; }
         if (kind === 'card_payment') {
           const acctIsCard = acct.startsWith('credit_card:') || (l.account && l.account.type === 'credit_card');
           r.card = acctIsCard ? acct : oth; r.source = acctIsCard ? oth : acct;
+          if (r.card && !r.source) r.source = 'outside';
         }
         return r;
       }).map((r, _, all) => {
@@ -342,17 +365,21 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
 
   const save = async () => {
     setSaving(true); setError('');
-    const result = { recorded: 0, posted: 0, repeated: 0, corrected: 0, created: [], gaps: [], failed: [] };
-    const chosenRows = rows.filter((x) => x.on);
+    const result = { recorded: 0, posted: 0, repeated: 0, corrected: 0, created: [], gaps: [], failed: [], left: 0 };
+    // What is ready is saved. Anything still missing a detail is left here, and never holds the rest back.
+    const leftRows = rows.filter((x) => x.on && missing(x));
+    const chosenRows = rows.filter((x) => x.on && !missing(x));
+    const leftDrafts = drafts.filter(draftNeeds), leftLoans = loanDrafts.filter(loanNeeds), leftInv = invDrafts.filter(invNeeds), leftBills = billDrafts.filter(billNeeds), leftScore = !!scoreNeeds(scoreDraft);
+    result.left = leftRows.length + leftDrafts.length + leftLoans.length + leftInv.length + leftBills.length + (leftScore ? 1 : 0);
     const banks = [...bankAccounts], cards = [...creditCards];
     const realRef = {};
     // 1. New accounts. The opening balance is set so that, after the lines below are recorded, it equals the balance on the screenshot.
-    for (const d of drafts.filter((x) => x.on)) {
+    for (const d of drafts.filter((x) => x.on && !draftNeeds(x))) {
       try {
-        const shown = d.balance === '' ? null : Number(d.balance);
+        const shown = d.balance === '' || !Number.isFinite(Number(d.balance)) ? null : Number(d.balance);
         const effect = chosenRows.reduce((s, r) => s + effectOn(r, d.id, d.type === 'credit_card'), 0);
-        if (shown == null || !Number.isFinite(shown)) throw new Error('Enter its balance today');
-        const opening = Math.round((shown - effect) * 100) / 100;
+        // With no balance on the picture the account starts from nothing and its lines make its balance.
+        const opening = shown == null ? 0 : Math.round((shown - effect) * 100) / 100;
         // Already in the app under the same last four digits (added a moment ago, or on another device): that one is used.
         const twin = d.last4 && (d.type === 'credit_card' ? cards : banks).find((a) => String(a.last4 || a.last_four || '').slice(-4) === String(d.last4).slice(-4));
         if (twin) { realRef[d.id] = `${d.type}:${twin.id}`; continue; }
@@ -371,10 +398,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       } catch (err) { result.failed.push(`${d.name}: ${err.message}`); }
     }
     // 1b. Loans, leases and pay-later plans found on the picture.
-    for (const l of loanDrafts.filter((x) => x.on)) {
+    for (const l of loanDrafts.filter((x) => x.on && !loanNeeds(x))) {
       try {
-        const why = loanNeeds(l);
-        if (why) throw new Error(why);
         const owed = Math.round(Number(l.balance) * 100) / 100;
         const { error: e } = await server.from('loans').insert({ id: generateId(), name: l.name.trim(), principal: owed, balance: owed, interest_rate: Number(l.interest_rate) || 0,
           loan_type: l.loan_type || 'loan', payment_amount: Math.round(Number(l.payment_amount) * 100) / 100, frequency: l.frequency || 'monthly', next_payment_date: l.next_payment_date,
@@ -384,7 +409,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       } catch (err) { result.failed.push(`${l.name}: ${err.message}`); }
     }
     // 1c. Investments and a credit score found on the picture.
-    for (const x of invDrafts.filter((v) => v.on)) {
+    for (const x of invDrafts.filter((v) => v.on && !invNeeds(v))) {
       try {
         if (!x.name.trim() || !Number.isFinite(Number(x.balance)) || x.balance === '') throw new Error('Enter its name and value');
         const { error: e } = await server.from(x.table === 'assets' ? 'assets' : 'investments').insert({ id: generateId(), name: x.name.trim(), kind: x.kind || 'Other', balance: Math.round(Number(x.balance) * 100) / 100, created_at: new Date().toISOString() });
@@ -407,17 +432,15 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         result.changed = (result.changed || 0) + list.length;
       } catch (err) { result.failed.push(`${name}: ${err.message}`); }
     }
-    for (const b of billDrafts.filter((x) => x.on)) {
+    for (const b of billDrafts.filter((x) => x.on && !billNeeds(x))) {
       try {
-        const why = billNeeds(b);
-        if (why) throw new Error(why);
         const { error: e } = await server.from('bills').insert({ key: `scan:${b.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, name: b.name.trim(), amount: Math.round(Number(b.amount) * 100) / 100, frequency: b.frequency || 'monthly', next_date: b.next_date,
           status: 'active', remind: true, source: 'scan' });
         if (e) throw new Error(e.message);
         result.created.push(b.name);
       } catch (err) { result.failed.push(`${b.name}: ${err.message}`); }
     }
-    if (scoreDraft && scoreDraft.on) {
+    if (scoreDraft && scoreDraft.on && !leftScore) {
       try {
         const same = proposal.credit_score && proposal.credit_score.existing_id && scoreDraft.date === proposal.credit_score.date && scoreDraft.bureau.trim().toLowerCase() === String(proposal.credit_score.bureau || '').toLowerCase();
         const { error: e } = same
@@ -439,8 +462,6 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           result.posted += 1;
           continue;
         }
-        const why = missing(r0);
-        if (why) throw new Error(why);
         const r = { ...r0, target: real(r0.target), from: real(r0.from), to: real(r0.to), card: real(r0.card), source: real(r0.source) };
         if ([r.target, r.from, r.to, r.card, r.source].some((v, k) => v === null && [r0.target, r0.from, r0.to, r0.card, r0.source][k])) throw new Error('Its new account was not added');
         let key = r.key;
@@ -473,7 +494,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     const day = new Date().toLocaleDateString('en-CA');
     const snaps = [
       ...fixes.map((f) => ({ target: `${f.account.type}:${f.account.id}`, name: f.account.name, value: f.shown, apply: f.on })),
-      ...drafts.filter((d) => d.on && realRef[d.id]).map((d) => ({ target: realRef[d.id], name: d.name, value: Number(d.balance), apply: true })),
+      ...drafts.filter((d) => d.on && realRef[d.id] && d.balance !== '' && Number.isFinite(Number(d.balance))).map((d) => ({ target: realRef[d.id], name: d.name, value: Number(d.balance), apply: true })),
     ];
     // A statement: its closing balance is a snapshot for the last day of the period. If it is the newest thing known about
     // the account it sets the balance for that day; if not, it is checked against the app's history for that day.
@@ -501,7 +522,23 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     setDone(result);
     setSaving(false);
     if (onUpdate) await onUpdate();
-    if (!result.failed.length) advance(true);
+    if (result.failed.length) return;
+    if (!result.left) return advance(true);
+    // Only what was left stays on the screen, pointing at the accounts just added.
+    const ids = new Set(leftRows.map((r) => r.i)), has = (list) => new Set(list.map((x) => x.id));
+    const lines = [];
+    for (const l of proposal.lines.filter((x) => ids.has(x.i))) {
+      const made = l.account && String(l.account.id).startsWith('new:') ? realRef[String(l.account.id)] : null;
+      if (!made) { lines.push(l); continue; }
+      const id = made.split(':')[1];
+      lines.push({ ...l, account: { ...l.account, id }, key: l.key_rest ? 'shot:' + await sha32(`${id}|${l.key_rest}`) : l.key });
+    }
+    const rest = { ...proposal, lines, balances: [], updates: [], statement: null, receipt: null, pay_slip: false, unknown_accounts: [],
+      new_accounts: (proposal.new_accounts || []).filter((x) => has(leftDrafts).has(x.id)), new_loans: (proposal.new_loans || []).filter((x) => has(leftLoans).has(x.id)),
+      new_investments: (proposal.new_investments || []).filter((x) => has(leftInv).has(x.id)), new_bills: (proposal.new_bills || []).filter((x) => has(leftBills).has(x.id)),
+      credit_score: leftScore ? proposal.credit_score : null };
+    applyProposal(rest);
+    savePending({ queue: queueRef.current, image, note, proposal: rest });
   };
 
   // In plain words, what the reading made of the picture: what it is, whose it is, and what will happen to each part.
@@ -536,7 +573,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const invNeeds = (x) => (!x.on ? null : !x.name.trim() ? 'Enter a name' : x.balance === '' || !Number.isFinite(Number(x.balance)) ? 'Not on the picture: enter its value today' : null);
   const scoreNeeds = (x) => (!x || !x.on ? null : !x.bureau.trim() ? 'Not on the picture: say which bureau it is from' : !(Number.isInteger(Number(x.score)) && Number(x.score) >= 300 && Number(x.score) <= 900) ? 'A score is a whole number from 300 to 900' : !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '') ? 'Choose the day' : null);
   const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length + loanDrafts.filter((l) => l.on).length + invDrafts.filter((x) => x.on).length + (scoreDraft && scoreDraft.on ? 1 : 0) + changes.filter((c) => c.on).length + billDrafts.filter((b) => b.on).length;
-  const draftNeeds = (d) => (!d.on ? null : !d.name.trim() ? 'Enter a name' : d.balance === '' || !Number.isFinite(Number(d.balance)) ? `Not on the screenshot: enter ${d.type === 'credit_card' ? 'what you owe on it' : 'its balance'} today` : null);
+  const draftNeeds = (d) => (!d.on ? null : !d.name.trim() ? 'Enter a name' : null);
   const blocked = rows.filter((r) => r.on && missing(r)).length + drafts.filter(draftNeeds).length + loanDrafts.filter(loanNeeds).length + invDrafts.filter(invNeeds).length + (scoreNeeds(scoreDraft) ? 1 : 0) + billDrafts.filter(billNeeds).length;
   const snapDay = (v) => {
     if (!v) return null;
@@ -571,7 +608,6 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const otherWaiting = waiting.filter((r) => !ASKS.some(([why]) => missing(r) === why));
   const answerAll = (a, v) => { if (!v) return; const ids = new Set(a.list.map((r) => r.i)); setRows((rs) => rs.map((r) => (ids.has(r.i) ? { ...r, [a.field]: v } : r))); };
   const showLine = (i) => { setOpen(i); setTimeout(() => { const el = document.getElementById(`scan-line-${i}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); };
-  const showQuestions = () => { const el = document.getElementById('scan-questions'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 
   return (
     <div className="space-y-4">
@@ -607,7 +643,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <div className="space-y-2">
               {image.pdf ? <div className="text-sm font-medium">{image.name}</div> : <button type="button" className="press block" aria-label="Look at it closely" onClick={() => setBig(image.url)}><img src={image.url} alt="The screenshot to read" className="max-h-64 rounded-xl border border-line" /></button>}
               {!image.pdf && !image.typed && <p className="text-xs text-muted">Tap it to see it large.</p>}
-              <button type="button" onClick={removePicture} className="press text-sm text-muted underline">{image.typed ? 'Discard' : image.pdf ? 'Remove file' : 'Remove picture'}</button>
+              <button type="button" onClick={removePicture} className="press text-sm text-muted underline">{image.typed ? 'Discard' : image.pdf ? 'Remove file' : image.set && image.set.length ? 'Remove these pictures' : 'Remove picture'}</button>
             </div>
             <div className="w-full space-y-2">
               {image.csv && (
@@ -636,7 +672,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               <p className="font-medium">Waiting their turn: {queue.length}</p>
               <button type="button" className="press text-sm font-medium text-accent" aria-expanded={showWaiting} onClick={() => setShowWaiting(!showWaiting)}>{showWaiting ? 'Hide' : 'Show, add notes'}</button>
             </div>
-            {!proposal && !reading && <p role="status" className="text-sm rounded-lg bg-accent-soft text-accent px-3 py-2">Nothing is read yet. Add notes if you want, then tap Start reading at the bottom. After you save one, the next is read by itself.</p>}
+            {!proposal && !reading && <p role="status" className="text-sm rounded-lg bg-accent-soft text-accent px-3 py-2">Nothing is read yet. Add notes if you want, then tap Start reading at the bottom. Screens of the same accounts are read together and checked once.</p>}
             {showWaiting && <p className="text-sm text-muted">A note can be short: the name of the bank or card is enough.</p>}
             {showWaiting && queue.map((q, i) => (
               <div key={i} className="flex items-start gap-3">
@@ -654,7 +690,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         )}
         {reading && (
           <div role="status" className="rounded-xl border border-line bg-surface-2 px-3 py-3 space-y-1">
-            <p className="font-medium">Reading{image && image.name ? ` ${image.name}` : ''} ({secs}s)</p>
+            <p className="font-medium">{readCount ? `Reading ${readCount.of} pictures together: ${readCount.done} read (${secs}s)` : `Reading${image && image.name ? ` ${image.name}` : ''} (${secs}s)`}</p>
             <p className="text-sm text-muted">{secs < 4 ? 'Sending it.' : secs < 25 ? 'Working out what it shows: which account or card, each line, and any balance. Then each line is matched to your accounts and to what is already recorded.'
               : 'Still reading. When the reading service is busy it is tried again by itself, which can take up to a minute or two.'}</p>
           </div>
@@ -666,7 +702,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         <div className={`border rounded-lg p-4 space-y-4 ${card}`}>
           <div className="flex items-baseline justify-between gap-3">
             <h2 className="text-lg font-semibold">Check before saving</h2>
-            {queue.length > 0 && <span className="text-sm text-muted shrink-0">{queue.length} more waiting{ahead > 0 ? `, ${Math.min(ahead, queue.length)} already read` : ''}</span>}
+            {queue.length > 0 && <span className="text-sm text-muted shrink-0">{queue.length} more waiting</span>}
           </div>
           {chosen === 0 && <p role="status" className="text-sm rounded-lg bg-accent-soft text-accent px-3 py-2">There is nothing to save from this one. {queue.length > 0 ? 'Tap Skip to the next at the bottom, or add a note and read it again.' : 'Tap Close at the bottom, or add a note and read it again.'}</p>}
           {!image.pdf && !image.typed && <button type="button" className="press text-sm font-medium text-accent" onClick={() => setBig(image.url)}>See the picture large</button>}
@@ -674,9 +710,18 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <h3 className="font-semibold text-base">What was understood</h3>
             {understood(proposal, rows, drafts, fixes).map((t) => <p key={t}>{t}</p>)}
           </section>
+          {image.set && image.set.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-sm">{image.set.length + 1} pictures were read together as one.</p>
+              <div className="flex gap-2 overflow-x-auto">
+                {[image, ...image.set.map((x) => x.image)].map((x, i) => <button key={i} type="button" className="press shrink-0" aria-label={`Look at picture ${i + 1} closely`} onClick={() => setBig(x.url)}><img src={x.url} alt="" className="w-14 h-14 object-cover rounded-lg border border-line" /></button>)}
+              </div>
+            </div>
+          )}
           {blocked > 0 && (
             <section id="scan-questions" className="rounded-xl border border-amber-500/60 bg-amber-500/10 px-3 py-3 space-y-3 text-sm" style={{ scrollMarginTop: 80 }}>
-              <h3 className="font-semibold text-base">Answer before saving</h3>
+              <h3 className="font-semibold text-base">{blocked === 1 ? 'One thing needs a detail' : `${blocked} things need a detail`}</h3>
+              <p>{chosen - blocked > 0 ? 'Everything else can be saved now. These stay here until you fill them in, or you can leave them.' : 'Fill them in to save them, or leave them.'}</p>
               {asks.map((a) => (
                 <div key={a.why} className="space-y-1">
                   <Select big label={a.text(a.list.length)} value="" onChange={(v) => answerAll(a, v)} {...a.opts} />
@@ -689,7 +734,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                   <button type="button" className="press shrink-0 px-3 py-2 rounded-lg border border-line bg-surface font-medium" onClick={() => showLine(r.i)}>Answer</button>
                 </div>
               ))}
-              {blocked > waiting.length && <p>{blocked - waiting.length === 1 ? 'One thing' : `${blocked - waiting.length} things`} to add below {blocked - waiting.length === 1 ? 'needs' : 'need'} a detail the picture does not show: look for the amber text, or untick what you do not want added.</p>}
+              {blocked > waiting.length && <p>{blocked - waiting.length === 1 ? 'One thing' : `${blocked - waiting.length} things`} to add below {blocked - waiting.length === 1 ? 'needs' : 'need'} a detail the picture does not show: look for the amber text.</p>}
             </section>
           )}
           {usedRefs.some((ref) => accountOptions.some((o) => o.value === ref)) && accountOptions.length > 1 && (
@@ -768,6 +813,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     </div>
                   )}
                   {draftNeeds(d) && <div className="text-xs text-amber-600">{draftNeeds(d)}</div>}
+                  {d.on && !draftNeeds(d) && d.balance === '' && <div className={`text-xs ${muted}`}>Its balance is not on the picture, so it starts from the lines here. Enter it if you know it, or scan a picture that shows it later.</div>}
                 </div>
               ))}
               <p className={`text-xs ${muted}`}>The lines below are recorded on the new account and its balance ends at the figure above.</p>
@@ -1033,23 +1079,23 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       {image && createPortal(
         <div className="fixed inset-x-0 z-20 border-t border-line bg-background/95 backdrop-blur-md" style={{ bottom: 'calc(58px + env(safe-area-inset-bottom))' }}>
           <div className="max-w-3xl mx-auto px-4 py-3 flex gap-2">
-          <button type="button" onClick={() => { readOne(image, note, false, !!proposal); readAhead(); }} disabled={reading || saving}
+          <button type="button" onClick={() => readTogether(image, note, null, false, !!proposal)} disabled={reading || saving}
             className={`press px-4 py-3 rounded-xl font-medium disabled:opacity-50 ${proposal ? 'border border-line bg-surface text-fg' : 'flex-1 bg-accent text-accent-contrast hover:opacity-90'}`}>
             {reading ? 'Reading...' : proposal ? 'Read again' : image.typed ? 'Read again' : queue.length > 0 ? `Start reading (${queue.length + 1} chosen)` : image.csv ? 'Read file' : image.pdf ? 'Read statement' : 'Read screenshot'}
           </button>
-          {proposal && chosen === 0 && (
+          {proposal && chosen - blocked <= 0 && (
             <button type="button" onClick={() => { setDone(null); advance(true); }} disabled={saving || reading}
               className="press flex-1 px-4 py-3 rounded-xl bg-accent text-accent-contrast font-medium hover:opacity-90 disabled:opacity-50">
               {queue.length > 0 ? `Skip to the next (${queue.length} waiting)` : 'Close'}
             </button>
           )}
-          {proposal && chosen > 0 && queue.length > 0 && (
+          {proposal && chosen - blocked > 0 && queue.length > 0 && (
             <button type="button" onClick={() => { setDone(null); advance(true); }} disabled={saving || reading} className="press px-3 py-3 rounded-xl border border-line bg-surface text-fg font-medium disabled:opacity-50">Skip</button>
           )}
-          {proposal && chosen > 0 && (
-            <button type="button" onClick={blocked > 0 ? showQuestions : save} disabled={saving || reading || !chosen}
+          {proposal && chosen - blocked > 0 && (
+            <button type="button" onClick={save} disabled={saving || reading}
               className="press flex-1 px-4 py-3 rounded-xl bg-accent text-accent-contrast font-medium hover:opacity-90 disabled:opacity-50">
-              {saving ? 'Saving...' : blocked ? `Answer ${blocked} ${blocked === 1 ? 'question' : 'questions'} first` : `Save ${chosen} ${chosen === 1 ? 'item' : 'items'}`}
+              {saving ? 'Saving...' : `Save ${chosen - blocked} ${chosen - blocked === 1 ? 'item' : 'items'}`}
             </button>
           )}
           </div>
@@ -1064,6 +1110,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           {done.repeated > 0 && ` Already saved from an earlier screenshot, skipped: ${done.repeated}.`}
           {done.removed > 0 && ` Removed as not on the statement: ${done.removed}.`}
           {done.gaps.length > 0 && <ul className="mt-1 list-disc pl-5">{done.gaps.map((g) => <li key={g}>{g}</li>)}</ul>}
+          {done.left > 0 && <div className="mt-1">{done.left === 1 ? 'One thing was' : `${done.left} things were`} left because a detail is missing. {done.left === 1 ? 'It stays' : 'They stay'} above until you fill {done.left === 1 ? 'it' : 'them'} in, or tap {queue.length > 0 ? 'Skip to the next' : 'Close'} to leave {done.left === 1 ? 'it' : 'them'}.</div>}
           {done.failed.length > 0 && (
             <ul className="mt-2 text-red-600 list-disc pl-5">{done.failed.map((f) => <li key={f}>{f}</li>)}</ul>
           )}

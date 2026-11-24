@@ -1519,3 +1519,12 @@ test('a card payment or transfer whose other side is not in the app changes only
   await M.reverseTransaction(moved.transaction.id);
   assert.deepEqual([(await get('credit_cards', card.id)).balance, (await get('bank_accounts', chq.id)).balance], [before.card, before.chq]);
 });
+
+test('a line read from a picture is never refused for lack of money: the balance in the app was behind', async () => {
+  const acct = await add('bank_accounts', { name: 'Behind', balance: 0 });
+  const a = await accounts();
+  await assert.rejects(M.recordExpense({ amount: 10, source: `bank_account:${acct.id}`, date: '2026-11-23', description: 'typed' }, a), /more than it can pay/);
+  const out = await M.recordExpense({ amount: 10, source: `bank_account:${acct.id}`, date: '2026-11-23', description: 'scanned', key: 'shot:behind-1', extra: { from_screenshot: 'abc', in_snapshot: true } }, a);
+  assert.ok(out.transaction && out.transaction.id);
+  assert.equal(Number((await accounts()).bankAccounts.find((x) => x.id === acct.id).balance), -10);
+});

@@ -661,3 +661,45 @@ test('already in the app: matched and updated; not there: created; cannot tell w
   p = reader.plan({ kind: 'credit_score', accounts: [], lines: [], credit_score: { bureau: 'equifax', score: 700, date: '2026-11-20' } }, ctx, 'm5');
   assert.equal(p.credit_score.same, true);
 });
+
+test('pictures chosen together are one reading: the account on one serves the lines on another, and overlap is counted once', () => {
+  const reader = mod('reader.js');
+  const ctx = { bankAccounts: [{ id: 'chq', name: 'PC Money', last4: '7788', balance: 100 }], creditCards: [], loans: [], transactions: [], today: '2026-11-23' };
+  const all = [{ ...ctx.bankAccounts[0], _type: 'bank_account' }];
+  const parts = [
+    // 1. The card's summary: its name, digits and balance, no lines.
+    { note: '', reading: { kind: 'balance', accounts: [{ name: 'Rogers Red World Elite Mastercard', type: 'credit_card', last4: '4131', balance: 900, credit_limit: 16900 }], lines: [] } },
+    // 2. Its transactions under the bank's short name: two real coffees on one day, and a payment from an account not in the app.
+    { note: '', reading: { kind: 'transactions', accounts: [{ name: 'Rogers Bank', type: 'credit_card', last4: '4131' }], lines: [
+      { date: '2026-11-22', merchant: 'Starbucks', amount: 5, direction: 'out', pending: true },
+      { date: '2026-11-22', merchant: 'Starbucks', amount: 5, direction: 'out', pending: true },
+      { date: '2026-11-21', merchant: 'PAYMENT FROM - *****01*64', amount: 200, direction: 'in', type: 'card_payment', other_account: '*****01*64' }] } },
+    // 3. Scrolled further: no header at all. It repeats one coffee and the payment, and adds one line.
+    { note: '', reading: { kind: 'transactions', accounts: [], lines: [
+      { date: '2026-11-22', merchant: 'Starbucks', amount: 5, direction: 'out', pending: false },
+      { date: '2026-11-21', merchant: 'PAYMENT FROM - *****01*64', amount: 200, direction: 'in', type: 'card_payment', other_account: '*****01*64' },
+      { date: '2026-11-19', merchant: 'Klarna', amount: 21.9, direction: 'out' }] } },
+  ];
+  const p = reader.plan(reader.together(parts, all), { ...ctx, note: '' }, 'set1');
+  assert.deepEqual(p.new_accounts.map((a) => [a.name, a.last4, a.balance, a.credit_limit]), [['Rogers Red World Elite Mastercard', '4131', 900, 16900]]);
+  assert.deepEqual(p.lines.map((l) => [l.merchant, l.amount, l.account && l.account.id, l.action, l.pending]), [
+    ['Starbucks', 5, 'new:0', 'record', false], ['Starbucks', 5, 'new:0', 'record', true],
+    ['PAYMENT FROM - *****01*64', 200, 'new:0', 'record', false], ['Klarna', 21.9, 'new:0', 'record', false]]);
+  assert.equal(p.unknown_accounts.length, 0);
+  // Two cards, each followed by its own headerless screen: each screen goes with the card just before it.
+  const two = reader.plan(reader.together([
+    { note: '', reading: { accounts: [{ name: 'Amex Cobalt', type: 'credit_card', last4: '1005', balance: 50 }], lines: [] } },
+    { note: '', reading: { accounts: [], lines: [{ date: '2026-11-20', merchant: 'Uber', amount: 12, direction: 'out' }] } },
+    { note: '', reading: { accounts: [{ name: 'Wealthsimple Visa', type: 'credit_card', last4: '0254', balance: 70 }], lines: [] } },
+    { note: 'pc money', reading: { accounts: [], lines: [{ date: '2026-11-20', merchant: 'Loblaws', amount: 30, direction: 'out' }] } },
+  ], all), { ...ctx, note: '' }, 'set2');
+  assert.deepEqual(two.lines.map((l) => [l.merchant, l.account && l.account.name]), [['Uber', 'Amex Cobalt'], ['Loblaws', 'PC Money']]); // a note still wins over the picture before
+  assert.equal(two.new_accounts.length, 2);
+});
+
+test('pictures chosen together: a statement, a receipt, a bill or a score is left to stand alone', async () => {
+  const reader = mod('reader.js');
+  const ctx = { bankAccounts: [], creditCards: [], loans: [], transactions: [], today: '2026-11-23' };
+  const out = await reader.readSet('nobody', { ids: [{ id: 'x' }, { id: 'y' }] }, ctx);
+  assert.deepEqual(out, { proposal: null, used: [] }); // nothing read yet: nothing to put together
+});

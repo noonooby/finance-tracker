@@ -38,8 +38,10 @@ const mkey = (m) => String(m || '').toLowerCase().replace(/^(sq|sp|tst|klarna|pa
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const dayDiff = (a, b) => Math.abs((Date.parse(a) - Date.parse(b)) / 864e5);
 
+let stubTurn = 0;
 async function callGemini(mime, b64, today, note) {
-  if (process.env.READER_STUB) return JSON.parse(require('node:fs').readFileSync(process.env.READER_STUB, 'utf8'));
+  // Testing: a file holding one reading, or a list of readings handed out in turn.
+  if (process.env.READER_STUB) { const j = JSON.parse(require('node:fs').readFileSync(process.env.READER_STUB, 'utf8')); return Array.isArray(j) ? j[stubTurn++ % j.length] : j; }
   const key = require('./models').ready();
   if (!key) { const e = new Error('Screenshot reading is not set up yet: the owner adds the Gemini key once in Settings.'); e.status = 503; throw e; }
   let prompt = PROMPT.replace('YEAR_NOW', today.slice(0, 4)).replace('TODAY', today);
@@ -139,31 +141,31 @@ function sameAccounts(reading) {
     if (a.type === 'credit_card') hit.type = 'credit_card';
     hit.name = fuller;
   }
-  if (!renamed.size) return reading;
+  const several = (reading.lines || []).some((l) => l._pic > 0);
+  if (!renamed.size && !several) return reading;
   for (const [k, v] of [...renamed]) for (const [k2, v2] of renamed) if (norm(v2) === k) renamed.set(k2, v);
   const to = (n) => (n && renamed.get(norm(n))) || n;
-  const seen = new Set(), lines = [];
+  // The same line under both names, or on two pictures that overlap, is one line; two alike under one name on one
+  // picture are two real lines. So a line is kept as many times as the place that shows it most.
+  const most = new Map(), within = new Map(), lines = [];
   for (const l of reading.lines || []) {
-    const moved = to(l.account_name) !== l.account_name;
-    const key = [l.date, norm(l.merchant), Math.abs(Number(l.amount)), l.direction, norm(to(l.account_name))].join('|');
-    // The same line under both names is one line; two alike under one name are two real lines.
-    if (seen.has(key + '|moved') || (moved && seen.has(key + '|kept'))) continue;
-    seen.add(key + (moved ? '|moved' : '|kept'));
-    lines.push({ ...l, account_name: to(l.account_name), other_account: to(l.other_account) });
+    const name = to(l.account_name);
+    const sig = [l.date, norm(l.merchant), Math.abs(Number(l.amount)), l.direction, norm(name) || String(l.last4 || '')].join('|');
+    const place = `${sig}|${l._pic || 0}|${norm(l.account_name)}`;
+    const k = (within.get(place) || 0) + 1; within.set(place, k);
+    const had = most.get(sig) || [];
+    // Shown as pending in one place and posted in another: it is posted.
+    if (k <= had.length) { if (!l.pending) had[k - 1].pending = false; continue; }
+    const line = { ...l, account_name: name, other_account: to(l.other_account) };
+    had.push(line); most.set(sig, had); lines.push(line);
   }
   return { ...reading, accounts: kept, lines, statement: reading.statement ? { ...reading.statement, account_name: to(reading.statement.account_name) } : reading.statement };
 }
 
-function plan(reading, ctx, sourceId) {
-  const { bankAccounts, creditCards, transactions } = ctx;
-  reading = sameAccounts(reading);
-  const all = [
-    ...bankAccounts.map(a => ({ ...a, _type: 'bank_account' })),
-    ...creditCards.map(c => ({ ...c, _type: 'credit_card' })),
-  ];
-  // The note names one of the person's accounts and the picture shows one account the app does not know by the name
-  // on it: they are the same account, so nothing new is offered and its lines and balance go to the one named.
-  const noted = ctx.onlyAccount ? null : noteAccount(ctx.note, all);
+// The note names one of the person's accounts and the picture shows one account the app does not know by the name
+// on it: they are the same account, so nothing new is offered and its lines and balance go to the one named.
+function withNote(reading, all, note) {
+  const noted = noteAccount(note, all);
   if (noted && (reading.accounts || []).length === 1 && !resolveAccount(all, reading.accounts[0])) {
     const old = norm(reading.accounts[0].name);
     const same = (n) => !n || norm(n) === old;
@@ -171,6 +173,42 @@ function plan(reading, ctx, sourceId) {
       lines: (reading.lines || []).map((l) => (same(l.account_name) ? { ...l, account_name: noted.name, last4: null } : l)),
       statement: reading.statement && same(reading.statement.account_name) ? { ...reading.statement, account_name: noted.name, last4: null } : reading.statement };
   }
+  return { reading, noted };
+}
+
+// Pictures chosen together are usually pieces of the same thing: a card's summary, then its transactions over two or
+// three screens. They are put together as one reading, so an account named on one picture serves the lines on
+// another, a line on two overlapping pictures is one line, and everything is checked once.
+// A statement, a receipt, a bill, a credit score and a pay slip each stand alone.
+const alone = (r) => !r || r.statement || r.receipt || r.bill || r.credit_score || ['statement', 'receipt', 'bill', 'credit_score', 'pay_slip'].includes(r.kind);
+const CASH = (a) => a && !['loan', 'investment', 'property'].includes(a.type);
+function together(parts, all) {
+  const accounts = [], lines = [], notes = [];
+  let before = null;
+  parts.forEach(({ reading: r0, note }, pic) => {
+    const { reading: r, noted } = withNote(sameAccounts(r0), all, note);
+    const shown = (r.accounts || []).filter(CASH);
+    // The account a picture is about: the one it shows, else the one its note names, else (nothing shown at all)
+    // the one on the picture just before it, which it carries on from.
+    const own = shown.length === 1 ? shown[0] : !shown.length && noted ? { name: noted.name, last4: noted.last4 || noted.last_four || null, type: noted._type === 'credit_card' ? 'credit_card' : 'chequing' } : null;
+    const from = own || (shown.length ? null : before);
+    for (const l of r.lines || []) lines.push({ ...l, ...(!l.account_name && !l.last4 && from ? { account_name: from.name, last4: from.last4 || null, _kind: from.type } : {}), _pic: pic });
+    accounts.push(...(r.accounts || []).filter(Boolean));
+    if (own) before = own; else if (shown.length) before = null;
+    if (r.notes) notes.push(String(r.notes));
+  });
+  return { kind: lines.length ? 'transactions' : 'balance', accounts, lines, notes: [...new Set(notes)].join(' ').slice(0, 400) };
+}
+
+function plan(reading, ctx, sourceId) {
+  const { bankAccounts, creditCards, transactions } = ctx;
+  const all = [
+    ...bankAccounts.map(a => ({ ...a, _type: 'bank_account' })),
+    ...creditCards.map(c => ({ ...c, _type: 'credit_card' })),
+  ];
+  const named = ctx.onlyAccount ? { reading: sameAccounts(reading), noted: null } : withNote(sameAccounts(reading), all, ctx.note);
+  reading = named.reading;
+  const noted = named.noted;
   // Accounts on the screenshot that are not in the app yet become drafts the person confirms ("new:0", "new:1").
   const drafts = [];
   for (const a of reading.accounts || []) {
@@ -195,7 +233,7 @@ function plan(reading, ctx, sourceId) {
   const seen = new Map();
   const lines = (reading.lines || []).map((l, i) => {
     const amount = Math.round(Math.abs(Number(l.amount)) * 100) / 100;
-    const acct = resolveAccount(withDrafts, { last4: l.last4, name: l.account_name }) || only;
+    const acct = resolveAccount(withDrafts, { last4: l.last4, name: l.account_name, type: l._kind }) || only;
     let kind = KINDS.has(l.type) ? l.type : (l.direction === 'in' ? 'income' : 'purchase');
     if (kind === 'fee' || kind === 'interest') kind = l.direction === 'in' ? 'income' : 'purchase';
     if (kind === 'income' && acct && acct._type === 'credit_card') kind = 'refund';
@@ -402,15 +440,40 @@ async function read(uid, body, ctx) {
     // What a picture was read as is kept for a few hours, so pictures read ahead while you check another one come up
     // at once. Matching to your accounts and to what is recorded is always done afresh. "Read again" reads anew.
     const key = `${uid}:${sourceId}:${note}`, hit = READINGS.get(key);
-    if (hit && !body.fresh && Date.now() - hit.at < 3 * 3600e3) reading = JSON.parse(hit.json);
+    if (hit && !body.fresh && !process.env.READER_STUB && Date.now() - hit.at < 3 * 3600e3) reading = JSON.parse(hit.json);
     else {
       reading = await callGemini(mime, b64, today, note);
-      if (!process.env.READER_STUB) { READINGS.delete(key); READINGS.set(key, { at: Date.now(), json: JSON.stringify(reading) }); }
+      if (!process.env.READER_STUB || process.env.READER_KEEP) { READINGS.delete(key); READINGS.set(key, { at: Date.now(), json: JSON.stringify(reading) }); }
       if (READINGS.size > 300) READINGS.delete(READINGS.keys().next().value);
     }
     ctx = { ...ctx, note };
   }
-  const p = plan(reading, ctx, sourceId);
+  const p = await priced(plan(reading, ctx, sourceId), ctx);
+  // Whether it can be put together with other pictures chosen with it.
+  p.alone = mime === 'text/csv' || mime === 'application/pdf' || !!alone(reading);
+  return p;
+}
+
+// Pictures already read (by read above), put together as one reading and matched once. body: { ids: [{ id, note }] }.
+// -> { proposal, used: [ids] }; proposal is null when fewer than two of them belong together.
+async function readSet(uid, body, ctx) {
+  const parts = [];
+  for (const it of (Array.isArray(body.ids) ? body.ids : []).slice(0, 60)) {
+    const id = String((it && it.id) || ''), note = cleanNote(it && it.note);
+    const hit = READINGS.get(`${uid}:${id}:${note}`);
+    if (!hit) continue;
+    const reading = JSON.parse(hit.json);
+    if (!alone(reading)) parts.push({ id, note, reading });
+  }
+  if (parts.length < 2) return { proposal: null, used: [] };
+  const all = [...ctx.bankAccounts.map((a) => ({ ...a, _type: 'bank_account' })), ...ctx.creditCards.map((c) => ({ ...c, _type: 'credit_card' }))];
+  const sourceId = crypto.createHash('sha256').update(parts.map((p) => p.id).sort().join('|')).digest('hex').slice(0, 16);
+  const p = await priced(plan(together(parts, all), { ...ctx, note: '' }, sourceId), ctx);
+  p.pictures = parts.length;
+  return { proposal: p, used: parts.map((x) => x.id) };
+}
+
+async function priced(p, ctx) {
   // Lines shown only in another currency are converted at that day's published rate; the original is kept on the line.
   for (const l of p.lines.filter((x) => x.needs_fx && x.action !== 'skip')) {
     try {
@@ -515,4 +578,4 @@ async function readScore(body, ctx) {
   return p;
 }
 
-module.exports = { read, plan, resolveAccount, nameFits, noteAccount, sameAccounts, mkey, cleanNote, readPay, planPay, readScore, planScore };
+module.exports = { read, readSet, together, plan, resolveAccount, nameFits, noteAccount, sameAccounts, mkey, cleanNote, readPay, planPay, readScore, planScore };
