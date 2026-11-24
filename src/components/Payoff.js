@@ -22,6 +22,8 @@ export default function Payoff() {
     const out = [];
     for (const l of d.loans || []) {
       if (!(Number(l.balance) > 0) || l.on_card_id || (l.loan_type === 'mortgage' && !withMortgage)) continue;
+      // With no payment known there is nothing to plan from; it is named below instead.
+      if (!(Number(l.payment_amount) > 0)) continue;
       const perYear = PAYMENTS_PER_YEAR[l.frequency || 'monthly'] || 12;
       out.push({ id: `loan:${l.id}`, name: l.name, balance: Number(l.balance), rate: Number(l.interest_rate) || 0, min: round2((Number(l.payment_amount) || 0) * perYear / 12) });
     }
@@ -98,6 +100,9 @@ export default function Payoff() {
                 );
               })}
             </Card>
+            {(d.loans || []).filter((l) => Number(l.balance) > 0 && !l.on_card_id && !(Number(l.payment_amount) > 0)).length > 0 && (
+              <p className="text-xs text-muted mt-2">Left out because the payment is not known yet: {(d.loans || []).filter((l) => Number(l.balance) > 0 && !l.on_card_id && !(Number(l.payment_amount) > 0)).map((l) => l.name).join(', ')}.</p>
+            )}
             <p className="text-xs text-muted mt-2">A card with no minimum payment entered is taken at 3% of its balance, $10 at least. When a debt ends, what you paid on it moves to the next one.</p>
           </Section>
         </>

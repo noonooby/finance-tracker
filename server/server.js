@@ -32,12 +32,14 @@ const TABLES = new Set(['snapshots', 'activities', 'alert_history', 'bank_accoun
   'category_rules',
   // bills that repeat (found in your history or added by you); browsers that get reminders
   'bills', 'push_subscriptions',
+  // every picture read, kept with what was read from it; lines whose account is not known yet
+  'scans', 'held_lines',
   // savings goals; credit scores you typed in, by bureau and day
   'goals', 'credit_scores']);
 // Tables whose balance /api/money may change, and the fields it may change.
 const MONEY_FIELDS = { bank_accounts: ['balance'], credit_cards: ['balance'], loans: ['balance'], investments: ['balance'], assets: ['balance'] };
 // Tables only the server writes.
-const SERVER_ONLY = new Set(['balance_points', 'snapshots', 'push_subscriptions']);
+const SERVER_ONLY = new Set(['balance_points', 'snapshots', 'push_subscriptions', 'scans']);
 // The user's calendar day (balances are dated by it). APP_TZ defaults to Toronto, like the Telegram bot.
 const APP_TZ = process.env.APP_TZ || 'America/Toronto';
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: APP_TZ });
@@ -787,18 +789,22 @@ route('POST', '/api/read-pay', async (req, b) => {
   try { return await require('./reader').readPay(b, { bankAccounts: selectRows(uid, { table: 'bank_accounts', filters: [] }), today: b.today }); }
   catch (e) { if (e.status) fail(e.status, e.message); throw e; }
 });
+// How many pictures are kept. The pictures themselves are never sent back in a list.
+route('POST', '/api/scans', (req) => ({ count: db.prepare("SELECT COUNT(*) AS n FROM rows WHERE tbl = 'scans' AND user_id = ?").get(authUser(req).id).n }));
 route('POST', '/api/read-screenshot', async (req, b) => {
   const uid = authUser(req).id;
   const all = (t) => selectRows(uid, { table: t, filters: [] });
   const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), assets: all('assets'), bills: all('bills'), scores: all('credit_scores'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db };
+  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), assets: all('assets'), bills: all('bills'), scores: all('credit_scores'), held: all('held_lines'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db,
+    // Every picture read is kept with what was read from it, so nothing has to be chosen or read twice.
+    keep: (row) => { const old = selectRows(uid, { table: 'scans', filters: [['source_id', 'eq', row.source_id]], limit: 1 })[0]; return old ? updateRows(uid, 'scans', [['id', 'eq', old.id]], row) : insertRow(uid, 'scans', { id: crypto.randomUUID(), ...row }); } };
   try { return await require('./reader').read(uid, b, ctx); } catch (e) { if (e.status) fail(e.status, e.message); throw e; }
 });
 route('POST', '/api/read-set', async (req, b) => {
   const uid = authUser(req).id;
   const all = (t) => selectRows(uid, { table: t, filters: [] });
   const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), assets: all('assets'), bills: all('bills'), scores: all('credit_scores'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db };
+  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), assets: all('assets'), bills: all('bills'), scores: all('credit_scores'), held: all('held_lines'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db };
   try { return await require('./reader').readSet(uid, b, ctx); } catch (e) { if (e.status) fail(e.status, e.message); throw e; }
 });
 // Local testing only: DEV_USER signs in without Google. Refused unless NODE_ENV is development.

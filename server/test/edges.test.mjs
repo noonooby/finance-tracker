@@ -703,3 +703,15 @@ test('pictures chosen together: a statement, a receipt, a bill or a score is lef
   const out = await reader.readSet('nobody', { ids: [{ id: 'x' }, { id: 'y' }] }, ctx);
   assert.deepEqual(out, { proposal: null, used: [] }); // nothing read yet: nothing to put together
 });
+
+test('a line kept without an account is filed by a later picture: seen again with its account, or its name fits now', () => {
+  const reader = mod('reader.js');
+  const held = [
+    { id: 'h1', date: '2026-11-20', merchant: 'Mystery shop', amount: 10, direction: 'out', kind: 'purchase', hint: null, key: 'shot:h1' },
+    { id: 'h2', date: '2026-11-19', merchant: 'Uber', amount: 12, direction: 'out', kind: 'purchase', hint: 'Amex Cobalt', key: 'shot:h2' },
+    { id: 'h3', date: '2026-11-18', merchant: 'Nobody knows', amount: 7, direction: 'out', kind: 'purchase', hint: null, key: 'shot:h3' }];
+  const ctx = { bankAccounts: [{ id: 'chq', name: 'PC Money', last4: '7788', balance: 100 }], creditCards: [{ id: 'amx', name: 'Amex Cobalt', last4: '1005', balance: 0 }], loans: [], transactions: [], held, today: '2026-11-23' };
+  const p = reader.plan({ kind: 'transactions', accounts: [{ name: 'PC Money', type: 'chequing', last4: '7788' }], lines: [{ date: '2026-11-20', merchant: 'MYSTERY SHOP', amount: 10, direction: 'out' }] }, ctx, 'later1');
+  assert.deepEqual(p.held_done, ['h1']); // the same line, now with its account: recorded from this picture
+  assert.deepEqual(p.lines.map((l) => [l.merchant, l.account.id, l.held_id || null, l.key]), [['MYSTERY SHOP', 'chq', null, p.lines[0].key], ['Uber', 'amx', 'h2', 'shot:h2']]); // the card exists now, so its line comes along; h3 keeps waiting
+});

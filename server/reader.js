@@ -254,6 +254,7 @@ function plan(reading, ctx, sourceId) {
     const out = {
       i, date: l.date, merchant: l.merchant, amount, direction: l.direction === 'in' ? 'in' : 'out', pending: !!l.pending,
       account: acct ? { type: acct._type, id: acct.id, name: acct.name } : null, key, action: 'record',
+      shown: l.account_name || (l.last4 ? `ending ${String(l.last4).slice(-4)}` : null),
       // For a line on a new account the browser rebuilds the key with the saved account's id, so a later scan matches it.
       key_rest: `${l.date}|${mkey(l.merchant)}|${amount.toFixed(2)}|${n}`,
       kind, other: other ? { type: other._type, id: other.id, name: other.name } : null, other_hint: l.other_account || null,
@@ -404,9 +405,21 @@ function plan(reading, ctx, sourceId) {
   // A score from the same bureau for the same day is the one already recorded: it is updated, or left alone when the same.
   const hadScore = sc && sc.score != null ? (ctx.scores || []).find((x) => norm(x.bureau) === norm(sc.bureau) && String(x.date || '').slice(0, 10) === sc.date) : null;
   const credit_score = sc && sc.score != null ? { bureau: sc.bureau, score: sc.score, date: sc.date, ...(hadScore ? { existing_id: hadScore.id, was: Number(hadScore.score), same: Number(hadScore.score) === Number(sc.score) } : {}) } : null;
+  // Lines kept from earlier pictures because their account was not known. One seen again here with its account is
+  // the same line, so the kept copy is finished with. One whose account can be told now is offered with these lines.
+  const held_done = [];
+  for (const h of ctx.held || []) {
+    const amt = Math.round(Math.abs(Number(h.amount)) * 100) / 100;
+    if (lines.some((l) => l.account && l.action !== 'skip' && Math.abs(l.amount - amt) < 0.005 && dayDiff(l.date, h.date) <= 1 && mkey(l.merchant) && mkey(l.merchant) === mkey(h.merchant))) { held_done.push(h.id); continue; }
+    const acct = h.hint ? resolveAccount(all, { name: h.hint, last4: (String(h.hint).match(/\d{4}(?!.*\d)/) || [])[0] }) : null;
+    if (!acct) continue;
+    lines.push({ i: lines.length, date: h.date, merchant: h.merchant, amount: amt, direction: h.direction === 'in' ? 'in' : 'out', pending: !!h.pending,
+      account: { type: acct._type, id: acct.id, name: acct.name }, key: h.key || ('held:' + h.id), action: 'record', kind: KINDS.has(h.kind) ? h.kind : 'purchase',
+      other: null, other_hint: null, category_guess: h.category_guess || null, held_id: h.id, why: 'From an earlier picture: its account is known now' });
+  }
   const unknown = (reading.accounts || []).filter(a => !['loan', 'investment', 'property'].includes(a.type) && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
-  return { source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, new_investments, new_bills, updates, credit_score, pay_slip: reading.kind === 'pay_slip', unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
+  return { source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, new_investments, new_bills, updates, credit_score, held_done, pay_slip: reading.kind === 'pay_slip', unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
 }
 
 // The optional note: plain text, one paragraph, at most 300 characters, with the quote markers removed.
@@ -447,6 +460,7 @@ async function read(uid, body, ctx) {
       if (READINGS.size > 300) READINGS.delete(READINGS.keys().next().value);
     }
     ctx = { ...ctx, note };
+    if (ctx.keep) { try { ctx.keep({ source_id: sourceId, mime, kind: String(reading.kind || 'other'), note, picture: b64.length <= 3_000_000 ? b64 : null, reading: JSON.stringify(reading), read_at: new Date().toISOString() }); } catch { /* keeping the picture never stops the reading */ } }
   }
   const p = await priced(plan(reading, ctx, sourceId), ctx);
   // Whether it can be put together with other pictures chosen with it.

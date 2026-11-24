@@ -171,6 +171,38 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   // Pictures chosen together are read together: each is read, then the ones that belong together (screens of the same
   // accounts) are shown as one thing to check and save once. A statement, a receipt, a bill and the like keep their own turn.
   const [readCount, setReadCount] = useState(null);
+  // Lines whose account could not be told are kept on the server. A later picture that shows the account files them;
+  // until then they wait here and can be filed by hand.
+  const [held, setHeld] = useState([]);
+  const [kept, setKept] = useState(0);
+  const loadHeld = async () => {
+    try { const { data } = await server.from('held_lines').select('*'); setHeld((data || []).sort((a, b) => String(b.date).localeCompare(String(a.date)))); } catch { /* shown next time */ }
+    try { setKept((await api('/api/scans', {})).count || 0); } catch { /* only a count */ }
+  };
+  useEffect(() => { loadHeld(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  const [filing, setFiling] = useState(false);
+  const fileHeld = async (list, to) => {
+    if (!to || filing) return;
+    setFiling(true); setError('');
+    const accounts = { bankAccounts, creditCards, loans };
+    const onCard = to.startsWith('credit_card:');
+    for (const h of list) {
+      try {
+        const common = { amount: Number(h.amount), date: h.date, description: h.merchant, key: h.key || `held:${h.id}`, extra: { pending: !!h.pending, from_screenshot: h.source_id || 'held', in_snapshot: true } };
+        const cat = (income) => { const id = suggestCategory(h.merchant, h.category_guess, income); const c = categories.find((x) => String(x.id) === String(id)); return c ? { category_id: c.id, category_name: c.name } : { category_id: null, category_name: null }; };
+        if (h.kind === 'card_payment' && onCard) await recordCardPayment({ ...common, cardId: to.split(':')[1], source: 'outside' }, accounts);
+        else if (h.kind === 'card_payment' || h.kind === 'transfer') await recordTransfer({ ...common, from: h.direction === 'in' ? 'outside' : to, to: h.direction === 'in' ? to : 'outside' }, accounts);
+        else if (h.kind === 'refund' || (h.direction === 'in' && onCard)) await recordRefund({ ...common, target: to }, accounts);
+        else if (h.direction === 'in') await recordIncome({ ...common, target: to, source_name: h.merchant, extra: { ...common.extra, ...cat(true) } }, accounts);
+        else await recordExpense({ ...common, source: to, ...cat(false) }, accounts);
+        await server.from('held_lines').delete().eq('id', h.id);
+      } catch (err) { setError(`${h.merchant}: ${err.message}`); break; }
+    }
+    setFiling(false);
+    await loadHeld();
+    if (onUpdate) await onUpdate();
+  };
+  const dropHeld = async (h) => { await server.from('held_lines').delete().eq('id', h.id); loadHeld(); };
   const today = () => new Date().toLocaleDateString('en-CA');
   const readTogether = async (image0, note0, queue0, keepDone, fresh) => {
     const img = image0 || image, nt = typeof note0 === 'string' ? note0 : note, waiting = queue0 || queueRef.current;
@@ -365,9 +397,19 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
 
   const save = async () => {
     setSaving(true); setError('');
-    const result = { recorded: 0, posted: 0, repeated: 0, corrected: 0, created: [], gaps: [], failed: [], left: 0 };
-    // What is ready is saved. Anything still missing a detail is left here, and never holds the rest back.
-    const leftRows = rows.filter((x) => x.on && missing(x));
+    const result = { recorded: 0, posted: 0, repeated: 0, corrected: 0, created: [], gaps: [], failed: [], left: 0, held: 0 };
+    // What is ready is saved. A line whose account is not known is kept to be filed later, by a picture that shows the
+    // account or by hand. Nothing holds the rest back.
+    const homeless = (x) => ['Choose the account', 'Choose the card', 'Choose both accounts'].includes(missing(x));
+    for (const r of rows.filter((x) => x.on && homeless(x))) {
+      try {
+        const { error: e } = await server.from('held_lines').insert({ id: generateId(), date: r.date, merchant: String(r.merchant || '').slice(0, 80), amount: Number(r.amount), direction: r.direction, kind: r.kind, pending: !!r.pending,
+          hint: r.shown || r.other_hint || null, key: r.key || null, source_id: proposal.source_id, category_guess: r.category_guess || null, created_at: new Date().toISOString() });
+        if (e) throw new Error(e.message);
+        result.held += 1;
+      } catch (err) { result.failed.push(`${r.merchant}: ${err.message}`); }
+    }
+    const leftRows = rows.filter((x) => x.on && missing(x) && !homeless(x));
     const chosenRows = rows.filter((x) => x.on && !missing(x));
     const leftDrafts = drafts.filter(draftNeeds), leftLoans = loanDrafts.filter(loanNeeds), leftInv = invDrafts.filter(invNeeds), leftBills = billDrafts.filter(billNeeds), leftScore = !!scoreNeeds(scoreDraft);
     result.left = leftRows.length + leftDrafts.length + leftLoans.length + leftInv.length + leftBills.length + (leftScore ? 1 : 0);
@@ -400,9 +442,9 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     // 1b. Loans, leases and pay-later plans found on the picture.
     for (const l of loanDrafts.filter((x) => x.on && !loanNeeds(x))) {
       try {
-        const owed = Math.round(Number(l.balance) * 100) / 100;
+        const owed = Math.round((Number(l.balance) || 0) * 100) / 100;
         const { error: e } = await server.from('loans').insert({ id: generateId(), name: l.name.trim(), principal: owed, balance: owed, interest_rate: Number(l.interest_rate) || 0,
-          loan_type: l.loan_type || 'loan', payment_amount: Math.round(Number(l.payment_amount) * 100) / 100, frequency: l.frequency || 'monthly', next_payment_date: l.next_payment_date,
+          loan_type: l.loan_type || 'loan', payment_amount: Math.round((Number(l.payment_amount) || 0) * 100) / 100, frequency: l.frequency || 'monthly', next_payment_date: /^\d{4}-\d{2}-\d{2}$/.test(l.next_payment_date || '') ? l.next_payment_date : null,
           fee_percent: 0, setup_fee: 0, alert_days: 3, recurring_duration_type: 'indefinite', recurring_occurrences_completed: 0, from_screenshot: proposal.source_id, created_at: new Date().toISOString() });
         if (e) throw new Error(e.message);
         result.created.push(l.name);
@@ -411,8 +453,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     // 1c. Investments and a credit score found on the picture.
     for (const x of invDrafts.filter((v) => v.on && !invNeeds(v))) {
       try {
-        if (!x.name.trim() || !Number.isFinite(Number(x.balance)) || x.balance === '') throw new Error('Enter its name and value');
-        const { error: e } = await server.from(x.table === 'assets' ? 'assets' : 'investments').insert({ id: generateId(), name: x.name.trim(), kind: x.kind || 'Other', balance: Math.round(Number(x.balance) * 100) / 100, created_at: new Date().toISOString() });
+        const { error: e } = await server.from(x.table === 'assets' ? 'assets' : 'investments').insert({ id: generateId(), name: x.name.trim(), kind: x.kind || 'Other', balance: Math.round((Number(x.balance) || 0) * 100) / 100, created_at: new Date().toISOString() });
         if (e) throw new Error(e.message);
         result.created.push(x.name);
       } catch (err) { result.failed.push(`${x.name}: ${err.message}`); }
@@ -434,7 +475,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     }
     for (const b of billDrafts.filter((x) => x.on && !billNeeds(x))) {
       try {
-        const { error: e } = await server.from('bills').insert({ key: `scan:${b.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, name: b.name.trim(), amount: Math.round(Number(b.amount) * 100) / 100, frequency: b.frequency || 'monthly', next_date: b.next_date,
+        const { error: e } = await server.from('bills').insert({ key: `scan:${b.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, name: b.name.trim(), amount: Math.round((Number(b.amount) || 0) * 100) / 100, frequency: b.frequency || 'monthly', next_date: /^\d{4}-\d{2}-\d{2}$/.test(b.next_date || '') ? b.next_date : null,
           status: 'active', remind: true, source: 'scan' });
         if (e) throw new Error(e.message);
         result.created.push(b.name);
@@ -445,7 +486,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         const same = proposal.credit_score && proposal.credit_score.existing_id && scoreDraft.date === proposal.credit_score.date && scoreDraft.bureau.trim().toLowerCase() === String(proposal.credit_score.bureau || '').toLowerCase();
         const { error: e } = same
           ? await server.from('credit_scores').update({ score: Number(scoreDraft.score) }).eq('id', proposal.credit_score.existing_id)
-          : await server.from('credit_scores').insert({ bureau: scoreDraft.bureau.trim().slice(0, 40), score: Number(scoreDraft.score), date: scoreDraft.date, note: null, created_at: new Date().toISOString() });
+          : await server.from('credit_scores').insert({ bureau: scoreDraft.bureau.trim().slice(0, 40) || 'Not stated', score: Number(scoreDraft.score), date: scoreDraft.date, note: null, created_at: new Date().toISOString() });
         if (e) throw new Error(e.message);
         result.created.push(`credit score ${scoreDraft.score}`);
       } catch (err) { result.failed.push(`Credit score: ${err.message}`); }
@@ -485,6 +526,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         else if (r.kind === 'transfer') res = await recordTransfer({ ...common, from: r.from, to: r.to }, accounts);
         else if (r.kind === 'card_payment') res = await recordCardPayment({ ...common, cardId: r.card.split(':')[1], source: r.source }, accounts);
         if (res && res.repeated) result.repeated += 1; else result.recorded += 1;
+        if (r0.held_id) await server.from('held_lines').delete().eq('id', r0.held_id);
       } catch (err) {
         result.failed.push(`${label}: ${err.message}`);
       }
@@ -519,8 +561,10 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         result.failed.push(`${sn.name}: ${err.message}`);
       }
     }
+    for (const id of proposal.held_done || []) { try { await server.from('held_lines').delete().eq('id', id); } catch { /* it is matched again next time */ } }
     setDone(result);
     setSaving(false);
+    loadHeld();
     if (onUpdate) await onUpdate();
     if (result.failed.length) return;
     if (!result.left) return advance(true);
@@ -566,15 +610,18 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     return out;
   };
   const setLoan = (id, patch) => setLoanDrafts((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
-  const loanNeeds = (l) => (!l.on ? null : !l.name.trim() ? 'Enter a name' : !(Number(l.balance) > 0) ? 'Enter what is still owed' : !(Number(l.payment_amount) > 0) ? 'Not on the picture: enter the amount of each payment'
-    : !/^\d{4}-\d{2}-\d{2}$/.test(l.next_payment_date || '') ? 'Not on the picture: enter the next payment day' : null);
-  const billNeeds = (b) => (!b.on ? null : !b.name.trim() ? 'Enter a name' : !(Number(b.amount) > 0) ? 'Not on the picture: enter the amount' : !/^\d{4}-\d{2}-\d{2}$/.test(b.next_date || '') ? 'Not on the picture: enter the day it is next due' : null);
+  // Only a name is needed to add anything. What the picture does not show stays empty and a later picture fills it in.
+  const loanNeeds = (l) => (!l.on ? null : !l.name.trim() ? 'Enter a name' : null);
+  const billNeeds = (b) => (!b.on ? null : !b.name.trim() ? 'Enter a name' : null);
+  const later = 'What the picture does not show can stay empty. A later picture fills it in.';
   const showValue = (c, v) => (v == null ? 'not set' : c.kind === 'text' ? String(v) : c.kind === 'money' ? formatCurrency(v) : c.kind === 'later' ? (formatDate(v) || v) : `${v}%`);
-  const invNeeds = (x) => (!x.on ? null : !x.name.trim() ? 'Enter a name' : x.balance === '' || !Number.isFinite(Number(x.balance)) ? 'Not on the picture: enter its value today' : null);
-  const scoreNeeds = (x) => (!x || !x.on ? null : !x.bureau.trim() ? 'Not on the picture: say which bureau it is from' : !(Number.isInteger(Number(x.score)) && Number(x.score) >= 300 && Number(x.score) <= 900) ? 'A score is a whole number from 300 to 900' : !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '') ? 'Choose the day' : null);
+  const invNeeds = (x) => (!x.on ? null : !x.name.trim() ? 'Enter a name' : null);
+  const scoreNeeds = (x) => (!x || !x.on ? null : !(Number.isInteger(Number(x.score)) && Number(x.score) >= 300 && Number(x.score) <= 900) ? 'A score is a whole number from 300 to 900' : !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '') ? 'Choose the day' : null);
   const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length + loanDrafts.filter((l) => l.on).length + invDrafts.filter((x) => x.on).length + (scoreDraft && scoreDraft.on ? 1 : 0) + changes.filter((c) => c.on).length + billDrafts.filter((b) => b.on).length;
   const draftNeeds = (d) => (!d.on ? null : !d.name.trim() ? 'Enter a name' : null);
-  const blocked = rows.filter((r) => r.on && missing(r)).length + drafts.filter(draftNeeds).length + loanDrafts.filter(loanNeeds).length + invDrafts.filter(invNeeds).length + (scoreNeeds(scoreDraft) ? 1 : 0) + billDrafts.filter(billNeeds).length;
+  const homelessRow = (r) => ['Choose the account', 'Choose the card', 'Choose both accounts'].includes(missing(r));
+  const toHold = rows.filter((r) => r.on && homelessRow(r)).length;
+  const blocked = rows.filter((r) => r.on && missing(r) && !homelessRow(r)).length + drafts.filter(draftNeeds).length + loanDrafts.filter(loanNeeds).length + invDrafts.filter(invNeeds).length + (scoreNeeds(scoreDraft) ? 1 : 0) + billDrafts.filter(billNeeds).length;
   const snapDay = (v) => {
     if (!v) return null;
     const [t, id] = v.split(':');
@@ -603,9 +650,10 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     ['Choose the card', 'card', (n) => (n === 1 ? 'One card payment: which card was paid?' : `${n} card payments: which card was paid?`), { cards: true }],
     ['Choose the account', 'target', (n) => (n === 1 ? 'One line: which account or card is it on?' : `${n} lines: which account or card are they on?`), {}],
   ];
-  const waiting = rows.filter((r) => r.on && missing(r));
-  const asks = ASKS.map(([why, field, text, opts]) => ({ why, field, opts, list: waiting.filter((r) => missing(r) === why), text })).filter((a) => a.list.length);
-  const otherWaiting = waiting.filter((r) => !ASKS.some(([why]) => missing(r) === why));
+  const waiting = rows.filter((r) => r.on && missing(r) && !homelessRow(r));
+  const homeless = rows.filter((r) => r.on && homelessRow(r));
+  const asks = ASKS.map(([why, field, text, opts]) => ({ why, field, opts, list: homeless.filter((r) => missing(r) === why), text })).filter((a) => a.list.length);
+  const otherWaiting = waiting;
   const answerAll = (a, v) => { if (!v) return; const ids = new Set(a.list.map((r) => r.i)); setRows((rs) => rs.map((r) => (ids.has(r.i) ? { ...r, [a.field]: v } : r))); };
   const showLine = (i) => { setOpen(i); setTimeout(() => { const el = document.getElementById(`scan-line-${i}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); };
 
@@ -666,6 +714,34 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             </div>
           </div>
         )}
+        {kept > 0 && !image && <p className="text-xs text-muted">{kept === 1 ? 'One picture is' : `${kept} pictures are`} kept with what was read from {kept === 1 ? 'it' : 'them'}.</p>}
+        {held.length > 0 && !proposal && (
+          <div className="space-y-2 border-t border-line pt-3 text-sm">
+            <p className="font-medium">Waiting for an account: {held.length}</p>
+            <p className="text-muted">Lines from earlier pictures whose account was not shown. A later picture that shows it files them by itself. Or choose it here.</p>
+            {held.length > 1 && (
+              <label className="block"><span className="text-muted">All of them are on</span>
+                <select className={`${input} mt-1 py-2.5 text-base`} value="" disabled={filing} onChange={(e) => fileHeld(held, e.target.value)}>
+                  <option value="">Choose</option>
+                  {accountOptions.filter((o) => !o.value.startsWith('new:')).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+            )}
+            {held.map((h) => (
+              <div key={h.id} className="rounded-lg border border-line px-3 py-2 space-y-1">
+                <div className="flex items-baseline justify-between gap-3"><span className="min-w-0 truncate">{h.merchant}</span><span className="tabular-nums shrink-0">{h.direction === 'in' ? '+' : ''}{formatCurrency(Number(h.amount) || 0)}</span></div>
+                <div className="text-xs text-muted">{formatDate(h.date) || h.date}{h.hint ? ` · shown as ${h.hint}` : ''}</div>
+                <div className="flex items-center gap-2">
+                  <select className={`${input} py-2 text-base`} value="" disabled={filing} aria-label={`Account for ${h.merchant}`} onChange={(e) => fileHeld([h], e.target.value)}>
+                    <option value="">Choose the account</option>
+                    {accountOptions.filter((o) => !o.value.startsWith('new:')).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <button type="button" className="press shrink-0 text-sm text-muted underline" onClick={() => dropHeld(h)}>Remove</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {queue.length > 0 && (
           <div className="space-y-2 border-t border-line pt-3">
             <div className="flex items-center justify-between gap-3">
@@ -718,16 +794,22 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               </div>
             </div>
           )}
+          {toHold > 0 && (
+            <section className="rounded-xl border border-line bg-surface-2 px-3 py-3 space-y-3 text-sm">
+              <h3 className="font-semibold text-base">{toHold === 1 ? 'One line has no account yet' : `${toHold} lines have no account yet`}</h3>
+              <p>You can save now. {toHold === 1 ? 'It is' : 'They are'} kept and filed when a later picture shows the account. If you know it, choose it here.</p>
+              {asks.map((a) => (
+                <div key={a.why} className="space-y-1">
+                  <Select big label={a.text(a.list.length)} value="" onChange={(v) => answerAll(a, v)} {...a.opts} />
+                  <p className={`text-xs ${muted}`}>{a.list.slice(0, 3).map((r) => `${r.merchant} ${formatCurrency(Number(r.amount) || 0)}`).join(', ')}{a.list.length > 3 ? ` and ${a.list.length - 3} more` : ''}.</p>
+                </div>
+              ))}
+            </section>
+          )}
           {blocked > 0 && (
             <section id="scan-questions" className="rounded-xl border border-amber-500/60 bg-amber-500/10 px-3 py-3 space-y-3 text-sm" style={{ scrollMarginTop: 80 }}>
               <h3 className="font-semibold text-base">{blocked === 1 ? 'One thing needs a detail' : `${blocked} things need a detail`}</h3>
               <p>{chosen - blocked > 0 ? 'Everything else can be saved now. These stay here until you fill them in, or you can leave them.' : 'Fill them in to save them, or leave them.'}</p>
-              {asks.map((a) => (
-                <div key={a.why} className="space-y-1">
-                  <Select big label={a.text(a.list.length)} value="" onChange={(v) => answerAll(a, v)} {...a.opts} />
-                  <p className={`text-xs ${muted}`}>{a.list.slice(0, 3).map((r) => `${r.merchant} ${formatCurrency(Number(r.amount) || 0)}`).join(', ')}{a.list.length > 3 ? ` and ${a.list.length - 3} more` : ''}.{a.list.length > 1 ? ' One answer fills them all; change any single line with Edit.' : ''}{a.field === 'source' ? ' If it was paid from an account you do not keep here, choose "An account not in the app": only the card changes.' : ''}</p>
-                </div>
-              ))}
               {otherWaiting.map((r) => (
                 <div key={r.i} className="flex items-center justify-between gap-3">
                   <span className="min-w-0"><span className="block truncate">{r.merchant} {formatCurrency(Number(r.amount) || 0)}</span><span className="block text-xs text-amber-600">{missing(r)}</span></span>
@@ -869,6 +951,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                       </div>
                     )}
                     {billNeeds(b) && <div className="text-sm text-amber-600">{billNeeds(b)}</div>}
+                    {b.on && (!(Number(b.amount) > 0) || !b.next_date) && <div className={`text-xs ${muted}`}>{later}</div>}
                   </div>
                 );
               })}
@@ -960,6 +1043,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     </div>
                   )}
                   {loanNeeds(l) && <div className="text-sm text-amber-600">{loanNeeds(l)}</div>}
+                  {l.on && l.loan_type !== 'line_of_credit' && (!(Number(l.payment_amount) > 0) || !l.next_payment_date) && <div className={`text-xs ${muted}`}>{later}</div>}
                 </div>
               ))}
               <p className={`text-sm ${muted}`}>Untick one to leave it out. More details (who it is paid through, autopay) can be set later under More, Loans.</p>
@@ -1084,7 +1168,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             {reading ? 'Reading...' : proposal ? 'Read again' : image.typed ? 'Read again' : queue.length > 0 ? `Start reading (${queue.length + 1} chosen)` : image.csv ? 'Read file' : image.pdf ? 'Read statement' : 'Read screenshot'}
           </button>
           {proposal && chosen - blocked <= 0 && (
-            <button type="button" onClick={() => { setDone(null); advance(true); }} disabled={saving || reading}
+            <button data-skip type="button" onClick={() => { setDone(null); advance(true); }} disabled={saving || reading}
               className="press flex-1 px-4 py-3 rounded-xl bg-accent text-accent-contrast font-medium hover:opacity-90 disabled:opacity-50">
               {queue.length > 0 ? `Skip to the next (${queue.length} waiting)` : 'Close'}
             </button>
@@ -1110,6 +1194,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           {done.repeated > 0 && ` Already saved from an earlier screenshot, skipped: ${done.repeated}.`}
           {done.removed > 0 && ` Removed as not on the statement: ${done.removed}.`}
           {done.gaps.length > 0 && <ul className="mt-1 list-disc pl-5">{done.gaps.map((g) => <li key={g}>{g}</li>)}</ul>}
+          {done.held > 0 && <div className="mt-1">{done.held === 1 ? 'One line has' : `${done.held} lines have`} no account yet. {done.held === 1 ? 'It is' : 'They are'} kept under "Waiting for an account" and filed when a later picture shows it.</div>}
           {done.left > 0 && <div className="mt-1">{done.left === 1 ? 'One thing was' : `${done.left} things were`} left because a detail is missing. {done.left === 1 ? 'It stays' : 'They stay'} above until you fill {done.left === 1 ? 'it' : 'them'} in, or tap {queue.length > 0 ? 'Skip to the next' : 'Close'} to leave {done.left === 1 ? 'it' : 'them'}.</div>}
           {done.failed.length > 0 && (
             <ul className="mt-2 text-red-600 list-disc pl-5">{done.failed.map((f) => <li key={f}>{f}</li>)}</ul>

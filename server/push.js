@@ -119,7 +119,7 @@ function dueFor(rows, today, soon) {
       && require('./reader').mkey(t.description) === b.key && parse(t.date) && Math.abs((parse(t.date) - at) / 864e5) <= 4
       && Math.abs((Number(t.amount) || 0) - Number(b.amount)) <= Number(b.amount) * 0.15);
     if (!paid && (d === today || d === soon)) out.push({ id: `bill:${b.id}:${d}:${d === today ? 0 : 2}`, date: d, title: `${b.name} due ${when(d)}`,
-      body: `About ${money(b.amount)}${b.payment_method_name ? ` from ${b.payment_method_name}` : ''}.`, url: '/bills' });
+      body: `${Number(b.amount) > 0 ? `About ${money(b.amount)}` : 'The amount is not known yet'}${b.payment_method_name ? ` from ${b.payment_method_name}` : ''}.`, url: '/bills' });
   }
   return out;
 }
