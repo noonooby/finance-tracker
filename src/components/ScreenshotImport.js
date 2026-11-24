@@ -183,6 +183,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   };
   useEffect(() => { loadHeld(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
   const [filing, setFiling] = useState(false);
+  // While something is being read, saved or filed the app does not load a newer version of itself.
+  useEffect(() => { window.financeBusy = reading || saving || filing; return () => { window.financeBusy = false; }; }, [reading, saving, filing]);
   const fileHeld = async (list, to) => {
     if (!to || filing) return;
     setFiling(true); setError('');

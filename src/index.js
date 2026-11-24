@@ -31,6 +31,15 @@ const checkBuild = async () => {
   try {
     const c = await fetch('/api/config', { cache: 'no-store' }).then((r) => r.json());
     if (!c.build || c.build === mine) return;
+    // The new version is loaded by itself, once, when nothing is being typed, read or saved. Otherwise the bar asks.
+    const el = document.activeElement, typing = el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+    let tried = null;
+    try { tried = sessionStorage.getItem('finance_loaded_for'); } catch { /* private window */ }
+    if (!typing && !window.financeBusy && tried !== c.build) {
+      try { sessionStorage.setItem('finance_loaded_for', c.build); } catch { /* the bar is shown next time */ }
+      window.location.reload();
+      return;
+    }
     told = true;
     const bar = document.createElement('button');
     bar.type = 'button';
@@ -41,6 +50,8 @@ const checkBuild = async () => {
   } catch { /* no connection: nothing to say */ }
 };
 document.addEventListener('visibilitychange', checkBuild);
+window.addEventListener('pageshow', checkBuild);
+setTimeout(checkBuild, 3000);
 setInterval(checkBuild, 60000);
 
 // Opening without a connection and payment reminders (public/sw.js).
