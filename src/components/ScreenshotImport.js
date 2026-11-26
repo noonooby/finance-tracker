@@ -10,19 +10,10 @@ import { useFinanceData } from '../hooks/useFinanceData';
 import { suggestCategoryId } from '../utils/categoryRules';
 import { TAX_FIELDS } from '../utils/room';
 import { Camera, Image as ImageIcon } from 'lucide-react';
+import { Picture } from './shared/Picture';
+import { Sums } from './shared/Issues';
+import { plansOnPicture } from '../utils/issues';
 
-// The part of a picture a question is about: a strip around the line, with the line marked when its place is known.
-// Tapping it opens the whole picture.
-function Snip({ url, y, mark, onOpen }) {
-  if (!url) return null;
-  const at = y != null && Number.isFinite(Number(y)) ? Math.min(100, Math.max(0, Number(y))) : null;
-  return (
-    <button type="button" onClick={onOpen} aria-label="Look at the whole picture" className="press relative block w-full h-36 overflow-hidden rounded-xl border border-line bg-surface-2">
-      <img src={url} alt="" className="w-full h-full object-cover" style={{ objectPosition: `50% ${at == null ? 0 : at}%` }} />
-      {at != null && mark && <span aria-hidden="true" className="absolute inset-x-0 h-10 border-y-2 border-amber-500 bg-amber-400/20" style={{ top: `calc(${at}% - 20px)` }} />}
-    </button>
-  );
-}
 // Answers to tap, one each.
 function Chips({ options, onPick, disabled }) {
   return (
@@ -781,7 +772,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               const url = keptPics[h.source_id] || null;
               return (
                 <div key={h.id} className="rounded-xl border border-line p-3 space-y-3">
-                  <Snip url={url} y={h.y} mark onOpen={() => setBig(url)} />
+                  <Picture url={url} y={h.y} mark />
                   <div>
                     <div className="flex items-baseline justify-between gap-3 font-medium"><span className="min-w-0 truncate">{h.merchant || 'No name'}</span><span className="tabular-nums shrink-0">{h.direction === 'in' ? '+' : ''}{formatCurrency(Number(h.amount) || 0)}</span></div>
                     <div className="text-muted">{formatDate(h.date) || h.date}{h.hint ? ` · shown as ${h.hint}` : ''}</div>
@@ -827,7 +818,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                 const ys = a.list.map((r) => r.y).filter((v) => v != null);
                 return (
                   <div key={`${a.why}|${a.src}`} className="rounded-xl border border-line p-3 space-y-3">
-                    <Snip url={url} y={ys.length ? ys.reduce((s, v) => s + v, 0) / ys.length : null} mark={one} onOpen={() => setBig(url)} />
+                    <Picture url={url} y={ys.length ? ys.reduce((s, v) => s + v, 0) / ys.length : null} mark={one} />
                     <div>
                       <p className="font-medium">{a.text(a.list.length)}</p>
                       <p className={`text-sm ${muted}`}>{a.list.slice(0, 3).map((r) => `${r.merchant || 'No name'} ${formatCurrency(Number(r.amount) || 0)}`).join(', ')}{a.list.length > 3 ? ` and ${a.list.length - 3} more` : ''}{one && a.list[0].shown ? ` · shown as ${a.list[0].shown}` : ''}</p>
@@ -841,7 +832,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                 const url = picUrl(r.src), need = missing(r);
                 return (
                   <div key={r.i} className="rounded-xl border border-line p-3 space-y-3">
-                    <Snip url={url} y={r.y} mark onOpen={() => setBig(url)} />
+                    <Picture url={url} y={r.y} mark />
                     <div>
                       <p className="font-medium">{need === 'Enter the amount' ? 'How much was this?' : need === 'Enter the date' ? 'What day was this?' : need === 'Choose what paid it' ? 'Which account paid this card?' : need}</p>
                       <p className={`text-sm ${muted}`}>{r.merchant || 'No name'}{Number(r.amount) > 0 ? ` ${formatCurrency(Number(r.amount))}` : ''}{/^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? ` · ${formatDate(r.date) || r.date}` : ''}</p>
@@ -881,7 +872,17 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                 {proposal.statement.closing_balance != null && `, closing balance ${formatCurrency(proposal.statement.closing_balance)}`}</div>
               {proposal.statement.check && (proposal.statement.check.adds_up
                 ? <p className="text-xs text-positive">The opening balance and the {proposal.statement.check.lines} lines read give the closing balance exactly: nothing was missed.</p>
-                : <p role="alert" className="text-sm text-negative">The lines read do not add up to the closing balance: they are {formatCurrency(Math.abs(proposal.statement.check.off))} {proposal.statement.check.off > 0 ? 'short' : 'over'}. A line was missed or misread. Read it again, or check the lines against the statement before saving.</p>)}
+                : (
+                  <div role="alert" className="rounded-xl border border-warning/40 p-3">
+                    <p className="text-sm font-medium">The lines read do not add up to the closing balance</p>
+                    <Sums rows={[
+                      { label: `Opening balance and the ${proposal.statement.check.lines} lines read`, value: proposal.statement.check.expected },
+                      { label: 'Closing balance on the statement', value: proposal.statement.closing_balance },
+                      { label: proposal.statement.check.off > 0 ? 'Missing from the lines' : 'Too much in the lines', value: Math.abs(proposal.statement.check.off), total: true, tone: 'warning' },
+                    ]} />
+                    <p className="mt-2 text-xs leading-relaxed"><span className="font-medium">Most likely: </span><span className={muted}>a line of {formatCurrency(Math.abs(proposal.statement.check.off))} was missed or read twice, or one amount was misread. Look for it in the lines below against the statement, or read it again.</span></p>
+                  </div>
+                ))}
               <p className={`text-xs ${muted}`}>Lines before your latest balance are added as history and don't change today's balance. The closing balance is checked against the app after saving.</p>
               {proposal.statement.not_on_statement.length > 0 && (
                 <div className="mt-2 space-y-1">
@@ -1092,6 +1093,16 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               })}
             </section>
           )}
+          {plansOnPicture({ loanDrafts, drafts, balances: fixes, creditCards, loans }).map((c) => (
+            <section key={c.ref} role="alert" className="rounded-xl border border-warning/40 p-3">
+              <p className="text-sm font-medium">{c.name}: the plans add up to more than the card</p>
+              <p className={`text-xs ${muted} mt-0.5`}>{c.text} Tap a plan to change it, or untick one that is not on this card.</p>
+              <Sums rows={c.sums} onPick={(f) => setEdit((e) => ({ ...e, [f.draft]: true }))} />
+              <p className="mt-2 text-xs leading-relaxed"><span className="font-medium">Most likely: </span><span className={muted}>{c.why}</span></p>
+              {picUrl(proposal.source_id) && <div className="mt-2"><Picture url={picUrl(proposal.source_id)} label="This picture" /></div>}
+              <p className={`text-xs ${muted} mt-2`}>You can also save it as it is: it stays under To sort out on Home until the figures agree.</p>
+            </section>
+          ))}
           {loanDrafts.length > 0 && (
             <section className="space-y-2">
               <h3 className="text-base font-semibold">Loans to add</h3>
@@ -1172,7 +1183,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     </div>
                     {editable && open === r.i && (
                       <div className="grid grid-cols-2 gap-2 pl-6">
-                        {picUrl(r.src) && <div className="col-span-2"><Snip url={picUrl(r.src)} y={r.y} mark onOpen={() => setBig(picUrl(r.src))} /></div>}
+                        {picUrl(r.src) && <div className="col-span-2"><Picture url={picUrl(r.src)} y={r.y} mark /></div>}
                         <label className="block text-xs col-span-2"><span className={muted}>Description</span>
                           <input className={input} value={r.merchant} onChange={(e) => setRow(r.i, { merchant: e.target.value })} /></label>
                         <label className="block text-xs"><span className={muted}>Amount</span>

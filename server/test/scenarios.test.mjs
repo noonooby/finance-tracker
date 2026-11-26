@@ -1768,3 +1768,21 @@ test('what is missing: one entry per account, each thing typed in place or fille
   assert.deepEqual(half.map((i) => i.title), ['Visa: the due date is not known']);
   assert.deepEqual(I.issues({ creditCards: [cards[0]], quiet: { 'need:credit_cards:c1': 'credit_limit,due_date' } }), []);
 });
+
+test('before a picture is saved: plans it puts inside a card are checked against that card, with the ones already there', () => {
+  const cards = [{ id: 'c1', name: 'Visa', balance: 1000, balance_as_of: '2026-11-03' }];
+  const loans = [{ id: 'p0', name: 'Old plan', balance: 300, on_card_id: 'c1' }];
+  const drafts = [{ id: 'n1', name: 'Phone plan', balance: '600', on: true, on_card_ref: 'credit_card:c1' }, { id: 'n2', name: 'Sofa plan', balance: '400', on: true, on_card_ref: 'credit_card:c1' },
+    { id: 'n3', name: 'Car loan', balance: '9000', on: true, on_card_ref: '' }];
+  // The app's balance is used when the picture shows none: 600 + 400 + 300 against 1,000.
+  const [c] = I.plansOnPicture({ loanDrafts: drafts, creditCards: cards, loans });
+  assert.equal(c.over, 300);
+  assert.deepEqual(c.sums.map((r) => [r.label, r.value, r.from || null, r.fix ? r.fix.draft : null]), [['Phone plan', 600, 'on this picture', 'n1'], ['Sofa plan', 400, 'on this picture', 'n2'], ['Old plan', 300, 'already in the app', null],
+    ['Plans together', 1300, null, null], ['Visa balance', 1000, 'in the app, Nov 3, 2026', null], ['Short by', 300, null, null]]);
+  // The balance on the picture wins over the app's; an unticked plan is not counted; a new card with no balance is not judged.
+  assert.deepEqual(I.plansOnPicture({ loanDrafts: drafts, creditCards: cards, loans, balances: [{ account: { type: 'credit_card', id: 'c1' }, shown: 1300 }] }), []);
+  assert.deepEqual(I.plansOnPicture({ loanDrafts: drafts.map((l) => (l.id === 'n2' ? { ...l, on: false } : l)), creditCards: cards, loans }), []);
+  const fresh = [{ id: 'new:1', name: 'New card', balance: '' }], on = [{ id: 'n1', name: 'Plan', balance: '50', on: true, on_card_ref: 'new:1' }];
+  assert.deepEqual(I.plansOnPicture({ loanDrafts: on, drafts: fresh }), []);
+  assert.equal(I.plansOnPicture({ loanDrafts: on, drafts: [{ ...fresh[0], balance: '20' }] })[0].over, 30);
+});

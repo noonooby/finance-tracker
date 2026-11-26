@@ -137,3 +137,41 @@ export function issues({ checks = [], stale = [], snapshots = [], creditCards = 
   }
   return out;
 }
+
+// Before a picture is saved: the plans it puts inside a card, together with the ones already there, against that
+// card's balance (the one on the picture when it shows one, else the app's). -> one entry per card that falls short.
+//   loanDrafts: the plans read ({ id, name, balance, on, on_card_ref })   drafts: accounts the picture adds
+//   balances: balances the picture shows for accounts already in the app ({ account: { type, id }, shown })
+export function plansOnPicture({ loanDrafts = [], drafts = [], balances = [], creditCards = [], loans = [] } = {}) {
+  const out = [];
+  const mine = loanDrafts.filter((l) => l.on && l.on_card_ref && Number(l.balance) > 0);
+  for (const ref of [...new Set(mine.map((l) => l.on_card_ref))]) {
+    const fresh = String(ref).startsWith('new:');
+    const id = fresh ? null : String(ref).replace(/^credit_card:/, '');
+    const card = fresh ? drafts.find((d) => d.id === ref) : creditCards.find((c) => String(c.id) === id);
+    if (!card) continue;
+    const seen = fresh ? null : balances.find((b) => b.account && b.account.type === 'credit_card' && String(b.account.id) === id);
+    const shown = fresh ? card.balance : seen ? seen.shown : null;
+    const onPicture = shown !== '' && shown != null && Number.isFinite(Number(shown));
+    if (fresh && !onPicture) continue;
+    const bal = Math.max(0, Number(onPicture ? shown : card.balance) || 0);
+    const already = fresh ? [] : cardSplit(card, loans).plans;
+    const here = mine.filter((l) => l.on_card_ref === ref);
+    const together = Math.round((already.reduce((t, p) => t + p.balance, 0) + here.reduce((t, l) => t + Number(l.balance), 0)) * 100) / 100;
+    if (together <= bal + 0.005) continue;
+    const over = Math.round((together - bal) * 100) / 100;
+    out.push({ ref, name: card.name, over,
+      text: `The plans inside ${card.name} come to ${money(together)}, but the card ${onPicture ? 'on this picture' : 'in the app'} shows ${money(bal)}: ${money(over)} short.`,
+      sums: [
+        ...here.map((l) => ({ label: l.name, value: Number(l.balance), from: 'on this picture', fix: { do: 'edit', label: `Change ${l.name}`, draft: l.id } })),
+        ...already.map((p) => ({ label: p.name, value: p.balance, from: 'already in the app' })),
+        { label: 'Plans together', value: together, total: true },
+        { label: `${card.name} balance`, value: bal, from: onPicture ? 'on this picture' : `in the app${day10(card.balance_as_of) ? `, ${nice(day10(card.balance_as_of))}` : ''}` },
+        { label: 'Short by', value: over, total: true, tone: 'warning' },
+      ],
+      why: already.length ? 'A plan already in the app may be the same as one on this picture under another name, or may be paid off by now.'
+        : onPicture ? 'A plan amount may be misread, a plan may belong to another card, or the balance on the card screen leaves its plans out.'
+          : `The balance in the app may be older than this picture. A picture of ${card.name} itself brings it up to date.` });
+  }
+  return out;
+}

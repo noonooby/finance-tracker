@@ -120,6 +120,29 @@ export function useIssues() {
   return { list, run, ready: s.ready && !dataLoading };
 }
 
+// Sums laid out line by line: each figure with where it came from, and a tap on the one that is wrong.
+//   rows: [{ label, value (null = not known), from, note, total, tone, fix }]   active: the row's fix being changed.
+export function Sums({ rows, onPick, active, busy }) {
+  return (
+    <div className="mt-2.5 rounded-xl border border-line overflow-hidden">
+      {rows.map((r, i) => {
+        const Tag = r.fix ? 'button' : 'div';
+        return (
+          <Tag key={i} {...(r.fix ? { type: 'button', disabled: busy, onClick: () => onPick(r.fix), 'aria-label': r.fix.label } : {})}
+            className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm ${i ? 'border-t border-line' : ''} ${r.total ? 'bg-surface-2 font-medium' : ''} ${active && active === r.fix ? 'bg-accent-soft' : ''}`}>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate">{r.label}</span>
+              {(r.from || r.note) && <span className="block text-[11px] text-muted truncate">{[r.from, r.note].filter(Boolean).join(' · ')}</span>}
+            </span>
+            <span className={`tabular-nums shrink-0 ${r.tone === 'warning' ? 'text-warning' : ''} ${r.value == null ? 'text-muted text-xs' : ''}`}>{r.value == null ? 'not known' : formatCurrency(r.value)}</span>
+            {r.fix ? <span className="shrink-0 text-xs font-medium text-accent w-[3.1rem] text-right">{r.value == null ? 'Add' : 'Change'}</span> : <span className="shrink-0 w-[3.1rem]" aria-hidden="true" />}
+          </Tag>
+        );
+      })}
+    </div>
+  );
+}
+
 const Tick = () => (
   <svg viewBox="0 0 24 24" width="18" height="18" className="tick text-positive" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
 );
@@ -151,24 +174,7 @@ export function IssueBlock({ issue, run, done, compact }) {
             <div className="min-w-0 flex-1">
               <div className={`text-sm font-medium ${done ? 'text-muted line-through decoration-1' : ''}`}>{issue.title}</div>
               {!done && <div className="text-xs text-muted mt-0.5 leading-relaxed">{issue.text}</div>}
-              {!done && issue.sums && (
-                <div className="mt-2.5 rounded-xl border border-line overflow-hidden">
-                  {issue.sums.map((r, i) => {
-                    const Tag = r.fix ? 'button' : 'div';
-                    return (
-                      <Tag key={i} {...(r.fix ? { type: 'button', disabled: busy, onClick: () => pick(r.fix), 'aria-label': r.fix.label } : {})}
-                        className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm ${i ? 'border-t border-line' : ''} ${r.total ? 'bg-surface-2 font-medium' : ''} ${ask && ask === r.fix ? 'bg-accent-soft' : ''}`}>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate">{r.label}</span>
-                          {(r.from || r.note) && <span className="block text-[11px] text-muted truncate">{[r.from, r.note].filter(Boolean).join(' · ')}</span>}
-                        </span>
-                        <span className={`tabular-nums shrink-0 ${r.tone === 'warning' ? 'text-warning' : ''} ${r.value == null ? 'text-muted text-xs' : ''}`}>{r.value == null ? 'not known' : formatCurrency(r.value)}</span>
-                        {r.fix ? <span className="shrink-0 text-xs font-medium text-accent w-[3.1rem] text-right">{r.value == null ? 'Add' : 'Change'}</span> : <span className="shrink-0 w-[3.1rem]" aria-hidden="true" />}
-                      </Tag>
-                    );
-                  })}
-                </div>
-              )}
+              {!done && issue.sums && <Sums rows={issue.sums} onPick={pick} active={ask} busy={busy} />}
               {!done && issue.why && <p className="mt-2 text-xs leading-relaxed"><span className="font-medium">Most likely: </span><span className="text-muted">{issue.why}</span></p>}
               {!done && issue.pictures && issue.pictures.length > 0 && (
                 <div className="mt-2 grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(2, issue.pictures.length)}, minmax(0, 1fr))` }}>
