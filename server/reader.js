@@ -16,6 +16,7 @@ const HOME = (process.env.HOME_CURRENCY || 'CAD').toUpperCase();
 const PROMPT = `You read one screenshot or statement (PDF) from a banking app, credit card app, or a receipt. Report only what is visible; never guess.
 Return JSON:
 {"kind":"transactions"|"statement"|"receipt"|"balance"|"credit_score"|"pay_slip"|"bill"|"other",
+ "bank":"the bank, card company or app this screen or document is from (Scotiabank, Wealthsimple, American Express, PC Financial and the like), told from its logo, name, wording or web address; null when it cannot be told",
  "bill":{"payee":"who is billed for it, as shown","amount":number,"due_date":"YYYY-MM-DD or null","frequency":"weekly|biweekly|monthly|quarterly|yearly or null"} or null (only for a bill, an invoice or a renewal notice),
  "credit_score":{"bureau":"Equifax, TransUnion or Experian as shown, or null","score":whole number,"date":"YYYY-MM-DD it is dated or was updated, or null"} or null (only when the screen shows a credit score),
  "statement":{"account_name":"","last4":"or null","period_start":"YYYY-MM-DD","period_end":"YYYY-MM-DD","opening_balance":number,"closing_balance":number} or null (only for a statement),
@@ -118,6 +119,7 @@ function tidy(reading, today) {
     interest_rate: (() => { const n = money(a.interest_rate); return n != null && n >= 0 && n <= 100 ? n : null; })(),
     on_card: a.type === 'loan' ? words(a.on_card, 60) : null,
     holdings: a.type === 'investment' ? held(a.holdings) : [], cash: a.type === 'investment' ? money(a.cash) : null,
+    ...(words(a._bank, 40) ? { _bank: words(a._bank, 40) } : {}), ...(typeof a._src === 'string' ? { _src: a._src.slice(0, 40) } : {}),
   })).filter((a) => a.name || a.last4 || a.balance != null || a.holdings.length);
   const lines = list(r.lines, 3000).map((l) => {
     const type = LINE_TYPES.has(l.type) ? l.type : null;
@@ -133,12 +135,13 @@ function tidy(reading, today) {
     if (Number.isInteger(l._pic)) out._pic = l._pic;
     if (typeof l._src === 'string') out._src = l._src.slice(0, 40);
     if (typeof l._kind === 'string') out._kind = l._kind;
+    if (words(l._bank, 40)) out._bank = words(l._bank, 40);
     return out;
   });
   const st = obj(r.statement), rc = obj(r.receipt), bl = obj(r.bill), sc = obj(r.credit_score);
   const kind = KIND_SET.has(r.kind) ? r.kind : lines.length ? 'transactions' : accounts.length ? 'balance' : 'other';
   const out = {
-    kind, accounts, lines,
+    kind, bank: words(r.bank, 40), accounts, lines,
     statement: st ? { account_name: words(st.account_name, 60), last4: four(st.last4), period_start: day(st.period_start, today), period_end: day(st.period_end, today), opening_balance: money(st.opening_balance), closing_balance: money(st.closing_balance) } : null,
     receipt: rc ? { merchant: words(rc.merchant, 120) || '', date: day(rc.date, today), total: money(rc.total), items: list(rc.items, 300).map((x) => ({ name: words(x.name, 120) || '', amount: money(x.amount) })) } : null,
     bill: bl ? { payee: words(bl.payee, 60), amount: money(bl.amount), due_date: day(bl.due_date, '9999-12-31'), frequency: words(bl.frequency, 20) } : null,
@@ -186,14 +189,39 @@ async function callGemini(mime, b64, today, note) {
 }
 
 // Which of the user's accounts a screenshot line belongs to. -> { type, id, name } or null
-function resolveAccount(accounts, { last4, name, type }) {
+// The bank a picture is from decides which accounts it can mean. An account stands to that bank as 'same' (its bank
+// is recorded as that one, or its name carries the bank's name), 'other' (its bank is recorded as a different one),
+// or null when nothing says. Two bank names are one bank when a word of one starts a word of the other ("Scotia"
+// and "Scotiabank"); words every bank has do not count.
+const BANK_SKIP = new Set(('bank financial canada canadian of the card cards credit debit mastercard visa app mobile online banking group inc trust company account accounts and services').split(' '));
+const bankWords = (s) => [...new Set(String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !BANK_SKIP.has(w)))];
+const wordFits = (a, b) => a === b || (a.length >= 4 && b.startsWith(a)) || (b.length >= 4 && a.startsWith(b));
+function sameBank(a, b) {
+  const x = bankWords(a), y = bankWords(b);
+  if (!x.length || !y.length) return null;
+  return x.some((p) => y.some((q) => wordFits(p, q)));
+}
+function bankFit(acct, bank) {
+  if (!acct || !bankWords(bank).length) return null;
+  const said = sameBank(acct.institution || acct.provider || acct.issuer, bank);
+  if (said != null) return said ? 'same' : 'other';
+  return sameBank(acct.name, bank) ? 'same' : null;
+}
+
+function resolveAccount(accounts, { last4, name, type, bank, _bank }) {
+  bank = bank || _bank || null;
   if (last4) {
     const hit = accounts.filter(a => String(a.last4 || a.last_four || a.card_number || '').slice(-4) === String(last4).slice(-4));
     if (hit.length === 1) return hit[0];
-    // Several accounts ending in the same digits: the one whose name fits, else the first. Never a new account.
-    if (hit.length > 1) { const m = norm(name); return hit.find(a => m && norm(a.name) === m) || hit.find(a => m && norm(a.name) && (norm(a.name).includes(m) || m.includes(norm(a.name)))) || hit[0]; }
+    // Several accounts ending in the same digits: the one at the picture's bank, then the one whose name fits, else
+    // the first. Never a new account.
+    if (hit.length > 1) {
+      const at = hit.filter((a) => bankFit(a, bank) === 'same'), pool = at.length ? at : hit;
+      const m = norm(name);
+      return pool.find(a => m && norm(a.name) === m) || pool.find(a => m && norm(a.name) && (norm(a.name).includes(m) || m.includes(norm(a.name)))) || pool[0];
+    }
   }
-  const fit = nameFits(accounts, { name, type });
+  const fit = nameFits(accounts, { name, type, bank });
   return fit.length === 1 ? fit[0] : null;
 }
 
@@ -203,9 +231,19 @@ function resolveAccount(accounts, { last4, name, type }) {
 // (a card, a bank account) narrows them. One left is the answer; several left means it cannot be told.
 const NAME_SKIP = new Set(['card', 'cards', 'credit', 'account', 'acct', 'bank', 'the', 'of', 'from', 'and', 'my']);
 const nameWords = (s) => [...new Set(String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !NAME_SKIP.has(w)))];
-function nameFits(accounts, { name, type }) {
+// When the picture's bank is known, an account recorded at another bank is never meant, and a name that only partly
+// fits ("Savings Account" inside "Scotia High Interest Savings Account") counts only for an account at that bank.
+function nameFits(accounts, { name, type, bank, _bank }) {
   const n = norm(name);
   if (!n) return [];
+  bank = bankWords(bank || _bank).length ? (bank || _bank) : null;
+  if (bank) {
+    accounts = accounts.filter((a) => bankFit(a, bank) !== 'other');
+    const at = accounts.filter((a) => bankFit(a, bank) === 'same');
+    const whole = accounts.filter((a) => norm(a.name) === n);
+    const mine = whole.filter((a) => at.includes(a));
+    if (mine.length) accounts = mine; else if (whole.length) accounts = whole; else accounts = at;
+  }
   const kind = type === 'credit_card' || type === 'gift_card' ? 'credit_card' : ['chequing', 'savings'].includes(type) ? 'bank_account' : null;
   const narrow = (list) => { if (list.length < 2 || !kind) return list; const k = list.filter((a) => a._type === kind); return k.length ? k : list; };
   const exact = narrow(accounts.filter(a => norm(a.name) === n));
@@ -263,7 +301,7 @@ function sameAccounts(reading) {
   const kept = [], renamed = new Map();
   for (const a of reading.accounts || []) {
     if (!a) continue;
-    const hit = kept.find((b) => (four(a) && four(b) ? four(a) === four(b)
+    const hit = kept.find((b) => sameBank(a._bank, b._bank) !== false && (four(a) && four(b) ? four(a) === four(b)
       : kind(a.type) === kind(b.type) && norm(a.name) && norm(b.name) && (norm(a.name).includes(norm(b.name)) || norm(b.name).includes(norm(a.name)))));
     if (!hit) { kept.push({ ...a, ...(a.holdings ? { holdings: [...a.holdings] } : {}) }); continue; }
     // The same account on several screens (a long list scrolled) is one account with every holding shown once.
@@ -344,10 +382,12 @@ function together(parts, all) {
     const shown = (r.accounts || []).filter(CASH);
     // The account a picture is about: the one it shows, else the one its note names, else (nothing shown at all)
     // the one on the picture just before it, which it carries on from.
-    const own = shown.length === 1 ? shown[0] : !shown.length && noted ? { name: noted.name, last4: noted.last4 || noted.last_four || null, type: noted._type === 'credit_card' ? 'credit_card' : 'chequing' } : null;
-    const from = own || (shown.length ? null : before);
-    for (const l of r.lines || []) lines.push({ ...l, ...(!l.account_name && !l.last4 && from ? { account_name: from.name, last4: from.last4 || null, _kind: from.type } : {}), _pic: pic, ...(id ? { _src: String(id) } : {}) });
-    accounts.push(...(r.accounts || []).filter(Boolean));
+    const bank = tidy(r0).bank || null, stamp = bank ? { _bank: bank } : {};
+    const own = shown.length === 1 ? { ...shown[0], ...stamp } : !shown.length && noted ? { name: noted.name, last4: noted.last4 || noted.last_four || null, type: noted._type === 'credit_card' ? 'credit_card' : 'chequing', ...stamp } : null;
+    // A picture that names no account carries on from the one before it, unless it is from another bank.
+    const from = own || (shown.length || (before && sameBank(before._bank, bank) === false) ? null : before);
+    for (const l of r.lines || []) lines.push({ ...l, ...stamp, ...(!l.account_name && !l.last4 && from ? { account_name: from.name, last4: from.last4 || null, _kind: from.type } : {}), _pic: pic, ...(id ? { _src: String(id) } : {}) });
+    accounts.push(...(r.accounts || []).filter(Boolean).map((a) => ({ ...a, ...stamp, ...(id ? { _src: String(id) } : {}) })));
     if (own) before = own; else if (shown.length) before = null;
     if (r.notes) notes.push(String(r.notes));
     tax.push(...(tidy(r).tax_room || []));
@@ -364,6 +404,7 @@ function plan(reading, ctx, sourceId) {
   ];
   const today = ctx.today || new Date().toLocaleDateString('en-CA');
   reading = tidy(reading, today);
+  if (reading.bank) reading = { ...reading, accounts: reading.accounts.map((a) => (a._bank ? a : { ...a, _bank: reading.bank })), lines: reading.lines.map((l) => (l._bank ? l : { ...l, _bank: reading.bank })) };
   const named = ctx.onlyAccount ? { reading: sameAccounts(reading), noted: null } : withNote(sameAccounts(reading), all, ctx.note);
   reading = named.reading;
   const noted = named.noted;
@@ -377,7 +418,11 @@ function plan(reading, ctx, sourceId) {
     if (several.length > 1 && (!a.last4 || several.some((x) => !(x.last4 || x.last_four || x.card_number)))) continue;
     const t = a.type === 'credit_card' || a.type === 'gift_card' ? 'credit_card' : ['loan', 'investment', 'property'].includes(a.type) ? null : 'bank_account';
     if (!t) continue;
-    drafts.push({ id: 'new:' + drafts.length, _type: t, gift: a.type === 'gift_card' || undefined, name: String(a.name || (t === 'credit_card' ? 'Credit card' : 'Bank account')).slice(0, 60),
+    // A name another of the person's accounts already carries ("Savings Account") is told apart by its bank.
+    const plain = String(a.name || (t === 'credit_card' ? 'Credit card' : 'Bank account'));
+    const taken = a._bank && sameBank(plain, a._bank) !== true && all.some((x) => norm(x.name) && norm(plain) && (norm(x.name).includes(norm(plain)) || norm(plain).includes(norm(x.name))));
+    drafts.push({ id: 'new:' + drafts.length, _type: t, gift: a.type === 'gift_card' || undefined, name: (taken ? `${a._bank} ${plain}` : plain).slice(0, 60),
+      institution: a._bank || '', shown: a.name || null, src: a._src || null,
       last4: a.last4 ? String(a.last4).slice(-4) : null, account_type: a.type === 'savings' ? 'savings' : 'checking',
       credit_limit: Number(a.credit_limit) > 0 ? Number(a.credit_limit) : null, due_date: /^\d{4}-\d{2}-\d{2}$/.test(String(a.due_date || '')) ? a.due_date : null,
       minimum_payment: Number(a.minimum_payment) > 0 ? Number(a.minimum_payment) : null,
@@ -391,7 +436,10 @@ function plan(reading, ctx, sourceId) {
   const seen = new Map();
   const lines = (reading.lines || []).map((l, i) => {
     const amount = Math.round(Math.abs(Number(l.amount)) * 100) / 100;
-    const acct = resolveAccount(withDrafts, { last4: l.last4, name: l.account_name, type: l._kind }) || only;
+    // A line that names no account is on the one account the pictures show, unless its own picture is from another bank.
+    const onlyBank = (reading.accounts || []).length === 1 ? reading.accounts[0]._bank : null;
+    const fallback = only && (bankFit(only, l._bank) === 'other' || sameBank(onlyBank, l._bank) === false) ? null : only;
+    const acct = resolveAccount(withDrafts, { last4: l.last4, name: l.account_name, type: l._kind, bank: l._bank }) || fallback;
     let kind = KINDS.has(l.type) ? l.type : (l.direction === 'in' ? 'income' : 'purchase');
     if (kind === 'fee' || kind === 'interest') kind = l.direction === 'in' ? 'income' : 'purchase';
     if (kind === 'income' && acct && acct._type === 'credit_card') kind = 'refund';
@@ -414,7 +462,7 @@ function plan(reading, ctx, sourceId) {
       account: acct ? { type: acct._type, id: acct.id, name: acct.name } : null, key, action: 'record',
       shown: l.account_name || (l.last4 ? `ending ${String(l.last4).slice(-4)}` : null),
       // Which picture the line is on and how far down it, so a question about it can show that part of the picture.
-      src: l._src || sourceId, y: l.y == null ? null : l.y,
+      src: l._src || sourceId, y: l.y == null ? null : l.y, bank: l._bank || null,
       // For a line on a new account the browser rebuilds the key with the saved account's id, so a later scan matches it.
       key_rest: `${l.date}|${mkey(l.merchant)}|${amount.toFixed(2)}|${n}`,
       kind, other: other ? { type: other._type, id: other.id, name: other.name } : null, other_hint: l.other_account || null,
@@ -452,7 +500,7 @@ function plan(reading, ctx, sourceId) {
     if (!acct || a.balance == null || !Number.isFinite(Number(a.balance))) return null;
     const shown = Math.round(Math.abs(Number(a.balance)) * 100) / 100, has = Math.round(Number(acct.balance || 0) * 100) / 100;
     // Every balance the screenshot shows is offered as a snapshot; the server works out any difference after the lines are saved.
-    return { account: { type: acct._type, id: acct.id, name: acct.name }, shown, current: has, differs: shown !== has, snapshot_date: acct.snapshot_date || null };
+    return { account: { type: acct._type, id: acct.id, name: acct.name }, shown, current: has, differs: shown !== has, snapshot_date: acct.snapshot_date || null, bank: a._bank || null, shown_name: a.name || null, src: a._src || null };
   }).filter(Boolean);
   // A statement is the authority for its period: its closing balance is checked against the app's history for that day,
   // and lines the app has in the period that are not on the statement are listed to review.
@@ -498,7 +546,7 @@ function plan(reading, ctx, sourceId) {
   const new_loans = [];
   for (const a of (reading.accounts || []).filter((x) => x && x.type === 'loan')) {
     const name = String(a.name || 'Loan').trim().slice(0, 60) || 'Loan';
-    const mine = resolveAccount(have, { name, last4: a.last4 });
+    const mine = resolveAccount(have, { name, last4: a.last4, bank: a._bank });
     // A loan the app has: the figure on the picture is a balance to check, like any other account's,
     // and a payment, payment day or rate that differs from what the app holds is offered as a change.
     if (mine) {
@@ -562,7 +610,7 @@ function plan(reading, ctx, sourceId) {
   for (const a of (reading.accounts || []).filter((x) => x && (x.type === 'investment' || x.type === 'property'))) {
     const prop = a.type === 'property';
     const name = String(a.name || (prop ? 'Property' : 'Investment')).trim().slice(0, 60) || 'Investment';
-    const mine = resolveAccount(holdings.filter((h) => h._type === (prop ? 'asset' : 'investment')), { name, last4: a.last4 });
+    const mine = resolveAccount(holdings.filter((h) => h._type === (prop ? 'asset' : 'investment')), { name, last4: a.last4, bank: a._bank });
     const value = Number.isFinite(Number(a.balance)) && a.balance !== null ? Math.round(Math.abs(Number(a.balance)) * 100) / 100 : null;
     const lists = !prop && (a.holdings || []).length > 0;
     // An account that lists what it holds is valued from that list, so its total is not checked as a separate figure.
@@ -595,7 +643,7 @@ function plan(reading, ctx, sourceId) {
       account: { type: acct._type, id: acct.id, name: acct.name }, key: h.key || ('held:' + h.id), action: 'record', kind: KINDS.has(h.kind) ? h.kind : 'purchase',
       other: null, other_hint: null, category_guess: h.category_guess || null, held_id: h.id, src: words(h.source_id, 40), y: Number.isFinite(Number(h.y)) && h.y != null ? Number(h.y) : null, why: 'From an earlier picture: its account is known now' });
   }
-  const unknown = (reading.accounts || []).filter(a => !['loan', 'investment', 'property'].includes(a.type) && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
+  const unknown = (reading.accounts || []).filter(a => !['loan', 'investment', 'property'].includes(a.type) && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null, bank: a._bank || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
   return sound({ source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, new_investments, holdings_updates, tax_room, tax_year, new_bills, updates, credit_score, held_done, pay_slip: reading.kind === 'pay_slip', unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' }, today);
 }
@@ -780,4 +828,4 @@ async function readScore(body, ctx) {
   return p;
 }
 
-module.exports = { tidy, money, day, loose, settled, read, readSet, together, plan, resolveAccount, nameFits, noteAccount, sameAccounts, mkey, cleanNote, readPay, planPay, readScore, planScore };
+module.exports = { sameBank, bankFit, tidy, money, day, loose, settled, read, readSet, together, plan, resolveAccount, nameFits, noteAccount, sameAccounts, mkey, cleanNote, readPay, planPay, readScore, planScore };

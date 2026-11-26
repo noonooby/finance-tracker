@@ -1786,3 +1786,44 @@ test('before a picture is saved: plans it puts inside a card are checked against
   assert.deepEqual(I.plansOnPicture({ loanDrafts: on, drafts: fresh }), []);
   assert.equal(I.plansOnPicture({ loanDrafts: on, drafts: [{ ...fresh[0], balance: '20' }] })[0].over, 30);
 });
+
+test('a picture names its bank: accounts at another bank are never meant, and a part-name fit needs the same bank', () => {
+  const { plan, together, sameBank } = require(path.join(root, 'server', 'reader.js'));
+  assert.equal(sameBank('Scotia', 'Scotiabank'), true);
+  assert.equal(sameBank('Wealthsimple', 'Scotiabank'), false);
+  assert.equal(sameBank('Bank', 'Scotiabank'), null);
+  const bankAccounts = [
+    { id: 'hisa', name: 'Scotia High Interest Savings Account', last4: '6488', balance: 0 },
+    { id: 'joint', name: 'Joint Chequing', last4: '7432', balance: 0 },
+    { id: 'mm', name: 'Money Master', last4: '7123', balance: 63.02, institution: 'Scotiabank' },
+  ];
+  const ctx = { bankAccounts, creditCards: [], transactions: [], today: '2026-11-26' };
+  // The balance screen that mixed the two savings accounts: "Savings Account" at Wealthsimple is not the Scotia one.
+  const ws = { kind: 'balance', bank: 'Wealthsimple', accounts: [{ name: 'Savings Account', type: 'savings', balance: 12 }, { name: 'Joint Chequing', type: 'chequing', balance: 5 }], lines: [] };
+  const p = plan(ws, ctx, 's1');
+  assert.deepEqual(p.balances.map((b) => [b.account.id, b.bank, b.shown_name]), [['joint', 'Wealthsimple', 'Joint Chequing']]);
+  assert.equal(p.new_accounts.length, 1);
+  assert.equal(p.new_accounts[0].name, 'Wealthsimple Savings Account');
+  assert.equal(p.new_accounts[0].institution, 'Wealthsimple');
+  // With no bank told, the old reading stands; from the account's own bank a part of its name is enough.
+  assert.equal(plan({ ...ws, bank: null }, ctx, 's2').balances.some((b) => b.account.id === 'hisa'), true);
+  assert.equal(plan({ kind: 'balance', bank: 'Scotiabank', accounts: [{ name: 'High Interest Savings', type: 'savings', balance: 9 }], lines: [] }, ctx, 's3').balances[0].account.id, 'hisa');
+  // An account recorded at another bank is not meant even when the name is the same.
+  const other = { ...ctx, bankAccounts: [...bankAccounts, { id: 'x', name: 'Savings Account', institution: 'Tangerine', balance: 1 }] };
+  assert.equal(plan(ws, other, 's4').balances.some((b) => b.account.id === 'x'), false);
+  // A line with a name nothing fits is asked about, with the bank it came from.
+  const lines = plan({ kind: 'transactions', bank: 'Wealthsimple', accounts: [], lines: [{ date: '2026-11-20', merchant: 'Pine', amount: 10, direction: 'out', account_name: 'Savings' }] }, ctx, 's5').lines;
+  assert.equal(lines[0].action, 'choose_account');
+  assert.equal(lines[0].bank, 'Wealthsimple');
+  // Two pictures read together: one from each bank. Their accounts stay apart and a picture naming no account does
+  // not carry on from a picture of another bank.
+  const all = bankAccounts.map((a) => ({ ...a, _type: 'bank_account' }));
+  const set = together([
+    { id: 'a', note: '', reading: { kind: 'transactions', bank: 'Scotiabank', accounts: [{ name: 'Money Master', last4: '7123', type: 'savings' }], lines: [{ date: '2026-11-20', merchant: 'A', amount: 1, direction: 'out' }] } },
+    { id: 'b', note: '', reading: { kind: 'transactions', bank: 'Wealthsimple', accounts: [], lines: [{ date: '2026-11-20', merchant: 'B', amount: 2, direction: 'out' }] } },
+  ], all);
+  const both = plan(set, ctx, 's6').lines;
+  assert.equal(both[0].account.id, 'mm');
+  assert.equal(both[1].account, null);
+  assert.equal(both[1].bank, 'Wealthsimple');
+});

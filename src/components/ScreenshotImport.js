@@ -23,6 +23,27 @@ function Chips({ options, onPick, disabled }) {
   );
 }
 
+// "A new account": a name and a kind, for when a picture shows an account the app does not have yet.
+function NewAccount({ suggest, card, onAdd }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(suggest || '');
+  const [kind, setKind] = useState(card ? 'credit_card' : 'checking');
+  const box = 'rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-base text-fg';
+  if (!open) return <button type="button" className="press px-3 py-2 rounded-full border border-dashed border-line text-sm font-medium text-accent" onClick={() => setOpen(true)}>A new account</button>;
+  return (
+    <div className="fold open"><div className="space-y-2">
+      <input className={`${box} w-full`} aria-label="Name of the new account" placeholder="Name of the new account" value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={60} />
+      <div className="flex flex-wrap gap-2">
+        {card !== true && <select className={box} aria-label="Kind of account" value={kind} onChange={(e) => setKind(e.target.value)}>
+          <option value="checking">Chequing</option><option value="savings">Savings</option>{card !== false && <option value="credit_card">Credit card</option>}
+        </select>}
+        <button type="button" disabled={!name.trim()} className="press px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium disabled:opacity-50" onClick={() => { onAdd(name.trim(), kind); setOpen(false); }}>Add it</button>
+        <button type="button" className="press px-3 py-2.5 text-sm text-muted underline" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </div></div>
+  );
+}
+
 const readFile = (file) => new Promise((resolve, reject) => {
   const r = new FileReader();
   r.onload = () => resolve(String(r.result));
@@ -395,10 +416,10 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const setRow = (i, patch) => setRows((rs) => rs.map((r) => (r.i === i ? { ...r, ...patch } : r)));
   // The account the picture was matched to can be wrong: every line and balance on it moves to the one chosen.
   const REF_FIELDS = ['target', 'from', 'to', 'card', 'source'];
-  const usedRefs = [...new Set([...rows.flatMap((r) => REF_FIELDS.map((f) => r[f])), ...fixes.map((f) => `${f.account.type}:${f.account.id}`)].filter(Boolean))];
-  const moveAll = (old, next) => {
+  const usedRefs = [...new Set([...rows.flatMap((r) => REF_FIELDS.map((f) => r[f])), ...fixes.map((f) => `${f.account.type}:${f.account.id}`), ...drafts.filter((d) => d.on).map((d) => d.id)].filter(Boolean))];
+  const moveAll = (old, next, named) => {
     if (!next || next === old) return;
-    const label = (accountOptions.find((o) => o.value === next) || {}).label || '';
+    const label = named || (accountOptions.find((o) => o.value === next) || {}).label || '';
     const [type, ...rest] = next.split(':');
     const account = { type, id: rest.join(':'), name: label.replace(/^New: /, '') };
     setRows((rs) => rs.map((r) => {
@@ -413,9 +434,38 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       else if (r.account && r.account.id === old) out.account = account;
       return out;
     }));
+    // A new account that turns out to be one you have: the balance the picture showed for it is checked against that one.
+    const was = old.startsWith('new:') ? drafts.find((d) => d.id === old) : null;
+    if (was && !next.startsWith('new:') && was.balance !== '' && Number.isFinite(Number(was.balance)) && !fixes.some((f) => `${f.account.type}:${f.account.id}` === next)) {
+      const have = (type === 'credit_card' ? creditCards : bankAccounts).find((a) => String(a.id) === account.id);
+      const shown = Math.round(Math.abs(Number(was.balance)) * 100) / 100, current = Math.round(Number((have && have.balance) || 0) * 100) / 100;
+      setFixes((fs) => [...fs, { account, shown, current, differs: shown !== current, snapshot_date: (have && have.snapshot_date) || null, bank: was.institution || null, shown_name: was.shown || was.name, on: true }]);
+    }
     if (!next.startsWith('new:')) setFixes((fs) => fs.map((f) => (`${f.account.type}:${f.account.id}` === old ? { ...f, account } : f)));
     // A new account nothing points to any more is not added.
     if (old.startsWith('new:')) setDrafts((ds) => ds.map((d) => (d.id === old ? { ...d, on: false } : d)));
+  };
+  // An account the app does not have yet, named by you. -> its id on this screen
+  const addDraft = (name, kind, bank, balance) => {
+    const id = `new:${drafts.reduce((m, d) => Math.max(m, Number(String(d.id).split(':')[1]) + 1 || 0), 0)}`;
+    setDrafts((ds) => [...ds, { id, type: kind === 'credit_card' ? 'credit_card' : 'bank_account', account_type: kind === 'savings' ? 'savings' : 'checking', name, last4: null, on: true,
+      balance: balance == null ? '' : String(balance), credit_limit: '', due_date: '', institution: bank || '' }]);
+    return id;
+  };
+  // Everything matched to one account belongs to a new one instead: the balance shown goes with it.
+  const toNew = (old, name, kind, bank) => {
+    const fix = fixes.find((f) => `${f.account.type}:${f.account.id}` === old);
+    const id = addDraft(name, kind, bank, fix ? fix.shown : null);
+    moveAll(old, id, name);
+    setFixes((fs) => fs.filter((f) => `${f.account.type}:${f.account.id}` !== old));
+  };
+  // What the pictures say about the account each thing was matched to: the bank, the name shown, how much is on it.
+  const fromPicture = (ref) => {
+    const mine = rows.filter((r) => r.on && REF_FIELDS.some((f) => r[f] === ref)), fx = fixes.filter((f) => `${f.account.type}:${f.account.id}` === ref);
+    const d = drafts.find((x) => x.id === ref);
+    const uniq = (l) => [...new Set(l.filter(Boolean))];
+    return { lines: mine.length, balance: fx.length > 0 || (d && d.balance !== ''), banks: uniq([...mine.filter((r) => r.target === ref).map((r) => r.bank), ...fx.map((f) => f.bank), d && d.institution]),
+      shown: uniq([...mine.filter((r) => r.target === ref).map((r) => r.shown), ...fx.map((f) => f.shown_name), d && d.shown]) };
   };
   const setDraft = (id, patch) => setDrafts((ds) => ds.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   const changeKind = (r, kind) => {
@@ -473,8 +523,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         const row = d.type === 'credit_card'
           ? { id, name: d.name.trim(), balance: opening, last4: d.last4 || null, credit_limit: Number(d.credit_limit) || 0, due_date: d.due_date || null,
             minimum_payment: d.minimum_payment || null, statement_balance: d.statement_balance ?? null, autopay_mode: d.autopay ? 'statement' : null,
-            is_gift_card: !!d.gift, created_at: new Date().toISOString() }
-          : { id, name: d.name.trim(), balance: opening, last4: d.last4 || null, account_type: d.account_type || 'checking', institution: '', created_at: new Date().toISOString() };
+            institution: d.institution || '', is_gift_card: !!d.gift, created_at: new Date().toISOString() }
+          : { id, name: d.name.trim(), balance: opening, last4: d.last4 || null, account_type: d.account_type || 'checking', institution: d.institution || '', created_at: new Date().toISOString() };
         const { error: e } = await server.from(table).insert(row);
         if (e) throw new Error(e.message);
         (d.type === 'credit_card' ? cards : banks).push(row);
@@ -599,6 +649,18 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       } catch (err) {
         result.failed.push(`${label}: ${err.message}`);
       }
+    }
+    // An account with no bank on record takes the bank of the picture its own lines and balance came from, so the
+    // next picture from another bank is never taken for it.
+    const said = new Map();
+    const hear = (ref, bank) => { if (ref && bank && !String(ref).startsWith('new:')) said.set(ref, [...new Set([...(said.get(ref) || []), bank])]); };
+    fixes.forEach((f) => hear(`${f.account.type}:${f.account.id}`, f.bank));
+    chosenRows.filter((r) => ['purchase', 'income', 'refund'].includes(r.kind)).forEach((r) => hear(r.target, r.bank));
+    for (const [ref, list] of said) {
+      const [type, id] = [ref.split(':')[0], ref.split(':').slice(1).join(':')];
+      const have = (type === 'credit_card' ? cards : banks).find((a) => String(a.id) === id);
+      if (list.length !== 1 || !have || have.institution) continue;
+      try { await server.from(type === 'credit_card' ? 'credit_cards' : 'bank_accounts').update({ institution: list[0] }).eq('id', have.id); } catch { /* the bank stays unrecorded; nothing else depends on it */ }
     }
     // 3. The balances on the screenshot, after the lines: each is a snapshot. The server compares it with the app;
     // a difference the lines don't explain is corrected (undoable) when ticked, or left open on Where you stand.
@@ -822,8 +884,10 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     <div>
                       <p className="font-medium">{a.text(a.list.length)}</p>
                       <p className={`text-sm ${muted}`}>{a.list.slice(0, 3).map((r) => `${r.merchant || 'No name'} ${formatCurrency(Number(r.amount) || 0)}`).join(', ')}{a.list.length > 3 ? ` and ${a.list.length - 3} more` : ''}{one && a.list[0].shown ? ` · shown as ${a.list[0].shown}` : ''}</p>
+                      {a.list[0].bank && <p className={`text-sm ${muted}`}>This picture is from {a.list[0].bank}.</p>}
                     </div>
                     <Chips options={[...accountOptions.filter((o) => a.opts.cards === undefined || isCardRef(o.value) === a.opts.cards), ...(a.opts.outside ? [{ value: 'outside', label: 'Not in the app' }] : [])]} onPick={(v) => answerAll(a, v)} />
+                    <NewAccount card={a.opts.cards} suggest={[a.list[0].bank, a.list.every((r) => r.shown === a.list[0].shown) ? a.list[0].shown : null].filter(Boolean).join(' ')} onAdd={(name, kind) => answerAll(a, addDraft(name, kind, a.list[0].bank))} />
                     <button type="button" className={`press text-sm underline ${muted}`} onClick={() => leaveOut(a.list)}>{one ? 'Not mine: leave it out' : 'Not mine: leave them out'}</button>
                   </div>
                 );
@@ -850,19 +914,31 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             </section>
           )}
           {blocked > waiting.length && <p className="text-sm text-amber-600">{blocked - waiting.length === 1 ? 'One thing' : `${blocked - waiting.length} things`} to add below {blocked - waiting.length === 1 ? 'needs' : 'need'} a name: look for the amber text, or untick {blocked - waiting.length === 1 ? 'it' : 'them'}.</p>}
-          {usedRefs.some((ref) => accountOptions.some((o) => o.value === ref)) && accountOptions.length > 1 && (
-            <details className="text-sm">
-              <summary className="font-medium text-accent py-2 cursor-pointer">On the wrong account?</summary>
-              {usedRefs.filter((ref) => accountOptions.some((o) => o.value === ref)).map((ref) => (
-                <label key={ref} className="block">
-                  <span className={muted}>Everything shown on {nameOf(ref)} belongs to</span>
-                  <select className={`${input} mt-1 py-2.5 text-base`} value={ref} onChange={(e) => moveAll(ref, e.target.value)}>
-                    {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </label>
-              ))}
-              <p className={`text-xs ${muted}`}>One line on a different account: tap Edit on that line.</p>
-            </details>
+          {usedRefs.some((ref) => accountOptions.some((o) => o.value === ref)) && (
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold">Where this goes</h3>
+              {usedRefs.filter((ref) => accountOptions.some((o) => o.value === ref)).map((ref) => {
+                const f = fromPicture(ref);
+                const what = [f.lines ? (f.lines === 1 ? 'one line' : `${f.lines} lines`) : null, f.balance ? 'a balance' : null].filter(Boolean).join(' and ');
+                return (
+                  <div key={ref} className="rounded-xl border border-line p-3 space-y-2">
+                    <p className="text-sm">
+                      <span className="font-medium">{f.banks.length ? f.banks.join(', ') : 'Bank not shown on the picture'}</span>
+                      {f.shown.length > 0 && <span className={muted}> · shown as {f.shown.join(', ')}</span>}
+                      {what && <span className={muted}> · {what}</span>}
+                    </p>
+                    <label className="block text-sm">
+                      <span className={muted}>Goes to</span>
+                      <select className={`${input} mt-1 py-2.5 text-base`} value={ref} onChange={(e) => moveAll(ref, e.target.value)}>
+                        {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </label>
+                    {!ref.startsWith('new:') && <NewAccount card={isCardRef(ref)} suggest={[f.banks[0], f.shown[0]].filter(Boolean).join(' ')} onAdd={(name, kind) => toNew(ref, name, kind, f.banks[0])} />}
+                  </div>
+                );
+              })}
+              <p className={`text-xs ${muted}`}>Not right? Choose the account it belongs to, or add it as a new one. One line on a different account: tap Edit on that line.</p>
+            </section>
           )}
           {proposal.notes && <p className={`text-sm ${muted}`}>{proposal.notes}</p>}
           {proposal.statement && (
@@ -908,6 +984,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     <input type="checkbox" checked={d.on} onChange={(e) => setDraft(d.id, { on: e.target.checked })} />
                     Add {d.name}{d.last4 ? ` (ending ${d.last4})` : ''}
                   </label>
+                  {d.on && (d.institution || d.shown) && <p className={`text-xs ${muted}`}>{[d.institution && `From ${d.institution}`, d.shown && d.shown !== d.name && `shown as ${d.shown}`].filter(Boolean).join(' · ')}. Already have it under another name? Choose it under Where this goes.</p>}
                   {d.on && <div className="flex items-center justify-between gap-3 text-sm text-muted"><span className="min-w-0 truncate">{`${d.type === 'credit_card' ? 'Card' : 'Bank account'}${d.balance !== '' ? ` · ${formatCurrency(Number(d.balance))}${d.type === 'credit_card' ? ' owed' : ''}` : ''}`}</span><button type="button" className="press shrink-0 font-medium text-accent" aria-expanded={!!edit[d.id]} onClick={() => setEdit((e) => ({ ...e, [d.id]: !e[d.id] }))}>{edit[d.id] ? 'Done' : 'Edit'}</button></div>}
                   {d.on && (edit[d.id] || !!draftNeeds(d)) && (
                     <div className="grid grid-cols-2 gap-2">
