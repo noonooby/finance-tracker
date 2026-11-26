@@ -88,7 +88,7 @@ export async function downloadTransactionTemplate() {
 async function matchCategory(description, type, categories, rules = []) {
   if (!description) return null;
   // What you chose before for this merchant comes first.
-  const learned = suggestCategoryId(rules, description, categories.filter((c) => (type === 'income' ? c.is_income : !c.is_income)));
+  const learned = suggestCategoryId(rules, description, categories.filter((c) => (type === 'income' ? c.is_income : !c.is_income)), type === 'income');
   if (learned) return learned;
 
   const desc = description.toLowerCase();

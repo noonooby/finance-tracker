@@ -173,7 +173,7 @@ export default function AddTransaction({
       // The remembered entry for this exact description (if that lookup fails, learned categories still work).
       let contextData = {};
       try { const context = await getExpenseContext(formData.description); if (context) contextData = applyExpenseContext(context); } catch { contextData = {}; }
-      const learned = contextData.categoryId || suggestCategoryId(categoryRules, formData.description, localCategories.filter(c => !c.is_income));
+      const learned = contextData.categoryId || suggestCategoryId(categoryRules, formData.description, localCategories.filter(c => !c.is_income), false);
       setFormData(prev => {
         const mayFill = !prev.categoryId || prev.categoryId === autoCategory;
         const next = { ...prev };

@@ -291,7 +291,7 @@ const root = path.join(here, '..', '..');
 const cache = path.join(root, 'node_modules', '.cache');
 fs.mkdirSync(cache, { recursive: true });
 const lib = fs.mkdtempSync(path.join(cache, 'finance-edges-'));
-for (const f of ['reportHelpers.js', 'helpers.js', 'spending.js', 'categoryRules.js']) {
+for (const f of ['reportHelpers.js', 'helpers.js', 'spending.js', 'categoryRules.js', 'merchants.js']) {
   const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
   fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
 }

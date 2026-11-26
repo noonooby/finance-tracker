@@ -2,6 +2,8 @@
 // A rule you set yourself is fixed (source 'set'); learning never changes it. The app only suggests: a suggestion
 // fills an empty category and you can always change it.
 
+import { knownCategory, ownCategory } from './merchants';
+
 // Same merchant key as the server (server/reader.js mkey): letters only, card-processor prefixes removed.
 export const mkey = (m) => String(m || '').toLowerCase().replace(/^(sq|sp|tst|klarna|paypal|pp)\s*\*\s*/, '').replace(/[^a-z]/g, '').slice(0, 24);
 
@@ -18,8 +20,11 @@ export function findRule(rules, description) {
 }
 
 // A category id for a description, only if it still exists among the categories given.
-export function suggestCategoryId(rules, description, categories) {
+// What you chose before comes first; a merchant the app knows by name (merchants.js) fills in when you have no rule.
+//   income: true or false when the kind of line is known, so a deposit is never given a spending category.
+export function suggestCategoryId(rules, description, categories, income) {
   const r = findRule(rules, description);
-  if (!r) return '';
-  return (categories || []).some((c) => String(c.id) === String(r.category_id)) ? String(r.category_id) : '';
+  if (r && (categories || []).some((c) => String(c.id) === String(r.category_id))) return String(r.category_id);
+  const own = ownCategory(knownCategory(description, income), categories);
+  return own ? String(own.id) : '';
 }

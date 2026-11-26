@@ -33,7 +33,7 @@ globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v
 const realFetch = globalThis.fetch;
 globalThis.fetch = (u, o) => realFetch(String(u).startsWith('/') ? base + u : u, o);
 const lib = path.join(tmp, 'lib'); fs.mkdirSync(lib);
-for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js', 'room.js', 'issues.js']) {
+for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js', 'room.js', 'issues.js', 'merchants.js', 'lines.js']) {
   const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
   fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
 }
@@ -44,6 +44,8 @@ const S = await import(pathToFileURL(path.join(lib, 'spending.mjs')));
 const P = await import(pathToFileURL(path.join(lib, 'plans.mjs')));
 const R = await import(pathToFileURL(path.join(lib, 'room.mjs')));
 const I = await import(pathToFileURL(path.join(lib, 'issues.mjs')));
+const K = await import(pathToFileURL(path.join(lib, 'merchants.mjs')));
+const CR = await import(pathToFileURL(path.join(lib, 'categoryRules.mjs')));
 await client.auth.devSignIn();
 
 const db = client;
@@ -1902,4 +1904,32 @@ test('pictures count once: the order they are chosen in, the balance beside each
   assert.equal(again.action, 'already');
   assert.equal(again.existing_id, 't1');
   assert.deepEqual(again.elsewhere, { type: 'bank_account', id: 'joint', name: 'Joint Chequing' });
+});
+
+test('merchants the app knows from the start: the names on real statements land in the right category, and your own rule still wins', () => {
+  const cat = (d, income) => (K.knownCategory(d, income) || {}).id || null;
+  const seen = [
+    ['McDonalds 14146 ETOBICOKE ON', 'dining'], ['TIM HORTONS #1769 ETOBICOKE ON', 'dining'], ['STARBUCKS 8007827282 BRAMPTON ON', 'dining'], ['PIZZA HUT - DUNDAS WES ETOBICOKE ON', 'dining'],
+    ['UBER CANADA/UBEREATS TORONTO ON', 'dining'], ['Klarna* Uber Eats Vancouver BC', 'dining'], ['Dairy Queen', 'dining'], ['LA VECCHIA ETOBICOKE ON', 'dining'], ['SZECHUAN EXPRESS TORONTO ON', 'dining'],
+    ['UBER TRIP HELP.UBER.COM', 'transportation'], ['SPOTHERO 844-356-8054 VANCOUVER', 'transportation'], ['PEARSON PARKING RESERV TORONTO ON', 'transportation'], ['ESSO 7-ELEVEN', 'transportation'], ['PRESTO AUTL', 'transportation'],
+    ['COSTCO WHOLESALE W524 ETOBICOKE ON', 'groceries'], ['FARM BOY #24 TORONTO TORONTO', 'groceries'], ['APNA FOOD BAZAAR 001 TORONTO', 'groceries'], ['Interac - Purchase - VALLEY FARM PRO ET...', 'groceries'], ['TITAN ETOBICOKE', 'groceries'], ['NOFRILLS JOES #123', 'groceries'],
+    ['Amazon.ca*BU0JC53F3 TORONTO ON', 'shopping'], ['AMZN Mktp CA*EF3BW47M3', 'shopping'], ['DOLLARAMA # 799 TORONTO', 'shopping'], ['IKEA ETOBICOKE ETOBICOKE', 'shopping'], ['Klarna*Uniqlo Canada Toronto ON', 'shopping'],
+    ['KLARNA* KLARNA VANCOUVER BC', 'shopping'], ['Paypal *pypl Payin4', 'shopping'], ['Visa Debit - Purchase - Klarna*Ray-Ban Tor...', 'shopping'], ['SP+AFF* FENDRIHAN.CA OTTAWA ON', 'shopping'], ['RFBT-CF SHERWAY GARDEN ETOBICOKE ON', 'shopping'],
+    ['SHOPPERS DRUG MART #86 ETOBICOKE ON', 'healthcare'], ['Cineplex', 'entertainment'], ['NETFLIX.COM', 'entertainment'], ['Amazon Prime*AB12', 'entertainment'], ['ROGERS ******1234', 'utilities'], ['TORONTO HYDRO', 'utilities'],
+  ];
+  for (const [d, want] of seen) assert.equal(cat(d, false), want, d);
+  const income = [['Payroll Deposit - Interac Corp.', 'salary'], ['EFT Deposit from INTERAC CORP.', 'salary'], ['INTERAC e-Transfer From: A Friend', 'other_income'], ['Deposit - Free Interac e-transfer', 'other_income'],
+    ['Cash received $someone', 'other_income'], ['CANADA RIT', 'other_income'], ['Deposit interest', 'investment']];
+  for (const [d, want] of income) assert.equal(cat(d, true), want, d);
+  // A word inside another word is not a match, an unknown name is left alone, and a deposit never gets a spending category.
+  assert.equal(cat('ESPRESSO MACHINES INC', false), null);
+  assert.equal(cat('SOME UNKNOWN PLACE 123', false), null);
+  assert.equal(cat('TIM HORTONS #1769', true), null);
+  // Through the one place a category is suggested: your own rule first, then what the app knows.
+  const cats = [{ id: 'dining', name: 'Dining', is_income: false }, { id: 'c9', name: 'Groceries', is_income: false }, { id: 'treats', name: 'Treats', is_income: false }];
+  assert.equal(CR.suggestCategoryId([], 'TIM HORTONS #1769', cats, false), 'dining');
+  assert.equal(CR.suggestCategoryId([], 'FARM BOY #24', cats, false), 'c9');
+  assert.equal(CR.suggestCategoryId([{ key: 'timhortons', category_id: 'treats' }], 'TIM HORTONS #1769', cats, false), 'treats');
+  assert.equal(CR.suggestCategoryId([], 'ROGERS', cats, false), '');
+  assert.equal(K.guessCategory('Fuel').id, 'transportation');
 });

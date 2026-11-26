@@ -7,7 +7,8 @@ import { server } from '../utils/server';
 import { formatCurrency, formatDate, generateId } from '../utils/helpers';
 import { loadPending, savePending, clearPending } from '../utils/pendingScan';
 import { useFinanceData } from '../hooks/useFinanceData';
-import { suggestCategoryId } from '../utils/categoryRules';
+import { suggestCategoryId, findRule } from '../utils/categoryRules';
+import { knownCategory, guessCategory, ownCategory } from '../utils/merchants';
 import { TAX_FIELDS } from '../utils/room';
 import { Camera, Image as ImageIcon } from 'lucide-react';
 import { Picture } from './shared/Picture';
@@ -305,16 +306,21 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   // A category for a purchase: how this merchant was categorised before, else the reader's guess matched to your categories.
   const suggestCategory = (merchant, guess, income = false) => {
     const pool = income ? incomeCategories : expenseCategories;
-    const learned = suggestCategoryId(categoryRules, merchant, pool);
+    const learned = findRule(categoryRules, merchant) ? suggestCategoryId(categoryRules, merchant, pool, income) : '';
     if (learned) return learned;
     const k = mkey(merchant);
     const past = k && [...transactions].sort((a, b) => String(b.date).localeCompare(String(a.date)))
       .find((t) => t.category_id && mkey(t.description) === k);
     if (past && pool.some((c) => String(c.id) === String(past.category_id))) return String(past.category_id);
+    // No line of yours to go by: a merchant the app knows by name comes before the reading's own word for it.
+    const known = ownCategory(knownCategory(merchant, income), pool);
+    if (known) return String(known.id);
     const g = String(guess || '').toLowerCase();
     const hit = (g && pool.find((c) => c.name.toLowerCase() === g))
       || (g && pool.find((c) => c.name.toLowerCase().includes(g) || g.includes(c.name.toLowerCase())));
-    return hit ? String(hit.id) : '';
+    if (hit) return String(hit.id);
+    const own = ownCategory(guessCategory(guess), pool);
+    return own ? String(own.id) : '';
   };
 
   const readOne = async (image, note, keepDone, fresh) => {
