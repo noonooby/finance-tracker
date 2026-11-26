@@ -611,6 +611,8 @@ function snapshot(uid, b) {
     }
     const snap = insertRow(uid, 'snapshots', { account_table: b.table, account_id: r.id, name: r.name || '', date: day,
       value: fromCents(value), app_value: fromCents(atDay), gap: fromCents(gap), status: newer ? (gap ? 'open_history' : 'ok_history') : status, source: String(b.source || '').slice(0, 60),
+      // The kept picture the figure was read from, so a later question about it can show that picture.
+      picture: b.picture ? String(b.picture).slice(0, 40) : null,
       adjustment_id: adjustment ? adjustment.id : null, created_at: now() });
     return { snapshot: snap, adjustment };
   });

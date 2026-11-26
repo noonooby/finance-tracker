@@ -247,13 +247,13 @@ export function replaceTransaction(oldId, recordNew) {
 // apply: the difference is recorded as an undoable adjustment and the day becomes the account's snapshot date, so lines
 // dated before it are kept as history and can't move today's balance again. Without apply a difference stays open to explain.
 const SNAP_TABLE = { bank_account: 'bank_accounts', credit_card: 'credit_cards', loan: 'loans', investment: 'investments', asset: 'assets' };
-export async function recordSnapshot({ target, value, date, source, apply = true }) {
+export async function recordSnapshot({ target, value, date, source, apply = true, picture }) {
   const n = Number(value);
   if (!Number.isFinite(n)) throw new Error('Enter a number.');
   const { type, id } = parseSource(target);
   const where = { table: SNAP_TABLE[type], id };
   if (!where.table) throw new Error('That account can not take a balance.');
-  return api('/api/snapshot', { ...where, value: Math.round(n * 100) / 100, date, source, apply });
+  return api('/api/snapshot', { ...where, value: Math.round(n * 100) / 100, date, source, apply, ...(picture ? { picture } : {}) });
 }
 export const resolveSnapshot = (id, action) => api(`/api/snapshots/${id}/resolve`, { action });
 

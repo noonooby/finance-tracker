@@ -1711,13 +1711,14 @@ test('lookups can be turned off, pointed at a name you give, redone for one acco
 
 // ---------- anything that does not match: one list, each entry with fixes that work in place ----------
 test('mismatches: each kind is listed once with its fixes, and one left alone stays quiet until its figures change', () => {
-  const card = { id: 'c1', name: 'Visa', balance: 1000 };
-  const loans = [{ id: 'p1', name: 'Phone plan', balance: 900, on_card_id: 'c1', payment_amount: 50 }, { id: 'p2', name: 'Sofa plan', balance: 400, on_card_id: 'c1', payment_amount: 40 }];
+  const card = { id: 'c1', name: 'Visa', balance: 1000, balance_as_of: '2026-11-03', credit_limit: 5000, due_date: '2026-12-10' };
+  const plan = { on_card_id: 'c1', next_payment_date: '2026-12-01', balance_as_of: '2026-11-20', from_screenshot: 'picA' };
+  const loans = [{ ...plan, id: 'p1', name: 'Phone plan', balance: 900, payment_amount: 50 }, { ...plan, id: 'p2', name: 'Sofa plan', balance: 400, payment_amount: 40 }];
   const investments = [{ id: 'i1', name: 'TFSA', kind: 'TFSA', holdings: [{ shown: 'VEQT', symbol: 'VEQT.TO', units: 10, value: 400 }, { name: 'Bank fund', units: 5, value: 120 }, { name: 'GIC', value: 1000 }] }];
   const input = {
     checks: [{ id: 's1', name: 'Chequing', account_id: 'b1', date: '2026-11-01', value: 500, app_now: 450, left: 50, status: 'open', source: 'screenshot' }],
     stale: [{ kind: 'bank', id: 'b2', name: 'Savings', value: 2000, asOf: '2026-08-01', label: 'on 2026-08-01', signed: 2000 }],
-    creditCards: [card], loans, investments,
+    creditCards: [card], loans, investments, snapshots: [{ account_table: 'credit_cards', account_id: 'c1', date: '2026-11-03', status: 'ok', picture: 'picB', source: 'screenshot' }],
     rooms: [{ kind: 'TFSA', known: true, over: 300, room: -300, cost_month: 3 }, { kind: 'RRSP', known: true, over: 0, stale: true, as_of: '2025-03-01' }, { kind: 'FHSA', known: false }],
     taxMissing: [2023], today: '2026-11-26',
   };
@@ -1728,8 +1729,15 @@ test('mismatches: each kind is listed once with its fixes, and one left alone st
   for (const i of list) { assert.ok(i.title && i.text && i.sig != null, i.id); assert.ok(i.fixes.some((f) => f.do !== 'leave' && f.do !== 'dismiss'), i.id); assert.ok(i.fixes.some((f) => f.do === 'leave' || f.do === 'dismiss'), i.id); }
   assert.deepEqual(by.check.fixes.map((f) => f.do), ['correct', 'go', 'go', 'dismiss']);
   // The card's plans: the card balance or any one plan can be set right there.
-  assert.deepEqual(by.plans.fixes.filter((f) => f.do === 'amount').map((f) => [f.target, f.start]), [['credit_card:c1', 1300], ['loan:p1', 900], ['loan:p2', 400]]);
-  assert.match(by.plans.text, /\$1,300\.00.*\$1,000\.00/);
+  assert.deepEqual(by.plans.sums.map((r) => [r.label, r.value, r.fix ? r.fix.target : null]), [['Phone plan', 900, 'loan:p1'], ['Sofa plan', 400, 'loan:p2'], ['Plans together', 1300, null], ['Visa balance', 1000, 'credit_card:c1'], ['Short by', 300, null]]);
+  assert.deepEqual(by.plans.sums[0].fix.more.map((f) => [f.do, f.value ?? f.loan]), [['same', 0], ['unlink', 'p1']]);
+  assert.match(by.plans.text, /\$1,300\.00.*\$1,000\.00.*\$300\.00 short/);
+  // Each figure says where it came from; the pictures are listed once; the older figure is named as the likely one.
+  assert.equal(by.plans.sums[0].from, 'from a picture, Nov 20, 2026');
+  assert.equal(by.plans.sums[3].from, 'from a picture, Nov 3, 2026');
+  assert.deepEqual(by.plans.pictures.map((x) => x.id), ['picA', 'picB']);
+  assert.match(by.plans.why, /card balance is from Nov 3, 2026, before the plans were read \(Nov 20, 2026\)/);
+  assert.deepEqual(by.plans.fixes.map((f) => [f.do, f.value ?? f.to ?? null]), [['go', '/screenshot'], ['same', 2300], ['leave', null]]);
   // Only the holding with units and no ticker is asked about: a priced one and one with no units are not.
   assert.deepEqual(by.price.fixes[0], { do: 'ticker', label: 'Give its ticker', ask: 'Ticker, for example VEQT.TO', inv: 'i1', index: 1 });
   assert.deepEqual(by.stale.fixes.map((f) => f.do), ['amount', 'same', 'go', 'leave']);
@@ -1741,4 +1749,22 @@ test('mismatches: each kind is listed once with its fixes, and one left alone st
   assert.deepEqual(moved, ['check:s1', 'plans:c1', 'stale:bank_account:b2']);
   // Nothing wrong, nothing listed.
   assert.deepEqual(I.issues({ creditCards: [{ ...card, balance: 1300 }], loans, investments: [{ id: 'i1', name: 'TFSA', holdings: null }] }), []);
+});
+
+test('what is missing: one entry per account, each thing typed in place or filled by a picture, and only what changes the sums', () => {
+  const cards = [{ id: 'c1', name: 'Visa', balance: 200 }, { id: 'c2', name: 'Paid card', balance: 0, credit_limit: 1000 }, { id: 'g', name: 'Gift', is_gift_card: true, balance: 20 }];
+  const loans = [{ id: 'l1', name: 'Car loan', balance: 9000, payment_amount: 300 }, { id: 'l2', name: 'Done', balance: 0 }];
+  const rooms = [{ kind: 'TFSA', known: false, accounts: [{ id: 'i1' }] }, { kind: 'FHSA', known: false, accounts: [] }];
+  const list = I.issues({ creditCards: cards, loans, rooms });
+  assert.deepEqual(list.map((i) => [i.id, i.title]), [
+    ['need:credit_cards:c1', 'Visa: the limit and the due date are not known'],
+    ['need:loans:l1', 'Car loan: the next payment day is not known'],
+    ['need:room:TFSA', 'TFSA: the room left is not known'],
+  ]);
+  assert.deepEqual(list[0].sums.map((r) => [r.label, r.value, r.fix.do, r.fix.field, r.fix.input]), [['Credit limit', null, 'field', 'credit_limit', 'number'], ['Next payment due', null, 'field', 'due_date', 'date']]);
+  assert.ok(list.every((i) => i.fixes[0].do === 'go' && i.fixes[0].to === '/screenshot'), 'a picture is always offered');
+  // Filling one thing leaves the other asked; "Not needed" keeps it quiet until something else goes missing.
+  const half = I.issues({ creditCards: [{ ...cards[0], credit_limit: 3000 }], quiet: { 'need:credit_cards:c1': 'credit_limit,due_date' } });
+  assert.deepEqual(half.map((i) => i.title), ['Visa: the due date is not known']);
+  assert.deepEqual(I.issues({ creditCards: [cards[0]], quiet: { 'need:credit_cards:c1': 'credit_limit,due_date' } }), []);
 });

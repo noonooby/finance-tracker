@@ -8,29 +8,31 @@ import { recordSnapshot, resolveSnapshot } from '../../utils/money';
 import { position } from '../../utils/finance';
 import { rooms as roomsOf, taxNext } from '../../utils/room';
 import { issues } from '../../utils/issues';
-import { localDate } from '../../utils/helpers';
+import { formatCurrency, localDate } from '../../utils/helpers';
 import { showToast } from '../../utils/toast';
+import { Picture } from './Picture';
 
 // Anything that does not match is shown with the same block everywhere: what disagrees, and the fixes as buttons
 // that work in place. utils/issues.js decides what is listed; this file draws it and carries the fixes out.
 
 // What the list needs beyond the accounts, loaded once and shared by every place that shows a block.
 const cached = () => { try { return JSON.parse(localStorage.getItem('tax_facts') || 'null'); } catch { return null; } };
-let state = { checks: [], quiet: {}, stated: {}, years: [], facts: cached(), ready: false };
+let state = { checks: [], snaps: [], quiet: {}, stated: {}, years: [], facts: cached(), ready: false };
 let loading = null;
 const subs = new Set();
 const set = (next) => { state = { ...state, ...next }; subs.forEach((f) => f()); };
 function refresh() {
   if (loading) return loading;
   loading = (async () => {
-    const [checks, settings, years, facts] = await Promise.all([
+    const [checks, settings, years, facts, snaps] = await Promise.all([
       api('/api/checks', null, 'GET').catch(() => state.checks),
       server.from('settings').select('*').then((r) => r.data || []).catch(() => null),
       server.from('tax_years').select('*').then((r) => r.data || []).catch(() => state.years),
       state.facts ? state.facts : api('/api/tax-facts', undefined, 'GET').catch(() => null),
+      server.from('snapshots').select('*').then((r) => r.data || []).catch(() => state.snaps),
     ]);
     const get = (k) => (settings ? ((settings.find((r) => r.key === k) || {}).value || {}) : null);
-    set({ checks: checks || [], years, facts, quiet: get('quiet') || state.quiet, stated: get('tax_room') || state.stated, ready: true });
+    set({ checks: checks || [], snaps, years, facts, quiet: get('quiet') || state.quiet, stated: get('tax_room') || state.stated, ready: true });
   })().finally(() => { loading = null; });
   return loading;
 }
@@ -55,7 +57,7 @@ export function useIssues() {
     const p = position({ bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets });
     const next = s.years.length ? taxNext({ years: s.years, facts: s.facts, today }) : { missing: [] };
     return issues({
-      checks: s.checks, creditCards: d.creditCards, loans: d.loans, investments: d.investments, quiet: s.quiet, today,
+      checks: s.checks, snapshots: s.snaps, creditCards: d.creditCards, loans: d.loans, investments: d.investments, quiet: s.quiet, today,
       stale: p.stale.map((x) => ({ ...x, signed: stored(x, d) })),
       rooms: s.facts ? roomsOf({ stated: s.stated, investments: d.investments, transactions: d.transactions, facts: s.facts, today }) : [],
       taxMissing: next.missing,
@@ -102,6 +104,15 @@ export function useIssues() {
       const sent = (h) => ({ symbol: h.symbol || h.shown, symbol_set: !!h.symbol, shown: h.shown, name: h.name, units: h.units, price: h.price, currency: h.currency, value: h.value });
       await api('/api/holdings', { id: inv.id, holdings: held.map((h, j) => (j === fix.index ? { ...sent(h), symbol: q.symbol, symbol_set: true, shown: h.shown || q.symbol, name: h.name || q.name, value: null } : sent(h))) });
     }
+    else if (fix.do === 'field') {
+      const v = fix.input === 'date' ? String(value || '') : Math.round(Number(value) * 100) / 100;
+      if (fix.input === 'date' ? !/^\d{4}-\d{2}-\d{2}$/.test(v) : !(value !== '' && v > 0)) throw new Error(fix.input === 'date' ? 'Choose the day.' : 'Enter an amount above zero.');
+      const { error } = await server.from(fix.table).update({ [fix.field]: v }).eq('id', fix.id);
+      if (error) throw new Error(error.message);
+    } else if (fix.do === 'unlink') {
+      const { error } = await server.from('loans').update({ on_card_id: null }).eq('id', fix.loan);
+      if (error) throw new Error(error.message);
+    }
     await Promise.all([loadAllData(), refresh()]);
     return undefined;
   }, [d.investments, loadAllData, navigate, quietly, today]);
@@ -127,7 +138,7 @@ export function IssueBlock({ issue, run, done, compact }) {
     } catch (e) { showToast.error(e.message); } finally { setBusy(false); }
   };
   const pick = (fix) => {
-    if (fix.do === 'amount' || fix.do === 'ticker') { setChoices([]); setValue(fix.start != null ? String(fix.start) : ''); setAsk(ask === fix ? null : fix); } else go(fix);
+    if (fix.do === 'amount' || fix.do === 'ticker' || fix.do === 'field') { setChoices([]); setValue(fix.start != null ? String(fix.start) : ''); setAsk(ask === fix ? null : fix); } else go(fix);
   };
   const main = issue.fixes.filter((f) => f.do !== 'leave' && f.do !== 'dismiss');
   const quiet = issue.fixes.filter((f) => f.do === 'leave' || f.do === 'dismiss');
@@ -140,6 +151,53 @@ export function IssueBlock({ issue, run, done, compact }) {
             <div className="min-w-0 flex-1">
               <div className={`text-sm font-medium ${done ? 'text-muted line-through decoration-1' : ''}`}>{issue.title}</div>
               {!done && <div className="text-xs text-muted mt-0.5 leading-relaxed">{issue.text}</div>}
+              {!done && issue.sums && (
+                <div className="mt-2.5 rounded-xl border border-line overflow-hidden">
+                  {issue.sums.map((r, i) => {
+                    const Tag = r.fix ? 'button' : 'div';
+                    return (
+                      <Tag key={i} {...(r.fix ? { type: 'button', disabled: busy, onClick: () => pick(r.fix), 'aria-label': r.fix.label } : {})}
+                        className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm ${i ? 'border-t border-line' : ''} ${r.total ? 'bg-surface-2 font-medium' : ''} ${ask && ask === r.fix ? 'bg-accent-soft' : ''}`}>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{r.label}</span>
+                          {(r.from || r.note) && <span className="block text-[11px] text-muted truncate">{[r.from, r.note].filter(Boolean).join(' · ')}</span>}
+                        </span>
+                        <span className={`tabular-nums shrink-0 ${r.tone === 'warning' ? 'text-warning' : ''} ${r.value == null ? 'text-muted text-xs' : ''}`}>{r.value == null ? 'not known' : formatCurrency(r.value)}</span>
+                        {r.fix ? <span className="shrink-0 text-xs font-medium text-accent w-[3.1rem] text-right">{r.value == null ? 'Add' : 'Change'}</span> : <span className="shrink-0 w-[3.1rem]" aria-hidden="true" />}
+                      </Tag>
+                    );
+                  })}
+                </div>
+              )}
+              {!done && issue.why && <p className="mt-2 text-xs leading-relaxed"><span className="font-medium">Most likely: </span><span className="text-muted">{issue.why}</span></p>}
+              {!done && issue.pictures && issue.pictures.length > 0 && (
+                <div className="mt-2 grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(2, issue.pictures.length)}, minmax(0, 1fr))` }}>
+                  {issue.pictures.map((p) => <Picture key={p.id} id={p.id} label={p.label} />)}
+                </div>
+              )}
+              <div className={`fold ${ask && !done ? 'open' : ''}`}>
+                <div>
+                  {ask && (
+                    <form className="pt-2.5 space-y-2" onSubmit={(e) => { e.preventDefault(); go(ask, value); }}>
+                      <label className="block text-xs text-muted">{ask.ask}
+                        <input className="mt-1 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-fg" autoFocus value={value} onChange={(e) => setValue(e.target.value)}
+                          {...(ask.input === 'date' ? { type: 'date' } : ask.do === 'amount' || ask.do === 'field' ? { type: 'number', step: '0.01', inputMode: 'decimal' } : { autoCapitalize: 'characters' })} />
+                      </label>
+                      {choices.length > 0 && (
+                        <div className="space-y-1 stagger">
+                          <p className="text-xs text-muted">More than one match. Which is it?</p>
+                          {choices.map((c) => <button key={c.symbol} type="button" disabled={busy} onClick={() => go({ ...ask, quote: c })} className="block w-full text-left text-sm rounded-xl border border-line px-3 py-2">{c.symbol} <span className="text-muted">{c.name} · {c.price} {c.currency}</span></button>)}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-1.5">
+                        <button type="submit" disabled={busy} className="chip chip-main">{busy && <span className="spinner" aria-hidden="true" />}Save</button>
+                        {(ask.more || []).map((m, i) => <button key={i} type="button" disabled={busy} className="chip" onClick={() => go(m)}>{m.label}</button>)}
+                        <button type="button" className="chip chip-quiet" onClick={() => { setAsk(null); setChoices([]); }}>Cancel</button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              </div>
               {!done && (
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
                   {main.map((f, i) => (
@@ -151,28 +209,6 @@ export function IssueBlock({ issue, run, done, compact }) {
                   {quiet.map((f, i) => <button key={`q${i}`} type="button" disabled={busy} onClick={() => go(f)} className="chip chip-quiet">{f.label}</button>)}
                 </div>
               )}
-              <div className={`fold ${ask && !done ? 'open' : ''}`}>
-                <div>
-                  {ask && (
-                    <form className="pt-2.5 space-y-2" onSubmit={(e) => { e.preventDefault(); go(ask, value); }}>
-                      <label className="block text-xs text-muted">{ask.ask}
-                        <input className="mt-1 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-fg" autoFocus value={value} onChange={(e) => setValue(e.target.value)}
-                          {...(ask.do === 'amount' ? { type: 'number', step: '0.01', inputMode: 'decimal' } : { autoCapitalize: 'characters' })} />
-                      </label>
-                      {choices.length > 0 && (
-                        <div className="space-y-1 stagger">
-                          <p className="text-xs text-muted">More than one match. Which is it?</p>
-                          {choices.map((c) => <button key={c.symbol} type="button" disabled={busy} onClick={() => go({ ...ask, quote: c })} className="block w-full text-left text-sm rounded-xl border border-line px-3 py-2">{c.symbol} <span className="text-muted">{c.name} · {c.price} {c.currency}</span></button>)}
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <button type="submit" disabled={busy} className="chip chip-main">{busy && <span className="spinner" aria-hidden="true" />}Save</button>
-                        <button type="button" className="chip chip-quiet" onClick={() => { setAsk(null); setChoices([]); }}>Cancel</button>
-                      </div>
-                    </form>
-                  )}
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -190,11 +226,16 @@ export function Issues({ only, limit, compact, className, empty = null, wrap }) 
   const order = useRef([]);
   const mine = useMemo(() => (only ? list.filter(only) : list), [list, only]);
   const timers = useRef([]);
+  const latest = useRef(mine);
+  latest.current = mine;
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
   const act = useCallback(async (issue, fix, value) => {
     const r = await run(issue, fix, value);
     if (r) return r;
+    // An entry with several things to fill stays until the last one is in.
+    await new Promise((ok) => setTimeout(ok, 60));
+    if (latest.current.some((i) => i.id === issue.id)) return undefined;
     setGone((g) => ({ ...g, [issue.id]: { issue, at: 'done' } }));
     timers.current.push(setTimeout(() => setGone((g) => (g[issue.id] ? { ...g, [issue.id]: { issue, at: 'closing' } } : g)), 900));
     timers.current.push(setTimeout(() => setGone((g) => { const n = { ...g }; delete n[issue.id]; return n; }), 1300));

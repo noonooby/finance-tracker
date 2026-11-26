@@ -1,14 +1,19 @@
 // Everything that does not match, in one list. Each entry says what disagrees and carries the fixes that can be
 // done in place. A new kind of mismatch is one more block here: the screens only draw what this returns.
 //   fix.do: 'correct' | 'dismiss' (a balance check), 'amount' (type today's figure for an account), 'ticker'
-//           (name the holding), 'same' (the figure is still right today), 'go' (open a page), 'leave' (stay quiet until the figures change).
+//           (name the holding), 'same' (set a known figure), 'unlink' (the plan is not inside this card), 'go' (open a page), 'leave' (stay quiet until the figures change).
 import { cardSplit } from './finance';
 
 const money = (n) => `$${(Math.round(Number(n) * 100) / 100).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const TARGET = { bank: 'bank_account', cash: 'bank_account', card: 'credit_card', card_credit: 'credit_card', gift_card: 'credit_card', loan: 'loan', mortgage: 'loan', investment: 'investment', asset: 'asset' };
 const leave = (label = 'Leave it') => ({ do: 'leave', label });
+const list = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+const day10 = (d) => { const x = String(d || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : null; };
+const nice = (d) => (d ? new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' }) : 'an unknown day');
+// Where a figure came from, in a few words.
+const from = (picture, day, source) => `${picture ? 'from a picture' : source === 'you' ? 'typed in' : source === 'statement' ? 'from a statement' : 'recorded'}${day ? `, ${nice(day)}` : ''}`;
 
-export function issues({ checks = [], stale = [], creditCards = [], loans = [], investments = [], rooms = [], taxMissing = [], quiet = {}, today = '' } = {}) {
+export function issues({ checks = [], stale = [], snapshots = [], creditCards = [], loans = [], investments = [], rooms = [], taxMissing = [], quiet = {}, today = '' } = {}) {
   const out = [];
   const add = (x) => { if (quiet[x.id] !== x.sig) out.push(x); };
 
@@ -24,16 +29,39 @@ export function issues({ checks = [], stale = [], creditCards = [], loans = [], 
       fixes });
   }
 
-  // 2. Payment plans inside a card that add up to more than the card shows.
+  // 2. Payment plans inside a card that add up to more than the card shows. The sums are laid out line by line, each
+  //    with the day and the picture it came from, so the figure that is wrong can be seen and tapped.
   for (const c of creditCards) {
     if (c.is_gift_card) continue;
     const split = cardSplit(c, loans);
     if (!split.over) continue;
-    add({ id: `plans:${c.id}`, sig: `${Number(c.balance) || 0}:${split.inPlans}`, kind: 'plans', ref: String(c.id), title: `${c.name}: the plans add up to more than the card`,
-      text: `The plans inside it add up to ${money(split.inPlans)}; the card shows ${money(Math.max(0, Number(c.balance) || 0))}. One of the figures is out of date.`,
+    const bal = Math.max(0, Number(c.balance) || 0);
+    const snap = snapshots.filter((x) => x.account_table === 'credit_cards' && String(x.account_id) === String(c.id) && (x.status === 'ok' || x.status === 'corrected'))
+      .sort((x, y) => String(y.date).localeCompare(String(x.date)) || String(y.created_at).localeCompare(String(x.created_at)))[0] || null;
+    const cardDay = day10(c.balance_as_of || (snap && snap.date));
+    const cardPic = snap && snap.picture && day10(snap.date) === cardDay ? snap.picture : null;
+    const plans = split.plans.map((p) => { const l = loans.find((x) => String(x.id) === String(p.id)) || {}; return { ...p, day: day10(l.balance_as_of || l.created_at), picture: l.from_screenshot || null, billed: day10(l.last_billed) }; });
+    const older = plans.filter((p) => p.day && cardDay && p.day < cardDay), newest = plans.map((p) => p.day).filter(Boolean).sort().pop();
+    const why = cardDay && newest && cardDay < newest
+      ? `The card balance is from ${nice(cardDay)}, before the plans were read (${nice(newest)}). It is the likely one to be out of date: a fresh picture of the card settles it.`
+      : older.length
+        ? `${older.map((p) => p.name).join(' and ')} ${older.length === 1 ? 'was' : 'were'} last read before the card balance (${nice(cardDay)}). If ${older.length === 1 ? 'it has' : 'they have'} been paid down or paid off since, set what is left.`
+        : 'The figures are from the same day. Either a plan belongs to another card, or the balance on the card screen leaves its plans out.';
+    add({ id: `plans:${c.id}`, sig: `${bal}:${split.inPlans}`, kind: 'plans', ref: String(c.id), title: `${c.name}: the plans add up to more than the card`,
+      text: `The plans inside it come to ${money(split.inPlans)}, but the card shows ${money(bal)}: ${money(split.over)} short. Tap the figure that is wrong.`,
+      sums: [
+        ...plans.map((p) => ({ label: p.name, value: p.balance, from: from(p.picture, p.day), note: p.billed && p.billed >= (p.day || '') ? `installment billed ${nice(p.billed)}` : null,
+          fix: { do: 'amount', label: `Change ${p.name}`, ask: `What is left on ${p.name}`, start: p.balance, target: `loan:${p.id}`,
+            more: [{ do: 'same', label: 'It is paid off', target: `loan:${p.id}`, value: 0 }, { do: 'unlink', label: 'Not on this card', loan: p.id }] } })),
+        { label: 'Plans together', value: split.inPlans, total: true },
+        { label: `${c.name} balance`, value: bal, from: from(cardPic, cardDay, snap && snap.source), fix: { do: 'amount', label: 'Change the card balance', ask: `What ${c.name} owes today`, start: split.inPlans, target: `credit_card:${c.id}` } },
+        { label: 'Short by', value: split.over, total: true, tone: 'warning' },
+      ],
+      why,
+      pictures: [...new Map([...plans.map((p) => [p.picture, `${p.name}, ${nice(p.day)}`]), [cardPic, `${c.name}, ${nice(cardDay)}`]].filter(([id]) => id)).entries()].map(([id, label]) => ({ id, label })),
       fixes: [
-        { do: 'amount', label: 'Update the card balance', ask: `What ${c.name} owes today`, start: split.inPlans, target: `credit_card:${c.id}` },
-        ...split.plans.map((p) => ({ do: 'amount', label: `Change ${p.name}`, ask: `What is left on ${p.name} (0 if it is paid off)`, start: p.balance, target: `loan:${p.id}` })),
+        { do: 'go', label: 'Add a fresh picture', to: '/screenshot' },
+        { do: 'same', label: 'The card figure leaves the plans out', target: `credit_card:${c.id}`, value: Math.round((bal + split.inPlans) * 100) / 100 },
         leave(),
       ] });
   }
@@ -65,7 +93,39 @@ export function issues({ checks = [], stale = [], creditCards = [], loans = [], 
     text: 'The years before and after it are here, so what follows from them has a gap.',
     fixes: [{ do: 'go', label: 'Add a picture of the return or notice', to: '/screenshot' }, { do: 'go', label: 'Enter the year', to: '/tax' }, leave('There was no return that year')] });
 
-  // 6. A balance not updated for a while. Left alone, it is asked about again the next month.
+  // 6. What is not known yet about an account, one entry per account. Each missing thing can be typed in place or
+  //    filled by a picture that shows it. Only things that change what the app works out are asked for.
+  const ask = (table, row, what, rows, uses) => {
+    const missing = rows.filter((r) => r.missing);
+    if (!missing.length) return;
+    add({ id: `need:${table}:${row.id}`, sig: missing.map((r) => r.field).join(','), kind: 'need', ref: String(row.id), title: `${row.name}: ${list(missing.map((r) => r.short))} ${missing.length === 1 ? 'is' : 'are'} not known`,
+      text: `The app cannot work out ${list(missing.map((r) => r.use))} without ${missing.length === 1 ? 'it' : 'them'}. Type ${missing.length === 1 ? 'it' : 'each one'} in, or add a picture that shows ${missing.length === 1 ? 'it' : 'them'}.`,
+      sums: missing.map((r) => ({ label: r.label, value: null, fix: { do: 'field', label: `Add ${r.short}`, ask: r.ask, input: r.input, table, id: row.id, field: r.field } })),
+      fixes: [{ do: 'go', label: `Add a picture of ${what}`, to: '/screenshot' }, leave('Not needed')] });
+  };
+  const blank = (v) => v == null || v === '' || !(Number(v) > 0);
+  for (const c of creditCards) {
+    if (c.is_gift_card) continue;
+    ask('credit_cards', c, 'the card', [
+      { field: 'credit_limit', missing: blank(c.credit_limit), label: 'Credit limit', short: 'the limit', use: 'how much of the limit is used', ask: `Credit limit of ${c.name}`, input: 'number' },
+      { field: 'due_date', missing: Number(c.balance) > 0 && !day10(c.due_date), label: 'Next payment due', short: 'the due date', use: 'when the payment is due', ask: `Day the next payment on ${c.name} is due`, input: 'date' },
+    ]);
+  }
+  for (const l of loans) {
+    if (!(Number(l.balance) > 0)) continue;
+    ask('loans', l, l.on_card_id ? 'the plan' : 'the loan', [
+      { field: 'payment_amount', missing: blank(l.payment_amount), label: 'Payment each time', short: 'the payment', use: 'what it takes each month', ask: `Payment on ${l.name}`, input: 'number' },
+      { field: 'next_payment_date', missing: !day10(l.next_payment_date), label: 'Next payment day', short: 'the next payment day', use: 'when it is paid down', ask: `Day of the next payment on ${l.name}`, input: 'date' },
+    ]);
+  }
+  for (const r of rooms) {
+    if (r.known || !(r.accounts || []).length) continue;
+    add({ id: `need:room:${r.kind}`, sig: 'room', kind: 'need', ref: r.kind, title: `${r.kind}: the room left is not known`,
+      text: `You have ${r.accounts.length === 1 ? 'a' : r.accounts.length} ${r.kind} account${r.accounts.length === 1 ? '' : 's'} here, but not the room the tax agency shows. One figure is enough; what goes in and out after it is counted for you.`,
+      fixes: [{ do: 'go', label: 'Add a picture of your CRA account or notice', to: '/screenshot' }, { do: 'go', label: 'Enter the figure', to: '/room' }, leave('Not needed')] });
+  }
+
+  // 7. A balance not updated for a while. Left alone, it is asked about again the next month.
   for (const x of stale) {
     const target = TARGET[x.kind];
     if (!target) continue;
