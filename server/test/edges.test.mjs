@@ -803,3 +803,28 @@ test('reading a set: pictures read before a restart are put together from the ke
   assert.deepEqual(r.used, ['a1', 'a2']);
   assert.deepEqual(r.proposal.lines.map((l) => [l.merchant, l.account.id, l.action]), [['Cafe', 'c1', 'record']]);
 });
+
+test('pictures of a statement: screens of one statement join and are proved; ones that do not add up are read as plain lines', () => {
+  const ctx = { today: '2026-11-25', bankAccounts: [], creditCards: [{ id: 'c1', name: 'TD Visa', last4: '4321', balance: 0 }], transactions: [] };
+  const all = [{ ...ctx.creditCards[0], _type: 'credit_card' }];
+  const st = { account_name: 'TD Visa', last4: '4321', period_start: '2026-10-06', period_end: '2026-11-04', opening_balance: 100, closing_balance: 130 };
+  const acct = { name: 'TD Visa', last4: '4321', type: 'credit_card', balance: 130 };
+  const a = { kind: 'statement', statement: st, accounts: [acct], lines: [{ date: '2026-10-10', merchant: 'Cafe', amount: 10, direction: 'out' }, { date: '2026-10-12', merchant: 'Shop', amount: 20, direction: 'out' }] };
+  const b = { kind: 'statement', statement: { ...st, opening_balance: null }, accounts: [acct], lines: [{ date: '2026-10-12', merchant: 'Shop', amount: 20, direction: 'out' }, { date: '2026-10-20', merchant: 'Payment', amount: 0, direction: 'in' }] };
+  // Two screens that overlap: one statement, the shared line once, and the sum proved.
+  const p = reader.settled(reader.together([{ id: 'a', note: '', reading: a }, { id: 'b', note: '', reading: b }], all), ctx, 's');
+  assert.deepEqual(p.statement.check, { adds_up: true, expected: 130, off: 0, lines: 2 });
+  assert.deepEqual(p.lines.filter((l) => l.action === 'record').map((l) => [l.merchant, l.src]), [['Cafe', 'a'], ['Shop', 'a']]);
+  // One screen alone does not add up: plain lines on the card, no alarm, and the closing balance is not today's balance.
+  const q = reader.settled({ ...a, lines: a.lines.slice(0, 1) }, ctx, 's');
+  assert.equal(q.statement, null);
+  assert.deepEqual(q.balances, []);
+  assert.deepEqual(q.updates.map((u) => u.changes.map((c) => [c.field, c.to])), [[['statement_balance', 130]]]);
+  assert.deepEqual(q.lines.map((l) => [l.merchant, l.account.id, l.action]), [['Cafe', 'c1', 'record']]);
+  // Statements of two cards chosen together: each line stays on its own card.
+  const other = { kind: 'statement', statement: { account_name: 'Rogers', period_end: '2026-11-11', closing_balance: 50 }, accounts: [{ name: 'Rogers', type: 'credit_card', balance: 50 }], lines: [{ date: '2026-10-30', merchant: 'Fuel', amount: 50, direction: 'out' }] };
+  const m = reader.settled(reader.together([{ id: 'a', note: '', reading: a }, { id: 'o', note: '', reading: other }], all), ctx, 's');
+  assert.equal(m.statement, null);
+  assert.deepEqual(m.lines.map((l) => [l.merchant, l.account.name]), [['Cafe', 'TD Visa'], ['Shop', 'TD Visa'], ['Fuel', 'Rogers']]);
+  assert.deepEqual(m.new_accounts.map((d) => [d.name, d.balance, d.statement_balance]), [['Rogers', null, 50]]);
+});

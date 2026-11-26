@@ -791,6 +791,12 @@ route('POST', '/api/read-pay', async (req, b) => {
 });
 // How many pictures are kept. The pictures themselves are never sent back in a list.
 route('POST', '/api/scans', (req) => ({ count: db.prepare("SELECT COUNT(*) AS n FROM rows WHERE tbl = 'scans' AND user_id = ?").get(authUser(req).id).n }));
+// One kept picture, for showing next to a question about it. Only the person it belongs to gets it.
+route('POST', '/api/scan-picture', (req, b) => {
+  const row = selectRows(authUser(req).id, { table: 'scans', filters: [['source_id', 'eq', String(b.id || '').slice(0, 40)]], limit: 1 })[0];
+  if (!row || !row.picture || !/^image\//.test(String(row.mime))) fail(404, 'That picture is not kept.');
+  return { mime: row.mime, picture: row.picture };
+});
 route('POST', '/api/read-screenshot', async (req, b) => {
   const uid = authUser(req).id;
   const all = (t) => selectRows(uid, { table: t, filters: [] });

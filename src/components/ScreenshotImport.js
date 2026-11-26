@@ -10,6 +10,27 @@ import { useFinanceData } from '../hooks/useFinanceData';
 import { suggestCategoryId } from '../utils/categoryRules';
 import { Camera, Image as ImageIcon } from 'lucide-react';
 
+// The part of a picture a question is about: a strip around the line, with the line marked when its place is known.
+// Tapping it opens the whole picture.
+function Snip({ url, y, mark, onOpen }) {
+  if (!url) return null;
+  const at = y != null && Number.isFinite(Number(y)) ? Math.min(100, Math.max(0, Number(y))) : null;
+  return (
+    <button type="button" onClick={onOpen} aria-label="Look at the whole picture" className="press relative block w-full h-36 overflow-hidden rounded-xl border border-line bg-surface-2">
+      <img src={url} alt="" className="w-full h-full object-cover" style={{ objectPosition: `50% ${at == null ? 0 : at}%` }} />
+      {at != null && mark && <span aria-hidden="true" className="absolute inset-x-0 h-10 border-y-2 border-amber-500 bg-amber-400/20" style={{ top: `calc(${at}% - 20px)` }} />}
+    </button>
+  );
+}
+// Answers to tap, one each.
+function Chips({ options, onPick, disabled }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((o) => <button key={o.value} type="button" disabled={disabled} onClick={() => onPick(o.value)} className="press px-3 py-2 rounded-full border border-line bg-surface text-sm font-medium disabled:opacity-50">{o.label}</button>)}
+    </div>
+  );
+}
+
 const readFile = (file) => new Promise((resolve, reject) => {
   const r = new FileReader();
   r.onload = () => resolve(String(r.result));
@@ -184,6 +205,18 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   };
   useEffect(() => { loadHeld(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
   const [filing, setFiling] = useState(false);
+  // Kept pictures, fetched to show next to a line that is waiting: { source_id: url }.
+  const [keptPics, setKeptPics] = useState({});
+  useEffect(() => {
+    if (image) return;
+    const want = [...new Set(held.map((h) => h.source_id).filter((id) => id && !(id in keptPics)))].slice(0, 12);
+    if (!want.length) return;
+    let live = true;
+    Promise.all(want.map(async (id) => { try { const r = await api('/api/scan-picture', { id }); return [id, `data:${r.mime};base64,${r.picture}`]; } catch { return [id, null]; } }))
+      .then((got) => { if (live) setKeptPics((m) => ({ ...m, ...Object.fromEntries(got) })); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [held, image]);
   // While something is being read, saved or filed the app does not load a newer version of itself.
   useEffect(() => { window.financeBusy = reading || saving || filing; return () => { window.financeBusy = false; }; }, [reading, saving, filing]);
   const fileHeld = async (list, to) => {
@@ -226,6 +259,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         }
       }));
       if (got[0].error) throw new Error(got[0].error);
+      // Each picture remembers what it was read as, so a question about a line can show the picture it is on.
+      pics.forEach((x, k) => { if (got[k] && got[k].source_id) x.image.sid = got[k].source_id; });
       const ok = pics.map((p, k) => ({ p, g: got[k] })).filter((x) => !x.g.error && !x.g.alone);
       let set = null;
       if (!got[0].alone && ok.length > 1) {
@@ -303,7 +338,11 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         const acct = ref(l.account), oth = ref(l.other);
         const out = l.direction === 'out';
         const kind = l.kind || (out ? 'purchase' : 'income');
-        const r = { ...l, kind, on: l.action === 'record' || l.action === 'mark_posted' || l.action === 'choose_account', target: acct, category_id: kind === 'purchase' || kind === 'income' ? suggestCategory(l.merchant, l.category_guess, kind === 'income') : '' };
+        // A line with no clear amount or date is asked about, not dropped: the answer makes it a line like any other.
+        const unclear = l.action === 'skip' && l.why === 'No clear amount or date';
+        const late = l.action === 'skip' && l.why === 'Dated after today';
+        if (unclear || late) l = { ...l, action: l.account ? 'record' : 'choose_account' };
+        const r = { ...l, kind, on: !late && (l.action === 'record' || l.action === 'mark_posted' || l.action === 'choose_account'), target: acct, category_id: kind === 'purchase' || kind === 'income' ? suggestCategory(l.merchant, l.category_guess, kind === 'income') : '' };
         // The other side of a payment or transfer, when it is not one of your accounts, is an account not in the app:
         // only your side changes. It can be changed on the line.
         if (kind === 'transfer') { r.from = out ? acct : oth; r.to = out ? oth : acct; if (r.from && !r.to) r.to = 'outside'; else if (r.to && !r.from) r.from = 'outside'; }
@@ -409,7 +448,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     for (const r of rows.filter((x) => x.on && homeless(x))) {
       try {
         const { error: e } = await server.from('held_lines').insert({ id: generateId(), date: r.date, merchant: String(r.merchant || '').slice(0, 80), amount: Number(r.amount), direction: r.direction, kind: r.kind, pending: !!r.pending,
-          hint: r.shown || r.other_hint || null, key: r.key || null, source_id: proposal.source_id, category_guess: r.category_guess || null, created_at: new Date().toISOString() });
+          hint: r.shown || r.other_hint || null, key: r.key || null, source_id: r.src || proposal.source_id, y: r.y == null ? null : r.y, category_guess: r.category_guess || null, created_at: new Date().toISOString() });
         if (e) throw new Error(e.message);
         result.held += 1;
       } catch (err) { result.failed.push(`${r.merchant}: ${err.message}`); }
@@ -600,7 +639,6 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length + loanDrafts.filter((l) => l.on).length + invDrafts.filter((x) => x.on).length + (scoreDraft && scoreDraft.on ? 1 : 0) + changes.filter((c) => c.on).length + billDrafts.filter((b) => b.on).length;
   const draftNeeds = (d) => (!d.on ? null : !d.name.trim() ? 'Enter a name' : null);
   const homelessRow = (r) => ['Choose the account', 'Choose the card', 'Choose both accounts'].includes(missing(r));
-  const toHold = rows.filter((r) => r.on && homelessRow(r)).length;
   const blocked = rows.filter((r) => r.on && missing(r) && !homelessRow(r)).length + drafts.filter(draftNeeds).length + loanDrafts.filter(loanNeeds).length + invDrafts.filter(invNeeds).length + (scoreNeeds(scoreDraft) ? 1 : 0) + billDrafts.filter(billNeeds).length;
   const snapDay = (v) => {
     if (!v) return null;
@@ -627,14 +665,19 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   // What has to be answered before saving, gathered in one place. Lines missing the same thing are answered together.
   const ASKS = [
     ['Choose what paid it', 'source', (n) => (n === 1 ? 'One card payment: which account paid it?' : `${n} card payments: which account paid them?`), { cards: false, outside: true }],
-    ['Choose the card', 'card', (n) => (n === 1 ? 'One card payment: which card was paid?' : `${n} card payments: which card was paid?`), { cards: true }],
-    ['Choose the account', 'target', (n) => (n === 1 ? 'One line: which account or card is it on?' : `${n} lines: which account or card are they on?`), {}],
+    ['Choose the card', 'card', (n) => (n === 1 ? 'Which card was paid?' : `${n} card payments: which card was paid?`), { cards: true }],
+    ['Choose the account', 'target', (n) => (n === 1 ? 'Which account or card is this on?' : `${n} lines: which account or card are they on?`), {}],
+    ['Choose both accounts', 'side', (n) => (n === 1 ? 'Which of your accounts is this transfer on?' : `${n} transfers: which of your accounts are they on?`), {}],
   ];
   const waiting = rows.filter((r) => r.on && missing(r) && !homelessRow(r));
   const homeless = rows.filter((r) => r.on && homelessRow(r));
-  const asks = ASKS.map(([why, field, text, opts]) => ({ why, field, opts, list: homeless.filter((r) => missing(r) === why), text })).filter((a) => a.list.length);
+  // Lines missing the same thing on the same picture are one question.
+  const asks = ASKS.flatMap(([why, field, text, opts]) => { const by = new Map(); homeless.filter((r) => missing(r) === why).forEach((r) => by.set(r.src || '', [...(by.get(r.src || '') || []), r])); return [...by].map(([src, list]) => ({ why, field, opts, text, src, list })); });
+  const shownPics = image ? [image, ...(image.set || []).map((x) => x.image)].filter((x) => !x.pdf && !x.csv && !x.typed) : [];
+  const picUrl = (src) => { const hit = shownPics.find((x) => x.sid && x.sid === src) || (shownPics.length === 1 ? shownPics[0] : null); return hit ? hit.url : (keptPics[src] || null); };
+  const leaveOut = (list) => { const ids = new Set(list.map((r) => r.i)); setRows((rs) => rs.map((r) => (ids.has(r.i) ? { ...r, on: false } : r))); };
   const otherWaiting = waiting;
-  const answerAll = (a, v) => { if (!v) return; const ids = new Set(a.list.map((r) => r.i)); setRows((rs) => rs.map((r) => (ids.has(r.i) ? { ...r, [a.field]: v } : r))); };
+  const answerAll = (a, v) => { if (!v) return; const ids = new Set(a.list.map((r) => r.i)); setRows((rs) => rs.map((r) => (!ids.has(r.i) ? r : a.field === 'side' ? { ...r, from: r.direction === 'in' ? 'outside' : v, to: r.direction === 'in' ? v : 'outside' } : { ...r, [a.field]: v }))); };
   const showLine = (i) => { setOpen(i); setTimeout(() => { const el = document.getElementById(`scan-line-${i}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); };
 
   return (
@@ -697,30 +740,31 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         )}
         {kept > 0 && !image && <p className="text-xs text-muted">{kept === 1 ? 'One picture is' : `${kept} pictures are`} kept with what was read from {kept === 1 ? 'it' : 'them'}.</p>}
         {held.length > 0 && !image && (
-          <div className="space-y-2 border-t border-line pt-3 text-sm">
-            <p className="font-medium">Waiting for an account: {held.length}</p>
-            <p className="text-muted">Lines from earlier pictures whose account was not shown. A later picture that shows it files them by itself. Or choose it here.</p>
+          <div className="space-y-3 border-t border-line pt-3 text-sm">
+            <p className="font-semibold text-base">{held.length === 1 ? 'One line is waiting for its account' : `${held.length} lines are waiting for their account`}</p>
+            <p className="text-muted">A later picture that shows the account files {held.length === 1 ? 'it' : 'them'}. Or tap the account.</p>
+            {held.map((h) => {
+              const url = keptPics[h.source_id] || null;
+              return (
+                <div key={h.id} className="rounded-xl border border-line p-3 space-y-3">
+                  <Snip url={url} y={h.y} mark onOpen={() => setBig(url)} />
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3 font-medium"><span className="min-w-0 truncate">{h.merchant || 'No name'}</span><span className="tabular-nums shrink-0">{h.direction === 'in' ? '+' : ''}{formatCurrency(Number(h.amount) || 0)}</span></div>
+                    <div className="text-muted">{formatDate(h.date) || h.date}{h.hint ? ` · shown as ${h.hint}` : ''}</div>
+                  </div>
+                  <Chips disabled={filing} options={accountOptions.filter((o) => !o.value.startsWith('new:'))} onPick={(v) => fileHeld([h], v)} />
+                  <button type="button" className="press text-sm text-muted underline" onClick={() => dropHeld(h)}>Not mine: remove it</button>
+                </div>
+              );
+            })}
             {held.length > 1 && (
-              <label className="block"><span className="text-muted">All of them are on</span>
+              <label className="block"><span className="text-muted">Or all of them are on</span>
                 <select className={`${input} mt-1 py-2.5 text-base`} value="" disabled={filing} onChange={(e) => fileHeld(held, e.target.value)}>
                   <option value="">Choose</option>
                   {accountOptions.filter((o) => !o.value.startsWith('new:')).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </label>
             )}
-            {held.map((h) => (
-              <div key={h.id} className="rounded-lg border border-line px-3 py-2 space-y-1">
-                <div className="flex items-baseline justify-between gap-3"><span className="min-w-0 truncate">{h.merchant}</span><span className="tabular-nums shrink-0">{h.direction === 'in' ? '+' : ''}{formatCurrency(Number(h.amount) || 0)}</span></div>
-                <div className="text-xs text-muted">{formatDate(h.date) || h.date}{h.hint ? ` · shown as ${h.hint}` : ''}</div>
-                <div className="flex items-center gap-2">
-                  <select className={`${input} py-2 text-base`} value="" disabled={filing} aria-label={`Account for ${h.merchant}`} onChange={(e) => fileHeld([h], e.target.value)}>
-                    <option value="">Choose the account</option>
-                    {accountOptions.filter((o) => !o.value.startsWith('new:')).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <button type="button" className="press shrink-0 text-sm text-muted underline" onClick={() => dropHeld(h)}>Remove</button>
-                </div>
-              </div>
-            ))}
           </div>
         )}
         {reading && (
@@ -740,31 +784,47 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           </div>
           {chosen === 0 && <p role="status" className="text-sm rounded-lg bg-accent-soft text-accent px-3 py-2">There is nothing to save from this one. {queue.length > 0 ? 'Tap Skip to the next at the bottom, or add a note and read it again.' : 'Tap Close at the bottom, or add a note and read it again.'}</p>}
           {image.set && image.set.length > 0 && <p className="text-sm">{image.set.length + 1} pictures were read together as one.</p>}
-          {toHold > 0 && (
-            <section className="rounded-xl border border-line bg-surface-2 px-3 py-3 space-y-3 text-sm">
-              <h3 className="font-semibold text-base">{toHold === 1 ? 'One line has no account yet' : `${toHold} lines have no account yet`}</h3>
-              <p>You can save now. {toHold === 1 ? 'It is' : 'They are'} kept and filed when a later picture shows the account. If you know it, choose it here.</p>
-              {asks.map((a) => (
-                <div key={a.why} className="space-y-1">
-                  <Select big label={a.text(a.list.length)} value="" onChange={(v) => answerAll(a, v)} {...a.opts} />
-                  <p className={`text-xs ${muted}`}>{a.list.slice(0, 3).map((r) => `${r.merchant} ${formatCurrency(Number(r.amount) || 0)}`).join(', ')}{a.list.length > 3 ? ` and ${a.list.length - 3} more` : ''}.</p>
-                </div>
-              ))}
+          {(asks.length > 0 || otherWaiting.length > 0) && (
+            <section id="scan-questions" className="space-y-3" style={{ scrollMarginTop: 80 }}>
+              <h3 className="font-semibold text-base">{asks.length + otherWaiting.length === 1 ? 'One question' : `${asks.length + otherWaiting.length} questions`}</h3>
+              <p className={`text-sm ${muted}`}>Tap an answer if you know it. Anything you leave is kept, and everything else can be saved now.</p>
+              {asks.map((a) => {
+                const url = picUrl(a.src), one = a.list.length === 1;
+                const ys = a.list.map((r) => r.y).filter((v) => v != null);
+                return (
+                  <div key={`${a.why}|${a.src}`} className="rounded-xl border border-line p-3 space-y-3">
+                    <Snip url={url} y={ys.length ? ys.reduce((s, v) => s + v, 0) / ys.length : null} mark={one} onOpen={() => setBig(url)} />
+                    <div>
+                      <p className="font-medium">{a.text(a.list.length)}</p>
+                      <p className={`text-sm ${muted}`}>{a.list.slice(0, 3).map((r) => `${r.merchant || 'No name'} ${formatCurrency(Number(r.amount) || 0)}`).join(', ')}{a.list.length > 3 ? ` and ${a.list.length - 3} more` : ''}{one && a.list[0].shown ? ` · shown as ${a.list[0].shown}` : ''}</p>
+                    </div>
+                    <Chips options={[...accountOptions.filter((o) => a.opts.cards === undefined || isCardRef(o.value) === a.opts.cards), ...(a.opts.outside ? [{ value: 'outside', label: 'Not in the app' }] : [])]} onPick={(v) => answerAll(a, v)} />
+                    <button type="button" className={`press text-sm underline ${muted}`} onClick={() => leaveOut(a.list)}>{one ? 'Not mine: leave it out' : 'Not mine: leave them out'}</button>
+                  </div>
+                );
+              })}
+              {otherWaiting.map((r) => {
+                const url = picUrl(r.src), need = missing(r);
+                return (
+                  <div key={r.i} className="rounded-xl border border-line p-3 space-y-3">
+                    <Snip url={url} y={r.y} mark onOpen={() => setBig(url)} />
+                    <div>
+                      <p className="font-medium">{need === 'Enter the amount' ? 'How much was this?' : need === 'Enter the date' ? 'What day was this?' : need === 'Choose what paid it' ? 'Which account paid this card?' : need}</p>
+                      <p className={`text-sm ${muted}`}>{r.merchant || 'No name'}{Number(r.amount) > 0 ? ` ${formatCurrency(Number(r.amount))}` : ''}{/^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? ` · ${formatDate(r.date) || r.date}` : ''}</p>
+                    </div>
+                    {need === 'Enter the amount' && <input className={`${input} py-2.5 text-base`} type="number" step="0.01" min="0" inputMode="decimal" aria-label="Amount" placeholder="Amount" value={Number(r.amount) > 0 || r.typing ? r.amount : ''} onChange={(e) => setRow(r.i, { amount: e.target.value, typing: true })} />}
+                    {need === 'Enter the date' && <input className={`${input} py-2.5 text-base`} type="date" aria-label="Date" value={r.date || ''} onChange={(e) => setRow(r.i, { date: e.target.value })} />}
+                    {need === 'Choose what paid it' && <Chips options={[...accountOptions.filter((o) => !isCardRef(o.value)), { value: 'outside', label: 'Not in the app' }]} onPick={(v) => setRow(r.i, { source: v })} />}
+                    <div className="flex items-center gap-4">
+                      {!['Enter the amount', 'Enter the date', 'Choose what paid it'].includes(need) && <button type="button" className="press px-3 py-2 rounded-lg border border-line bg-surface text-sm font-medium" onClick={() => showLine(r.i)}>Answer on the line</button>}
+                      <button type="button" className={`press text-sm underline ${muted}`} onClick={() => leaveOut([r])}>Leave it out</button>
+                    </div>
+                  </div>
+                );
+              })}
             </section>
           )}
-          {blocked > 0 && (
-            <section id="scan-questions" className="rounded-xl border border-amber-500/60 bg-amber-500/10 px-3 py-3 space-y-3 text-sm" style={{ scrollMarginTop: 80 }}>
-              <h3 className="font-semibold text-base">{blocked === 1 ? 'One thing needs a detail' : `${blocked} things need a detail`}</h3>
-              <p>{chosen - blocked > 0 ? 'Everything else can be saved now. These stay here until you fill them in, or you can leave them.' : 'Fill them in to save them, or leave them.'}</p>
-              {otherWaiting.map((r) => (
-                <div key={r.i} className="flex items-center justify-between gap-3">
-                  <span className="min-w-0"><span className="block truncate">{r.merchant} {formatCurrency(Number(r.amount) || 0)}</span><span className="block text-xs text-amber-600">{missing(r)}</span></span>
-                  <button type="button" className="press shrink-0 px-3 py-2 rounded-lg border border-line bg-surface font-medium" onClick={() => showLine(r.i)}>Answer</button>
-                </div>
-              ))}
-              {blocked > waiting.length && <p>{blocked - waiting.length === 1 ? 'One thing' : `${blocked - waiting.length} things`} to add below {blocked - waiting.length === 1 ? 'needs' : 'need'} a detail the picture does not show: look for the amber text.</p>}
-            </section>
-          )}
+          {blocked > waiting.length && <p className="text-sm text-amber-600">{blocked - waiting.length === 1 ? 'One thing' : `${blocked - waiting.length} things`} to add below {blocked - waiting.length === 1 ? 'needs' : 'need'} a name: look for the amber text, or untick {blocked - waiting.length === 1 ? 'it' : 'them'}.</p>}
           {usedRefs.some((ref) => accountOptions.some((o) => o.value === ref)) && accountOptions.length > 1 && (
             <details className="text-sm">
               <summary className="font-medium text-accent py-2 cursor-pointer">On the wrong account?</summary>
@@ -1019,6 +1079,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                         </div>
                         {r.action !== 'record' && r.action !== 'choose_account' && <div className={`text-xs ${muted}`}>{r.why || STATUS_TEXT[r.action]}</div>}
                         {need && (homelessRow(r) ? <div className={`text-xs ${muted}`}>No account yet: kept for later</div> : <div className="text-sm text-amber-600">{need}</div>)}
+                        {!r.on && r.why === 'Dated after today' && <div className={`text-xs ${muted}`}>Dated after today: tick it if it has happened</div>}
                         {historyOnly(r) && <div className={`text-xs ${muted}`}>Before your snapshot of {historyOnly(r)}: kept as history, today's balance does not change</div>}
                         {r.fx_note && <div className={`text-xs ${r.fx_failed ? 'text-warning' : muted}`}>{r.fx_note}</div>}
                         {r.items && <div className={`text-xs ${muted}`}>{r.items.length} items from the receipt{receiptSplits(r).splits ? `, split into ${receiptSplits(r).splits.length} categories` : ''}. Open Edit to give items their own category.</div>}
@@ -1030,6 +1091,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     </div>
                     {editable && open === r.i && (
                       <div className="grid grid-cols-2 gap-2 pl-6">
+                        {picUrl(r.src) && <div className="col-span-2"><Snip url={picUrl(r.src)} y={r.y} mark onOpen={() => setBig(picUrl(r.src))} /></div>}
                         <label className="block text-xs col-span-2"><span className={muted}>Description</span>
                           <input className={input} value={r.merchant} onChange={(e) => setRow(r.i, { merchant: e.target.value })} /></label>
                         <label className="block text-xs"><span className={muted}>Amount</span>

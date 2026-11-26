@@ -20,7 +20,7 @@ Return JSON:
  "credit_score":{"bureau":"Equifax, TransUnion or Experian as shown, or null","score":whole number,"date":"YYYY-MM-DD it is dated or was updated, or null"} or null (only when the screen shows a credit score),
  "statement":{"account_name":"","last4":"or null","period_start":"YYYY-MM-DD","period_end":"YYYY-MM-DD","opening_balance":number,"closing_balance":number} or null (only for a statement),
  "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|investment|property|gift_card|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null,"statement_balance":number or null,"autopay":true|false|null,"loan_kind":"loan|mortgage|line_of_credit|car_lease|bnpl|plan|student or null","payment_amount":number or null,"payment_frequency":"weekly|biweekly|semimonthly|monthly or null","interest_rate":number or null}],
- "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null",
+ "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null","y":whole number from 0 to 100 saying how far down the picture this line sits (0 is the top edge, 100 the bottom edge),
    "type":"purchase|income|refund|card_payment|transfer|fee|interest","currency":"3-letter code only when the line shows a currency other than the account's (e.g. USD), else null","original_amount":"the amount in that other currency when the line also shows the converted amount, else null","other_account":"for card_payment or transfer: the other account's name or last 4 digits as shown, else null",
    "category":"one short category: for a purchase or fee (Groceries, Dining, Transport, Fuel, Bills, Utilities, Phone, Shopping, Entertainment, Health, Travel, Subscriptions, Rent, Insurance, Education, Personal care, Gifts, Fees); for income (Salary, Freelance, Interest, Government, Refund, Other income); else null"}],
  "receipt":{"merchant":"","date":"YYYY-MM-DD","total":number,"items":[{"name":"","amount":number}]} or null,
@@ -104,7 +104,10 @@ function tidy(reading, today) {
       pending: yes(l.pending) === true, account_name: words(l.account_name, 60), last4: four(l.last4), type,
       currency: /^[A-Z]{3}$/.test(cur) ? cur : null, original_amount: money(l.original_amount), other_account: words(l.other_account, 60), category: words(l.category, 40),
     };
+    const y = typeof l.y === 'number' || typeof l.y === 'string' ? Number(l.y) : NaN;
+    out.y = Number.isFinite(y) && y >= 0 && y <= 100 && String(l.y).trim() !== '' ? Math.round(y) : null;
     if (Number.isInteger(l._pic)) out._pic = l._pic;
+    if (typeof l._src === 'string') out._src = l._src.slice(0, 40);
     if (typeof l._kind === 'string') out._kind = l._kind;
     return out;
   });
@@ -280,25 +283,45 @@ function withNote(reading, all, note) {
 // Pictures chosen together are usually pieces of the same thing: a card's summary, then its transactions over two or
 // three screens. They are put together as one reading, so an account named on one picture serves the lines on
 // another, a line on two overlapping pictures is one line, and everything is checked once.
-// A statement, a receipt, a bill, a credit score and a pay slip each stand alone.
-const alone = (r) => !r || r.statement || r.receipt || r.bill || r.credit_score || ['statement', 'receipt', 'bill', 'credit_score', 'pay_slip'].includes(r.kind);
+// A receipt, a bill, a credit score and a pay slip each stand alone. So does a statement file (a PDF), which is whole.
+// A picture of a statement is one screen of it: it joins the others like any picture.
+const alone = (r) => !r || r.receipt || r.bill || r.credit_score || ['receipt', 'bill', 'credit_score', 'pay_slip'].includes(r.kind);
+// A picture of part of a statement, read as what it is: lines, and an account whose statement balance is known.
+// The closing balance is what was owed on the statement day, not today, so it is not taken as today's balance.
+function loose(reading) {
+  const r = tidy(reading), st = r.statement;
+  if (!st) return r;
+  const its = (a) => r.accounts.length === 1 || (st.last4 && a.last4 === st.last4) || (norm(st.account_name) && norm(a.name) === norm(st.account_name));
+  const accounts = r.accounts.map((a) => (its(a) ? { ...a, balance: null, statement_balance: a.statement_balance != null ? a.statement_balance : a.type === 'credit_card' ? st.closing_balance : null } : a));
+  return { ...r, accounts, statement: null, kind: r.lines.length ? 'transactions' : 'balance' };
+}
+// A statement in pictures is trusted as a statement only when its opening balance and lines give its closing balance.
+function settled(reading, ctx, sourceId) {
+  const p = plan(reading, ctx, sourceId);
+  return p.statement && !(p.statement.check && p.statement.check.adds_up) ? plan(loose(reading), ctx, sourceId) : p;
+}
 const CASH = (a) => a && !['loan', 'investment', 'property'].includes(a.type);
 function together(parts, all) {
   const accounts = [], lines = [], notes = [];
   let before = null;
-  parts.forEach(({ reading: r0, note }, pic) => {
-    const { reading: r, noted } = withNote(sameAccounts(tidy(r0)), all, note);
+  // Screens of one statement (the same account and closing day) stay a statement; anything else is read loosely.
+  const sts = parts.map((x) => tidy(x.reading).statement).filter(Boolean);
+  const one = sts.length > 0 && sts.every((s) => s.period_end && s.period_end === sts[0].period_end && norm(s.account_name) === norm(sts[0].account_name) && (s.last4 || null) === (sts[0].last4 || null));
+  const first = (k) => { const s = sts.find((x) => x[k] != null); return s ? s[k] : null; };
+  const statement = one ? { account_name: first('account_name'), last4: first('last4'), period_start: sts.map((s) => s.period_start).filter(Boolean).sort()[0] || null, period_end: sts[0].period_end, opening_balance: first('opening_balance'), closing_balance: first('closing_balance') } : null;
+  parts.forEach(({ reading: r0, note, id }, pic) => {
+    const { reading: r, noted } = withNote(sameAccounts(one ? tidy(r0) : loose(r0)), all, note);
     const shown = (r.accounts || []).filter(CASH);
     // The account a picture is about: the one it shows, else the one its note names, else (nothing shown at all)
     // the one on the picture just before it, which it carries on from.
     const own = shown.length === 1 ? shown[0] : !shown.length && noted ? { name: noted.name, last4: noted.last4 || noted.last_four || null, type: noted._type === 'credit_card' ? 'credit_card' : 'chequing' } : null;
     const from = own || (shown.length ? null : before);
-    for (const l of r.lines || []) lines.push({ ...l, ...(!l.account_name && !l.last4 && from ? { account_name: from.name, last4: from.last4 || null, _kind: from.type } : {}), _pic: pic });
+    for (const l of r.lines || []) lines.push({ ...l, ...(!l.account_name && !l.last4 && from ? { account_name: from.name, last4: from.last4 || null, _kind: from.type } : {}), _pic: pic, ...(id ? { _src: String(id) } : {}) });
     accounts.push(...(r.accounts || []).filter(Boolean));
     if (own) before = own; else if (shown.length) before = null;
     if (r.notes) notes.push(String(r.notes));
   });
-  return { kind: lines.length ? 'transactions' : 'balance', accounts, lines, notes: [...new Set(notes)].join(' ').slice(0, 400) };
+  return { kind: statement ? 'statement' : lines.length ? 'transactions' : 'balance', accounts, lines, statement, notes: [...new Set(notes)].join(' ').slice(0, 400) };
 }
 
 function plan(reading, ctx, sourceId) {
@@ -358,6 +381,8 @@ function plan(reading, ctx, sourceId) {
       i, date: l.date, merchant: l.merchant, amount, direction: l.direction === 'in' ? 'in' : 'out', pending: !!l.pending,
       account: acct ? { type: acct._type, id: acct.id, name: acct.name } : null, key, action: 'record',
       shown: l.account_name || (l.last4 ? `ending ${String(l.last4).slice(-4)}` : null),
+      // Which picture the line is on and how far down it, so a question about it can show that part of the picture.
+      src: l._src || sourceId, y: l.y == null ? null : l.y,
       // For a line on a new account the browser rebuilds the key with the saved account's id, so a later scan matches it.
       key_rest: `${l.date}|${mkey(l.merchant)}|${amount.toFixed(2)}|${n}`,
       kind, other: other ? { type: other._type, id: other.id, name: other.name } : null, other_hint: l.other_account || null,
@@ -519,7 +544,7 @@ function plan(reading, ctx, sourceId) {
     if (!acct) continue;
     lines.push({ i: lines.length, date: h.date, merchant: h.merchant, amount: amt, direction: h.direction === 'in' ? 'in' : 'out', pending: !!h.pending,
       account: { type: acct._type, id: acct.id, name: acct.name }, key: h.key || ('held:' + h.id), action: 'record', kind: KINDS.has(h.kind) ? h.kind : 'purchase',
-      other: null, other_hint: null, category_guess: h.category_guess || null, held_id: h.id, why: 'From an earlier picture: its account is known now' });
+      other: null, other_hint: null, category_guess: h.category_guess || null, held_id: h.id, src: words(h.source_id, 40), y: Number.isFinite(Number(h.y)) && h.y != null ? Number(h.y) : null, why: 'From an earlier picture: its account is known now' });
   }
   const unknown = (reading.accounts || []).filter(a => !['loan', 'investment', 'property'].includes(a.type) && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
@@ -570,7 +595,7 @@ async function read(uid, body, ctx) {
   // The picture and what was read are already kept. If sorting it fails for a reason nobody foresaw, the person still
   // gets an answer and the fault is written down to be fixed as a rule.
   let p;
-  try { p = await priced(plan(reading, ctx, sourceId), ctx); }
+  try { p = await priced(mime === 'application/pdf' || mime === 'text/csv' ? plan(reading, ctx, sourceId) : settled(reading, ctx, sourceId), ctx); }
   catch (e) { console.error(`screen fault ${sourceId}: ${String((e && e.stack) || e).split('\n').slice(0, 3).join(' | ').slice(0, 300)}`); p = nothing(sourceId); }
   // Whether it can be put together with other pictures chosen with it.
   p.alone = mime === 'text/csv' || mime === 'application/pdf' || !!alone(reading);
@@ -594,7 +619,7 @@ async function readSet(uid, body, ctx) {
   const all = [...ctx.bankAccounts.map((a) => ({ ...a, _type: 'bank_account' })), ...ctx.creditCards.map((c) => ({ ...c, _type: 'credit_card' }))];
   const sourceId = crypto.createHash('sha256').update(parts.map((p) => p.id).sort().join('|')).digest('hex').slice(0, 16);
   let p;
-  try { p = await priced(plan(together(parts, all), { ...ctx, note: '' }, sourceId), ctx); }
+  try { p = await priced(settled(together(parts, all), { ...ctx, note: '' }, sourceId), ctx); }
   catch (e) { console.error(`screen fault set ${sourceId}: ${String((e && e.stack) || e).split('\n').slice(0, 3).join(' | ').slice(0, 300)}`); return { proposal: null, used: [] }; }
   p.pictures = parts.length;
   return { proposal: p, used: parts.map((x) => x.id) };
@@ -706,4 +731,4 @@ async function readScore(body, ctx) {
   return p;
 }
 
-module.exports = { tidy, money, day, read, readSet, together, plan, resolveAccount, nameFits, noteAccount, sameAccounts, mkey, cleanNote, readPay, planPay, readScore, planScore };
+module.exports = { tidy, money, day, loose, settled, read, readSet, together, plan, resolveAccount, nameFits, noteAccount, sameAccounts, mkey, cleanNote, readPay, planPay, readScore, planScore };
