@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/server';
-import { recordExpense, recordIncome, recordRefund, recordTransfer, recordCardPayment, recordSnapshot, reverseTransaction } from '../utils/money';
+import { moveLines, recordExpense, recordIncome, recordRefund, recordTransfer, recordCardPayment, recordSnapshot, reverseTransaction } from '../utils/money';
 import { server } from '../utils/server';
 import { formatCurrency, formatDate, generateId } from '../utils/helpers';
 import { loadPending, savePending, clearPending } from '../utils/pendingScan';
@@ -11,6 +11,7 @@ import { suggestCategoryId } from '../utils/categoryRules';
 import { TAX_FIELDS } from '../utils/room';
 import { Camera, Image as ImageIcon } from 'lucide-react';
 import { Picture } from './shared/Picture';
+import { showToast } from '../utils/toast';
 import { Sums } from './shared/Issues';
 import { plansOnPicture } from '../utils/issues';
 
@@ -764,6 +765,20 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const picUrl = (src) => { const hit = shownPics.find((x) => x.sid && x.sid === src) || (shownPics.length === 1 ? shownPics[0] : null); return hit ? hit.url : (keptPics[src] || null); };
   const leaveOut = (list) => { const ids = new Set(list.map((r) => r.i)); setRows((rs) => rs.map((r) => (ids.has(r.i) ? { ...r, on: false } : r))); };
   const otherWaiting = waiting;
+  // Lines this picture shows on one account that are already saved under another: offered to be moved, never saved twice.
+  const elsewhere = [...rows.filter((r) => r.elsewhere && r.existing_id && r.target && !r.target.startsWith('new:')).reduce((m, r) => {
+    const k = `${r.elsewhere.type}:${r.elsewhere.id}|${r.target}`;
+    return m.set(k, { key: k, from: r.elsewhere, to: r.target, list: [...((m.get(k) || {}).list || []), r] });
+  }, new Map()).values()];
+  const settle = (g, text) => { const ids = new Set(g.list.map((r) => r.i)); setRows((rs) => rs.map((r) => (ids.has(r.i) ? { ...r, elsewhere: null, why: text } : r))); };
+  const moveSaved = async (g) => {
+    try {
+      await moveLines(g.list.map((r) => ({ id: r.existing_id, from: `${g.from.type}:${g.from.id}` })), g.to);
+      settle(g, `Moved from ${g.from.name} to ${nameOf(g.to)}`);
+      showToast.success(g.list.length === 1 ? `Moved to ${nameOf(g.to)}.` : `${g.list.length} lines moved to ${nameOf(g.to)}.`);
+      if (onUpdate) await onUpdate();
+    } catch (e) { showToast.error(e.message); }
+  };
   const answerAll = (a, v) => { if (!v) return; const ids = new Set(a.list.map((r) => r.i)); setRows((rs) => rs.map((r) => (!ids.has(r.i) ? r : a.field === 'side' ? { ...r, from: r.direction === 'in' ? 'outside' : v, to: r.direction === 'in' ? v : 'outside' } : { ...r, [a.field]: v }))); };
   const showLine = (i) => { setOpen(i); setTimeout(() => { const el = document.getElementById(`scan-line-${i}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); };
 
@@ -914,6 +929,22 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             </section>
           )}
           {blocked > waiting.length && <p className="text-sm text-amber-600">{blocked - waiting.length === 1 ? 'One thing' : `${blocked - waiting.length} things`} to add below {blocked - waiting.length === 1 ? 'needs' : 'need'} a name: look for the amber text, or untick {blocked - waiting.length === 1 ? 'it' : 'them'}.</p>}
+          {elsewhere.map((g) => {
+            const n = g.list.length, ys = g.list.map((r) => r.y).filter((v) => v != null);
+            return (
+              <div key={g.key} className="rounded-xl border border-amber-500/50 p-3 space-y-3">
+                <Picture url={picUrl(g.list[0].src)} y={ys.length ? ys.reduce((a, v) => a + v, 0) / ys.length : null} mark={n === 1} />
+                <div>
+                  <p className="font-medium">{n === 1 ? 'One line is' : `${n} lines are`} already saved under {g.from.name}. This picture shows {n === 1 ? 'it' : 'them'} on {nameOf(g.to)}.</p>
+                  <p className={`text-sm ${muted}`}>{g.list.slice(0, 3).map((r) => `${r.merchant || 'No name'} ${formatCurrency(Number(r.amount) || 0)}`).join(', ')}{n > 3 ? ` and ${n - 3} more` : ''}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button type="button" className="press px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium" onClick={() => moveSaved(g)}>Move {n === 1 ? 'it' : 'them'} to {nameOf(g.to)}</button>
+                  <button type="button" className={`press text-sm underline ${muted}`} onClick={() => settle(g, `Already saved under ${g.from.name}`)}>Leave {n === 1 ? 'it' : 'them'} under {g.from.name}</button>
+                </div>
+              </div>
+            );
+          })}
           {usedRefs.some((ref) => accountOptions.some((o) => o.value === ref)) && (
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">Where this goes</h3>
@@ -1248,6 +1279,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                         </div>
                         {r.action !== 'record' && r.action !== 'choose_account' && <div className={`text-xs ${muted}`}>{r.why || STATUS_TEXT[r.action]}</div>}
                         {need && (homelessRow(r) ? <div className={`text-xs ${muted}`}>No account yet: kept for later</div> : <div className="text-sm text-amber-600">{need}</div>)}
+                        {r.doubt && <div className="text-xs text-warning">The balance shown beside this line does not fit its amount. Check it against the picture.</div>}
                         {!r.on && r.why === 'Dated after today' && <div className={`text-xs ${muted}`}>Dated after today: tick it if it has happened</div>}
                         {historyOnly(r) && <div className={`text-xs ${muted}`}>Before your snapshot of {historyOnly(r)}: kept as history, today's balance does not change</div>}
                         {r.fx_note && <div className={`text-xs ${r.fx_failed ? 'text-warning' : muted}`}>{r.fx_note}</div>}

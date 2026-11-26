@@ -1865,3 +1865,41 @@ test('a line on the wrong account moves to the right one: both balances follow, 
   assert.equal((await get('bank_accounts', a)).balance, 130);
   assert.equal((await get('bank_accounts', b)).balance, 100);
 });
+
+test('pictures count once: the order they are chosen in, the balance beside each line, and a line saved under another account', () => {
+  const { plan, together, tidy } = require(path.join(root, 'server', 'reader.js'));
+  const bankAccounts = [{ id: 'mon', name: 'Monies', balance: 0 }, { id: 'joint', name: 'Joint Chequing', balance: 0 }];
+  const all = bankAccounts.map((a) => ({ ...a, _type: 'bank_account' }));
+  const ctx = { bankAccounts, creditCards: [], transactions: [], today: '2026-11-26' };
+  // Two overlapping screens of one account. Only the second names it; the first is chosen first.
+  const a = { kind: 'transactions', bank: 'Wealthsimple', accounts: [], lines: [
+    { date: '2026-11-20', merchant: 'Pine', amount: 1322.96, direction: 'out', type: 'purchase' },
+    { date: '2026-11-19', merchant: 'RITHUL RAPHEL', amount: 350, direction: 'in', type: 'income' },
+    { date: '2026-11-19', merchant: 'Transfer out', amount: 2923.99, direction: 'out', type: 'transfer' }] };
+  const b = { kind: 'transactions', bank: 'Wealthsimple', accounts: [{ name: 'Monies', type: 'chequing' }], lines: [
+    { date: '2026-11-19', merchant: 'RITHUL RAPHEL', amount: 350, direction: 'in', type: 'transfer', account_name: 'Monies' },
+    { date: '2026-11-19', merchant: 'Transfer out', amount: 2923.99, direction: 'out', type: 'transfer', account_name: 'Monies' },
+    { date: '2026-11-19', merchant: 'INTERAC CORP.', amount: 2923.99, direction: 'in', type: 'income', account_name: 'Monies' }] };
+  for (const order of [[a, b], [b, a]]) {
+    const p = plan(together(order.map((reading, i) => ({ id: 'p' + i, note: '', reading })), all), ctx, 'set');
+    assert.equal(p.lines.length, 4);
+    assert.ok(p.lines.every((l) => l.account && l.account.id === 'mon'));
+  }
+  // The balance printed after each line decides in or out, and marks an amount that does not fit.
+  const t = tidy({ kind: 'transactions', accounts: [], lines: [
+    { date: '2026-11-19', merchant: 'RITHUL RAPHEL', amount: 350, direction: 'out', balance_after: 350 },
+    { date: '2026-11-19', merchant: 'Transfer out', amount: 2923.99, direction: 'in', balance_after: 0 },
+    { date: '2026-11-19', merchant: 'INTERAC CORP.', amount: 2923.99, direction: 'in', balance_after: 2923.99 },
+    { date: '2026-11-18', merchant: 'Misread', amount: 12, direction: 'out', balance_after: 0 },
+    { date: '2026-11-18', merchant: 'Transfer in', amount: 1020, direction: 'in', balance_after: 1020 }] }, '2026-11-26');
+  assert.deepEqual(t.lines.map((l) => l.direction), ['in', 'out', 'in', 'out', 'in']);
+  assert.deepEqual(t.lines.map((l) => !!l._doubt), [false, false, false, true, false]);
+  assert.equal(plan(t, { ...ctx, onlyAccount: all[0] }, 'one').lines[3].doubt, true);
+  // A deposit saved under Joint by an earlier picture; this picture shows it on Monies.
+  const saved = [{ id: 't1', type: 'income', amount: 365.5, date: '2026-11-19', status: 'active', payment_method: 'bank_account', payment_method_id: 'joint', description: 'EFT Deposit from INTERAC CORP.', history_only: [{ table: 'bank_accounts', id: 'joint', amount: 365.5 }] },
+    { id: 't2', type: 'expense', amount: 365.5, date: '2026-11-19', status: 'active', payment_method: 'bank_account', payment_method_id: 'joint', description: 'EFT Deposit from INTERAC CORP.', _legs: [{ table: 'bank_accounts', id: 'joint', field: 'balance', delta: -365.5 }] }];
+  const again = plan({ kind: 'transactions', accounts: [{ name: 'Monies', type: 'chequing' }], lines: [{ date: '2026-11-19', merchant: 'EFT Deposit from INTERAC CORP.', amount: 365.5, direction: 'in', type: 'income' }] }, { ...ctx, transactions: saved }, 'again').lines[0];
+  assert.equal(again.action, 'already');
+  assert.equal(again.existing_id, 't1');
+  assert.deepEqual(again.elsewhere, { type: 'bank_account', id: 'joint', name: 'Joint Chequing' });
+});

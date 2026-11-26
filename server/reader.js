@@ -24,7 +24,7 @@ Return JSON:
    "holdings":[{"symbol":"ticker as shown, or null","name":"as shown","units":number of shares or units,"price":market price of one unit or null,"value":market value of this holding or null,"currency":"CAD|USD or another 3-letter code when shown, else null"}] or null (only for an investment account that lists what it holds),"cash":cash held inside that investment account or null}],
  "tax_room":[{"kind":"TFSA|RRSP|FHSA","room":number,"as_of":"YYYY-MM-DD"}] or null (only when a tax agency screen or letter states contribution room),
  "tax_year":{"year":the tax year as a whole number,"total_income":number or null,"net_income":number or null,"taxable_income":number or null,"employment_income":number or null,"rrsp_deducted":number or null,"pension_adjustment":number or null,"refund":number or null,"balance_owing":number or null,"rrsp_limit_next":"the RRSP deduction limit for the following year, as a number, when stated, else null","unused_rrsp":number or null,"tuition_carry":number or null} or null (only for a tax return, a return summary or a notice of assessment),
- "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null","y":whole number from 0 to 100 saying how far down the picture this line sits (0 is the top edge, 100 the bottom edge),
+ "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null","balance_after":"the account's running balance printed beside this line (what the account held after it), as a number, else null","y":whole number from 0 to 100 saying how far down the picture this line sits (0 is the top edge, 100 the bottom edge),
    "type":"purchase|income|refund|card_payment|transfer|fee|interest","currency":"3-letter code only when the line shows a currency other than the account's (e.g. USD), else null","original_amount":"the amount in that other currency when the line also shows the converted amount, else null","other_account":"for card_payment or transfer: the other account's name or last 4 digits as shown, else null",
    "category":"one short category: for a purchase or fee (Groceries, Dining, Transport, Fuel, Bills, Utilities, Phone, Shopping, Entertainment, Health, Travel, Subscriptions, Rent, Insurance, Education, Personal care, Gifts, Fees); for income (Salary, Freelance, Interest, Government, Refund, Other income); else null"}],
  "receipt":{"merchant":"","date":"YYYY-MM-DD","total":number,"items":[{"name":"","amount":number}]} or null,
@@ -135,9 +135,28 @@ function tidy(reading, today) {
     if (Number.isInteger(l._pic)) out._pic = l._pic;
     if (typeof l._src === 'string') out._src = l._src.slice(0, 40);
     if (typeof l._kind === 'string') out._kind = l._kind;
+    if (money(l.balance_after) != null) out.balance_after = money(l.balance_after);
     if (words(l._bank, 40)) out._bank = words(l._bank, 40);
+    if (l._proved === true) out._proved = true;
+    if (l._doubt === true) out._doubt = true;
     return out;
   });
+  // A bank screen that prints the balance after each line proves each line: the step from one balance to the next is
+  // the line between them. Where the amount fits the step, the step decides whether money came in or went out; where
+  // it does not, the line is marked so the person looks at it. Not used for a card, whose balance is what is owed.
+  if (!accounts.some((a) => a.type === 'credit_card' || a.type === 'loan')) {
+    const cents = (n) => Math.round(Number(n) * 100);
+    // Newest first (as bank apps list them): the upper line of a pair made the step. Oldest first: the lower one did.
+    const dated = lines.filter((l) => l.date), newestFirst = !dated.length || dated[0].date >= dated[dated.length - 1].date;
+    for (let i = 0; i + 1 < lines.length; i++) {
+      const a = lines[i], b = lines[i + 1];
+      if (a.balance_after == null || b.balance_after == null || (a.account_name || '') !== (b.account_name || '')) continue;
+      const [l, step] = newestFirst ? [a, a.balance_after - b.balance_after] : [b, b.balance_after - a.balance_after];
+      if (l.amount == null) continue;
+      if (cents(Math.abs(step)) === cents(Math.abs(l.amount))) { l.direction = step > 0 ? 'in' : 'out'; l._proved = true; delete l._doubt; }
+      else l._doubt = true;
+    }
+  }
   const st = obj(r.statement), rc = obj(r.receipt), bl = obj(r.bill), sc = obj(r.credit_score);
   const kind = KIND_SET.has(r.kind) ? r.kind : lines.length ? 'transactions' : accounts.length ? 'balance' : 'other';
   const out = {
@@ -377,15 +396,22 @@ function together(parts, all) {
   const one = sts.length > 0 && sts.every((s) => s.period_end && s.period_end === sts[0].period_end && norm(s.account_name) === norm(sts[0].account_name) && (s.last4 || null) === (sts[0].last4 || null));
   const first = (k) => { const s = sts.find((x) => x[k] != null); return s ? s[k] : null; };
   const statement = one ? { account_name: first('account_name'), last4: first('last4'), period_start: sts.map((s) => s.period_start).filter(Boolean).sort()[0] || null, period_end: sts[0].period_end, opening_balance: first('opening_balance'), closing_balance: first('closing_balance') } : null;
-  parts.forEach(({ reading: r0, note, id }, pic) => {
+  // The account each picture is about, worked out first, so a picture that names none can take the one on the picture
+  // before it or, when it comes first, the one on the picture after it. The order they were chosen in must not matter.
+  const about = parts.map(({ reading: r0, note }) => {
     const { reading: r, noted } = withNote(sameAccounts(one ? tidy(r0) : loose(r0)), all, note);
-    const shown = (r.accounts || []).filter(CASH);
+    const shown = (r.accounts || []).filter(CASH), bank = tidy(r0).bank || null, stamp = bank ? { _bank: bank } : {};
+    return { r, bank, shown, stamp, own: shown.length === 1 ? { ...shown[0], ...stamp } : !shown.length && noted ? { name: noted.name, last4: noted.last4 || noted.last_four || null, type: noted._type === 'credit_card' ? 'credit_card' : 'chequing', ...stamp } : null };
+  });
+  const next = (pic) => { for (let j = pic + 1; j < about.length; j++) { if (about[j].own) return about[j].own; if (about[j].shown.length) return null; } return null; };
+  parts.forEach(({ id }, pic) => {
+    const { r, bank, shown, stamp, own } = about[pic];
     // The account a picture is about: the one it shows, else the one its note names, else (nothing shown at all)
     // the one on the picture just before it, which it carries on from.
-    const bank = tidy(r0).bank || null, stamp = bank ? { _bank: bank } : {};
-    const own = shown.length === 1 ? { ...shown[0], ...stamp } : !shown.length && noted ? { name: noted.name, last4: noted.last4 || noted.last_four || null, type: noted._type === 'credit_card' ? 'credit_card' : 'chequing', ...stamp } : null;
-    // A picture that names no account carries on from the one before it, unless it is from another bank.
-    const from = own || (shown.length || (before && sameBank(before._bank, bank) === false) ? null : before);
+    // A picture that names no account carries on from the one before it, else the one after it, unless that one is
+    // from another bank.
+    const near = shown.length ? null : before || next(pic);
+    const from = own || (near && sameBank(near._bank, bank) === false ? null : near);
     for (const l of r.lines || []) lines.push({ ...l, ...stamp, ...(!l.account_name && !l.last4 && from ? { account_name: from.name, last4: from.last4 || null, _kind: from.type } : {}), _pic: pic, ...(id ? { _src: String(id) } : {}) });
     accounts.push(...(r.accounts || []).filter(Boolean).map((a) => ({ ...a, ...stamp, ...(id ? { _src: String(id) } : {}) })));
     if (own) before = own; else if (shown.length) before = null;
@@ -487,6 +513,19 @@ function plan(reading, ctx, sourceId) {
     if (samePair) { out.action = 'already'; out.existing_id = samePair.id; out.why = 'Looks already recorded from the other account'; }
     if (same && !l.pending && same.pending) { out.action = 'mark_posted'; out.existing_id = same.id; out.why = 'Posts the pending line already recorded'; }
     else if (same) { out.action = 'already'; out.existing_id = same.id; out.why = 'Looks already recorded'; }
+    // The same line already saved under another account of the same kind (a picture that was matched to the wrong
+    // one, then added again): it is not saved twice. The person is offered to move it to the account this picture shows.
+    if (out.action === 'record' && acct && !String(acct.id).startsWith('new:') && (kind === 'purchase' || kind === 'income' || kind === 'refund')) {
+      const table = acct._type === 'credit_card' ? 'credit_cards' : 'bank_accounts';
+      const did = (t, id) => { let c = 0, seen = false; for (const x of [...(t._legs || []), ...(t.history_only || [])]) if (x && x.table === table && String(x.id) === String(id)) { c += Number(x.delta != null ? x.delta : x.amount) || 0; seen = true; } return seen ? c : null; };
+      const up = (l.direction === 'in') === (acct._type !== 'credit_card');
+      const twin = transactions.find((t) => t.status !== 'undone' && t.status !== 'deleted' && t.payment_method === acct._type && t.payment_method_id != null && String(t.payment_method_id) !== String(acct.id)
+        && ['expense', 'income', 'refund'].includes(t.type) && sameMoney(t) && dayDiff(t.date, l.date) <= 1 && mkey(t.description) && mkey(t.description) === mkey(l.merchant)
+        && (() => { const d = did(t, t.payment_method_id); return d != null && d !== 0 && (d > 0) === up; })());
+      const home = twin && all.find((a) => a._type === acct._type && String(a.id) === String(twin.payment_method_id));
+      if (twin && home) { out.action = 'already'; out.existing_id = twin.id; out.elsewhere = { type: home._type, id: home.id, name: home.name }; out.why = `Already saved under ${home.name}`; }
+    }
+    if (l._doubt) out.doubt = true;
     // A posted line whose pending version is recorded from an earlier screenshot (date may move a few days).
     if (out.action === 'record' && acct && !l.pending) {
       const pend = transactions.find(t => t.pending && t.status === 'active' && String(t.payment_method_id) === String(acct.id)
