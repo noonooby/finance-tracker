@@ -135,6 +135,30 @@ const BADGES = {
   accent: 'bg-accent-soft text-accent',
 };
 
+// A small "?" beside a word. Tapping it opens a short explanation; tapping anywhere else closes it.
+export function Hint({ label = 'What this means', align = 'left', children }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', away); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  return (
+    <span ref={box} className="relative inline-flex align-middle">
+      <button type="button" aria-label={label} aria-expanded={open} onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className="press grid place-items-center w-5 h-5 rounded-full border border-line text-[11px] font-semibold leading-none text-muted hover:text-accent hover:border-accent">?</button>
+      {open && (
+        <span role="note" className={cx('page-enter absolute top-7 z-30 w-64 max-w-[80vw] rounded-xl border border-line bg-surface p-3 text-xs font-normal normal-case tracking-normal leading-relaxed text-fg shadow-lg', align === 'right' ? 'right-0' : 'left-0')}>
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function Badge({ tone = 'neutral', className, children }) {
   return (
     <span className={cx('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', BADGES[tone] || BADGES.neutral, className)}>

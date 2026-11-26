@@ -57,7 +57,7 @@ export function useIssues() {
     const p = position({ bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets });
     const next = s.years.length ? taxNext({ years: s.years, facts: s.facts, today }) : { missing: [] };
     return issues({
-      checks: s.checks, snapshots: s.snaps, creditCards: d.creditCards, loans: d.loans, investments: d.investments, quiet: s.quiet, today,
+      checks: s.checks, snapshots: s.snaps, bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, quiet: s.quiet, today,
       stale: p.stale.map((x) => ({ ...x, signed: stored(x, d) })),
       rooms: s.facts ? roomsOf({ stated: s.stated, investments: d.investments, transactions: d.transactions, facts: s.facts, today }) : [],
       taxMissing: next.missing,
@@ -105,8 +105,9 @@ export function useIssues() {
       await api('/api/holdings', { id: inv.id, holdings: held.map((h, j) => (j === fix.index ? { ...sent(h), symbol: q.symbol, symbol_set: true, shown: h.shown || q.symbol, name: h.name || q.name, value: null } : sent(h))) });
     }
     else if (fix.do === 'field') {
-      const v = fix.input === 'date' ? String(value || '') : Math.round(Number(value) * 100) / 100;
-      if (fix.input === 'date' ? !/^\d{4}-\d{2}-\d{2}$/.test(v) : !(value !== '' && v > 0)) throw new Error(fix.input === 'date' ? 'Choose the day.' : 'Enter an amount above zero.');
+      const v = fix.input === 'date' ? String(value || '') : fix.input === 'text' ? String(value || '').replace(/\s+/g, ' ').trim().slice(0, 60) : Math.round(Number(value) * 100) / 100;
+      if (fix.input === 'text' && !v) throw new Error('Type it in.');
+      if (fix.input === 'date' ? !/^\d{4}-\d{2}-\d{2}$/.test(v) : fix.input !== 'text' && !(value !== '' && v > 0)) throw new Error(fix.input === 'date' ? 'Choose the day.' : 'Enter an amount above zero.');
       const { error } = await server.from(fix.table).update({ [fix.field]: v }).eq('id', fix.id);
       if (error) throw new Error(error.message);
     } else if (fix.do === 'unlink') {
@@ -187,7 +188,7 @@ export function IssueBlock({ issue, run, done, compact }) {
                     <form className="pt-2.5 space-y-2" onSubmit={(e) => { e.preventDefault(); go(ask, value); }}>
                       <label className="block text-xs text-muted">{ask.ask}
                         <input className="mt-1 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-fg" autoFocus value={value} onChange={(e) => setValue(e.target.value)}
-                          {...(ask.input === 'date' ? { type: 'date' } : ask.do === 'amount' || ask.do === 'field' ? { type: 'number', step: '0.01', inputMode: 'decimal' } : { autoCapitalize: 'characters' })} />
+                          {...(ask.input === 'date' ? { type: 'date' } : ask.input === 'text' ? { type: 'text', maxLength: 60, autoCapitalize: 'words' } : ask.do === 'amount' || ask.do === 'field' ? { type: 'number', step: '0.01', inputMode: 'decimal' } : { autoCapitalize: 'characters' })} />
                       </label>
                       {choices.length > 0 && (
                         <div className="space-y-1 stagger">

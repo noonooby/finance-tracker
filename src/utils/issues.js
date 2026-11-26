@@ -13,7 +13,7 @@ const nice = (d) => (d ? new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8
 // Where a figure came from, in a few words.
 const from = (picture, day, source) => `${picture ? 'from a picture' : source === 'you' ? 'typed in' : source === 'statement' ? 'from a statement' : 'recorded'}${day ? `, ${nice(day)}` : ''}`;
 
-export function issues({ checks = [], stale = [], snapshots = [], creditCards = [], loans = [], investments = [], rooms = [], taxMissing = [], quiet = {}, today = '' } = {}) {
+export function issues({ checks = [], stale = [], snapshots = [], bankAccounts = [], creditCards = [], loans = [], investments = [], rooms = [], taxMissing = [], quiet = {}, today = '' } = {}) {
   const out = [];
   const add = (x) => { if (quiet[x.id] !== x.sig) out.push(x); };
 
@@ -104,6 +104,13 @@ export function issues({ checks = [], stale = [], snapshots = [], creditCards = 
       fixes: [{ do: 'go', label: `Add a picture of ${what}`, to: '/screenshot' }, leave('Not needed')] });
   };
   const blank = (v) => v == null || v === '' || !(Number(v) > 0);
+  // An account with no bank on record: a picture from any bank could be taken for it, so it is asked for once.
+  for (const a of bankAccounts) {
+    if (a.account_type === 'cash') continue;
+    ask('bank_accounts', a, 'the account', [
+      { field: 'institution', missing: !String(a.institution || '').trim(), label: 'Bank', short: 'the bank', use: 'which pictures belong to it', ask: `The bank ${a.name} is at`, input: 'text' },
+    ]);
+  }
   for (const c of creditCards) {
     if (c.is_gift_card) continue;
     ask('credit_cards', c, 'the card', [

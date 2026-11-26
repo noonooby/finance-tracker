@@ -1,156 +1,104 @@
-import React from 'react';
-import { Edit2, X, Star, ListFilter } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as Icons from 'lucide-react';
-import { formatCurrency, getAccountTypeIcon } from '../../utils/helpers';
+import { formatCurrency, formatDate, getAccountTypeIcon } from '../../utils/helpers';
 import { formatFrequency } from '../../utils/sentenceCase';
-import RecentTransactions from '../shared/RecentTransactions';
+import { effectOn } from '../../utils/lines';
+import { Badge, Hint } from '../shared/ui';
+import MoveLine, { canMove, sidesOf } from '../shared/MoveLine';
 
-function IconButton({ label, onClick, className, children, disabled }) {
-  return (
-    <button onClick={onClick} className={className} title={label} aria-label={label} disabled={disabled}>
-      {children}
-    </button>
-  );
-}
+const KIND = { checking: 'Chequing', savings: 'Savings', cash: 'Cash', investment: 'Investment' };
+const day = (d) => { const x = String(d || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : null; };
+const chip = 'press chip';
 
-function LinkedAutoPays({ darkMode, linkedLoans, linkedCards }) {
-  if (linkedLoans.length === 0 && linkedCards.length === 0) return null;
-  return (
-    <div className={`text-xs mt-2 p-2 rounded bg-accent-soft text-accent border border-accent/30`}>
-      <div className="font-semibold mb-1">Auto-pays:</div>
-      {linkedLoans.map(loan => (
-        <div key={loan.id} className="ml-2">
-          • Loan: {loan.name} ({formatCurrency(loan.payment_amount || 0)}/{formatFrequency(loan.frequency)})
-        </div>
-      ))}
-      {linkedCards.map(card => (
-        <div key={card.id} className="ml-2">
-          • Card: {card.name}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Display of one bank account (the inline edit form is passed in as children when editing).
- */
-export default function AccountCard({
-  darkMode,
-  account,
-  isPinned,
-  linkedLoans,
-  linkedCards,
-  onTogglePin,
-  onSetPrimary,
-  onViewTransactions,
-  onEdit,
-  onDelete
-}) {
+// One account: its name, kind and balance on one row. Tapping it opens its latest lines and what can be done with it.
+export default function AccountCard({ account, open, onToggle, isPinned, linkedLoans = [], linkedCards = [], transactions = [], bankAccounts = [], creditCards = [],
+  onTogglePin, onSetPrimary, onViewTransactions, onEdit, onDelete, onChanged }) {
+  const navigate = useNavigate();
+  const [moving, setMoving] = useState(null);
+  const [count, setCount] = useState(6);
   const balance = Number(account.balance) || 0;
-  const IconComponent = Icons[getAccountTypeIcon(account.account_type)] || Icons.Building2;
-  const iconBtn = (light, dark) => `p-2 rounded ${darkMode ? dark : light}`;
+  const Icon = Icons[getAccountTypeIcon(account.account_type)] || Icons.Building2;
+  const ref = `bank_account:${account.id}`;
+  const seen = day(account.snapshot_date) || day(account.balance_as_of);
+  const accounts = useMemo(() => ({ bankAccounts, creditCards }), [bankAccounts, creditCards]);
+  // Every saved line that touched this account, newest first.
+  const lines = useMemo(() => (open ? transactions
+    .filter((t) => t.status !== 'undone' && t.status !== 'deleted' && (effectOn(t, 'bank_account', account.id) != null || sidesOf(t, accounts).some((s) => s.ref === ref)))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.created_at || '').localeCompare(String(a.created_at || ''))) : []), [open, transactions, account.id, accounts, ref]);
 
   return (
-    <>
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <IconComponent size={20} className="text-muted" />
-            <h3 className="font-bold text-base sm:text-lg">{account.name}</h3>
-            {account.account_type === 'cash' && (
-              <span className="text-xs px-2 py-0.5 rounded bg-surface-2 text-muted border border-line">Cash</span>
-            )}
-            {account.is_primary && (
-              <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">
-                <Star size={12} fill="currentColor" />
-                Primary
-              </span>
-            )}
-            {isPinned && !account.is_primary && (
-              <Star size={16} className="text-yellow-500 fill-current" aria-label="Pinned" />
-            )}
-          </div>
-          <div className={`text-xl sm:text-2xl font-bold mt-1 ${balance < 0 ? 'text-red-600' : 'text-blue-600'}`}>
-            {balance < 0 ? 'Overdraft: ' : ''}{formatCurrency(account.balance)}
-          </div>
+    <div>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="press w-full flex items-center gap-3 p-4 text-left">
+        <span className="grid place-items-center w-10 h-10 shrink-0 rounded-xl bg-accent-soft text-accent"><Icon size={18} aria-hidden="true" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5 min-w-0">
+            <span className="font-semibold truncate">{account.name}</span>
+            {account.is_primary && <Badge tone="accent">Main</Badge>}
+            {isPinned && !account.is_primary && <Icons.Star size={13} className="shrink-0 text-warning fill-current" aria-label="Pinned" />}
+          </span>
+          <span className="block text-xs text-muted truncate">
+            {KIND[account.account_type] || 'Account'}{account.last4 ? ` · ending ${String(account.last4).slice(-4)}` : ''}{seen ? ` · seen ${formatDate(seen)}` : ''}
+          </span>
+        </span>
+        <span className={`shrink-0 text-lg font-bold tabular-nums ${balance < 0 ? 'text-negative' : ''}`}>{formatCurrency(balance)}</span>
+        <Icons.ChevronDown size={16} aria-hidden="true" className={`shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
 
-          {balance < 0 && account.allows_overdraft && (
-            <div className="text-xs text-red-600 mt-1 space-y-1">
-              <div>Limit: {formatCurrency(account.overdraft_limit || 0)}</div>
-              <div>Available: {formatCurrency((account.overdraft_limit || 0) + balance)}</div>
-              <div className="font-medium">Resolve by end of day to avoid fees</div>
+      <div className={`fold ${open ? 'open' : ''}`}><div>
+        {open && (
+          <div className="px-4 pb-4 pt-3 space-y-4 border-t border-line">
+            {balance < 0 && account.allows_overdraft && (
+              <p className="text-xs text-negative">In overdraft. Limit {formatCurrency(account.overdraft_limit || 0)}, {formatCurrency((Number(account.overdraft_limit) || 0) + balance)} left of it.</p>
+            )}
+
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                Latest lines
+                <Hint label="About these lines">What went in and out of this account, newest first. A line that belongs to another account: tap it and choose the right one. Lines dated before the day the balance was last seen are kept as history and do not change it.</Hint>
+              </div>
+              {lines.length === 0 && <p className="text-sm text-muted">Nothing yet. Add a picture of this account's activity and its lines are filled in.</p>}
+              {lines.slice(0, count).map((t) => {
+                const did = effectOn(t, 'bank_account', account.id);
+                const up = did != null ? did >= 0 : t.type === 'income';
+                const movable = canMove(t, accounts);
+                const Row = movable ? 'button' : 'div';
+                return (
+                  <Row key={t.id} {...(movable ? { type: 'button', onClick: () => setMoving(t), 'aria-label': `${t.description || 'Line'}: move it to another account` } : {})}
+                    className={`w-full flex items-center justify-between gap-3 text-left text-sm ${movable ? 'press rounded-lg -mx-2 px-2 py-1.5 hover:bg-surface-2' : 'py-1.5'}`}>
+                    <span className="min-w-0">
+                      <span className="block truncate">{t.description || t.category_name || t.income_source || 'No description'}</span>
+                      <span className="block text-xs text-muted">{formatDate(t.date)}{t.type === 'adjustment' ? ' · balance corrected' : ''}{t.pending ? ' · pending' : ''}</span>
+                    </span>
+                    <span className={`shrink-0 font-medium tabular-nums ${up ? 'text-positive' : ''}`}>{up ? '+' : '-'}{formatCurrency(Math.abs(did != null ? did : Number(t.amount) || 0))}</span>
+                  </Row>
+                );
+              })}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-sm">
+                {lines.length > count && <button type="button" className="press font-medium text-accent" onClick={() => setCount(count + 10)}>Show more</button>}
+                {lines.length > 0 && <button type="button" className="press font-medium text-accent" onClick={onViewTransactions}>All lines in Transactions</button>}
+              </div>
             </div>
-          )}
 
-          {account.institution && (
-            <div className={`text-sm text-muted mt-1`}>
-              {account.institution}
+            {(linkedLoans.length > 0 || linkedCards.length > 0) && (
+              <div className="text-xs text-muted">
+                <span className="font-medium text-fg">Pays automatically: </span>
+                {[...linkedLoans.map((l) => `${l.name} (${formatCurrency(l.payment_amount || 0)} ${formatFrequency(l.frequency)})`), ...linkedCards.map((c) => c.name)].join(', ')}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className={`${chip} chip-main`} onClick={() => navigate('/screenshot')}><Icons.Camera size={14} aria-hidden="true" /> Add a picture</button>
+              <button type="button" className={chip} onClick={onEdit}>Change</button>
+              {!account.is_primary && <button type="button" className={chip} onClick={onSetPrimary}>Make it the main account</button>}
+              {!account.is_primary && <button type="button" className={chip} onClick={onTogglePin}>{isPinned ? 'Unpin' : 'Pin to the top'}</button>}
+              {!account.is_primary && <button type="button" className={`${chip} chip-quiet`} onClick={onDelete}>Remove</button>}
+              <Hint label="About these choices" align="right">Change: its name, bank, kind and balance. The main account is the one offered first when you record something. A pinned account sits at the top of its bank. The main account cannot be removed: make another one main first.</Hint>
             </div>
-          )}
-
-          <LinkedAutoPays darkMode={darkMode} linkedLoans={linkedLoans} linkedCards={linkedCards} />
-        </div>
-        <div className="flex gap-1 sm:gap-2">
-          {!account.is_primary && (
-            <>
-              <IconButton
-                label={isPinned ? `Unpin ${account.name}` : `Pin ${account.name}`}
-                onClick={onTogglePin}
-                className={`p-1.5 sm:p-2 rounded min-h-[44px] sm:min-h-0 flex items-center justify-center ${
-                  isPinned
-                    ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
-                    : 'text-muted hover:bg-surface-2'
-                }`}
-              >
-                <Star size={16} className={`sm:w-[18px] sm:h-[18px] ${isPinned ? 'fill-current' : ''}`} />
-              </IconButton>
-              <IconButton
-                label={`Set ${account.name} as primary account`}
-                onClick={onSetPrimary}
-                className={iconBtn('text-yellow-600 hover:bg-yellow-50', 'text-yellow-400 hover:bg-surface-2')}
-              >
-                <Star size={16} className="sm:w-[18px] sm:h-[18px]" />
-              </IconButton>
-            </>
-          )}
-          <IconButton
-            label={`View ${account.name} transactions`}
-            onClick={onViewTransactions}
-            className={iconBtn('text-purple-600 hover:bg-purple-50', 'text-purple-400 hover:bg-surface-2')}
-          >
-            <ListFilter size={16} className="sm:w-[18px] sm:h-[18px]" />
-          </IconButton>
-          <IconButton
-            label={`Edit ${account.name}`}
-            onClick={onEdit}
-            className={iconBtn('text-blue-600 hover:bg-blue-50', 'text-blue-400 hover:bg-surface-2')}
-          >
-            <Edit2 size={16} className="sm:w-[18px] sm:h-[18px]" />
-          </IconButton>
-          <IconButton
-            label={`Delete ${account.name}`}
-            onClick={onDelete}
-            disabled={account.is_primary}
-            className={iconBtn('text-red-600 hover:bg-red-50', 'text-red-400 hover:bg-surface-2')}
-          >
-            <X size={16} className="sm:w-[18px] sm:h-[18px]" />
-          </IconButton>
-        </div>
-      </div>
-
-      <div className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded mb-3 ${
-        'bg-surface-2 text-muted'
-      }`}>
-        {account.account_type.charAt(0).toUpperCase() + account.account_type.slice(1)} Account
-      </div>
-
-      <RecentTransactions
-        darkMode={darkMode}
-        entityType="bank_account"
-        entityId={account.id}
-        entityName={account.name}
-      />
-    </>
+          </div>
+        )}
+      </div></div>
+      {moving && <MoveLine line={moving} from={ref} transactions={transactions} bankAccounts={bankAccounts} creditCards={creditCards} onClose={() => setMoving(null)} onDone={onChanged} />}
+    </div>
   );
 }

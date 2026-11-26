@@ -29,11 +29,24 @@ const SECTIONS = [
     <>
       <p>On the <Link to="/screenshot">Scan</Link> tab, take a photo of a receipt, or choose a screenshot of your bank or card app. You can choose several at once: up to forty wait in a list, each with its own note (the name of the bank or card is enough), and each is read when the one before it is saved. The app reads it and lists every line it found. It also offers to add what the picture shows and the app does not have yet: a bank account, a card, a loan, lease or pay-later plan, an investment or property, a bill, a gift card, or a credit score. For things the app already has, it shows what changed (for example a credit limit that was raised, a new due day or a new bill amount) and updates the ones you leave ticked. A pay slip is passed to the Income screen. Anything the picture does not show is asked for before saving. Pictures waiting their turn are read while you check the one on screen. Nothing is saved until you tick the lines you want and tap <b>Record</b>.</p>
       <ul>
-        <li>Each line is matched to your account by the last four digits of the card, or by the account's name. If it can't tell, it asks you to choose.</li>
+        <li>Each picture is read for the bank it is from. A line is matched to your account by the last four digits, or by the account's name at that bank. A picture from one bank is never taken for an account at another, even when the names are alike ("Savings Account").</li>
+        <li><b>Where this goes</b>, near the top of what was found, names the bank and the account each picture is going to. Not right? Choose the account it belongs to, or tap <b>A new account</b> and name it. When the app cannot tell, it asks and files nothing until you answer.</li>
+        <li>A line this picture shows on one account that is already saved under another is not saved twice: you are offered to move it.</li>
+        <li>When your bank prints the balance after each line, that balance is used to check each amount and whether it came in or went out.</li>
         <li>Two identical lines in one screenshot (two coffees on the same day) are two purchases.</li>
         <li>Screenshots that overlap are safe: a line already added from an earlier screenshot is skipped.</li>
         <li>A line that was pending and has now posted updates the pending one instead of adding it again.</li>
         <li>If the screenshot shows a balance different from the app's, you can choose to correct it.</li>
+      </ul>
+    </>
+  )],
+  ['accounts', 'Accounts, their banks, and a line on the wrong account', (
+    <>
+      <p>The <Link to="/bank-accounts">Accounts</Link> tab keeps your chequing, savings and cash under each bank. Tap an account to see its latest lines and what you can do with it. A small <b>?</b> beside a word explains it.</p>
+      <ul>
+        <li><b>The bank</b> of an account is filled in from the first picture of it. An account with no bank is listed under "Bank not known" and asked about under To sort out.</li>
+        <li><b>A line on the wrong account</b>: tap the line (on the account, or Edit in <Link to="/transactions">Transactions</Link>) and choose the account it belongs to, or name a new one. You can move just that line or every line that came from the same picture. Both balances follow, and Undo puts it back.</li>
+        <li>A line dated before the day an account's balance was last seen is kept as history there: the balance you saw already counted it.</li>
       </ul>
     </>
   )],
