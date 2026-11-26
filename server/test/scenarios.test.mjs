@@ -1628,4 +1628,12 @@ test('a new card or account gets its published details once; a figure you entere
   assert.equal((await get('credit_cards', odd.id)).info, undefined);
   delete process.env.LOOKUP_STUB;
   assert.equal((await api('/api/details', {})).done, 0);                           // no lookup service: nothing happens, nothing breaks
+  // The service fails: the card is not counted as tried, and lookups rest instead of asking again and again.
+  const later = await add('credit_cards', { name: 'Card added while the service is down', balance: 0, credit_limit: 10 });
+  process.env.LOOKUP_STUB = '{not json';
+  assert.equal((await api('/api/details', {})).done, 0);
+  process.env.LOOKUP_STUB = JSON.stringify({ found: true, purchase_rate: 19.99, source_url: 'https://example.test/c' });
+  assert.equal((await api('/api/details', {})).done, 0);                           // resting
+  assert.equal((await get('credit_cards', later.id)).info_tries, undefined);
+  delete process.env.LOOKUP_STUB;
 });

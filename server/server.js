@@ -667,8 +667,12 @@ const wantsInfo = (tbl, r) => {
   if (r.info && r.info.for === name) return false;
   return !(r.info_for === name && ((Number(r.info_tries) || 0) >= 3 || r.info_tried === today()));
 };
+// When the lookup service does not answer (busy, over its limit), nothing is counted as tried: lookups rest for an
+// hour and then carry on where they stopped.
+let lookupsRestUntil = 0;
 async function fillProducts(uid, max = 4) {
   if (!process.env.LOOKUP_STUB && !require('./keystore').get()) return 0;
+  if (Date.now() < lookupsRestUntil) return 0;
   let done = 0;
   for (const [tbl, kind] of Object.entries(INFO_KIND)) {
     for (const r of selectRows(uid, { table: tbl, filters: [] })) {
@@ -676,7 +680,8 @@ async function fillProducts(uid, max = 4) {
       if (!wantsInfo(tbl, r)) continue;
       const name = productName(tbl, r);
       let res = null;
-      try { res = await require('./rates').lookup(kind, name); } catch { res = null; }
+      try { res = await require('./rates').lookup(kind, name); }
+      catch (e) { lookupsRestUntil = Date.now() + 3600e3; console.error(`details: resting for an hour (${String(e.message).replace(/\s+/g, ' ').slice(0, 80)})`); return done; }
       done += 1;
       tx(() => {
         const fresh = selectRows(uid, { table: tbl, filters: [['id', 'eq', String(r.id)]], limit: 1 })[0];
@@ -691,7 +696,7 @@ async function fillProducts(uid, max = 4) {
           if (tbl === 'bank_accounts' && n.allows_overdraft) { fill('overdraft_rate', res.overdraft_rate); fill('overdraft_monthly_fee', res.overdraft_monthly_fee); fill('overdraft_use_fee', res.overdraft_use_fee); }
           if ((tbl === 'bank_accounts' || tbl === 'investments') && !n.institution && res.issuer) { n.institution = res.issuer; info.filled.push('institution'); }
           n.info = info;
-        } else if (res && tries >= 3) n.info = { for: name, found: false, checked: today() };
+        } else if (tries >= 3) n.info = { for: name, found: false, checked: today() };
         db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), tbl, String(n.id), uid);
       });
     }
