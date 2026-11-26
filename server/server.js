@@ -804,7 +804,8 @@ route('POST', '/api/read-set', async (req, b) => {
   const uid = authUser(req).id;
   const all = (t) => selectRows(uid, { table: t, filters: [] });
   const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), assets: all('assets'), bills: all('bills'), scores: all('credit_scores'), held: all('held_lines'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db };
+  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), assets: all('assets'), bills: all('bills'), scores: all('credit_scores'), held: all('held_lines'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db,
+    kept: (id) => selectRows(uid, { table: 'scans', filters: [['source_id', 'eq', String(id)]], limit: 1 })[0] || null };
   try { return await require('./reader').readSet(uid, b, ctx); } catch (e) { if (e.status) fail(e.status, e.message); throw e; }
 });
 // Local testing only: DEV_USER signs in without Google. Refused unless NODE_ENV is development.

@@ -583,9 +583,11 @@ async function readSet(uid, body, ctx) {
   const parts = [];
   for (const it of (Array.isArray(body.ids) ? body.ids : []).slice(0, 60)) {
     const id = String((it && it.id) || ''), note = cleanNote(it && it.note);
+    // What was read is held in memory for speed; after a restart, or hours later, the kept copy is used instead.
     const hit = READINGS.get(`${uid}:${id}:${note}`);
-    if (!hit) continue;
-    const reading = JSON.parse(hit.json);
+    let reading = null;
+    try { if (hit) reading = JSON.parse(hit.json); else { const row = ctx.kept ? ctx.kept(id) : null; if (row && row.reading && cleanNote(row.note) === note) reading = JSON.parse(row.reading); } } catch { reading = null; }
+    if (!reading) continue;
     if (!alone(reading)) parts.push({ id, note, reading });
   }
   if (parts.length < 2) return { proposal: null, used: [] };

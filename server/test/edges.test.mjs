@@ -794,3 +794,12 @@ test('reading gate: a pay slip in any shape does not break', () => {
   for (const r of [null, 'x', [], { deposits: [null, 'x', { bank: {}, last4: [], amount: '12' }] }, { net_pay: 'abc', deposits: {} }]) reader.planPay(r, [{ id: 'b1', name: 'TD' }]);
   for (const r of [null, 'x', [], { score: {}, date: [] }]) assert.equal(reader.planScore(r, '2026-11-25').score, null);
 });
+
+test('reading a set: pictures read before a restart are put together from the kept copies', async () => {
+  const ctx = { today: '2026-11-25', bankAccounts: [], creditCards: [{ id: 'c1', name: 'TD Visa', last4: '4321', balance: 0 }], transactions: [],
+    kept: (id) => ({ a1: { note: '', reading: JSON.stringify({ kind: 'balance', accounts: [{ name: 'TD Visa', last4: '4321', type: 'credit_card', balance: 80 }], lines: [] }) },
+      a2: { note: '', reading: JSON.stringify({ kind: 'transactions', accounts: [], lines: [{ date: '2026-11-20', merchant: 'Cafe', amount: 4.5, direction: 'out' }] }) }, a3: { note: '', reading: 'not json' } })[id] || null };
+  const r = await reader.readSet('nobody', { ids: [{ id: 'a1' }, { id: 'a2' }, { id: 'a3' }, { id: 'gone' }] }, ctx);
+  assert.deepEqual(r.used, ['a1', 'a2']);
+  assert.deepEqual(r.proposal.lines.map((l) => [l.merchant, l.account.id, l.action]), [['Cafe', 'c1', 'record']]);
+});
