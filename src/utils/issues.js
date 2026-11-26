@@ -5,6 +5,7 @@
 import { cardSplit } from './finance';
 import { planHome, looksLikePlan } from './cards';
 import { keptIn, lineTerms, bankName } from './accounts';
+import { ledger, ledgerGaps } from './ledger';
 
 const money = (n) => `$${(Math.round(Number(n) * 100) / 100).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const TARGET = { bank: 'bank_account', cash: 'bank_account', card: 'credit_card', card_credit: 'credit_card', gift_card: 'credit_card', loan: 'loan', mortgage: 'loan', investment: 'investment', asset: 'asset' };
@@ -15,7 +16,7 @@ const nice = (d) => (d ? new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8
 // Where a figure came from, in a few words.
 const from = (picture, day, source) => `${picture ? 'from a picture' : source === 'you' ? 'typed in' : source === 'statement' ? 'from a statement' : 'recorded'}${day ? `, ${nice(day)}` : ''}`;
 
-export function issues({ checks = [], stale = [], snapshots = [], bankAccounts = [], creditCards = [], loans = [], investments = [], rooms = [], taxMissing = [], quiet = {}, today = '' } = {}) {
+export function issues({ checks = [], transactions = [], stale = [], snapshots = [], bankAccounts = [], creditCards = [], loans = [], investments = [], rooms = [], taxMissing = [], quiet = {}, today = '' } = {}) {
   const out = [];
   const add = (x) => { if (quiet[x.id] !== x.sig) out.push(x); };
 
@@ -29,6 +30,18 @@ export function issues({ checks = [], stale = [], snapshots = [], bankAccounts =
     out.push({ id: `check:${s.id}`, sig: String(left), kind: 'check', ref: String(s.account_id), title: `${s.name} does not add up`,
       text: `On ${s.date} the ${s.source || 'snapshot'} showed ${money(s.value)}; ${history ? "the app's history gives" : 'the app has'} ${now == null ? 'no account' : money(now)}${left ? `, ${money(Math.abs(left))} ${left > 0 ? 'more than' : 'less than'} the app` : ', which now matches'}.`,
       fixes });
+  }
+
+  // 1b. Two checkpoints of one account whose saved lines do not add up to the change between them. The balance may
+  //     have been corrected since, but the lines of that stretch are still missing, doubled or on another account.
+  const nice2 = (d) => { const x = new Date(`${d}T12:00:00`); return Number.isNaN(x.getTime()) ? d : x.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
+  for (const g of ledgerGaps(ledger({ snapshots, transactions }))) {
+    const up = g.expected >= 0;
+    add({ id: `gap:${g.table}:${g.id}:${g.to}`, sig: String(g.gap), kind: 'check', ref: String(g.id), title: `${g.name}: ${money(Math.abs(g.gap))} between ${nice2(g.from)} and ${nice2(g.to)} is not on record`,
+      text: `It showed ${money(g.start)} on ${nice2(g.from)} and ${money(g.end)} on ${nice2(g.to)}: ${g.expected === 0 ? 'no change' : `${up ? 'up' : 'down'} ${money(Math.abs(g.expected))}`}. The ${g.lines} ${g.lines === 1 ? 'line' : 'lines'} saved for those days add up to ${money(g.moved)}. So ${money(Math.abs(g.gap))} is not explained: a line is missing, saved twice, or sits on another account.`,
+      sums: [{ label: `Shown on ${nice2(g.from)}`, value: g.start }, { label: `Saved lines, ${nice2(g.from)} to ${nice2(g.to)}`, value: g.moved }, { label: `Shown on ${nice2(g.to)}`, value: g.end, total: true }, { label: 'Not explained', value: Math.abs(g.gap), tone: 'warning' }],
+      pictures: g.picture ? [{ id: g.picture, label: `Read on ${nice2(g.to)}` }] : undefined,
+      fixes: [{ do: 'go', label: 'Add a picture of those days', to: '/screenshot' }, { do: 'go', label: 'See its lines', to: '/transactions' }, leave()] });
   }
 
   // 2. Payment plans inside a card that add up to more than the card shows. The sums are laid out line by line, each

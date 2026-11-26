@@ -58,7 +58,7 @@ export function useIssues() {
     const p = position({ bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, assets: d.assets });
     const next = s.years.length ? taxNext({ years: s.years, facts: s.facts, today }) : { missing: [] };
     return issues({
-      checks: s.checks, snapshots: s.snaps, bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, quiet: s.quiet, today,
+      checks: s.checks, snapshots: s.snaps, transactions: d.transactions, bankAccounts: d.bankAccounts, creditCards: d.creditCards, loans: d.loans, investments: d.investments, quiet: s.quiet, today,
       stale: p.stale.map((x) => ({ ...x, signed: stored(x, d) })),
       rooms: s.facts ? roomsOf({ stated: s.stated, investments: d.investments, transactions: d.transactions, facts: s.facts, today }) : [],
       taxMissing: next.missing,

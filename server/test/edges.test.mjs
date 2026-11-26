@@ -948,3 +948,46 @@ test('reading: a return or notice gives one tax year in a known shape, and its n
   assert.deepEqual([p.tax_year.refund, p.tax_year.balance_owing, p.tax_year.existing_id], [undefined, undefined, null]);
   for (const bad of [{ year: 2031, total_income: 5 }, { year: 'last', total_income: 5 }, { year: 2024 }, 'text', 5, [], null]) assert.equal(reader.plan({ kind: 'other', tax_year: bad }, ctx, 's4').tax_year, null);
 });
+
+test('typed: a sentence can add an account it names, match one you have, and state a change', async () => {
+  const fs = require('node:fs'), os = require('node:os');
+  const a = mod('assistant.js');
+  const file = path.join(os.tmpdir(), `ask-${process.pid}.json`);
+  const ctx = () => ({ today: '2026-11-26', bankAccounts: [{ id: 'b1', name: 'Scotia Chequing', institution: 'Scotiabank', balance: 900 }], creditCards: [{ id: 'c1', name: 'PC Mastercard', balance: 100, credit_limit: 5000 }],
+    loans: [{ id: 'l1', name: 'Portfolio line of credit', loan_type: 'line_of_credit', balance: 4000, interest_rate: 5.2, credit_limit: 20000 }], investments: [], bills: [], schedules: [], goals: [], scores: [], transactions: [] });
+  const say = async (reply, uid) => { fs.writeFileSync(file, JSON.stringify(reply)); process.env.ASK_STUB = file; try { return await a.ask(uid, { text: 'typed words' }, ctx()); } finally { delete process.env.ASK_STUB; } };
+  const line = (more) => ({ date: '2026-11-26', merchant: 'Loblaws', amount: 42.5, direction: 'out', type: 'purchase', category: 'Groceries', other_account: null, ...more });
+
+  // The account exists: the line lands on it and nothing new is offered.
+  let p = (await say({ kind: 'record', lines: [line({ account_name: 'Scotia Chequing' })], accounts: [] }, 'u1')).proposal;
+  assert.equal(p.lines.length, 1);
+  assert.equal(String(p.lines[0].account.id), 'b1');
+  assert.equal(p.new_accounts.length, 0);
+
+  // The account is not in the app: it is offered to add, and the line belongs to it.
+  p = (await say({ kind: 'record', lines: [line({ account_name: 'Tangerine Savings' })], accounts: [{ name: 'Tangerine Savings', bank: 'Tangerine', type: 'savings', balance: null }] }, 'u1')).proposal;
+  assert.equal(p.new_accounts.length, 1);
+  assert.equal(p.new_accounts[0].name, 'Tangerine Savings');
+  assert.equal(p.lines.length, 1);
+  assert.ok(p.lines[0].account && String(p.lines[0].account.id) === String(p.new_accounts[0].id), 'the line points at the account to add');
+
+  // A fact about a loan you have, with no line: the change is offered, the old figure beside the new.
+  p = (await say({ kind: 'record', lines: [], accounts: [{ name: 'Portfolio line of credit', type: 'loan', loan_kind: 'line_of_credit', interest_rate: 5.45, credit_limit: 25000 }] }, 'u1')).proposal;
+  assert.equal(p.lines.length, 0);
+  assert.equal(p.new_loans.length, 0);
+  const ch = p.updates.find((u) => u.account.id === 'l1').changes;
+  assert.deepEqual(ch.map((c) => [c.field, c.from, c.to]), [['interest_rate', 5.2, 5.45], ['credit_limit', 20000, 25000]]);
+  // The same figure as the app holds is not a change; a card's limit can change the same way.
+  p = (await say({ kind: 'record', lines: [], accounts: [{ name: 'Portfolio line of credit', type: 'loan', interest_rate: 5.2 }, { name: 'PC Mastercard', type: 'credit_card', credit_limit: 8000 }] }, 'u1')).proposal;
+  assert.deepEqual(p.updates.map((u) => [u.account.id, u.changes.map((c) => c.field).join()]), [['c1', 'credit_limit']]);
+
+  // A loan that is not in the app is offered as a new loan with what was said about it.
+  p = (await say({ kind: 'record', lines: [], accounts: [{ name: 'Honda lease', type: 'loan', loan_kind: 'car_lease', payment_amount: 340.86, balance: 9000 }] }, 'u1')).proposal;
+  assert.equal(p.new_loans.length, 1);
+  assert.equal(p.new_loans[0].payment_amount, 340.86);
+
+  // Nothing to record and nothing named is refused in plain words; so is a made-up shape.
+  await assert.rejects(() => say({ kind: 'record', lines: [], accounts: [] }, 'u2'), /could not be answered/);
+  await assert.rejects(() => say({ kind: 'record', lines: [], accounts: [{ balance: 5 }, null, 'x'] }, 'u2'), /could not be answered/);
+  fs.unlinkSync(file);
+});

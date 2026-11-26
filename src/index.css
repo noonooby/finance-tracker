@@ -51,6 +51,11 @@ html {
 @media (prefers-reduced-motion: reduce) { .page-scroll { scroll-behavior: auto; } }
 .fab { transition: transform .25s cubic-bezier(.2,.8,.2,1), opacity .2s; }
 .fab.away { transform: translateY(140%) scale(.9); opacity: 0; pointer-events: none; }
+.sheet-panel { animation: sheetIn .38s cubic-bezier(.2,.8,.2,1) backwards; }
+.sheet-back { animation: fadeIn .25s ease backwards; }
+.amount-big, .amount-big:focus-visible { font-size: 3rem !important; line-height: 1.1; outline: none !important; caret-color: rgb(var(--accent)); }
+.no-bar { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.no-bar::-webkit-scrollbar { display: none; }
 
 body {
   margin: 0;

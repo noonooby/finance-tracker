@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Moon, Sun, Plus, HelpCircle } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { useTheme } from '../hooks/useTheme';
+import QuickAdd from '../components/QuickAdd';
 import { useUI } from '../hooks/useUI';
 import BottomNavigation from '../BottomNavigation';
 
@@ -27,6 +28,7 @@ export function MainLayout() {
   // filling in. It comes back when you scroll up, reach the top, or stop typing.
   const scroller = useRef(null);
   const [away, setAway] = useState(false);
+  const [quick, setQuick] = useState(false);
   useEffect(() => {
     const el = scroller.current;
     if (!el) return undefined;
@@ -93,13 +95,15 @@ export function MainLayout() {
 
       {location.pathname !== '/screenshot' && <button
         type="button"
-        onClick={openAddTransaction}
+        onClick={() => setQuick(true)}
         className={`fab ${away ? 'away' : ''} press fixed right-4 w-14 h-14 bg-accent text-accent-contrast rounded-2xl shadow-md shadow-accent/20 hover:opacity-90 flex items-center justify-center z-20`}
         style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))', touchAction: 'manipulation' }}
-        aria-label="Add a transaction"
+        aria-label="Add"
       >
         <Plus size={28} />
       </button>}
+
+      {quick && <QuickAdd onClose={() => setQuick(false)} onFullForm={openAddTransaction} />}
 
       <BottomNavigation darkMode={darkMode} />
     </div>

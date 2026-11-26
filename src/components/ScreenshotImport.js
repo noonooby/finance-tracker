@@ -7,9 +7,9 @@ import { server } from '../utils/server';
 import { formatCurrency, formatDate, generateId } from '../utils/helpers';
 import { loadPending, savePending, clearPending } from '../utils/pendingScan';
 import { useFinanceData } from '../hooks/useFinanceData';
-import { suggestCategoryId, findRule } from '../utils/categoryRules';
-import { knownCategory, guessCategory, ownCategory, throughCategory } from '../utils/merchants';
-import { planHome, looksLikePlan, knownLender } from '../utils/cards';
+import { pickCategory } from '../utils/categoryRules';
+import { planHome, looksLikePlan, knownLender, loanFor, lineFor } from '../utils/cards';
+import { recordLoanPayment } from '../utils/money';
 import { TAX_FIELDS } from '../utils/room';
 import { Camera, Image as ImageIcon } from 'lucide-react';
 import { Picture } from './shared/Picture';
@@ -82,10 +82,8 @@ const STATUS_TEXT = {
   choose_account: 'Choose the account',
   skip: 'Could not read',
 };
-const KIND_TEXT = { purchase: 'Purchase', income: 'Money in', refund: 'Refund', card_payment: 'Card payment', transfer: 'Transfer' };
+const KIND_TEXT = { purchase: 'Purchase', income: 'Money in', refund: 'Refund', card_payment: 'Card payment', transfer: 'Transfer', loan_payment: 'Payment on a loan or lease' };
 
-// Same merchant key as the server (server/reader.js mkey), used to find how a merchant was categorised before.
-const mkey = (m) => String(m || '').toLowerCase().replace(/^(sq|sp|tst|klarna|paypal|pp)\s*\*\s*/, '').replace(/[^a-z]/g, '').slice(0, 24);
 async function sha32(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
@@ -101,6 +99,7 @@ function effectOn(row, accountRef, isCard) {
     if (row.to === accountRef) return isCard ? -a : a;
     return 0;
   }
+  if (row.kind === 'loan_payment') return row.source === accountRef ? (isCard ? a : -a) : 0;
   if (row.kind === 'card_payment') {
     if (row.card === accountRef) return -a;
     if (row.source === accountRef) return isCard ? a : -a;
@@ -148,7 +147,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     ...creditCards.filter((c) => !c.is_gift_card).map((c) => ({ value: `credit_card:${c.id}`, label: c.name })),
     ...creditCards.filter((c) => c.is_gift_card).map((c) => ({ value: `credit_card:${c.id}`, label: `${c.name} (gift card)` })),
   ], [drafts, bankAccounts, creditCards]);
-  const nameOf = (v) => (v === 'outside' ? 'An account not in the app' : (accountOptions.find((o) => o.value === v) || {}).label || 'Choose');
+  const loanName = (v) => (String(v || '').startsWith('loan:') ? (loans.find((l) => `loan:${l.id}` === v) || {}).name : null);
+  const nameOf = (v) => (v === 'outside' ? 'An account not in the app' : loanName(v) || (accountOptions.find((o) => o.value === v) || {}).label || 'Choose');
   const isCardRef = (v) => v.startsWith('credit_card:') || (v.startsWith('new:') && (drafts.find((d) => d.id === v) || {}).type === 'credit_card');
 
   const card = 'bg-surface border-line text-fg';
@@ -305,28 +305,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const keepWaiting = () => { if (image) savePending({ queue: queueRef.current, image, note, proposal }); };
 
   // A category for a purchase: how this merchant was categorised before, else the reader's guess matched to your categories.
-  const suggestCategory = (merchant, guess, income = false, amount = null) => {
-    const pool = income ? incomeCategories : expenseCategories;
-    // A bill paid by card through a service (Chexy): the name is the same for the rent and the lease, so the amount decides.
-    const via = !income && throughCategory(merchant, amount, transactions);
-    if (via && via.category_id && pool.some((c) => String(c.id) === via.category_id)) return via.category_id;
-    if (via && via.known) { const own = ownCategory(via.known, pool); if (own) return String(own.id); }
-    const learned = findRule(categoryRules, merchant) ? suggestCategoryId(categoryRules, merchant, pool, income) : '';
-    if (learned) return learned;
-    const k = mkey(merchant);
-    const past = k && [...transactions].sort((a, b) => String(b.date).localeCompare(String(a.date)))
-      .find((t) => t.category_id && mkey(t.description) === k);
-    if (past && pool.some((c) => String(c.id) === String(past.category_id))) return String(past.category_id);
-    // No line of yours to go by: a merchant the app knows by name comes before the reading's own word for it.
-    const known = ownCategory(knownCategory(merchant, income), pool);
-    if (known) return String(known.id);
-    const g = String(guess || '').toLowerCase();
-    const hit = (g && pool.find((c) => c.name.toLowerCase() === g))
-      || (g && pool.find((c) => c.name.toLowerCase().includes(g) || g.includes(c.name.toLowerCase())));
-    if (hit) return String(hit.id);
-    const own = ownCategory(guessCategory(guess), pool);
-    return own ? String(own.id) : '';
-  };
+  const suggestCategory = (merchant, guess, income = false, amount = null) =>
+    pickCategory({ merchant, guess, income, amount, rules: categoryRules, transactions, pool: income ? incomeCategories : expenseCategories });
 
   const readOne = async (image, note, keepDone, fresh) => {
     setReading(true); setError(''); if (!keepDone) setDone(null); setOpen(null);
@@ -380,6 +360,17 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           r.card = acctIsCard ? acct : oth; r.source = acctIsCard ? oth : acct;
           if (r.card && !r.source) r.source = 'outside';
           if (!r.card && r.source) { r.kind = 'transfer'; r.from = r.source; r.to = 'outside'; }
+        }
+        // Money out of a bank account to a lender you have a loan with is a payment on that loan, so what is owed
+        // goes down. Money in from a line of credit raises what is owed on the line.
+        const bankSide = acct && !(acct.startsWith('credit_card:') || (l.account && l.account.type === 'credit_card'));
+        if (bankSide && out && (r.kind === 'purchase' || (r.kind === 'transfer' && r.to === 'outside'))) {
+          const loan = loanFor(l.merchant, loans);
+          if (loan) { r.kind = 'loan_payment'; r.loan = `loan:${loan.id}`; r.source = acct; r.category_id = ''; r.linked = `Taken as a payment on ${loan.name}.`; }
+        }
+        if (bankSide && !out && (r.kind === 'income' || (r.kind === 'transfer' && r.from === 'outside'))) {
+          const line = lineFor(l.merchant, loans);
+          if (line) { r.kind = 'transfer'; r.from = `loan:${line.id}`; r.to = acct; r.category_id = ''; r.linked = `Taken as money from ${line.name}: what is owed on it goes up.`; }
         }
         return r;
       }).map((r, _, all) => {
@@ -488,6 +479,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     const patch = { kind };
     if (kind === 'transfer') { patch.from = r.direction === 'in' ? (r.other_ref || '') : base; patch.to = r.direction === 'in' ? base : ''; }
     else if (kind === 'card_payment') { patch.card = isCardRef(base) ? base : ''; patch.source = isCardRef(base) ? '' : base; }
+    else if (kind === 'loan_payment') { const loan = loanFor(r.merchant, loans); patch.loan = loan ? `loan:${loan.id}` : ''; patch.source = base; }
     else patch.target = base;
     if (kind === 'purchase' || kind === 'income') patch.category_id = suggestCategory(r.merchant, r.category_guess, kind === 'income', r.amount);
     setRow(r.i, patch);
@@ -500,6 +492,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) return 'Enter the date';
     if (r.kind === 'transfer') return !r.from || !r.to ? 'Choose both accounts' : r.from === r.to ? (r.from === 'outside' ? 'One of the two must be an account in the app' : 'Choose two different accounts') : null;
     if (r.kind === 'card_payment') return !r.card ? 'Choose the card' : !r.source ? 'Choose what paid it' : null;
+    if (r.kind === 'loan_payment') return !r.loan ? 'Choose the loan' : !r.source ? 'Choose what paid it' : null;
     return r.target ? null : 'Choose the account';
   };
 
@@ -602,6 +595,9 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         // A limit that moved keeps what it was and the day it was seen, so the card can show it.
         const lim = list.find((c) => c.field === 'credit_limit');
         if (lim) { patch.credit_limit_before = lim.from; patch.credit_limit_changed_at = new Date().toLocaleDateString('en-CA'); }
+        // A rate that moved keeps what it was and the day it changed, so the cost of the change can be shown.
+        const rate = list.find((c) => c.field === 'interest_rate');
+        if (rate && type === 'loan') { patch.interest_rate_before = rate.from; patch.interest_rate_changed_at = new Date().toLocaleDateString('en-CA'); }
         const { error: e } = await server.from({ credit_card: 'credit_cards', bank_account: 'bank_accounts', loan: 'loans', bill: 'bills' }[type]).update(patch).eq('id', id);
         if (e) throw new Error(e.message);
         result.changed = (result.changed || 0) + list.length;
@@ -659,6 +655,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         }
         else if (r.kind === 'transfer') res = await recordTransfer({ ...common, from: r.from, to: r.to }, accounts);
         else if (r.kind === 'card_payment') res = await recordCardPayment({ ...common, cardId: r.card.split(':')[1], source: r.source }, accounts);
+        else if (r.kind === 'loan_payment') res = await recordLoanPayment({ ...common, loanId: r.loan.split(':').slice(1).join(':'), source: r.source }, accounts);
         if (res && res.repeated) result.repeated += 1; else result.recorded += 1;
         if (r0.held_id) await server.from('held_lines').delete().eq('id', r0.held_id);
       } catch (err) {
@@ -690,6 +687,12 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     if (st && st.account && st.closing_balance != null) {
       const target = String(st.account.id).startsWith('new:') ? realRef[st.account.id] : `${st.account.type}:${st.account.id}`;
       if (target) snaps.push({ target, name: `${st.account.name} statement to ${st.period_end}`, value: st.closing_balance, apply: true, date: st.period_end, source: 'statement' });
+      // A statement that adds up also proves where the account stood the day before it starts: a second checkpoint,
+      // so the whole period is one checked stretch of the ledger. It is only compared, never applied.
+      if (target && st.check && st.check.adds_up && st.opening_balance != null && /^\d{4}-\d{2}-\d{2}$/.test(String(st.period_start || ''))) {
+        const before = new Date(`${st.period_start}T12:00:00`); before.setDate(before.getDate() - 1);
+        snaps.push({ target, name: `${st.account.name} statement from ${st.period_start}`, value: st.account.type === 'credit_card' ? Math.abs(Number(st.opening_balance)) : Number(st.opening_balance), apply: false, date: before.toLocaleDateString('en-CA'), source: 'statement opening' });
+      }
     }
     for (const t of (st && st.not_on_statement) || []) {
       if (!removals[t.id]) continue;
@@ -752,14 +755,16 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const lineSummary = (r) => {
     if (r.kind === 'transfer') return `${nameOf(r.from)} to ${nameOf(r.to)}`;
     if (r.kind === 'card_payment') return `${nameOf(r.source)} pays ${nameOf(r.card)}`;
+    if (r.kind === 'loan_payment') return `${nameOf(r.source)} pays ${nameOf(r.loan)}`;
     return nameOf(r.target);
   };
-  const Select = ({ value, onChange, label, cards, outside, big: large }) => (
+  const Select = ({ value, onChange, label, cards, outside, big: large, lines: withLines }) => (
     <label className={`block ${large ? 'text-sm' : 'text-xs'}`}>
       <span className={muted}>{label}</span>
       <select className={`${input} ${large ? 'mt-1 py-2.5 text-base' : ''}`} value={value || ''} onChange={(e) => onChange(e.target.value)}>
         <option value="">Choose</option>
         {accountOptions.filter((o) => cards === undefined || isCardRef(o.value) === cards).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        {(withLines || String(value || '').startsWith('loan:')) && loans.filter((l) => !l.on_card_id && (l.loan_type === 'line_of_credit' || `loan:${l.id}` === value)).map((l) => <option key={l.id} value={`loan:${l.id}`}>{l.name}</option>)}
         {outside && <option value="outside">An account not in the app</option>}
       </select>
     </label>
@@ -1079,7 +1084,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     <input type="checkbox" className="mt-0.5 w-5 h-5 shrink-0" checked={c.on} onChange={(e) => setChanges((cs) => cs.map((x) => (x.key === c.key ? { ...x, on: e.target.checked } : x)))} />
                     <span className="min-w-0">
                       <span className="block text-base font-medium">{c.account.name}: {c.label.toLowerCase()}</span>
-                      <span className={`block text-sm ${muted}`}>{showValue(c, c.from)} in the app, {showValue(c, c.to)} on the picture{c.field === 'credit_limit' && c.from != null ? (c.to > c.from ? `: raised by ${formatCurrency(c.to - c.from)}` : `: lowered by ${formatCurrency(c.from - c.to)}`) : ''}</span>
+                      <span className={`block text-sm ${muted}`}>{showValue(c, c.from)} in the app, {showValue(c, c.to)} {image && image.typed ? 'as you typed' : 'on the picture'}{c.field === 'credit_limit' && c.from != null ? (c.to > c.from ? `: raised by ${formatCurrency(c.to - c.from)}` : `: lowered by ${formatCurrency(c.from - c.to)}`) : ''}</span>
                     </span>
                   </label>
                 ))}
@@ -1319,14 +1324,23 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                             {Object.entries(KIND_TEXT).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
                           </select></label>
                         {r.kind === 'transfer' && (<>
-                          <Select label="From" value={r.from} outside onChange={(v) => setRow(r.i, { from: v })} />
+                          <Select label="From" value={r.from} outside lines onChange={(v) => setRow(r.i, { from: v })} />
                           <Select label="To" value={r.to} outside onChange={(v) => setRow(r.i, { to: v })} />
                         </>)}
                         {r.kind === 'card_payment' && (<>
                           <Select label="Card paid" value={r.card} cards onChange={(v) => setRow(r.i, { card: v })} />
                           <Select label="Paid from" value={r.source} cards={false} outside onChange={(v) => setRow(r.i, { source: v })} />
                         </>)}
-                        {!['transfer', 'card_payment'].includes(r.kind) && (
+                        {r.kind === 'loan_payment' && (<>
+                          <label className="block text-xs"><span className={muted}>Loan paid</span>
+                            <select className={input} value={r.loan || ''} onChange={(e) => setRow(r.i, { loan: e.target.value })}>
+                              <option value="">Choose</option>
+                              {loans.filter((l) => !l.on_card_id).map((l) => <option key={l.id} value={`loan:${l.id}`}>{l.name}</option>)}
+                            </select></label>
+                          <Select label="Paid from" value={r.source} cards={false} onChange={(v) => setRow(r.i, { source: v })} />
+                        </>)}
+                        {r.linked && <p className={`col-span-2 text-xs ${muted}`}>{r.linked} Change "What it is" if that is wrong.</p>}
+                        {!['transfer', 'card_payment', 'loan_payment'].includes(r.kind) && (
                           <Select label={r.kind === 'purchase' ? 'Paid with' : 'Into'} value={r.target} onChange={(v) => setRow(r.i, { target: v })} />
                         )}
                         {r.items && (

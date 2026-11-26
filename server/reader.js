@@ -593,6 +593,7 @@ function plan(reading, ctx, sourceId) {
       change(ch, 'payment_amount', 'Each payment', mine.payment_amount, pos(a.payment_amount), 'money');
       change(ch, 'next_payment_date', 'Next payment day', mine.next_payment_date, realDay(a.due_date), 'later');
       change(ch, 'interest_rate', 'Interest % a year', mine.interest_rate, Number.isFinite(Number(a.interest_rate)) && a.interest_rate !== null && Number(a.interest_rate) > 0 && Number(a.interest_rate) <= 100 ? Number(a.interest_rate) : null, 'number');
+      change(ch, 'credit_limit', 'Limit', mine.credit_limit, pos(a.credit_limit), 'money');
       if (ch.length) updates.push({ account: { type: 'loan', id: mine.id, name: mine.name }, changes: ch });
     }
     if (mine) { if (pos(a.balance) != null) balances.push({ account: { type: 'loan', id: mine.id, name: mine.name }, shown: pos(a.balance), current: Math.round(Number(mine.balance || 0) * 100) / 100, differs: pos(a.balance) !== Math.round(Number(mine.balance || 0) * 100) / 100, snapshot_date: mine.snapshot_date || null }); continue; }

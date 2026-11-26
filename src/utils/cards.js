@@ -84,3 +84,29 @@ export function knownLender(name) {
   const hit = LENDERS.find((l) => storeFits(l.names, name));
   return hit ? { kind: hit.kind, label: hit.label || null, zero: !!hit.zero, note: hit.note } : null;
 }
+
+// The loan a line on a bank account is a payment on: a loan named in the line, else the one loan of the kind the
+// lender is known for (a line to "Pine" pays your one mortgage). -> the loan, or null when it cannot be told.
+export function loanFor(description, loans = []) {
+  const text = plainName(description).replace(/ /g, '');
+  const open = (loans || []).filter((l) => !l.on_card_id && Number(l.balance) > 0);
+  if (text.length < 3) return null;
+  const named = open.filter((l) => { const n = plainName(l.name).replace(/ /g, ''); return n.length >= 4 && (text.includes(n) || (text.length >= 4 && n.includes(text))); });
+  if (named.length === 1) return named[0];
+  const k = knownLender(description);
+  if (!k) return null;
+  const same = open.filter((l) => { const lk = knownLender(l.name); return lk && lk.note === k.note; });
+  if (same.length === 1) return same[0];
+  const kind = open.filter((l) => l.loan_type === k.kind);
+  return kind.length === 1 ? kind[0] : null;
+}
+// The line of credit a line on a bank account took money from ("Transfer from line of credit"), when you have one
+// that fits. -> the loan, or null.
+export function lineFor(description, loans = []) {
+  const text = plainName(description);
+  if (!/line of credit|credit line|ploc|scotialine|heloc/.test(text)) return null;
+  const lines = (loans || []).filter((l) => !l.on_card_id && (l.loan_type === 'line_of_credit' || /line of credit|credit line|scotialine|heloc/.test(plainName(l.name))));
+  const flat = text.replace(/ /g, '');
+  const named = lines.filter((l) => plainName(l.name).split(' ').filter((w) => w.length > 3 && !['line', 'credit'].includes(w)).some((w) => flat.includes(w)));
+  return named.length === 1 ? named[0] : lines.length === 1 ? lines[0] : null;
+}

@@ -33,7 +33,7 @@ globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v
 const realFetch = globalThis.fetch;
 globalThis.fetch = (u, o) => realFetch(String(u).startsWith('/') ? base + u : u, o);
 const lib = path.join(tmp, 'lib'); fs.mkdirSync(lib);
-for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js', 'room.js', 'issues.js', 'merchants.js', 'lines.js', 'cards.js', 'accounts.js']) {
+for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js', 'room.js', 'issues.js', 'merchants.js', 'lines.js', 'cards.js', 'accounts.js', 'ledger.js']) {
   const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
   fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
 }
@@ -2058,4 +2058,65 @@ test('a bank name is kept tidy however it is typed, the same on the server and o
   assert.equal((await client.from('bank_accounts').select('*').eq('id', 'tidy-bank').maybeSingle()).data.institution, 'Wealthsimple');
   await client.from('bank_accounts').update({ institution: 'scotia' }).eq('id', 'tidy-bank');
   assert.equal((await client.from('bank_accounts').select('*').eq('id', 'tidy-bank').maybeSingle()).data.institution, 'Scotiabank');
+});
+
+test('the checkpoint ledger: lines between two balances must add up to the change, whatever order pictures came in', async () => {
+  const L = await import(pathToFileURL(path.join(lib, 'ledger.mjs')));
+  const snap = (date, value, more = {}) => ({ account_table: 'bank_accounts', account_id: 'a1', name: 'Chequing', date, value, status: 'ok', created_at: date, ...more });
+  const line = (date, delta, more = {}) => ({ date, type: delta < 0 ? 'expense' : 'income', amount: Math.abs(delta), status: 'active', _legs: [{ table: 'bank_accounts', id: 'a1', field: 'balance', delta }], ...more });
+  const hist = (date, amount) => ({ date, type: 'expense', amount: Math.abs(amount), status: 'active', _legs: [], history_only: [{ table: 'bank_accounts', id: 'a1', amount }] });
+  // Adds up: 1000 -> 850 with -100 and -50.
+  let book = L.ledger({ snapshots: [snap('2026-11-10', 1000), snap('2026-11-20', 850)], transactions: [line('2026-11-12', -100), line('2026-11-15', -50)] });
+  assert.equal(book['bank_accounts:a1'].intervals[0].gap, 0);
+  assert.equal(book['bank_accounts:a1'].checked_to, '2026-11-20');
+  assert.equal(L.ledgerGaps(book).length, 0);
+  // One line missing: the gap is its amount, even though an adjustment put the balance right.
+  const adj = { date: '2026-11-20', type: 'adjustment', amount: 50, status: 'active', _legs: [{ table: 'bank_accounts', id: 'a1', field: 'balance', delta: -50 }] };
+  book = L.ledger({ snapshots: [snap('2026-11-10', 1000), snap('2026-11-20', 850, { status: 'corrected' })], transactions: [line('2026-11-12', -100), adj] });
+  assert.equal(L.ledgerGaps(book)[0].gap, -50);
+  // The missing line arrives later as history: the gap closes without the balance moving again.
+  book = L.ledger({ snapshots: [snap('2026-11-10', 1000), snap('2026-11-20', 850, { status: 'corrected' })], transactions: [line('2026-11-12', -100), adj, hist('2026-11-15', -50)] });
+  assert.equal(L.ledgerGaps(book).length, 0);
+  // A line saved twice shows as a gap the other way; an undone line does not count; another account's lines do not count.
+  book = L.ledger({ snapshots: [snap('2026-11-10', 1000), snap('2026-11-20', 900)], transactions: [line('2026-11-12', -100), line('2026-11-12', -100), line('2026-11-13', -70, { status: 'undone' }), { ...line('2026-11-13', -70), _legs: [{ table: 'bank_accounts', id: 'zz', delta: -70 }] }] });
+  assert.equal(L.ledgerGaps(book)[0].gap, 100);
+  // A line dated on a checkpoint's own day counts either way round.
+  book = L.ledger({ snapshots: [snap('2026-11-10', 1000), snap('2026-11-20', 850)], transactions: [line('2026-11-10', -100), line('2026-11-20', -50)] });
+  assert.equal(L.ledgerGaps(book).length, 0);
+  book = L.ledger({ snapshots: [snap('2026-11-10', 900), snap('2026-11-20', 900)], transactions: [line('2026-11-10', -100), line('2026-11-20', -50)] });
+  assert.equal(L.ledgerGaps(book).length, 0);
+  // Three checkpoints given out of order, with a dismissed one ignored and the later of two on a day used.
+  book = L.ledger({ snapshots: [snap('2026-11-30', 700), snap('2026-11-10', 1000), snap('2026-11-20', 850), snap('2026-11-25', 1, { status: 'dismissed' }), snap('2026-11-20', 800, { created_at: '2026-11-19' })], transactions: [line('2026-11-12', -150), line('2026-11-22', -100)] });
+  assert.deepEqual(book['bank_accounts:a1'].intervals.map((i) => [i.from, i.to, i.gap]), [['2026-11-10', '2026-11-20', 0], ['2026-11-20', '2026-11-30', -50]]);
+  // A stretch ending in an open check is left to that check; and it is listed to sort out otherwise.
+  assert.equal(L.ledgerGaps(L.ledger({ snapshots: [snap('2026-11-10', 1000), snap('2026-11-20', 850, { status: 'open' })], transactions: [] })).length, 0);
+  const found = I.issues({ snapshots: [snap('2026-11-10', 1000), snap('2026-11-20', 850, { status: 'corrected' })], transactions: [line('2026-11-12', -100)], today: '2026-11-26' }).find((x) => x.id === 'gap:bank_accounts:a1:2026-11-20');
+  assert.ok(found && found.kind === 'check' && found.ref === 'a1' && /\$50\.00/.test(found.title));
+});
+
+test('a bank line to a lender is a payment on the loan you have with it; money from a line of credit is found too', async () => {
+  const C = await import(pathToFileURL(path.join(lib, 'cards.mjs')));
+  const loans = [
+    { id: 'm', name: 'Pine mortgage', loan_type: 'mortgage', balance: 400000 },
+    { id: 'h', name: 'Honda lease', loan_type: 'car_lease', balance: 9000 },
+    { id: 'w', name: 'Portfolio line of credit', loan_type: 'line_of_credit', balance: 4000 },
+    { id: 'p', name: 'Canadian Tire plan', loan_type: 'plan', balance: 300, on_card_id: 'c9' },
+    { id: 'z', name: 'Old loan', loan_type: 'loan', balance: 0 },
+  ];
+  assert.equal(C.loanFor('PINE MORTGAGE PYMT', loans).id, 'm');
+  assert.equal(C.loanFor('Pine', loans).id, 'm');
+  assert.equal(C.loanFor('HONDA LEASE PMT', loans).id, 'h');
+  assert.equal(C.loanFor('TIM HORTONS', loans), null);
+  assert.equal(C.loanFor('', loans), null);
+  assert.equal(C.loanFor('OLD LOAN', loans), null, 'nothing is owed on it');
+  assert.equal(C.loanFor('CANADIAN TIRE PLAN', loans), null, 'a plan inside a card is paid through the card');
+  // Two mortgages and a line that names neither: it cannot be told, so it is left as it was read.
+  assert.equal(C.loanFor('MORTGAGE PAYMENT', [...loans, { id: 'm2', name: 'RBC mortgage', loan_type: 'mortgage', balance: 1 }]), null);
+  assert.equal(C.lineFor('Transfer from line of credit', loans).id, 'w');
+  assert.equal(C.lineFor('PLOC ADVANCE', loans).id, 'w');
+  assert.equal(C.lineFor('Transfer from savings', loans), null);
+  const two = [...loans, { id: 's', name: 'ScotiaLine', loan_type: 'line_of_credit', balance: 0 }];
+  assert.equal(C.lineFor('SCOTIALINE ADVANCE', two).id, 's');
+  assert.equal(C.lineFor('Transfer from portfolio line of credit', two).id, 'w');
+  assert.equal(C.lineFor('line of credit', two), null, 'two lines and no name: not guessed');
 });
