@@ -682,9 +682,12 @@ const wantsInfo = (tbl, r) => {
 // When the lookup service does not answer (busy, over its limit), nothing is counted as tried: lookups rest for an
 // hour and then carry on where they stopped.
 let lookupsRestUntil = 0;
+// Set while Google refuses search-backed questions for the key (its plan gives none, or they are used up). Reading
+// pictures is a different allowance and keeps working, so the person is told which of the two it is.
+let searchRefused = false;
 async function fillProducts(uid, max = 4, only = null) {
   if (!process.env.LOOKUP_STUB && !require('./keystore').get()) { if (only) fail(503, 'Looking up details is not set up yet.'); return 0; }
-  if (Date.now() < lookupsRestUntil) { if (only) fail(503, 'The lookup service is not answering right now. It is tried again within the hour.'); return 0; }
+  if (Date.now() < lookupsRestUntil) { if (only) fail(503, searchRefused ? 'Google is refusing web search for the key the app uses, so details cannot be looked up. Type the figures in, or turn on billing for the key.' : 'The lookup service is not answering right now. It is tried again within the hour.'); return 0; }
   if (!only && !lookupPrefs(uid).details) return 0;
   // Asked for one account again: what was kept for it is cleared first, so it is looked up fresh.
   if (only) {
@@ -701,7 +704,13 @@ async function fillProducts(uid, max = 4, only = null) {
       const name = productName(tbl, r);
       let res = null;
       try { res = await require('./rates').lookup(kind, name); }
-      catch (e) { lookupsRestUntil = Date.now() + 3600e3; console.error(`details: resting for an hour (${String(e.message).replace(/\s+/g, ' ').slice(0, 80)})`); return done; }
+      catch (e) {
+        searchRefused = e.status === 429;
+        lookupsRestUntil = Date.now() + (searchRefused ? 6 : 1) * 3600e3;
+        console.error(`details: resting for ${searchRefused ? 'six hours, web search is refused for the key' : 'an hour'} (${String(e.message).replace(/\s+/g, ' ').slice(0, 80)})`);
+        return done;
+      }
+      searchRefused = false;
       done += 1;
       tx(() => {
         const fresh = selectRows(uid, { table: tbl, filters: [['id', 'eq', String(r.id)]], limit: 1 })[0];
@@ -739,6 +748,8 @@ route('POST', '/api/db', (req, b) => { const uid = authUser(req).id; const out =
 route('POST', '/api/holdings', (req, b) => setHoldings(authUser(req).id, b));
 route('POST', '/api/prices', async (req) => ({ changed: await reprice(authUser(req).id) }));
 route('POST', '/api/quote', async (req, b) => { authUser(req); const f = await prices.find(db, { symbol: b.symbol, currency: b.currency, crypto: b.crypto === true }); const pick = (q) => ({ symbol: q.symbol, name: q.name, price: q.price, currency: q.currency }); return { quote: f.quote ? pick(f.quote) : null, choices: (f.choices || []).map(pick) }; });
+// Whether details can be looked up right now, so the page can say why they are empty.
+route('GET', '/api/lookup-state', (req) => { authUser(req); return { search_refused: searchRefused }; });
 route('GET', '/api/tax-facts', (req) => { authUser(req); return require('./taxfacts').facts(db); });
 route('POST', '/api/details', async (req, b) => ({ done: await fillProducts(authUser(req).id, 4, b && b.table && b.id != null ? { table: String(b.table), id: b.id } : null) }));
 route('POST', '/api/money', (req, b) => money(authUser(req).id, b));
@@ -1089,4 +1100,4 @@ if (require.main === module) {
   setTimeout(runReminders, 60e3);
   setInterval(runReminders, 15 * 60e3).unref();
 }
-module.exports = { server, db, money, reverse, runQuery, runReminders, setHoldings, reprice, fillProducts, runUpkeep, _wakeLookups: () => { lookupsRestUntil = 0; } };
+module.exports = { server, db, money, reverse, runQuery, runReminders, setHoldings, reprice, fillProducts, runUpkeep, _wakeLookups: () => { lookupsRestUntil = 0; searchRefused = false; } };

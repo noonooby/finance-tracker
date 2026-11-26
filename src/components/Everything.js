@@ -77,6 +77,8 @@ export default function Everything() {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(null);
   const [prefs, setPrefs] = useState({});
+  const [refused, setRefused] = useState(false);
+  useEffect(() => { api('/api/lookup-state', undefined, 'GET').then((r) => setRefused(!!(r && r.search_refused))).catch(() => {}); }, []);
   useEffect(() => { server.from('settings').select('*').eq('key', 'lookups').maybeSingle().then(({ data }) => setPrefs((data && data.value) || {})).catch(() => {}); }, []);
   const setPref = async (k, on) => {
     const value = { ...prefs, [k]: on };
@@ -152,6 +154,7 @@ export default function Everything() {
               <span className="min-w-0"><span className="block text-sm font-medium">{label}</span><span className="block text-xs text-muted">{note}</span></span>
             </label>
           ))}
+          {refused && <p className="text-xs text-warning">Published rates and fees are not being filled in: Google refuses web search for the key the app uses. Reading pictures still works. Turn on billing for that key in Google AI Studio, or type the figures under Change on each account.</p>}
           <p className="text-xs text-muted">Apart from reading the pictures you add and the exchange rate for a purchase in another currency, nothing else is looked up.</p>
         </Card>
       </Section>
