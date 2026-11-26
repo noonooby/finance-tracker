@@ -89,8 +89,8 @@ export default function BankAccounts({ darkMode, bankAccounts, loans, creditCard
         </Card>
       )}
 
-      <Issues compact only={(i) => ids.has(String(i.ref)) && ['check', 'need', 'stale'].includes(i.kind) && (i.kind !== 'need' || String(i.id).startsWith('need:bank_accounts:'))}
-        wrap={(list, count) => <Section title="To sort out" action={<span className="text-xs text-muted">{count}</span>}>{list}</Section>} />
+      <Issues limit={3} only={(i) => ids.has(String(i.ref)) && ['check', 'need', 'stale'].includes(i.kind) && (i.kind !== 'need' || String(i.id).startsWith('need:bank_accounts:'))}
+        wrap={(list, count) => <Section title="To sort out" action={<span className="text-xs text-muted">{count}</span>}><Card padded={false} className="overflow-hidden">{list}</Card></Section>} />
 
       {groups.length === 0 ? (
         <Card><EmptyState icon={Landmark} title="No accounts yet" text="Add a picture of your bank app: the accounts on it, their balances and their lines are filled in. Or add one by hand."

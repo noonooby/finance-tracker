@@ -1,11 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, ExternalLink, FileText, Scale, PiggyBank, Repeat, Target, Gauge, MessageCircle, CalendarDays, TrendingDown, FileSpreadsheet, Landmark, Percent } from 'lucide-react';
+import { CreditCard, TrendingUp, DollarSign, Activity, BarChart3, Settings, HelpCircle, LogOut, ChevronRight, FileText, Scale, PiggyBank, Repeat, Target, Gauge, MessageCircle, CalendarDays, TrendingDown, FileSpreadsheet, Landmark, Percent } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
-import { OTHER_APPS } from '../utils/apps';
 
-const APP_ICONS = { resume: FileText };
 
 export default function More() {
   const navigate = useNavigate();
@@ -91,22 +89,6 @@ export default function More() {
             {user && user.email && <span className={`block text-xs ${muted}`}>Signed in as {user.email}</span>}
           </span>
         </button>
-      </Section>
-
-      <Section title="Your other apps">
-        {OTHER_APPS.map((a) => {
-          const Icon = APP_ICONS[a.id] || ExternalLink;
-          return (
-            <a key={a.id} href={a.url} className={row} target="_blank" rel="noopener noreferrer">
-              <span className="grid place-items-center w-9 h-9 rounded-xl bg-accent-soft text-accent shrink-0"><Icon size={18} aria-hidden="true" /></span>
-              <span className="flex-1">
-                <span className="block font-medium">{a.name}</span>
-                <span className={`block text-xs ${muted}`}>{a.what}</span>
-              </span>
-              <ExternalLink size={16} className={muted} />
-            </a>
-          );
-        })}
       </Section>
     </div>
   );

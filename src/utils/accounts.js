@@ -94,3 +94,35 @@ export function lineTerms(loan, investments = []) {
     limit, limit_from: ownLimit != null ? 'set by you' : worked != null ? `${Math.round(k.share * 100)}% of ${pool.map((i) => i.name).join(', ')}` : null,
     used, left: limit == null ? null : round2(Math.max(0, limit - used)), month: rate != null ? round2(used * rate / 100 / 12) : null };
 }
+
+// ---------- bank names ----------
+// A bank's name as it is kept, whatever way it was typed. The server keeps the same list (server/banks.js).
+export const BANKS = [
+  ['Scotiabank', 'scotia, scotiabank, scotia bank, bns, bank of nova scotia'], ['TD', 'td, td bank, td canada trust, toronto dominion, td canada'], ['RBC', 'rbc, royal bank, rbc royal bank, royal bank of canada'],
+  ['BMO', 'bmo, bank of montreal'], ['CIBC', 'cibc'], ['National Bank', 'national bank, nbc, banque nationale, national bank of canada'], ['Tangerine', 'tangerine'], ['Simplii Financial', 'simplii, simplii financial'],
+  ['EQ Bank', 'eq, eq bank, equitable bank'], ['Wealthsimple', 'wealthsimple, wealth simple, ws'], ['Questrade', 'questrade'], ['Desjardins', 'desjardins'], ['HSBC', 'hsbc'], ['Laurentian Bank', 'laurentian, laurentian bank'],
+  ['Manulife Bank', 'manulife bank'], ['Manulife', 'manulife'], ['PC Financial', 'pc, pc financial, presidents choice, presidents choice financial, pc money'], ['American Express', 'amex, american express'], ['MBNA', 'mbna'],
+  ['Canadian Tire Bank', 'canadian tire, canadian tire bank, ctb, triangle'], ['Rogers Bank', 'rogers, rogers bank'], ['Capital One', 'capital one, capitalone'], ['Neo Financial', 'neo, neo financial'], ['KOHO', 'koho'],
+  ['Wise', 'wise'], ['PayPal', 'paypal'], ['Home Trust', 'home trust'], ['Motive Financial', 'motive, motive financial'], ['Alterna', 'alterna, alterna bank'], ['Meridian', 'meridian'], ['Vancity', 'vancity'],
+  ['ATB Financial', 'atb, atb financial'], ['Coast Capital', 'coast capital'], ['Oaken Financial', 'oaken, oaken financial'], ['Peoples Bank', 'peoples bank'], ['Interactive Brokers', 'ibkr, interactive brokers'],
+  ['Fidelity', 'fidelity'], ['Sun Life', 'sun life, sunlife'], ['Canada Life', 'canada life'], ['Coinbase', 'coinbase'], ['Kraken', 'kraken'], ['Shakepay', 'shakepay'], ['Newton', 'newton'], ['Binance', 'binance'],
+];
+const plainBank = (s) => String(s || '').toLowerCase().replace(/['’`.]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+const BY = new Map(BANKS.flatMap(([name, also]) => also.split(',').map((a) => [plainBank(a), name])));
+export function bankName(text) {
+  const t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!t) return '';
+  const known = BY.get(plainBank(t));
+  if (known) return known;
+  // Typed with its own capitals ("iA Financial"): kept. All lower or all upper: each word gets a capital.
+  if (/[a-z]/.test(t) && /[A-Z]/.test(t)) return t;
+  return t.toLowerCase().replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+}
+
+// What was typed in a bank field, finished: a known bank, or the one known bank it is the start of ("wealth").
+export function bankTyped(text) {
+  const t = plainBank(text), exact = bankName(text);
+  if (BY.get(t) || t.length < 4) return exact;
+  const starts = [...new Set([...BY.entries()].filter(([k]) => k.startsWith(t)).map(([, name]) => name))];
+  return starts.length === 1 ? starts[0] : exact;
+}

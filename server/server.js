@@ -148,6 +148,7 @@ function clean(values) {
   if (!values || typeof values !== 'object' || Array.isArray(values)) fail(400, 'A row must be an object');
   const v = { ...values };
   for (const k of Object.keys(v)) if (!COL.test(k)) fail(400, 'Unknown field: ' + k);
+  if (typeof v.institution === 'string' && v.institution.trim()) v.institution = bankName(v.institution);
   delete v._legs; // only /api/money writes the record of what a transaction moved
   delete v._undo; // and the record of the plain fields it changed along the way
   return v;
@@ -675,6 +676,7 @@ const lookupPrefs = (uid) => { const v = (selectRows(uid, { table: 'settings', f
 
 // ---------- holdings: an investment account that lists what it holds is valued at market prices ----------
 const prices = require('./prices');
+const { bankName } = require('./banks');
 // Sets what an account holds (from a screen or typed in), finds each ticker, and values the account.
 async function setHoldings(uid, b) {
   const one = () => selectRows(uid, { table: 'investments', filters: [['id', 'eq', String(b.id)]], limit: 1 })[0];

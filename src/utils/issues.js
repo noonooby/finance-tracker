@@ -4,7 +4,7 @@
 //           (name the holding), 'same' (set a known figure), 'unlink' (the plan is not inside this card), 'go' (open a page), 'leave' (stay quiet until the figures change).
 import { cardSplit } from './finance';
 import { planHome, looksLikePlan } from './cards';
-import { keptIn, lineTerms } from './accounts';
+import { keptIn, lineTerms, bankName } from './accounts';
 
 const money = (n) => `$${(Math.round(Number(n) * 100) / 100).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const TARGET = { bank: 'bank_account', cash: 'bank_account', card: 'credit_card', card_credit: 'credit_card', gift_card: 'credit_card', loan: 'loan', mortgage: 'loan', investment: 'investment', asset: 'asset' };
@@ -102,15 +102,17 @@ export function issues({ checks = [], stale = [], snapshots = [], bankAccounts =
     if (!missing.length) return;
     add({ id: `need:${table}:${row.id}`, sig: missing.map((r) => r.field).join(','), kind: 'need', ref: String(row.id), title: `${row.name}: ${list(missing.map((r) => r.short))} ${missing.length === 1 ? 'is' : 'are'} not known`,
       text: `The app cannot work out ${list(missing.map((r) => r.use))} without ${missing.length === 1 ? 'it' : 'them'}. Type ${missing.length === 1 ? 'it' : 'each one'} in, or add a picture that shows ${missing.length === 1 ? 'it' : 'them'}.`,
-      sums: missing.map((r) => ({ label: r.label, value: null, fix: { do: 'field', label: `Add ${r.short}`, ask: r.ask, input: r.input, table, id: row.id, field: r.field } })),
+      sums: missing.map((r) => ({ label: r.label, value: null, fix: { do: 'field', label: `Add ${r.short}`, ask: r.ask, input: r.input, table, id: row.id, field: r.field, ...(r.suggest ? { suggest: r.suggest } : {}) } })),
       fixes: [{ do: 'go', label: `Add a picture of ${what}`, to: '/screenshot' }, leave('Not needed')] });
   };
   const blank = (v) => v == null || v === '' || !(Number(v) > 0);
   // An account with no bank on record: a picture from any bank could be taken for it, so it is asked for once.
+  // One tap answers it: the banks you already use come first, then the common ones.
+  const banks = [...new Set([...[...bankAccounts, ...creditCards, ...investments].map((x) => bankName(x.institution)).filter(Boolean), 'Scotiabank', 'TD', 'RBC', 'BMO', 'CIBC', 'Wealthsimple', 'Tangerine', 'EQ Bank'])].slice(0, 8);
   for (const a of bankAccounts) {
     if (a.account_type === 'cash') continue;
     ask('bank_accounts', a, 'the account', [
-      { field: 'institution', missing: !String(a.institution || '').trim(), label: 'Bank', short: 'the bank', use: 'which pictures belong to it', ask: `The bank ${a.name} is at`, input: 'text' },
+      { field: 'institution', missing: !String(a.institution || '').trim(), label: 'Bank', short: 'the bank', use: 'which pictures belong to it', ask: `The bank ${a.name} is at`, input: 'text', suggest: banks },
     ]);
   }
   for (const c of creditCards) {

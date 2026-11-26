@@ -43,7 +43,14 @@ body { background: rgb(var(--background)); color: rgb(var(--text)); }
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
+  /* The page scrolls; it is not pinched or double-tapped out of shape. */
+  touch-action: pan-x pan-y;
 }
+.app-shell { height: 100vh; height: 100dvh; }
+.page-scroll { -webkit-overflow-scrolling: touch; scroll-behavior: smooth; scroll-padding: 1rem 0 9rem; }
+@media (prefers-reduced-motion: reduce) { .page-scroll { scroll-behavior: auto; } }
+.fab { transition: transform .25s cubic-bezier(.2,.8,.2,1), opacity .2s; }
+.fab.away { transform: translateY(140%) scale(.9); opacity: 0; pointer-events: none; }
 
 body {
   margin: 0;

@@ -12,6 +12,7 @@ import { taxFactsNow, loadTaxFacts } from '../../utils/taxFacts';
 import { formatCurrency, localDate } from '../../utils/helpers';
 import { showToast } from '../../utils/toast';
 import { Picture } from './Picture';
+import { bankTyped } from '../../utils/accounts';
 
 // Anything that does not match is shown with the same block everywhere: what disagrees, and the fixes as buttons
 // that work in place. utils/issues.js decides what is listed; this file draws it and carries the fixes out.
@@ -109,7 +110,7 @@ export function useIssues() {
       if (error) throw new Error(error.message);
     }
     else if (fix.do === 'field') {
-      const v = fix.input === 'date' ? String(value || '') : fix.input === 'text' ? String(value || '').replace(/\s+/g, ' ').trim().slice(0, 60) : Math.round(Number(value) * 100) / 100;
+      const v = fix.input === 'date' ? String(value || '') : fix.input === 'text' ? (fix.field === 'institution' ? bankTyped(value) : String(value || '').replace(/\s+/g, ' ').trim().slice(0, 60)) : Math.round(Number(value) * 100) / 100;
       if (fix.input === 'text' && !v) throw new Error('Type it in.');
       if (fix.input === 'date' ? !/^\d{4}-\d{2}-\d{2}$/.test(v) : fix.input !== 'text' && !(value !== '' && v > 0)) throw new Error(fix.input === 'date' ? 'Choose the day.' : 'Enter an amount above zero.');
       const { error } = await server.from(fix.table).update({ [fix.field]: v }).eq('id', fix.id);
@@ -192,8 +193,13 @@ export function IssueBlock({ issue, run, done, compact }) {
                     <form className="pt-2.5 space-y-2" onSubmit={(e) => { e.preventDefault(); go(ask, value); }}>
                       <label className="block text-xs text-muted">{ask.ask}
                         <input className="mt-1 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-fg" autoFocus value={value} onChange={(e) => setValue(e.target.value)}
-                          {...(ask.input === 'date' ? { type: 'date' } : ask.input === 'text' ? { type: 'text', maxLength: 60, autoCapitalize: 'words' } : ask.do === 'amount' || ask.do === 'field' ? { type: 'number', step: '0.01', inputMode: 'decimal' } : { autoCapitalize: 'characters' })} />
+                          {...(ask.input === 'date' ? { type: 'date' } : ask.input === 'text' ? { type: 'text', maxLength: 60, autoCapitalize: 'words', autoCorrect: 'off', enterKeyHint: 'done', placeholder: ask.suggest ? 'Type the name, or tap one below' : undefined } : ask.do === 'amount' || ask.do === 'field' ? { type: 'number', step: '0.01', inputMode: 'decimal' } : { autoCapitalize: 'characters' })} />
                       </label>
+                      {ask.suggest && ask.suggest.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Common answers">
+                          {ask.suggest.filter((n) => !value.trim() || n.toLowerCase().includes(value.trim().toLowerCase())).map((n) => <button key={n} type="button" disabled={busy} className="chip" onClick={() => go(ask, n)}>{n}</button>)}
+                        </div>
+                      )}
                       {choices.length > 0 && (
                         <div className="space-y-1 stagger">
                           <p className="text-xs text-muted">More than one match. Which is it?</p>

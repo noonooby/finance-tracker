@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Moon, Sun, Plus, HelpCircle } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
@@ -23,9 +23,32 @@ export function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const iconBtn = 'p-2 rounded-xl text-muted hover:bg-surface-2 hover:text-fg';
+  // The add button steps aside while you scroll down or type, so it never sits on top of what you are reading or
+  // filling in. It comes back when you scroll up, reach the top, or stop typing.
+  const scroller = useRef(null);
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return undefined;
+    let last = el.scrollTop;
+    const typing = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); };
+    const onScroll = () => {
+      const y = el.scrollTop, bottom = y + el.clientHeight >= el.scrollHeight - 24;
+      if (typing() || bottom) setAway(true);
+      else if (y < 40 || y < last - 6) setAway(false);
+      else if (y > last + 6) setAway(true);
+      last = y;
+    };
+    const onFocus = () => setAway(typing() || (el.scrollTop > 40 && el.scrollTop + el.clientHeight >= el.scrollHeight - 24));
+    el.addEventListener('scroll', onScroll, { passive: true });
+    document.addEventListener('focusin', onFocus);
+    document.addEventListener('focusout', onFocus);
+    return () => { el.removeEventListener('scroll', onScroll); document.removeEventListener('focusin', onFocus); document.removeEventListener('focusout', onFocus); };
+  }, []);
+  useEffect(() => { setAway(false); if (scroller.current) scroller.current.scrollTop = 0; }, [location.pathname]);
 
   return (
-    <div className="h-screen flex flex-col bg-background text-fg">
+    <div className="app-shell flex flex-col bg-background text-fg">
       <header className="bg-background/85 backdrop-blur-md border-b border-line/70 px-4 py-2.5 flex-shrink-0 z-10"
         style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))' }}>
         <div className="flex justify-between items-center max-w-3xl mx-auto">
@@ -61,8 +84,8 @@ export function MainLayout() {
       )}
 
       <main className="flex-1 min-h-0 relative">
-        <div className="absolute inset-0 overflow-y-auto overscroll-contain">
-          <div key={location.pathname} className="page-enter p-4 pb-36 max-w-3xl mx-auto">
+        <div ref={scroller} className="page-scroll absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-contain">
+          <div key={location.pathname} className="page-enter p-4 pb-44 max-w-3xl mx-auto">
             <Outlet />
           </div>
         </div>
@@ -71,7 +94,7 @@ export function MainLayout() {
       {location.pathname !== '/screenshot' && <button
         type="button"
         onClick={openAddTransaction}
-        className="press fixed right-4 w-14 h-14 bg-accent text-accent-contrast rounded-2xl shadow-md shadow-accent/20 hover:opacity-90 flex items-center justify-center z-20"
+        className={`fab ${away ? 'away' : ''} press fixed right-4 w-14 h-14 bg-accent text-accent-contrast rounded-2xl shadow-md shadow-accent/20 hover:opacity-90 flex items-center justify-center z-20`}
         style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))', touchAction: 'manipulation' }}
         aria-label="Add a transaction"
       >

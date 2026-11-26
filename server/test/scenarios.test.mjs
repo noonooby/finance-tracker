@@ -2043,3 +2043,19 @@ test('money taken from a line of credit lands in the account and is owed on the 
   assert.equal(await get('bank_accounts', acc), 100);
   assert.equal(await get('loans', loan), 1000);
 });
+
+test('a bank name is kept tidy however it is typed, the same on the server and on the screens', async () => {
+  const A = await import(pathToFileURL(path.join(lib, 'accounts.mjs')));
+  const { createRequire } = await import('node:module');
+  const B = createRequire(import.meta.url)(path.join(root, 'server', 'banks.js'));
+  const cases = { wealthsimple: 'Wealthsimple', ' WEALTH  simple ': 'Wealthsimple', scotia: 'Scotiabank', 'bank of nova scotia': 'Scotiabank', td: 'TD', 'royal bank': 'RBC', amex: 'American Express',
+    'pc financial': 'PC Financial', 'my credit union': 'My Credit Union', 'FIRST ONTARIO': 'First Ontario', 'iA Financial': 'iA Financial', '': '' };
+  for (const [typed, kept] of Object.entries(cases)) { assert.equal(A.bankName(typed), kept, typed); assert.equal(B.bankName(typed), kept, typed); }
+  assert.deepEqual(A.BANKS, B.BANKS);
+  assert.equal(A.bankTyped('wealth'), 'Wealthsimple'); assert.equal(A.bankTyped('scot'), 'Scotiabank'); assert.equal(A.bankTyped('man'), 'Man'); assert.equal(A.bankTyped('manu'), 'Manu');
+  // Saved through the server, whatever the screen sent.
+  await client.from('bank_accounts').insert({ id: 'tidy-bank', name: 'Tidy', balance: 0, account_type: 'savings', institution: 'wealthsimple' });
+  assert.equal((await client.from('bank_accounts').select('*').eq('id', 'tidy-bank').maybeSingle()).data.institution, 'Wealthsimple');
+  await client.from('bank_accounts').update({ institution: 'scotia' }).eq('id', 'tidy-bank');
+  assert.equal((await client.from('bank_accounts').select('*').eq('id', 'tidy-bank').maybeSingle()).data.institution, 'Scotiabank');
+});
