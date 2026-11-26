@@ -38,6 +38,107 @@ const mkey = (m) => String(m || '').toLowerCase().replace(/^(sq|sp|tst|klarna|pa
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const dayDiff = (a, b) => Math.abs((Date.parse(a) - Date.parse(b)) / 864e5);
 
+// ---------- The gate every reading passes ----------
+// Whatever a reading service returns (and whatever was kept from an earlier read) is put into one known shape here
+// before anything else looks at it. Nothing below this has to wonder whether a list is a list or an amount a number.
+// Nothing is thrown away for being odd: a line with no clear amount or date stays and is shown as not recorded.
+const KIND_SET = new Set(['transactions', 'statement', 'receipt', 'balance', 'credit_score', 'pay_slip', 'bill', 'other']);
+const ACCOUNT_TYPES = new Set(['chequing', 'savings', 'credit_card', 'loan', 'investment', 'property', 'gift_card', 'other']);
+const LINE_TYPES = new Set(['purchase', 'income', 'refund', 'card_payment', 'transfer', 'fee', 'interest']);
+const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+const list = (v, max) => (Array.isArray(v) ? v.filter(obj).slice(0, max) : []);
+const words = (v, max) => { if (v == null || typeof v === 'object') return null; const s = String(v).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim(); return s ? s.slice(0, max) : null; };
+// An amount however it was written: 1234.5, "1,234.50", "$45", "(45.00)", "45,50", "1.234,56", "45.00 CR". -> number or null
+function money(v) {
+  if (typeof v === 'number') return Number.isFinite(v) && Math.abs(v) < 1e9 ? v : null;
+  if (typeof v !== 'string') return null;
+  let s = v.trim();
+  const neg = /^\(.*\)$/.test(s) || /^[^\d]*[-−]/.test(s) || /-\s*$/.test(s);
+  // One run of digits with its marks, and nothing but words or signs around it ("1e99" and "3 of 12" are not amounts).
+  const run = s.match(/^[^\d]*?(\d[\d.,\s\u00a0']*)\D*$/);
+  if (!run) return null;
+  s = run[1].replace(/[^\d.,]/g, '');
+  const dot = s.lastIndexOf('.'), comma = s.lastIndexOf(',');
+  // The last mark followed by one or two digits is the decimal point; every other mark only groups digits.
+  if (comma > dot && /,\d{1,2}$/.test(s)) s = s.slice(0, comma).replace(/[.,]/g, '') + '.' + s.slice(comma + 1);
+  else if (dot >= 0) s = s.slice(0, dot).replace(/[.,]/g, '') + '.' + s.slice(dot + 1).replace(/[.,]/g, '');
+  else s = s.replace(/,/g, '');
+  const n = Number(s);
+  return Number.isFinite(n) && n < 1e9 ? (neg ? -n : n) : null;
+}
+const iso = (y, m, d) => { const t = new Date(Date.UTC(y, m - 1, d)); return y >= 1990 && y <= 2100 && t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? t.toISOString().slice(0, 10) : null; };
+// A real calendar day as YYYY-MM-DD, or null. A day written without its year is this year, or last year when that
+// would be after today.
+function day(v, today) {
+  if (v == null || typeof v === 'object') return null;
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:$|[T\s])/);
+  if (m) return iso(+m[1], +m[2], +m[3]);
+  if (!/[a-z]/i.test(s) || s.length > 40) return null;
+  const t = new Date(s);
+  if (Number.isNaN(t.getTime())) return null;
+  if (/\b(19|20)\d{2}\b/.test(s)) return iso(t.getFullYear(), t.getMonth() + 1, t.getDate());
+  const y = Number(String(today).slice(0, 4));
+  const d = iso(y, t.getMonth() + 1, t.getDate());
+  return d && d > today ? iso(y - 1, t.getMonth() + 1, t.getDate()) : d;
+}
+const four = (v) => { const d = v == null || typeof v === 'object' ? '' : String(v).replace(/\D/g, ''); return d.length >= 4 ? d.slice(-4) : null; };
+const yes = (v) => (v === true || v === 'true' ? true : v === false || v === 'false' ? false : null);
+function tidy(reading, today) {
+  const r = obj(reading) || {};
+  if (r._tidy) return r;
+  today = today || new Date().toLocaleDateString('en-CA');
+  const accounts = list(r.accounts, 60).map((a) => ({
+    name: words(a.name, 60), last4: four(a.last4), type: ACCOUNT_TYPES.has(a.type) ? a.type : 'other',
+    balance: money(a.balance), available: money(a.available), credit_limit: money(a.credit_limit), due_date: day(a.due_date, '9999-12-31'),
+    minimum_payment: money(a.minimum_payment), statement_balance: money(a.statement_balance), autopay: yes(a.autopay),
+    loan_kind: words(a.loan_kind, 20), payment_amount: money(a.payment_amount), payment_frequency: words(a.payment_frequency, 20),
+    interest_rate: (() => { const n = money(a.interest_rate); return n != null && n >= 0 && n <= 100 ? n : null; })(),
+  })).filter((a) => a.name || a.last4 || a.balance != null);
+  const lines = list(r.lines, 3000).map((l) => {
+    const type = LINE_TYPES.has(l.type) ? l.type : null;
+    const cur = String(words(l.currency, 8) || '').toUpperCase();
+    const out = {
+      date: day(l.date, today), merchant: words(l.merchant, 120) || '', amount: money(l.amount),
+      direction: l.direction === 'in' || l.direction === 'out' ? l.direction : type === 'income' || type === 'refund' ? 'in' : 'out',
+      pending: yes(l.pending) === true, account_name: words(l.account_name, 60), last4: four(l.last4), type,
+      currency: /^[A-Z]{3}$/.test(cur) ? cur : null, original_amount: money(l.original_amount), other_account: words(l.other_account, 60), category: words(l.category, 40),
+    };
+    if (Number.isInteger(l._pic)) out._pic = l._pic;
+    if (typeof l._kind === 'string') out._kind = l._kind;
+    return out;
+  });
+  const st = obj(r.statement), rc = obj(r.receipt), bl = obj(r.bill), sc = obj(r.credit_score);
+  const kind = KIND_SET.has(r.kind) ? r.kind : lines.length ? 'transactions' : accounts.length ? 'balance' : 'other';
+  const out = {
+    kind, accounts, lines,
+    statement: st ? { account_name: words(st.account_name, 60), last4: four(st.last4), period_start: day(st.period_start, today), period_end: day(st.period_end, today), opening_balance: money(st.opening_balance), closing_balance: money(st.closing_balance) } : null,
+    receipt: rc ? { merchant: words(rc.merchant, 120) || '', date: day(rc.date, today), total: money(rc.total), items: list(rc.items, 300).map((x) => ({ name: words(x.name, 120) || '', amount: money(x.amount) })) } : null,
+    bill: bl ? { payee: words(bl.payee, 60), amount: money(bl.amount), due_date: day(bl.due_date, '9999-12-31'), frequency: words(bl.frequency, 20) } : null,
+    credit_score: sc ? { bureau: words(sc.bureau, 40), score: money(sc.score), date: day(sc.date, today) } : null,
+    notes: words(r.notes, 400) || '',
+  };
+  Object.defineProperty(out, '_tidy', { value: true, enumerable: false });
+  return out;
+}
+// What a proposal must always be, whatever went in. Each rule is put right here, in one place, so no screen or later
+// step has to check again: lines numbered in order, one key per line, no line pointing at the same account twice,
+// nothing offered to record without an amount, a real day and a day that has come.
+function sound(p, today) {
+  const keys = new Set(), limit = (() => { const t = new Date(today + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + 1); return t.toISOString().slice(0, 10); })();
+  p.lines.forEach((l, i) => {
+    l.i = i;
+    if (l.other && l.account && String(l.other.id) === String(l.account.id) && l.other.type === l.account.type) l.other = null;
+    const good = l.amount > 0 && Number.isFinite(l.amount) && typeof l.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(l.date);
+    if (!good && l.action !== 'skip') { l.action = 'skip'; l.why = 'No clear amount or date'; }
+    else if (good && l.date > limit && l.action !== 'skip') { l.action = 'skip'; l.why = 'Dated after today'; }
+    let k = String(l.key || 'shot:' + i), n = 1;
+    while (keys.has(k)) k = `${l.key}:${n++}`;
+    keys.add(k); l.key = k;
+  });
+  return p;
+}
+
 let stubTurn = 0;
 async function callGemini(mime, b64, today, note) {
   // Testing: a file holding one reading, or a list of readings handed out in turn.
@@ -186,7 +287,7 @@ function together(parts, all) {
   const accounts = [], lines = [], notes = [];
   let before = null;
   parts.forEach(({ reading: r0, note }, pic) => {
-    const { reading: r, noted } = withNote(sameAccounts(r0), all, note);
+    const { reading: r, noted } = withNote(sameAccounts(tidy(r0)), all, note);
     const shown = (r.accounts || []).filter(CASH);
     // The account a picture is about: the one it shows, else the one its note names, else (nothing shown at all)
     // the one on the picture just before it, which it carries on from.
@@ -206,6 +307,8 @@ function plan(reading, ctx, sourceId) {
     ...bankAccounts.map(a => ({ ...a, _type: 'bank_account' })),
     ...creditCards.map(c => ({ ...c, _type: 'credit_card' })),
   ];
+  const today = ctx.today || new Date().toLocaleDateString('en-CA');
+  reading = tidy(reading, today);
   const named = ctx.onlyAccount ? { reading: sameAccounts(reading), noted: null } : withNote(sameAccounts(reading), all, ctx.note);
   reading = named.reading;
   const noted = named.noted;
@@ -408,8 +511,9 @@ function plan(reading, ctx, sourceId) {
   // Lines kept from earlier pictures because their account was not known. One seen again here with its account is
   // the same line, so the kept copy is finished with. One whose account can be told now is offered with these lines.
   const held_done = [];
-  for (const h of ctx.held || []) {
-    const amt = Math.round(Math.abs(Number(h.amount)) * 100) / 100;
+  for (const h of list(ctx.held, 5000)) {
+    const amt = Math.round(Math.abs(money(h.amount) || 0) * 100) / 100;
+    if (!(amt > 0) || !day(h.date, today)) continue;
     if (lines.some((l) => l.account && l.action !== 'skip' && Math.abs(l.amount - amt) < 0.005 && dayDiff(l.date, h.date) <= 1 && mkey(l.merchant) && mkey(l.merchant) === mkey(h.merchant))) { held_done.push(h.id); continue; }
     const acct = h.hint ? resolveAccount(all, { name: h.hint, last4: (String(h.hint).match(/\d{4}(?!.*\d)/) || [])[0] }) : null;
     if (!acct) continue;
@@ -419,7 +523,7 @@ function plan(reading, ctx, sourceId) {
   }
   const unknown = (reading.accounts || []).filter(a => !['loan', 'investment', 'property'].includes(a.type) && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
-  return { source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, new_investments, new_bills, updates, credit_score, held_done, pay_slip: reading.kind === 'pay_slip', unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' };
+  return sound({ source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, new_investments, new_bills, updates, credit_score, held_done, pay_slip: reading.kind === 'pay_slip', unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' }, today);
 }
 
 // The optional note: plain text, one paragraph, at most 300 characters, with the quote markers removed.
@@ -427,6 +531,7 @@ function cleanNote(n) {
   return String(n || '').replace(/[<>]{2,}/g, ' ').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
 }
 
+const nothing = (sourceId) => ({ source_id: sourceId, kind: 'other', note_account: null, statement: null, lines: [], balances: [], new_accounts: [], new_loans: [], new_investments: [], new_bills: [], updates: [], credit_score: null, held_done: [], pay_slip: false, unknown_accounts: [], receipt: null, notes: 'This picture is kept. It could not be sorted yet.' });
 const READINGS = new Map();
 // body: { image: base64 (no data: prefix) or data URL, mime }
 async function read(uid, body, ctx) {
@@ -462,7 +567,11 @@ async function read(uid, body, ctx) {
     ctx = { ...ctx, note };
     if (ctx.keep) { try { ctx.keep({ source_id: sourceId, mime, kind: String(reading.kind || 'other'), note, picture: b64.length <= 3_000_000 ? b64 : null, reading: JSON.stringify(reading), read_at: new Date().toISOString() }); } catch { /* keeping the picture never stops the reading */ } }
   }
-  const p = await priced(plan(reading, ctx, sourceId), ctx);
+  // The picture and what was read are already kept. If sorting it fails for a reason nobody foresaw, the person still
+  // gets an answer and the fault is written down to be fixed as a rule.
+  let p;
+  try { p = await priced(plan(reading, ctx, sourceId), ctx); }
+  catch (e) { console.error(`screen fault ${sourceId}: ${String((e && e.stack) || e).split('\n').slice(0, 3).join(' | ').slice(0, 300)}`); p = nothing(sourceId); }
   // Whether it can be put together with other pictures chosen with it.
   p.alone = mime === 'text/csv' || mime === 'application/pdf' || !!alone(reading);
   return p;
@@ -482,7 +591,9 @@ async function readSet(uid, body, ctx) {
   if (parts.length < 2) return { proposal: null, used: [] };
   const all = [...ctx.bankAccounts.map((a) => ({ ...a, _type: 'bank_account' })), ...ctx.creditCards.map((c) => ({ ...c, _type: 'credit_card' }))];
   const sourceId = crypto.createHash('sha256').update(parts.map((p) => p.id).sort().join('|')).digest('hex').slice(0, 16);
-  const p = await priced(plan(together(parts, all), { ...ctx, note: '' }, sourceId), ctx);
+  let p;
+  try { p = await priced(plan(together(parts, all), { ...ctx, note: '' }, sourceId), ctx); }
+  catch (e) { console.error(`screen fault set ${sourceId}: ${String((e && e.stack) || e).split('\n').slice(0, 3).join(' | ').slice(0, 300)}`); return { proposal: null, used: [] }; }
   p.pictures = parts.length;
   return { proposal: p, used: parts.map((x) => x.id) };
 }
@@ -515,8 +626,9 @@ const r2 = (n) => Math.round(Number(n) * 100) / 100;
 // Matches what was read to the person's accounts. -> { source, amount, date, frequency, parts: [{ account, hint, amount, rest }], notes }
 // The part marked as the remainder (or, with none marked, the largest) is the main one and comes first; its amount is what the others leave.
 function planPay(reading, bankAccounts) {
+  reading = obj(reading) || {};
   const amount = Number(reading.net_pay) > 0 ? r2(reading.net_pay) : null;
-  const list = (Array.isArray(reading.deposits) ? reading.deposits : []).slice(0, 6).map((d) => {
+  const list = (Array.isArray(reading.deposits) ? reading.deposits : []).filter(obj).slice(0, 6).map((d) => {
     const acct = resolveAccount(bankAccounts, { last4: d.last4, name: d.bank });
     let part = Number(d.amount) > 0 ? r2(d.amount) : null;
     if (part == null && amount != null && Number(d.percent) > 0 && Number(d.percent) <= 100) part = r2(amount * Number(d.percent) / 100);
@@ -592,4 +704,4 @@ async function readScore(body, ctx) {
   return p;
 }
 
-module.exports = { read, readSet, together, plan, resolveAccount, nameFits, noteAccount, sameAccounts, mkey, cleanNote, readPay, planPay, readScore, planScore };
+module.exports = { tidy, money, day, read, readSet, together, plan, resolveAccount, nameFits, noteAccount, sameAccounts, mkey, cleanNote, readPay, planPay, readScore, planScore };

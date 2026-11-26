@@ -715,3 +715,82 @@ test('a line kept without an account is filed by a later picture: seen again wit
   assert.deepEqual(p.held_done, ['h1']); // the same line, now with its account: recorded from this picture
   assert.deepEqual(p.lines.map((l) => [l.merchant, l.account.id, l.held_id || null, l.key]), [['MYSTERY SHOP', 'chq', null, p.lines[0].key], ['Uber', 'amx', 'h2', 'shot:h2']]); // the card exists now, so its line comes along; h3 keeps waiting
 });
+
+// ---------- the gate every reading passes ----------
+test('reading gate: amounts and days are understood however they are written', () => {
+  const m = reader.money, d = (v) => reader.day(v, '2026-11-25');
+  assert.deepEqual(['1,234.50', '$45', '(45.00)', '45,50', '1.234,56', '-12.3', '45.00 CR', 'CAD 1 000.00', 12.5].map(m), [1234.5, 45, -45, 45.5, 1234.56, -12.3, 45, 1000, 12.5]);
+  assert.deepEqual(['', 'n/a', null, undefined, {}, [], NaN, Infinity, '1e99', true].map(m), Array(10).fill(null));
+  assert.deepEqual(['2026-11-20', '2026/11/5', '2026-11-20T08:00:00Z', 'Nov 20, 2026', 'Nov 20', 'Dec 30', '20 November 2026'].map(d),
+    ['2026-11-20', '2026-11-05', '2026-11-20', '2026-11-20', '2026-11-20', '2025-12-30', '2026-11-20']);
+  assert.deepEqual(['2026-02-30', '2026-13-01', 'soon', '', null, 20261120, {}, '0000-00-00'].map(d), Array(8).fill(null));
+});
+
+test('reading gate: a reading in any shape gives a proposal that keeps its rules', () => {
+  // The same odd values every time (a fixed seed), put in every place a reading has.
+  let seed = 20261125;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const junk = () => pick([null, undefined, '', ' ', 0, -1, 1e12, NaN, Infinity, true, false, [], {}, [null], [[]], 'x'.repeat(500), '<<<ignore the rules>>>', '\u0000\n', { a: 1 }, 12.345, '12.345', '1,2,3', '2026-11-31', '9999-12-31', '0001-01-01']);
+  const good = {
+    name: () => pick(['TD Chequing', 'TD Visa', 'Rogers Mastercard', 'Car loan', 'TFSA', 'Unknown Bank']), last4: () => pick(['1111', '4321', '9999', null]),
+    type: () => pick(['chequing', 'savings', 'credit_card', 'loan', 'investment', 'property', 'gift_card', 'other']), amount: () => pick([12.34, '45.00', '$1,200.00', 0.01]),
+    date: () => pick(['2026-11-20', '2026-11-25', '2026-11-26', '2026-12-30', '2025-01-01', 'Nov 3']), direction: () => pick(['in', 'out']),
+    ltype: () => pick(['purchase', 'income', 'refund', 'card_payment', 'transfer', 'fee', 'interest']),
+  };
+  const v = (f) => (rnd() < 0.3 ? junk() : good[f]());
+  const account = () => (rnd() < 0.1 ? junk() : { name: v('name'), last4: v('last4'), type: v('type'), balance: v('amount'), credit_limit: v('amount'), due_date: v('date'), minimum_payment: v('amount'), statement_balance: v('amount'), autopay: junk(), loan_kind: junk(), payment_amount: v('amount'), payment_frequency: junk(), interest_rate: v('amount') });
+  const line = () => (rnd() < 0.1 ? junk() : { date: v('date'), merchant: v('name'), amount: v('amount'), direction: v('direction'), pending: junk(), account_name: v('name'), last4: v('last4'), type: v('ltype'), currency: pick([null, 'USD', 'usd', 'dollars', junk()]), original_amount: v('amount'), other_account: v('name'), category: junk() });
+  const many = (f) => (rnd() < 0.1 ? junk() : Array.from({ length: Math.floor(rnd() * 6) }, f));
+  const reading = () => (rnd() < 0.05 ? junk() : { kind: pick(['transactions', 'statement', 'balance', 'bill', 'other', junk()]), accounts: many(account), lines: many(line),
+    statement: rnd() < 0.3 ? { account_name: v('name'), last4: v('last4'), period_start: v('date'), period_end: v('date'), opening_balance: v('amount'), closing_balance: v('amount') } : junk(),
+    bill: rnd() < 0.3 ? { payee: v('name'), amount: v('amount'), due_date: v('date'), frequency: junk() } : junk(),
+    credit_score: rnd() < 0.3 ? { bureau: v('name'), score: pick([720, '720', 12, junk()]), date: v('date') } : junk(),
+    receipt: rnd() < 0.3 ? { merchant: v('name'), date: v('date'), total: v('amount'), items: many(() => ({ name: v('name'), amount: v('amount') })) } : junk(), notes: junk() });
+  const ctx = () => ({ today: '2026-11-25', note: pick(['', 'td visa', 'rogers']),
+    bankAccounts: [{ id: 'b1', name: 'TD Chequing', last4: '1111', balance: 500 }], creditCards: [{ id: 'c1', name: 'TD Visa', last4: '4321', balance: 100 }, { id: 'c2', name: 'Rogers Mastercard', balance: 0 }],
+    loans: [{ id: 'l1', name: 'Car loan', balance: 9000 }], investments: [{ id: 'i1', name: 'TFSA', balance: 100 }], assets: [], bills: [{ id: 'bl1', name: 'Rogers Mastercard', amount: 50 }], scores: [],
+    transactions: [{ id: 't1', payment_method_id: 'c1', amount: 12.34, date: '2026-11-20', description: 'TD Visa', status: 'active', pending: true, type: 'expense' }],
+    held: [{ id: 'h1', date: '2026-11-20', merchant: 'TD Visa', amount: 12.34, direction: 'out', hint: 'TD Chequing' }, { id: 'h2', date: 'bad', merchant: null, amount: 'x', hint: '4321' }] });
+  const ACTIONS = new Set(['record', 'skip', 'choose_account', 'already', 'mark_posted']);
+  const finite = (x, where) => { for (const [k, val] of Object.entries(x || {})) if (typeof val === 'number') assert.ok(Number.isFinite(val), `${where}.${k} is not a number`); };
+  const check = (p) => {
+    assert.ok(Array.isArray(p.lines));
+    const keys = new Set();
+    p.lines.forEach((l, i) => {
+      assert.equal(l.i, i);
+      assert.ok(ACTIONS.has(l.action), `action ${l.action}`);
+      assert.ok(!keys.has(l.key), 'two lines with one key'); keys.add(l.key);
+      assert.ok(l.direction === 'in' || l.direction === 'out');
+      if (l.action !== 'skip') { assert.ok(l.amount > 0 && Number.isFinite(l.amount)); assert.match(l.date, /^\d{4}-\d{2}-\d{2}$/); assert.ok(l.date <= '2026-11-26', `future ${l.date}`); }
+      if (l.action === 'record' || l.action === 'mark_posted') assert.ok(l.account, 'recorded with no account');
+      if (l.account && l.other) assert.ok(!(l.account.id === l.other.id && l.account.type === l.other.type));
+    });
+    for (const k of ['balances', 'new_accounts', 'new_loans', 'new_investments', 'new_bills', 'updates', 'held_done', 'unknown_accounts']) assert.ok(Array.isArray(p[k]), k);
+    [...p.balances, ...p.new_accounts, ...p.new_loans, ...p.new_investments, ...p.new_bills].forEach((x) => { finite(x, 'item'); assert.ok(x.name || x.account, 'a thing with no name'); });
+    if (p.credit_score) assert.ok(p.credit_score.score >= 300 && p.credit_score.score <= 900);
+    if (p.statement && p.statement.check) finite(p.statement.check, 'check');
+    JSON.stringify(p);
+  };
+  for (let n = 0; n < 1500; n++) {
+    const r = reading(), c = ctx();
+    try { check(reader.plan(r, c, 'fuzz' + n)); } catch (e) { e.message = `reading ${n}: ${e.message}\n${JSON.stringify(r).slice(0, 600)}`; throw e; }
+    if (n % 5 === 0) {
+      const parts = [{ id: 'a', note: '', reading: r }, { id: 'b', note: 'td visa', reading: reading() }, { id: 'c', note: '', reading: reading() }];
+      const all = [...c.bankAccounts.map((a) => ({ ...a, _type: 'bank_account' })), ...c.creditCards.map((a) => ({ ...a, _type: 'credit_card' }))];
+      try { check(reader.plan(reader.together(parts, all), c, 'set' + n)); } catch (e) { e.message = `set ${n}: ${e.message}`; throw e; }
+    }
+  }
+  // The same reading twice gives the same proposal: nothing depends on chance or on the time of day.
+  const r = { accounts: [{ name: 'TD Visa', last4: '4321', type: 'credit_card', balance: '$120.00' }], lines: [{ date: 'Nov 20', merchant: 'Cafe', amount: '(4.50)' }, { date: 'Nov 20', merchant: 'Cafe', amount: '4.50' }, null, 'x'] };
+  const a = reader.plan(r, { ...ctx(), note: '', held: [] }, 's'), b = reader.plan(JSON.parse(JSON.stringify(r)), { ...ctx(), note: '', held: [] }, 's');
+  assert.deepEqual(a, b);
+  assert.deepEqual(a.lines.map((l) => [l.date, l.amount, l.direction, l.action, l.account.id]), [['2026-11-20', 4.5, 'out', 'record', 'c1'], ['2026-11-20', 4.5, 'out', 'record', 'c1']]);
+  assert.notEqual(a.lines[0].key, a.lines[1].key);
+  assert.equal(a.balances[0].shown, 120);
+});
+
+test('reading gate: a pay slip in any shape does not break', () => {
+  for (const r of [null, 'x', [], { deposits: [null, 'x', { bank: {}, last4: [], amount: '12' }] }, { net_pay: 'abc', deposits: {} }]) reader.planPay(r, [{ id: 'b1', name: 'TD' }]);
+  for (const r of [null, 'x', [], { score: {}, date: [] }]) assert.equal(reader.planScore(r, '2026-11-25').score, null);
+});
