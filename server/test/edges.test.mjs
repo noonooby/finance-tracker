@@ -828,3 +828,90 @@ test('pictures of a statement: screens of one statement join and are proved; one
   assert.deepEqual(m.lines.map((l) => [l.merchant, l.account.name]), [['Cafe', 'TD Visa'], ['Shop', 'TD Visa'], ['Fuel', 'Rogers']]);
   assert.deepEqual(m.new_accounts.map((d) => [d.name, d.balance, d.statement_balance]), [['Rogers', null, 50]]);
 });
+
+// ---------- holdings, prices, room and published details ----------
+const pricesMod = mod('prices.js');
+const taxfacts = mod('taxfacts.js');
+const withPrices = async (map, run) => { process.env.PRICE_STUB = JSON.stringify(map); try { return await run(); } finally { delete process.env.PRICE_STUB; } };
+
+test('prices: a ticker is matched by the price on the screen, and one that can mean two things is not guessed', async () => {
+  const db = memDb();
+  await withPrices({ 'T.TO': { price: 21, currency: 'CAD', name: 'Telus' }, T: { price: 28, currency: 'USD', name: 'AT&T' }, 'VEQT.TO': { price: 58.57, currency: 'CAD', name: 'Vanguard All-Equity' } }, async () => {
+    assert.equal((await pricesMod.find(db, { symbol: 'VEQT' })).quote.symbol, 'VEQT.TO');          // only one exists
+    const two = await pricesMod.find(db, { symbol: 'T' });
+    assert.equal(two.quote, null); assert.equal(two.choices.length, 2);                              // two exist, nothing to tell them apart
+    assert.equal((await pricesMod.find(db, { symbol: 'T', units: 10, value: 281 })).quote.symbol, 'T');      // the price shown proves it
+    assert.equal((await pricesMod.find(db, { symbol: 'T', price: 20.9 })).quote.symbol, 'T.TO');
+    assert.equal((await pricesMod.find(db, { symbol: 'T', currency: 'USD' })).quote.symbol, 'T');
+    assert.equal((await pricesMod.find(db, { symbol: 'NOPE' })).quote, null);
+    assert.equal(await pricesMod.quote(db, 'bad symbol!'), null);
+    assert.equal(await pricesMod.quote(db, '../../etc'), null);
+  });
+});
+
+test('prices: an account is worth its priced holdings in the home currency, the rest at their last value, plus cash', async () => {
+  const db = memDb();
+  process.env.FX_STUB = '1.4';
+  try {
+    await withPrices({ 'VEQT.TO': { price: 50, currency: 'CAD' }, AAPL: { price: 200, currency: 'USD' } }, async () => {
+      const got = await pricesMod.settle(db, [
+        { symbol: 'VEQT', units: '10.5', price: 49 }, { symbol: 'AAPL', units: 2, currency: 'USD' },
+        { name: 'Some private fund', value: 1000 }, { symbol: 'NOPE', units: 3, price: 10 },
+        { name: '', symbol: '' , units: 4 }, { symbol: 'X', units: -1 }, null, 'text',
+      ]);
+      assert.equal(got.holdings.length, 4);
+      assert.deepEqual(got.holdings.map((h) => h.symbol), ['VEQT.TO', 'AAPL', null, null]);
+      assert.equal(got.unsure.length, 2);
+      const w = await pricesMod.worth(db, { holdings: got.holdings, cash: 25.5 });
+      // 10.5 x 50 + 2 x 200 x 1.4 + 1000 + 3 x 10 + 25.50
+      assert.equal(w.balance, 525 + 560 + 1000 + 30 + 25.5);
+      assert.equal(w.live, 2);
+    });
+    // The price service gives nothing for a while: the last values stand and nothing is lost.
+    const kept = await withPrices({}, () => pricesMod.worth(memDb(), { holdings: [{ symbol: 'VEQT.TO', units: 10, value: 500 }], cash: 0 }));
+    assert.equal(kept.balance, 500); assert.equal(kept.live, 0);
+    for (const bad of [null, {}, { holdings: 'x' }, { holdings: [null, 5, { symbol: 'VEQT.TO' }], cash: 'abc' }]) assert.equal((await withPrices({}, () => pricesMod.worth(memDb(), bad || {}))).balance, 0);
+  } finally { delete process.env.FX_STUB; }
+});
+
+test('tax figures: a later year is taken only from the tax agency, only when published, and only when it fits', async () => {
+  const f = taxfacts.facts(memDb());
+  assert.equal(f.tfsa[2009], 5000); assert.equal(f.tfsa[2015], 10000); assert.equal(f.tfsa[2026], 7000); assert.equal(f.tfsa[2027], undefined);
+  assert.equal(Object.values(f.tfsa).reduce((a, b) => a + b, 0), 109000);
+  assert.equal(f.rrsp[2026], 33810); assert.equal(f.rrsp[2027], 35390);
+  const tryWith = async (answer, day) => { const db = memDb(); process.env.TAX_STUB = JSON.stringify(answer); try { await taxfacts.keepUp(db, day); return taxfacts.facts(db); } finally { delete process.env.TAX_STUB; } };
+  const ok = { published: true, limit: 7500, source_url: 'https://www.canada.ca/en/revenue-agency/x.html' };
+  assert.equal((await tryWith(ok, '2026-11-27')).tfsa[2027], 7500);
+  assert.equal((await tryWith(ok, '2026-10-01')).tfsa[2027], undefined);                                   // not asked before it is announced
+  assert.equal((await tryWith({ ...ok, published: false }, '2026-11-27')).tfsa[2027], undefined);
+  assert.equal((await tryWith({ ...ok, source_url: 'https://news.example.com/tfsa' }, '2026-11-27')).tfsa[2027], undefined);
+  assert.equal((await tryWith({ ...ok, source_url: 'https://canada.ca.evil.example/x' }, '2026-11-27')).tfsa[2027], undefined);
+  assert.equal((await tryWith({ ...ok, limit: 7300 }, '2026-11-27')).tfsa[2027], undefined);
+  assert.equal((await tryWith({ ...ok, limit: 70000 }, '2026-11-27')).tfsa[2027], undefined);
+  assert.equal((await tryWith({ ...ok, limit: 6500 }, '2026-11-27')).tfsa[2027], undefined);                // a limit never goes down
+  assert.equal((await tryWith('nonsense', '2026-11-27')).tfsa[2027], undefined);
+  // Asked at most once a day.
+  const db = memDb(); process.env.TAX_STUB = JSON.stringify({ published: false });
+  await taxfacts.keepUp(db, '2026-12-01'); process.env.TAX_STUB = JSON.stringify(ok); await taxfacts.keepUp(db, '2026-12-01');
+  assert.equal(taxfacts.facts(db).tfsa[2027], undefined);
+  await taxfacts.keepUp(db, '2026-12-02'); delete process.env.TAX_STUB;
+  assert.equal(taxfacts.facts(db).tfsa[2027], 7500);
+});
+
+test('reading: holdings and room on a screen are kept in one shape, and one account over several screens is one list', () => {
+  const ctx = { bankAccounts: [], creditCards: [], loans: [], investments: [{ id: 'i1', name: 'Wealthsimple TFSA', kind: 'TFSA', balance: 100 }], assets: [], bills: [], scores: [], held: [], transactions: [], today: '2026-11-26' };
+  const p = reader.plan({ kind: 'balance', accounts: [
+    { name: 'Wealthsimple TFSA', type: 'investment', balance: 5000, cash: '12.50', holdings: [{ symbol: 'veqt', name: 'Vanguard', units: '10.1234', price: 58.5, value: '592.22', currency: 'cad' }, { units: 5 }, 'x', { symbol: 'ZZ', units: 0 }] },
+    { name: 'Wealthsimple TFSA', type: 'investment', balance: 5000, holdings: [{ symbol: 'VEQT', units: 10.1234 }, { symbol: 'XEQT', units: 3 }] },
+    { name: 'Questrade RRSP', type: 'investment', balance: 900, holdings: [{ name: 'Bitcoin', value: 900 }] },
+    { name: 'Chequing', type: 'chequing', balance: 10, holdings: [{ symbol: 'AAA', units: 1 }] },
+  ], tax_room: [{ kind: 'tfsa', room: '12,500.00', as_of: '2026-01-01' }, { kind: 'TFSA', room: 1, as_of: '2026-01-01' }, { kind: 'LIRA', room: 5, as_of: '2026-01-01' }, { kind: 'RRSP', room: 'lots', as_of: '2026-01-01' }, { kind: 'FHSA', room: 8000, as_of: 'soon' }] }, ctx, 's1');
+  assert.equal(p.holdings_updates.length, 1);
+  assert.deepEqual(p.holdings_updates[0].holdings.map((h) => [h.symbol, h.units]), [['VEQT', 10.1234], ['XEQT', 3]]);
+  assert.equal(p.holdings_updates[0].cash, 12.5);
+  assert.equal(p.balances.length, 0);                       // its total is not also checked as a separate figure
+  assert.equal(p.new_investments.length, 1);
+  assert.equal(p.new_investments[0].kind, 'RRSP'); assert.equal(p.new_investments[0].holdings.length, 1);
+  assert.deepEqual(p.tax_room, [{ kind: 'TFSA', room: 12500, as_of: '2026-01-01' }]);
+  assert.equal(p.lines.length, 0);
+});

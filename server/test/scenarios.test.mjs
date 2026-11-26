@@ -33,7 +33,7 @@ globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v
 const realFetch = globalThis.fetch;
 globalThis.fetch = (u, o) => realFetch(String(u).startsWith('/') ? base + u : u, o);
 const lib = path.join(tmp, 'lib'); fs.mkdirSync(lib);
-for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js']) {
+for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js', 'room.js']) {
   const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
   fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
 }
@@ -42,6 +42,7 @@ const M = await import(pathToFileURL(path.join(lib, 'money.mjs')));
 const F = await import(pathToFileURL(path.join(lib, 'finance.mjs')));
 const S = await import(pathToFileURL(path.join(lib, 'spending.mjs')));
 const P = await import(pathToFileURL(path.join(lib, 'plans.mjs')));
+const R = await import(pathToFileURL(path.join(lib, 'room.mjs')));
 await client.auth.devSignIn();
 
 const db = client;
@@ -1527,4 +1528,104 @@ test('a line read from a picture is never refused for lack of money: the balance
   const out = await M.recordExpense({ amount: 10, source: `bank_account:${acct.id}`, date: '2026-11-23', description: 'scanned', key: 'shot:behind-1', extra: { from_screenshot: 'abc', in_snapshot: true } }, a);
   assert.ok(out.transaction && out.transaction.id);
   assert.equal(Number((await accounts()).bankAccounts.find((x) => x.id === acct.id).balance), -10);
+});
+
+// ---------- holdings that follow the market, room, and published details ----------
+const facts = require(path.join(root, 'server', 'taxfacts.js')).facts(null);
+const srv = require(path.join(root, 'server', 'server.js'));
+
+test('an account that lists what it holds is worth its holdings at the market price, and moves when prices move', async () => {
+  const inv = await add('investments', { name: 'Wealthsimple TFSA', kind: 'TFSA', balance: 100 });
+  process.env.PRICE_STUB = JSON.stringify({ 'VEQT.TO': { price: 50, currency: 'CAD', name: 'Vanguard All-Equity' }, AAPL: { price: 200, currency: 'USD', name: 'Apple' } });
+  const out = await api('/api/holdings', { id: inv.id, cash: 20, holdings: [{ symbol: 'VEQT', units: 10 }, { symbol: 'AAPL', units: 1, currency: 'USD' }, { name: 'Private fund', value: 300 }] });
+  assert.equal(out.investment.balance, 500 + 280 + 300 + 20);
+  assert.equal(out.unsure.length, 1);
+  assert.equal((await get('investments', inv.id)).holdings.length, 3);
+  // Prices move: the price is kept for five minutes, so the kept copies are cleared the way time would.
+  srv.db.exec("DELETE FROM meta WHERE k LIKE 'px:%'");
+  process.env.PRICE_STUB = JSON.stringify({ 'VEQT.TO': { price: 55, currency: 'CAD' }, AAPL: { price: 200, currency: 'USD' } });
+  assert.equal((await api('/api/prices', {})).changed, 1);
+  assert.equal((await get('investments', inv.id)).balance, 550 + 280 + 300 + 20);
+  assert.equal((await api('/api/prices', {})).changed, 0);                          // nothing moved: nothing changes
+  // The price service is down: the value stays, it is not zeroed.
+  srv.db.exec("DELETE FROM meta WHERE k LIKE 'px:%'");
+  process.env.PRICE_STUB = JSON.stringify({});
+  await api('/api/prices', {});
+  assert.equal((await get('investments', inv.id)).balance, 1150);
+  // Net worth history has the day's value.
+  const pts = (await db.from('balance_points').select('*')).data.filter((p) => String(p.account_id) === String(inv.id));
+  assert.equal(pts.length, 1); assert.equal(pts[0].value, 1150);
+  // Emptying the list keeps the last value; someone else's account is refused.
+  await api('/api/holdings', { id: inv.id, holdings: [], cash: 0 });
+  assert.equal((await get('investments', inv.id)).balance, 1150);
+  await assert.rejects(api('/api/holdings', { id: 'not-mine', holdings: [] }), /not in the app/);
+  const q = await api('/api/quote', { symbol: 'veqt' });
+  assert.equal(q.quote, null);
+  delete process.env.PRICE_STUB;
+});
+
+test('room left: one figure from the tax agency, less what went in since, with each kind following its own rule', () => {
+  const inv = [{ id: 't1', kind: 'TFSA' }, { id: 't2', kind: 'TFSA' }, { id: 'r1', kind: 'RRSP' }, { id: 'f1', kind: 'FHSA' }, { id: 'b1', kind: 'Brokerage' }];
+  const into = (id, amount, date) => ({ type: 'transfer', amount, date, transfer_to: 'investment', to_account_id: id, payment_method: 'bank_account', payment_method_id: 'chq', status: 'active' });
+  const outOf = (id, amount, date) => ({ type: 'transfer', amount, date, transfer_to: 'bank_account', to_account_id: 'chq', payment_method: 'investment', payment_method_id: id, status: 'active' });
+  const tx = [into('t1', 3000, '2026-01-01'), into('t2', 1000, '2026-03-05'), outOf('t1', 500, '2026-06-01'), into('b1', 9999, '2026-02-01'),
+    { ...into('t1', 700, '2026-04-01'), status: 'undone' }, { ...into('t1', 200, '2026-05-01'), transfer_to: 'investment', payment_method: 'investment', payment_method_id: 't2' },
+    into('t1', 250, '2027-02-01'), into('r1', 4000, '2026-02-10'), into('r1', 1000, '2027-01-15'), into('f1', 5000, '2026-07-01'), into('f1', 2000, '2027-03-01')];
+  const mv = (k) => R.movements(k, inv, tx);
+  assert.equal(mv('TFSA').length, 4);                      // the undone one and the move between two TFSAs do not count
+  // TFSA in the same year: room on January 1 less what went in; a withdrawal does not come back until January 1.
+  let r = R.room('TFSA', { room: 10000, as_of: '2026-01-01' }, mv('TFSA'), facts, '2026-11-26');
+  assert.deepEqual([r.room, r.put_in, r.taken_out, r.over], [6000, 4000, 500, 0]);
+  assert.equal(r.next.adds, null);                         // the 2027 limit is not announced
+  // The next year: the limit is added when known, and the withdrawal comes back either way.
+  r = R.room('TFSA', { room: 10000, as_of: '2026-01-01' }, mv('TFSA'), { ...facts, tfsa: { ...facts.tfsa, 2027: 7500 } }, '2027-02-15');
+  assert.equal(r.room, 10000 - 4000 + 500 + 7500 - 250); assert.deepEqual(r.missing, []);
+  r = R.room('TFSA', { room: 10000, as_of: '2026-01-01' }, mv('TFSA'), facts, '2027-02-15');
+  assert.equal(r.room, 10000 - 4000 + 500 - 250); assert.deepEqual(r.missing, [2027]);
+  // A figure for a day other than January 1 already counts that day.
+  r = R.room('TFSA', { room: 5000, as_of: '2026-03-05' }, mv('TFSA'), facts, '2026-11-26');
+  assert.equal(r.room, 5000);
+  // Over the room: 1% a month on the amount over.
+  r = R.room('TFSA', { room: 3500, as_of: '2026-01-01' }, mv('TFSA'), facts, '2026-11-26');
+  assert.deepEqual([r.room, r.over, r.cost_month], [-500, 500, 5]);
+  // RRSP: no new room without a new notice; the first $2,000 over is not taxed.
+  r = R.room('RRSP', { room: 5000, as_of: '2026-01-01' }, mv('RRSP'), facts, '2027-02-01');
+  assert.deepEqual([r.room, r.stale, r.over], [0, true, 0]);
+  r = R.room('RRSP', { room: 2500, as_of: '2026-01-01' }, mv('RRSP'), facts, '2027-02-01');
+  assert.deepEqual([r.room, r.over, r.cost_month], [-2500, 500, 5]);
+  assert.equal(R.rrspDeadline(2026), '2027-03-01'); assert.equal(R.rrspDeadline(2027), '2028-02-29');
+  // FHSA: at most $8,000 unused carries over, $8,000 is added each year, and the lifetime amount caps it.
+  r = R.room('FHSA', { room: 16000, as_of: '2026-01-01', used: 0 }, mv('FHSA'), facts, '2026-11-26');
+  assert.deepEqual([r.room, r.lifetime_left, r.next.room], [11000, 35000, 16000]);
+  r = R.room('FHSA', { room: 16000, as_of: '2026-01-01', used: 0 }, mv('FHSA'), facts, '2027-06-01');
+  assert.deepEqual([r.room, r.lifetime_left], [14000, 33000]);
+  r = R.room('FHSA', { room: 8000, as_of: '2026-01-01', used: 30000 }, mv('FHSA'), facts, '2027-06-01');
+  assert.equal(r.room, 5000 - 2000);                       // 40,000 less 35,000 put in leaves 5,000 for 2027
+  // Anything that is not a usable figure gives no answer instead of a wrong one.
+  for (const bad of [null, {}, { room: '', as_of: '2026-01-01' }, { room: 'x', as_of: '2026-01-01' }, { room: 5, as_of: 'soon' }, { room: 5, as_of: '2030-01-01' }]) assert.equal(R.room('TFSA', bad, mv('TFSA'), facts, '2026-11-26').known, false);
+  assert.equal(R.room('TFSA', { room: 5, as_of: '2026-01-01' }, [], null, '2026-11-26').known, false);
+  assert.deepEqual(R.rooms({ stated: { RRSP: { room: 1, as_of: '2026-01-01' } }, investments: [{ id: 't1', kind: 'tfsa' }], transactions: [], facts, today: '2026-11-26' }).map((x) => [x.kind, x.known]), [['TFSA', false], ['RRSP', true]]);
+});
+
+test('a new card or account gets its published details once; a figure you entered is never replaced', async () => {
+  const plain = await add('credit_cards', { name: 'Amex Cobalt', balance: 0, credit_limit: 1000, interest_rate: 0 });
+  const mine = await add('credit_cards', { name: 'Tangerine Money-Back', balance: 0, credit_limit: 1000, interest_rate: 12.5 });
+  const giftCard = await add('credit_cards', { name: 'Starbucks card', balance: 20, is_gift_card: true });
+  process.env.LOOKUP_STUB = JSON.stringify({ found: true, issuer: 'Test Bank', purchase_rate: 20.99, cash_rate: 22.99, annual_fee: 155.88, source_url: 'https://example.test/card' });
+  let passes = 0;
+  while ((await api('/api/details', {})).done > 0) assert.ok(++passes < 80, 'the lookups end');
+  const a = await get('credit_cards', plain.id), b = await get('credit_cards', mine.id), g = await get('credit_cards', giftCard.id);
+  assert.deepEqual([a.interest_rate, a.annual_fee, a.info.found, a.info.source_url], [20.99, 155.88, true, 'https://example.test/card']);
+  assert.ok(a.info.filled.includes('interest_rate'));
+  assert.equal(b.interest_rate, 12.5); assert.ok(!b.info.filled.includes('interest_rate')); assert.equal(b.info.purchase_rate, 20.99);
+  assert.equal(g.info, undefined);
+  assert.equal((await api('/api/details', {})).done, 0);                           // each is looked up once
+  // Not found: tried on three days at most, then left alone.
+  process.env.LOOKUP_STUB = JSON.stringify({ found: false });
+  const odd = await add('credit_cards', { name: 'Some unknown card', balance: 0, credit_limit: 10 });
+  assert.equal((await api('/api/details', {})).done, 1);
+  assert.equal((await api('/api/details', {})).done, 0);                           // once a day
+  assert.equal((await get('credit_cards', odd.id)).info, undefined);
+  delete process.env.LOOKUP_STUB;
+  assert.equal((await api('/api/details', {})).done, 0);                           // no lookup service: nothing happens, nothing breaks
 });

@@ -1,12 +1,76 @@
-import React, { useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Trash2, X } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
-import { server } from '../utils/server';
+import { server, api } from '../utils/server';
 import { recordTransfer } from '../utils/money';
 import { formatCurrency, generateId, localDate } from '../utils/helpers';
 import { freshness } from '../utils/finance';
 import { showToast } from '../utils/toast';
 import UpdateValue from './position/UpdateValue';
+
+// What one investment account holds. Each holding with a ticker follows the market price; the account's value is
+// the holdings plus its cash. Adding one checks the ticker first, so nothing is saved without a price.
+const sent = (h) => ({ symbol: h.symbol || h.shown, symbol_set: !!h.symbol, shown: h.shown, name: h.name, units: h.units, price: h.price, currency: h.currency, value: h.value });
+function Holdings({ row, onDone }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ symbol: '', units: '' });
+  const [choices, setChoices] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const list = Array.isArray(row.holdings) ? row.holdings : [];
+  const save = async (holdings, cash) => {
+    setBusy(true);
+    try { await api('/api/holdings', { id: row.id, holdings, ...(cash === undefined ? {} : { cash }) }); await onDone(); return true; }
+    catch (e) { showToast.error(e.message); return false; } finally { setBusy(false); }
+  };
+  const addOne = async (q) => {
+    if (await save([...list.map(sent), { symbol: q.symbol, symbol_set: true, shown: q.symbol, name: q.name, units: Number(form.units) }])) { setForm({ symbol: '', units: '' }); setChoices([]); setOpen(false); }
+  };
+  const add = async (e) => {
+    e.preventDefault();
+    if (!(Number(form.units) > 0)) return showToast.error('Enter how many units you hold.');
+    setBusy(true); setChoices([]);
+    try {
+      const r = await api('/api/quote', { symbol: form.symbol, crypto: row.kind === 'Crypto' });
+      if (r.quote) { setBusy(false); return addOne(r.quote); }
+      if (r.choices.length) setChoices(r.choices);
+      else showToast.error(`No price found for ${form.symbol.toUpperCase()}. Check the ticker, for example VEQT.TO.`);
+    } catch (err) { showToast.error(err.message); } finally { setBusy(false); }
+  };
+  const field = 'px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg text-sm';
+  return (
+    <div className="mt-2 space-y-1.5">
+      {list.map((h, i) => (
+        <div key={`${h.symbol || h.name}-${i}`} className="flex items-baseline gap-2 text-sm">
+          <span className="min-w-0 flex-1 truncate">{h.symbol || h.shown || h.name} <span className="text-xs text-muted">{h.units ? `${h.units} units` : ''}{h.symbol && h.price ? ` at ${h.price} ${h.currency || ''}` : ''}{!h.symbol ? ' · no market price, kept as given' : !h.live ? ' · last price' : ''}</span></span>
+          <span className="tabular-nums shrink-0">{h.value != null ? formatCurrency(h.value) : ''}</span>
+          <button type="button" disabled={busy} onClick={() => window.confirm(`Remove ${h.symbol || h.name} from ${row.name}?`) && save(list.filter((_, j) => j !== i).map(sent))} aria-label={`Remove ${h.symbol || h.name}`} className="text-muted"><X size={14} /></button>
+        </div>
+      ))}
+      {list.length > 0 && Number(row.cash) > 0 && <div className="flex items-baseline justify-between text-sm"><span className="text-muted">Cash in the account</span><span className="tabular-nums">{formatCurrency(row.cash)}</span></div>}
+      {!open ? (
+        <button type="button" className="text-xs font-medium text-accent" onClick={() => setOpen(true)}>{list.length ? 'Add a holding' : 'List what it holds, so the value follows the market'}</button>
+      ) : (
+        <form onSubmit={add} className="space-y-2">
+          <div className="flex gap-2">
+            <input className={`${field} flex-1 min-w-0`} placeholder="Ticker, for example VEQT" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} aria-label="Ticker" required autoCapitalize="characters" />
+            <input className={`${field} w-24`} type="number" step="any" inputMode="decimal" placeholder="Units" value={form.units} onChange={(e) => setForm({ ...form, units: e.target.value })} aria-label="Units" required />
+          </div>
+          {choices.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs text-muted">More than one match. Which is it?</p>
+              {choices.map((c) => <button key={c.symbol} type="button" disabled={busy} onClick={() => addOne(c)} className="block w-full text-left text-sm rounded-xl border border-line px-3 py-2">{c.symbol} <span className="text-muted">{c.name} · {c.price} {c.currency}</span></button>)}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button type="submit" disabled={busy} className="text-xs font-medium text-accent">{busy ? 'Checking...' : 'Add'}</button>
+            <button type="button" className="text-xs text-muted" onClick={() => { setOpen(false); setChoices([]); }}>Cancel</button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
 
 // Investments (RRSP, TFSA, brokerage) and property (home, car): dated values, updated when you check them.
 export default function Investments({ darkMode }) {
@@ -14,6 +78,16 @@ export default function Investments({ darkMode }) {
   const [form, setForm] = useState({ table: 'investments', name: '', kind: 'TFSA', balance: '' });
   const [move, setMove] = useState({ to: '', from: '', amount: '' });
   const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  const { loadAllData } = d;
+  // Holdings follow the market: prices are brought up to date when the page opens and every minute while it is open.
+  useEffect(() => {
+    let off = false;
+    const tick = () => { if (document.visibilityState === 'visible') api('/api/prices', {}).then((r) => { if (!off && r && r.changed) loadAllData(); }).catch(() => {}); };
+    tick();
+    const t = setInterval(tick, 60000);
+    return () => { off = true; clearInterval(t); };
+  }, [loadAllData]);
   const card = `rounded-2xl border p-4 bg-surface border-line`;
   const input = `w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`;
   const muted = 'text-muted';
@@ -49,24 +123,29 @@ export default function Investments({ darkMode }) {
     await d.loadAllData();
   };
 
-  const List = ({ title, table, rows, kind }) => (
+  // Called as a plain function, so the rows keep their state (an open form) when the page draws again.
+  const list = ({ title, table, rows, kind }) => (
     <section className={card}>
       <h2 className="font-semibold">{title}</h2>
       {!rows.length && <p className={`text-sm ${muted}`}>None yet.</p>}
       <ul className={`divide-y divide-line`}>
         {rows.map((r) => {
           const f = freshness(r.balance_as_of);
+          const follows = Array.isArray(r.holdings) && r.holdings.some((h) => h && h.symbol);
           return (
-            <li key={r.id} className="py-2 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{r.name}</div>
-                <div className={`text-xs ${f.stale ? 'text-amber-600 dark:text-amber-400' : muted}`}>{r.kind} · value {r.balance_as_of ? `as of ${f.label}` : 'never updated'}{f.stale ? ' · out of date' : ''}</div>
+            <li key={r.id} className="py-2">
+              <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{r.name}</div>
+                  <div className={`text-xs ${!follows && f.stale ? 'text-amber-600 dark:text-amber-400' : muted}`}>{[r.kind, r.institution].filter(Boolean).join(' · ')} · {follows ? `follows the market${r.priced_at ? `, priced ${new Date(r.priced_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}` : `value ${r.balance_as_of ? `as of ${f.label}` : 'never updated'}${f.stale ? ' · out of date' : ''}`}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-semibold tabular-nums">{formatCurrency(r.balance)}</div>
+                  {!follows && <UpdateValue line={{ kind, id: r.id, name: r.name }} signed={Number(r.balance) || 0} accounts={accounts} onDone={d.loadAllData} darkMode={darkMode} />}
+                </div>
+                <button type="button" onClick={() => remove(table, r)} aria-label={`Remove ${r.name}`} className={muted}><Trash2 size={16} /></button>
               </div>
-              <div className="text-right">
-                <div className="font-semibold tabular-nums">{formatCurrency(r.balance)}</div>
-                <UpdateValue line={{ kind, id: r.id, name: r.name }} signed={Number(r.balance) || 0} accounts={accounts} onDone={d.loadAllData} darkMode={darkMode} />
-              </div>
-              <button type="button" onClick={() => remove(table, r)} aria-label={`Remove ${r.name}`} className={muted}><Trash2 size={16} /></button>
+              {table === 'investments' && <Holdings row={r} onDone={d.loadAllData} />}
             </li>
           );
         })}
@@ -77,9 +156,15 @@ export default function Investments({ darkMode }) {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Investments and property</h1>
-      <p className={`text-sm ${muted}`}>Enter what each one is worth when you check it. Money you put in from a bank account is recorded as a contribution; growth is the difference when you update the value.</p>
-      <List title="Investments" table="investments" rows={d.investments} kind="investment" />
-      <List title="Property" table="assets" rows={d.assets} kind="asset" />
+      <p className={`text-sm ${muted}`}>List what an account holds and its value follows the market. Otherwise enter what it is worth when you check it. Money you put in from a bank account is recorded as a contribution.</p>
+      {d.investments.some((i) => ['TFSA', 'RRSP', 'FHSA'].includes(String(i.kind || '').toUpperCase())) && (
+        <button type="button" onClick={() => navigate('/room')} className={`${card} w-full text-left`}>
+          <span className="font-semibold block">Room left in your TFSA, RRSP and FHSA</span>
+          <span className={`text-sm ${muted}`}>How much more you can put in this year, and what is still needed to work it out.</span>
+        </button>
+      )}
+      {list({ title: 'Investments', table: 'investments', rows: d.investments, kind: 'investment' })}
+      {list({ title: 'Property', table: 'assets', rows: d.assets, kind: 'asset' })}
 
       {d.investments.length > 0 && (
         <form onSubmit={contribute} className={`${card} space-y-2`}>

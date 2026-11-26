@@ -614,12 +614,108 @@ function snapshot(uid, b) {
   });
 }
 
+// ---------- holdings: an investment account that lists what it holds is valued at market prices ----------
+const prices = require('./prices');
+// Sets what an account holds (from a screen or typed in), finds each ticker, and values the account.
+async function setHoldings(uid, b) {
+  const one = () => selectRows(uid, { table: 'investments', filters: [['id', 'eq', String(b.id)]], limit: 1 })[0];
+  const row = one();
+  if (!row) fail(404, 'That account is not in the app.');
+  const got = await prices.settle(db, b.holdings, Array.isArray(row.holdings) ? row.holdings : [], row.kind === 'Crypto');
+  const cash = Number(b.cash);
+  const next = { ...row, holdings: got.holdings, cash: b.cash === undefined ? (Number(row.cash) || 0) : Number.isFinite(cash) && cash >= 0 && cash < 1e12 ? Math.round(cash * 100) / 100 : 0 };
+  const w = await prices.worth(db, next);
+  const saved = tx(() => {
+    const fresh = one();
+    if (!fresh) fail(404, 'That account is not in the app.');
+    const n = { ...fresh, holdings: w.holdings, cash: next.cash, priced_at: now(), updated_at: now() };
+    // With nothing left in it the account keeps the value it had; otherwise its value is what it holds.
+    if (w.holdings.length || next.cash) n.balance = w.balance;
+    return stamp(uid, 'investments', n, 'balance', today());
+  });
+  return { investment: saved, unsure: got.unsure };
+}
+// Brings every account with holdings to the current prices. A price that did not come keeps the last value.
+async function reprice(uid) {
+  let changed = 0;
+  for (const r of selectRows(uid, { table: 'investments', filters: [] }).filter((x) => Array.isArray(x.holdings) && x.holdings.some((h) => h && h.symbol && h.units > 0))) {
+    const w = await prices.worth(db, r);
+    if (!w.live) continue;
+    tx(() => {
+      const fresh = selectRows(uid, { table: 'investments', filters: [['id', 'eq', String(r.id)]], limit: 1 })[0];
+      // Changed while the prices were fetched: the next pass values the new list.
+      if (!fresh || JSON.stringify(fresh.holdings) !== JSON.stringify(r.holdings) || (Number(fresh.cash) || 0) !== (Number(r.cash) || 0)) return;
+      const moved = Math.round(Number(fresh.balance || 0) * 100) !== Math.round(w.balance * 100);
+      stamp(uid, 'investments', { ...fresh, holdings: w.holdings, balance: w.balance, priced_at: now() }, 'balance', today());
+      if (moved) changed += 1;
+    });
+  }
+  return changed;
+}
+
+// ---------- published details of each account, card and loan, filled in once it is added ----------
+// Only the product's name is sent. A figure you entered is never replaced: only empty ones are filled.
+const INFO_KIND = { credit_cards: 'credit_card', bank_accounts: 'bank_account', loans: 'loan', investments: 'investment' };
+const INFO_FOR = { credit_card: ['purchase_rate', 'cash_rate', 'annual_fee'], bank_account: ['account_monthly_fee', 'overdraft_rate', 'overdraft_monthly_fee', 'overdraft_use_fee'], loan: ['rate_low', 'rate_high', 'setup_fee'], investment: ['account_yearly_fee', 'trade_fee', 'management_fee'] };
+const INFO_FIELDS = ['purchase_rate', 'cash_rate', 'annual_fee', 'overdraft_rate', 'overdraft_monthly_fee', 'overdraft_use_fee', 'account_monthly_fee', 'rate_low', 'rate_high', 'setup_fee', 'account_yearly_fee', 'trade_fee', 'management_fee'];
+const productName = (tbl, r) => String(tbl === 'bank_accounts' ? [r.institution, r.name].filter(Boolean).join(' ') : tbl === 'loans' ? (r.provider || '') : (r.name || '')).trim();
+const wantsInfo = (tbl, r) => {
+  if (tbl === 'credit_cards' && r.is_gift_card) return false;
+  if (tbl === 'bank_accounts' && r.account_type === 'cash') return false;
+  const name = productName(tbl, r);
+  if (name.length < 3) return false;
+  if (r.info && r.info.for === name) return false;
+  return !(r.info_for === name && ((Number(r.info_tries) || 0) >= 3 || r.info_tried === today()));
+};
+async function fillProducts(uid, max = 4) {
+  if (!process.env.LOOKUP_STUB && !require('./keystore').get()) return 0;
+  let done = 0;
+  for (const [tbl, kind] of Object.entries(INFO_KIND)) {
+    for (const r of selectRows(uid, { table: tbl, filters: [] })) {
+      if (done >= max) return done;
+      if (!wantsInfo(tbl, r)) continue;
+      const name = productName(tbl, r);
+      let res = null;
+      try { res = await require('./rates').lookup(kind, name); } catch { res = null; }
+      done += 1;
+      tx(() => {
+        const fresh = selectRows(uid, { table: tbl, filters: [['id', 'eq', String(r.id)]], limit: 1 })[0];
+        if (!fresh || productName(tbl, fresh) !== name) return;
+        const tries = fresh.info_for === name ? (Number(fresh.info_tries) || 0) + 1 : 1;
+        const n = { ...fresh, info_for: name, info_tries: tries, info_tried: today() };
+        if (res && res.found) {
+          const info = { for: name, found: true, product: res.product, issuer: res.issuer, source_url: res.source_url, checked: res.checked, notes: res.notes, offers_plans: res.offers_plans, filled: [] };
+          for (const f of INFO_FIELDS) if (res[f] != null && INFO_FOR[kind].includes(f)) info[f] = res[f];
+          const fill = (field, v) => { if (v != null && v > 0 && !(Number(n[field]) > 0)) { n[field] = v; info.filled.push(field); } };
+          if (tbl === 'credit_cards') { fill('interest_rate', res.purchase_rate); fill('cash_rate', res.cash_rate); fill('annual_fee', res.annual_fee); }
+          if (tbl === 'bank_accounts' && n.allows_overdraft) { fill('overdraft_rate', res.overdraft_rate); fill('overdraft_monthly_fee', res.overdraft_monthly_fee); fill('overdraft_use_fee', res.overdraft_use_fee); }
+          if ((tbl === 'bank_accounts' || tbl === 'investments') && !n.institution && res.issuer) { n.institution = res.issuer; info.filled.push('institution'); }
+          n.info = info;
+        } else if (res && tries >= 3) n.info = { for: name, found: false, checked: today() };
+        db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), tbl, String(n.id), uid);
+      });
+    }
+  }
+  return done;
+}
+const filling = new Set();
+function fillSoon(uid) {
+  if (require.main !== module || filling.has(uid)) return;
+  filling.add(uid);
+  setTimeout(() => fillProducts(uid).catch((e) => console.error('details:', e.message)).finally(() => filling.delete(uid)), 1500).unref();
+}
+
 // ---------- routes ----------
 const routes = [];
 const route = (method, pattern, fn) => routes.push({ method, re: new RegExp('^' + pattern.replace(/:\w+/g, '([\\w-]+)') + '$'), fn });
 route('GET', '/api/me', (req) => ({ user: authUser(req) }));
 route('POST', '/api/logout', (req) => { const t = (req.headers.authorization || '').replace('Bearer ', ''); db.prepare('DELETE FROM sessions WHERE token = ?').run(t); return { ok: true }; });
-route('POST', '/api/db', (req, b) => runQuery(authUser(req).id, b));
+route('POST', '/api/db', (req, b) => { const uid = authUser(req).id; const out = runQuery(uid, b); if (INFO_KIND[b.table] && b.action !== 'select' && b.action !== 'delete') fillSoon(uid); return out; });
+route('POST', '/api/holdings', (req, b) => setHoldings(authUser(req).id, b));
+route('POST', '/api/prices', async (req) => ({ changed: await reprice(authUser(req).id) }));
+route('POST', '/api/quote', async (req, b) => { authUser(req); const f = await prices.find(db, { symbol: b.symbol, currency: b.currency, crypto: b.crypto === true }); const pick = (q) => ({ symbol: q.symbol, name: q.name, price: q.price, currency: q.currency }); return { quote: f.quote ? pick(f.quote) : null, choices: (f.choices || []).map(pick) }; });
+route('GET', '/api/tax-facts', (req) => { authUser(req); return require('./taxfacts').facts(db); });
+route('POST', '/api/details', async (req) => ({ done: await fillProducts(authUser(req).id) }));
 route('POST', '/api/money', (req, b) => money(authUser(req).id, b));
 route('POST', '/api/lookup-rates', async (req, b) => { authUser(req); try { return await require('./rates').lookup(String(b.kind || ''), b.name); } catch (e) { if (e.status) fail(e.status, e.message); throw e; } });
 // Exchange rate for a day (purchases in another currency are recorded in the home currency, keeping the original).
@@ -888,7 +984,7 @@ const server = http.createServer(async (req, res) => {
         const out = await r.fn(req, body, m.slice(1), url);
         if (/^\/api\/(read-|ask$)/.test(url.pathname) && out && process.env.NODE_ENV !== 'test') {
           const c = out.statement && out.statement.check;
-          console.log(`done ${url.pathname} ${Date.now() - began}ms kind=${out.kind || '-'}${Array.isArray(out.lines) ? ` lines=${out.lines.length}` : ''}${Array.isArray(out.parts) ? ` parts=${out.parts.length}` : ''}${c ? ` adds_up=${c.adds_up} off=${c.off}` : ''}${out.score ? ' score=found' : ''}${Array.isArray(out.new_accounts) ? ` new_accounts=${out.new_accounts.length} new_loans=${(out.new_loans || []).length} new_bills=${(out.new_bills || []).length} changes=${(out.updates || []).length} balances=${(out.balances || []).length}` : ''}`);
+          console.log(`done ${url.pathname} ${Date.now() - began}ms kind=${out.kind || '-'}${Array.isArray(out.lines) ? ` lines=${out.lines.length}` : ''}${Array.isArray(out.parts) ? ` parts=${out.parts.length}` : ''}${c ? ` adds_up=${c.adds_up} off=${c.off}` : ''}${out.score ? ' score=found' : ''}${(out.tax_room || []).length ? ` room=${out.tax_room.length}` : ''}${(out.holdings_updates || []).length ? ` holdings=${out.holdings_updates.length}` : ''}${Array.isArray(out.new_accounts) ? ` new_accounts=${out.new_accounts.length} new_loans=${(out.new_loans || []).length} new_bills=${(out.new_bills || []).length} changes=${(out.updates || []).length} balances=${(out.balances || []).length}` : ''}`);
         }
         return send(200, out);
       }
@@ -951,9 +1047,21 @@ seedCategoryRules();
 
 // Reminders go out from a check every 15 minutes (each one once; see server/push.js).
 const runReminders = (at) => require('./push').remind(db, { selectRows, tz: APP_TZ, subject: PUBLIC_URL, now: at }).catch((e) => { console.error('reminders:', e.message); return 0; });
+// Every 15 minutes: holdings follow the market, new accounts get their published details, and a tax limit for a new
+// year is picked up once it is announced. Each person's pass is separate, so one fault does not stop the rest.
+async function runUpkeep() {
+  const users = db.prepare("SELECT DISTINCT user_id FROM rows WHERE tbl IN ('investments', 'credit_cards', 'bank_accounts', 'loans')").all().map((r) => r.user_id);
+  for (const uid of users) {
+    try { await reprice(uid); } catch (e) { console.error('prices:', e.message); }
+    try { await fillProducts(uid, 2); } catch (e) { console.error('details:', e.message); }
+  }
+  try { await require('./taxfacts').keepUp(db, today()); } catch (e) { console.error('tax figures:', e.message); }
+}
 if (require.main === module) {
+  setTimeout(runUpkeep, 90e3);
+  setInterval(runUpkeep, 15 * 60e3).unref();
   server.listen(PORT, () => console.log(`Finance tracker running on http://localhost:${PORT}`));
   setTimeout(runReminders, 60e3);
   setInterval(runReminders, 15 * 60e3).unref();
 }
-module.exports = { server, db, money, reverse, runQuery, runReminders };
+module.exports = { server, db, money, reverse, runQuery, runReminders, setHoldings, reprice, fillProducts, runUpkeep };

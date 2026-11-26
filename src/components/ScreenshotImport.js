@@ -112,6 +112,9 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const [billDrafts, setBillDrafts] = useState([]);
   const navigate = useNavigate();
   const [scoreDraft, setScoreDraft] = useState(null);
+  // What accounts hold (so their value follows the market) and contribution room stated by the tax agency.
+  const [heldDrafts, setHeldDrafts] = useState([]);
+  const [roomDrafts, setRoomDrafts] = useState([]);
   const [removals, setRemovals] = useState({});
   const [open, setOpen] = useState(null);
   const [done, setDone] = useState(null);
@@ -185,7 +188,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const advance = (readIt) => {
     const [next, ...rest] = queueRef.current;
     putQueue(rest); setNoteOpen(false);
-    setProposal(null); setDrafts([]); setRows([]); setFixes([]); setLoanDrafts([]); setInvDrafts([]); setScoreDraft(null); setChanges([]); setBillDrafts([]); setError(''); setResumed(false);
+    setProposal(null); setDrafts([]); setRows([]); setFixes([]); setLoanDrafts([]); setInvDrafts([]); setHeldDrafts([]); setRoomDrafts([]); setScoreDraft(null); setChanges([]); setBillDrafts([]); setError(''); setResumed(false);
     if (!next) { setImage(null); setNote(''); clearPending(); return; }
     setImage(next.image); setNote(next.note || '');
     savePending({ queue: rest, image: next.image, note: next.note || '' });
@@ -365,6 +368,8 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       setChanges((p.updates || []).flatMap((u) => u.changes.map((c) => ({ ...c, account: u.account, key: `${u.account.type}:${u.account.id}:${c.field}`, on: true }))));
       setBillDrafts((p.new_bills || []).map((b) => ({ ...b, on: true, amount: b.amount == null ? '' : String(b.amount), next_date: b.next_date || '' })));
       setInvDrafts((p.new_investments || []).map((x) => ({ ...x, on: true, balance: x.balance == null ? '' : String(x.balance) })));
+      setHeldDrafts((p.holdings_updates || []).map((h) => ({ ...h, on: true })));
+      setRoomDrafts((p.tax_room || []).map((r) => ({ ...r, on: true })));
       setScoreDraft(p.credit_score ? { on: !p.credit_score.same, bureau: p.credit_score.bureau || '', score: String(p.credit_score.score), date: p.credit_score.date || new Date().toLocaleDateString('en-CA') } : null);
       setLoanDrafts((p.new_loans || []).map((l) => ({ ...l, on: true, balance: l.balance == null ? '' : String(l.balance), payment_amount: l.payment_amount == null ? '' : String(l.payment_amount),
         next_payment_date: l.next_payment_date || '', interest_rate: l.interest_rate == null ? '' : String(l.interest_rate) })));
@@ -497,10 +502,26 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     // 1c. Investments and a credit score found on the picture.
     for (const x of invDrafts.filter((v) => v.on && !invNeeds(v))) {
       try {
-        const { error: e } = await server.from(x.table === 'assets' ? 'assets' : 'investments').insert({ id: generateId(), name: x.name.trim(), kind: x.kind || 'Other', balance: Math.round((Number(x.balance) || 0) * 100) / 100, created_at: new Date().toISOString() });
+        const newId = generateId();
+        const { error: e } = await server.from(x.table === 'assets' ? 'assets' : 'investments').insert({ id: newId, name: x.name.trim(), kind: x.kind || 'Other', balance: Math.round((Number(x.balance) || 0) * 100) / 100, created_at: new Date().toISOString() });
         if (e) throw new Error(e.message);
+        if (x.table !== 'assets' && (x.holdings || []).length) await api('/api/holdings', { id: newId, holdings: x.holdings, ...(x.cash != null ? { cash: x.cash } : {}) });
         result.created.push(x.name);
       } catch (err) { result.failed.push(`${x.name}: ${err.message}`); }
+    }
+    for (const h of heldDrafts.filter((v) => v.on)) {
+      try { await api('/api/holdings', { id: h.id, holdings: h.holdings, ...(h.cash != null ? { cash: h.cash } : {}) }); result.created.push(`what ${h.name} holds`); }
+      catch (err) { result.failed.push(`${h.name}: ${err.message}`); }
+    }
+    if (roomDrafts.some((r) => r.on)) {
+      try {
+        const { data: had } = await server.from('settings').select('*').eq('key', 'tax_room').maybeSingle();
+        const value = { ...((had && had.value) || {}) };
+        for (const r of roomDrafts.filter((v) => v.on)) value[r.kind] = { ...(value[r.kind] || {}), room: r.room, as_of: r.as_of };
+        const { error: e } = await server.from('settings').upsert({ key: 'tax_room', value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+        if (e) throw new Error(e.message);
+        result.created.push(`${roomDrafts.filter((v) => v.on).map((r) => r.kind).join(', ')} room`);
+      } catch (err) { result.failed.push(`Room: ${err.message}`); }
     }
     // 1d. Details that changed on things the app already has, and bills.
     const byThing = new Map();
@@ -636,7 +657,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const showValue = (c, v) => (v == null ? 'not set' : c.kind === 'text' ? String(v) : c.kind === 'money' ? formatCurrency(v) : c.kind === 'later' ? (formatDate(v) || v) : `${v}%`);
   const invNeeds = (x) => (!x.on ? null : !x.name.trim() ? 'Enter a name' : null);
   const scoreNeeds = (x) => (!x || !x.on ? null : !(Number.isInteger(Number(x.score)) && Number(x.score) >= 300 && Number(x.score) <= 900) ? 'A score is a whole number from 300 to 900' : !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '') ? 'Choose the day' : null);
-  const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length + loanDrafts.filter((l) => l.on).length + invDrafts.filter((x) => x.on).length + (scoreDraft && scoreDraft.on ? 1 : 0) + changes.filter((c) => c.on).length + billDrafts.filter((b) => b.on).length;
+  const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length + loanDrafts.filter((l) => l.on).length + invDrafts.filter((x) => x.on).length + heldDrafts.filter((x) => x.on).length + roomDrafts.filter((x) => x.on).length + (scoreDraft && scoreDraft.on ? 1 : 0) + changes.filter((c) => c.on).length + billDrafts.filter((b) => b.on).length;
   const draftNeeds = (d) => (!d.on ? null : !d.name.trim() ? 'Enter a name' : null);
   const homelessRow = (r) => ['Choose the account', 'Choose the card', 'Choose both accounts'].includes(missing(r));
   const blocked = rows.filter((r) => r.on && missing(r) && !homelessRow(r)).length + drafts.filter(draftNeeds).length + loanDrafts.filter(loanNeeds).length + invDrafts.filter(invNeeds).length + (scoreNeeds(scoreDraft) ? 1 : 0) + billDrafts.filter(billNeeds).length;
@@ -963,6 +984,33 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               <p className={`text-sm ${muted}`}>A tracked bill shows on Home and gets a reminder. Who it is paid through can be set under More, Bills.</p>
             </section>
           )}
+          {heldDrafts.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-base font-semibold">What your investments hold</h3>
+              {heldDrafts.map((h) => (
+                <div key={h.id} className="rounded-lg border p-3 space-y-1 border-line">
+                  <label className="flex items-center gap-3 text-base font-medium">
+                    <input type="checkbox" className="w-5 h-5" checked={h.on} onChange={(e) => setHeldDrafts((xs) => xs.map((y) => (y.id === h.id ? { ...y, on: e.target.checked } : y)))} />
+                    Set what {h.name} holds
+                  </label>
+                  {h.holdings.map((x, i) => <div key={i} className="flex justify-between gap-3 text-sm text-muted"><span className="min-w-0 truncate">{x.symbol || x.name}</span><span className="shrink-0 tabular-nums">{x.units != null ? `${x.units} units` : formatCurrency(x.value)}</span></div>)}
+                </div>
+              ))}
+              <p className={`text-sm ${muted}`}>The account's value then follows the market price of each holding.</p>
+            </section>
+          )}
+          {roomDrafts.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-base font-semibold">Contribution room</h3>
+              {roomDrafts.map((r) => (
+                <label key={r.kind} className="flex items-center gap-3 rounded-lg border p-3 border-line text-base">
+                  <input type="checkbox" className="w-5 h-5" checked={r.on} onChange={(e) => setRoomDrafts((xs) => xs.map((y) => (y.kind === r.kind ? { ...y, on: e.target.checked } : y)))} />
+                  <span className="min-w-0"><span className="font-medium">{r.kind} room {formatCurrency(r.room)}</span><span className={`block text-sm ${muted}`}>as of {formatDate(r.as_of) || r.as_of}</span></span>
+                </label>
+              ))}
+              <p className={`text-sm ${muted}`}>Kept under More, Room left, where what you put in after that day is taken off.</p>
+            </section>
+          )}
           {scoreDraft && (
             <section className="space-y-2">
               <h3 className="text-base font-semibold">Credit score</h3>
@@ -998,7 +1046,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                       <input type="checkbox" className="w-5 h-5" checked={x.on} onChange={(e) => setInv({ on: e.target.checked })} />
                       Add {x.name}
                     </label>
-                  {x.on && <div className="flex items-center justify-between gap-3 text-sm text-muted"><span className="min-w-0 truncate">{`${x.kind || 'Other'} · ${x.balance !== '' ? formatCurrency(Number(x.balance)) : 'Value not known yet'}`}</span><button type="button" className="press shrink-0 font-medium text-accent" aria-expanded={!!edit[x.id]} onClick={() => setEdit((e) => ({ ...e, [x.id]: !e[x.id] }))}>{edit[x.id] ? 'Done' : 'Edit'}</button></div>}
+                  {x.on && <div className="flex items-center justify-between gap-3 text-sm text-muted"><span className="min-w-0 truncate">{`${x.kind || 'Other'} · ${x.balance !== '' ? formatCurrency(Number(x.balance)) : 'Value not known yet'}${(x.holdings || []).length ? ` · ${x.holdings.length === 1 ? '1 holding' : `${x.holdings.length} holdings`}, follows the market` : ''}`}</span><button type="button" className="press shrink-0 font-medium text-accent" aria-expanded={!!edit[x.id]} onClick={() => setEdit((e) => ({ ...e, [x.id]: !e[x.id] }))}>{edit[x.id] ? 'Done' : 'Edit'}</button></div>}
                     {x.on && (edit[x.id] || !!invNeeds(x)) && (
                       <div className="grid grid-cols-2 gap-2">
                         <label className="block text-sm"><span className={muted}>Name</span>
