@@ -1,5 +1,6 @@
 // Savings goals, bill price changes and the credit score log: worked out from what is already recorded. Nothing here moves money.
 import { mkey } from './categoryRules';
+import { programRate } from './cards';
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const parse = (v) => { const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
@@ -132,7 +133,10 @@ export function chargesToCheck(transactions, today = new Date(), seen = []) {
 // ---------- Card rewards, and payments made through a service that charges a fee ----------
 // What a card gives back, in percent: its everyday rate, or its rate on bill payments when it has one.
 // A category with its own rate on the card (for example 4% on groceries) uses that for purchases in it.
-export const rewardRate = (card, forBills = false, categoryId = null) => {
+// A card with no rate of its own uses what the app knows about that card (see cards.js), which can also depend on the store.
+export const ownRewards = (card) => !!card && (Number(card.reward_percent) > 0 || (card.reward_bills_percent != null && card.reward_bills_percent !== '') || (card.reward_rules || []).length > 0);
+export const rewardRate = (card, forBills = false, categoryId = null, description = '') => {
+  if (!ownRewards(card)) { const known = programRate(card, forBills ? null : categoryId, forBills ? '' : description); return known == null ? 0 : known; }
   const bills = card && card.reward_bills_percent;
   if (forBills) return Number(bills != null && bills !== '' ? bills : card && card.reward_percent) || 0;
   const rule = categoryId != null && categoryId !== '' && ((card && card.reward_rules) || []).find((r) => String(r.category_id) === String(categoryId));
@@ -159,8 +163,8 @@ export function rewardsEarned(card, transactions, month) {
     const a = Number(t.amount) || 0;
     const parts = Array.isArray(t.splits) && t.splits.length ? t.splits : [{ category_id: t.category_id, amount: a }];
     if (t.type === 'expense' && t.through_fee_for) cents += a * rewardRate(card, true);
-    else if (t.type === 'expense') for (const p of parts) cents += (Number(p.amount) || 0) * rewardRate(card, false, p.category_id);
-    else if (t.type === 'refund') for (const p of parts) cents -= (Number(p.amount) || 0) * rewardRate(card, false, p.category_id);
+    else if (t.type === 'expense') for (const p of parts) cents += (Number(p.amount) || 0) * rewardRate(card, false, p.category_id, t.description);
+    else if (t.type === 'refund') for (const p of parts) cents -= (Number(p.amount) || 0) * rewardRate(card, false, p.category_id, t.description);
     else if (t.loan_id && (t.type === 'loan_payment' || t.type === 'payment')) cents += a * rewardRate(card, true);
   }
   return round2(cents / 100);

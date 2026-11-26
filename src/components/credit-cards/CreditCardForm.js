@@ -1,6 +1,7 @@
 import React from 'react';
 import { useFinanceData } from '../../hooks/useFinanceData';
 import RateLookup from '../shared/RateLookup';
+import { cardProgram } from '../../utils/cards';
 import { CreditCard as CreditCardIcon, Gift, Star } from 'lucide-react';
 import ActionButton from '../shared/ActionButton';
 import GiftCardForm from './GiftCardForm';
@@ -219,6 +220,9 @@ export default function CreditCardForm({
             <label className={smallLabel}>Rewards on bill payments %
               <input type="number" step="0.01" min="0" max="10" inputMode="decimal" placeholder="If different" value={formData.rewardBillsPercent || ''} onChange={(e) => setFormData({ ...formData, rewardBillsPercent: e.target.value })} className={inputClass} />
             </label>
+            {(() => { const p = cardProgram({ name: formData.name }); return p && p.note ? (
+              <p className="col-span-full text-xs text-muted">Known for this card: {p.kind}. {p.note} Leave the rewards fields empty to use these, or type your own.</p>
+            ) : null; })()}
             <div className="col-span-full space-y-2">
               {(formData.rewardRules || []).map((r, i) => {
                 const setRule = (change) => setFormData({ ...formData, rewardRules: formData.rewardRules.map((x, j) => (j === i ? { ...x, ...change } : x)) });

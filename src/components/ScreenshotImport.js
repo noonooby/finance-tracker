@@ -8,7 +8,8 @@ import { formatCurrency, formatDate, generateId } from '../utils/helpers';
 import { loadPending, savePending, clearPending } from '../utils/pendingScan';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { suggestCategoryId, findRule } from '../utils/categoryRules';
-import { knownCategory, guessCategory, ownCategory } from '../utils/merchants';
+import { knownCategory, guessCategory, ownCategory, throughCategory } from '../utils/merchants';
+import { planHome, looksLikePlan, knownLender } from '../utils/cards';
 import { TAX_FIELDS } from '../utils/room';
 import { Camera, Image as ImageIcon } from 'lucide-react';
 import { Picture } from './shared/Picture';
@@ -246,7 +247,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     for (const h of list) {
       try {
         const common = { amount: Number(h.amount), date: h.date, description: h.merchant, key: h.key || `held:${h.id}`, extra: { pending: !!h.pending, from_screenshot: h.source_id || 'held', in_snapshot: true } };
-        const cat = (income) => { const id = suggestCategory(h.merchant, h.category_guess, income); const c = categories.find((x) => String(x.id) === String(id)); return c ? { category_id: c.id, category_name: c.name } : { category_id: null, category_name: null }; };
+        const cat = (income) => { const id = suggestCategory(h.merchant, h.category_guess, income, h.amount); const c = categories.find((x) => String(x.id) === String(id)); return c ? { category_id: c.id, category_name: c.name } : { category_id: null, category_name: null }; };
         if (h.kind === 'card_payment' && onCard) await recordCardPayment({ ...common, cardId: to.split(':')[1], source: 'outside' }, accounts);
         else if (h.kind === 'card_payment' || h.kind === 'transfer') await recordTransfer({ ...common, from: h.direction === 'in' ? 'outside' : to, to: h.direction === 'in' ? to : 'outside' }, accounts);
         else if (h.kind === 'refund' || (h.direction === 'in' && onCard)) await recordRefund({ ...common, target: to }, accounts);
@@ -304,8 +305,12 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const keepWaiting = () => { if (image) savePending({ queue: queueRef.current, image, note, proposal }); };
 
   // A category for a purchase: how this merchant was categorised before, else the reader's guess matched to your categories.
-  const suggestCategory = (merchant, guess, income = false) => {
+  const suggestCategory = (merchant, guess, income = false, amount = null) => {
     const pool = income ? incomeCategories : expenseCategories;
+    // A bill paid by card through a service (Chexy): the name is the same for the rent and the lease, so the amount decides.
+    const via = !income && throughCategory(merchant, amount, transactions);
+    if (via && via.category_id && pool.some((c) => String(c.id) === via.category_id)) return via.category_id;
+    if (via && via.known) { const own = ownCategory(via.known, pool); if (own) return String(own.id); }
     const learned = findRule(categoryRules, merchant) ? suggestCategoryId(categoryRules, merchant, pool, income) : '';
     if (learned) return learned;
     const k = mkey(merchant);
@@ -366,7 +371,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
         const unclear = l.action === 'skip' && l.why === 'No clear amount or date';
         const late = l.action === 'skip' && l.why === 'Dated after today';
         if (unclear || late) l = { ...l, action: l.account ? 'record' : 'choose_account' };
-        const r = { ...l, kind, on: !late && (l.action === 'record' || l.action === 'mark_posted' || l.action === 'choose_account'), target: acct, category_id: kind === 'purchase' || kind === 'income' ? suggestCategory(l.merchant, l.category_guess, kind === 'income') : '' };
+        const r = { ...l, kind, on: !late && (l.action === 'record' || l.action === 'mark_posted' || l.action === 'choose_account'), target: acct, category_id: kind === 'purchase' || kind === 'income' ? suggestCategory(l.merchant, l.category_guess, kind === 'income', l.amount) : '' };
         // The other side of a payment or transfer, when it is not one of your accounts, is an account not in the app:
         // only your side changes. It can be changed on the line.
         if (kind === 'transfer') { r.from = out ? acct : oth; r.to = out ? oth : acct; if (r.from && !r.to) r.to = 'outside'; else if (r.to && !r.from) r.from = 'outside'; }
@@ -393,7 +398,10 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       setRoomDrafts((p.tax_room || []).map((r) => ({ ...r, on: true })));
       setTaxDraft(p.tax_year ? { ...p.tax_year, on: !p.tax_year.same } : null);
       setScoreDraft(p.credit_score ? { on: !p.credit_score.same, bureau: p.credit_score.bureau || '', score: String(p.credit_score.score), date: p.credit_score.date || new Date().toLocaleDateString('en-CA') } : null);
-      setLoanDrafts((p.new_loans || []).map((l) => ({ ...l, on_card_ref: l.on_card ? (String(l.on_card.id).startsWith('new:') ? l.on_card.id : `credit_card:${l.on_card.id}`) : '', on: true, balance: l.balance == null ? '' : String(l.balance), payment_amount: l.payment_amount == null ? '' : String(l.payment_amount),
+      // A plan with no card named that a store's own card is known to hold (a Party City plan on a Triangle card) goes inside that card.
+      const cardsNow = [...creditCards.map((c) => ({ ...c, _ref: `credit_card:${c.id}` })), ...(p.new_accounts || []).filter((a) => a.type === 'credit_card').map((a) => ({ ...a, _ref: a.id }))];
+      const homeOf = (l) => { if (l.on_card || !(l.loan_type === 'plan' || looksLikePlan(l.name))) return ''; const c = planHome(l.name, cardsNow); return c ? c._ref : ''; };
+      setLoanDrafts((p.new_loans || []).map((l) => ({ ...l, ...(homeOf(l) ? { loan_type: 'plan' } : (l.loan_type === 'loan' || !l.loan_type) && knownLender(l.name) ? { loan_type: knownLender(l.name).kind } : {}), known: homeOf(l) ? 'Known to sit inside this card, with no interest.' : (knownLender(l.name) || {}).note || '', on_card_ref: l.on_card ? (String(l.on_card.id).startsWith('new:') ? l.on_card.id : `credit_card:${l.on_card.id}`) : homeOf(l), on: true, balance: l.balance == null ? '' : String(l.balance), payment_amount: l.payment_amount == null ? '' : String(l.payment_amount),
         next_payment_date: l.next_payment_date || '', interest_rate: l.interest_rate == null ? '' : String(l.interest_rate) })));
       setRemovals({}); setEdit({});
   }
@@ -481,7 +489,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     if (kind === 'transfer') { patch.from = r.direction === 'in' ? (r.other_ref || '') : base; patch.to = r.direction === 'in' ? base : ''; }
     else if (kind === 'card_payment') { patch.card = isCardRef(base) ? base : ''; patch.source = isCardRef(base) ? '' : base; }
     else patch.target = base;
-    if (kind === 'purchase' || kind === 'income') patch.category_id = suggestCategory(r.merchant, r.category_guess, kind === 'income');
+    if (kind === 'purchase' || kind === 'income') patch.category_id = suggestCategory(r.merchant, r.category_guess, kind === 'income', r.amount);
     setRow(r.i, patch);
   };
 
@@ -1256,6 +1264,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                         <input className={input} type="number" step="0.01" min="0" max="100" inputMode="decimal" value={l.interest_rate} placeholder="0 if none" onChange={(e) => setLoan(l.id, { interest_rate: e.target.value })} /></label>
                     </div>
                   )}
+                  {l.on && l.known && <div className="text-xs text-muted">{l.known}</div>}
                   {loanNeeds(l) && <div className="text-sm text-amber-600">{loanNeeds(l)}</div>}
                 </div>
               ))}

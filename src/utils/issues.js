@@ -3,6 +3,7 @@
 //   fix.do: 'correct' | 'dismiss' (a balance check), 'amount' (type today's figure for an account), 'ticker'
 //           (name the holding), 'same' (set a known figure), 'unlink' (the plan is not inside this card), 'go' (open a page), 'leave' (stay quiet until the figures change).
 import { cardSplit } from './finance';
+import { planHome, looksLikePlan } from './cards';
 
 const money = (n) => `$${(Math.round(Number(n) * 100) / 100).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const TARGET = { bank: 'bank_account', cash: 'bank_account', card: 'credit_card', card_credit: 'credit_card', gift_card: 'credit_card', loan: 'loan', mortgage: 'loan', investment: 'investment', asset: 'asset' };
@@ -124,6 +125,16 @@ export function issues({ checks = [], stale = [], snapshots = [], bankAccounts =
       { field: 'payment_amount', missing: blank(l.payment_amount), label: 'Payment each time', short: 'the payment', use: 'what it takes each month', ask: `Payment on ${l.name}`, input: 'number' },
       { field: 'next_payment_date', missing: !day10(l.next_payment_date), label: 'Next payment day', short: 'the next payment day', use: 'when it is paid down', ask: `Day of the next payment on ${l.name}`, input: 'date' },
     ]);
+  }
+  // A payment plan that stands on its own although one of your cards is known to hold plans from that store: inside
+  // the card it is part of the card's balance; on its own it is counted as a second debt.
+  for (const l of loans) {
+    if (l.on_card_id || !(Number(l.balance) > 0) || !(l.loan_type === 'plan' || looksLikePlan(l.name))) continue;
+    const card = planHome(l.name, creditCards);
+    if (!card) continue;
+    add({ id: `planhome:${l.id}`, sig: String(card.id), kind: 'need', ref: String(l.id), title: `${l.name} looks like a plan inside ${card.name}`,
+      text: `${card.name} is known to hold equal payment plans from this store, with no interest. Inside the card, the plan is part of the card's balance and is billed on it. On its own, it is counted as a separate debt on top of the card.`,
+      fixes: [{ do: 'set', label: `Put it inside ${card.name}`, table: 'loans', id: l.id, values: { on_card_id: card.id, loan_type: 'plan' } }, leave('It is a separate loan')] });
   }
   for (const r of rooms) {
     if (r.known || !(r.accounts || []).length) continue;

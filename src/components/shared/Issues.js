@@ -104,6 +104,10 @@ export function useIssues() {
       const sent = (h) => ({ symbol: h.symbol || h.shown, symbol_set: !!h.symbol, shown: h.shown, name: h.name, units: h.units, price: h.price, currency: h.currency, value: h.value });
       await api('/api/holdings', { id: inv.id, holdings: held.map((h, j) => (j === fix.index ? { ...sent(h), symbol: q.symbol, symbol_set: true, shown: h.shown || q.symbol, name: h.name || q.name, value: null } : sent(h))) });
     }
+    else if (fix.do === 'set') {
+      const { error } = await server.from(fix.table).update(fix.values).eq('id', fix.id);
+      if (error) throw new Error(error.message);
+    }
     else if (fix.do === 'field') {
       const v = fix.input === 'date' ? String(value || '') : fix.input === 'text' ? String(value || '').replace(/\s+/g, ' ').trim().slice(0, 60) : Math.round(Number(value) * 100) / 100;
       if (fix.input === 'text' && !v) throw new Error('Type it in.');

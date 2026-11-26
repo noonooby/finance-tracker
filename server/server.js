@@ -1132,6 +1132,29 @@ function seedCategoryRules() {
 }
 seedCategoryRules();
 
+// Categories the app gained later (Housing, Insurance, Loan payments) are added once to a list that already exists
+// (flag: settings cats_added). One you remove afterwards stays removed.
+function seedNewCategories() {
+  const NEW = [{ id: 'housing', name: 'Housing', color: '#0ea5e9', icon: 'Home' }, { id: 'insurance', name: 'Insurance', color: '#14b8a6', icon: 'Shield' }, { id: 'loan_payments', name: 'Loan payments', color: '#a855f7', icon: 'Landmark' }];
+  const users = db.prepare("SELECT DISTINCT user_id FROM rows WHERE tbl = 'categories'").all().map((r) => r.user_id);
+  for (const uid of users) {
+    const flag = selectRows(uid, { table: 'settings', filters: [['key', 'eq', 'cats_added']], limit: 1 })[0];
+    const done = new Set((flag && Array.isArray(flag.value) ? flag.value : []));
+    const todo = NEW.filter((c) => !done.has(c.id));
+    if (!todo.length) continue;
+    tx(() => {
+      const have = selectRows(uid, { table: 'categories', filters: [] });
+      for (const c of todo) {
+        const taken = have.some((x) => String(x.id) === c.id || String(x.id).startsWith(c.id + '_') || (!x.is_income && String(x.name || '').trim().toLowerCase() === c.name.toLowerCase()));
+        if (!taken) insertRow(uid, 'categories', { ...c, id: have.some((x) => /_[0-9a-f]{8}$/.test(String(x.id))) ? `${c.id}_${String(uid).slice(0, 8)}` : c.id, is_income: false, is_system: false, created_at: new Date().toISOString() });
+      }
+      const value = [...done, ...todo.map((c) => c.id)];
+      if (flag) updateRows(uid, 'settings', [['key', 'eq', 'cats_added']], { value }); else insertRow(uid, 'settings', { key: 'cats_added', value });
+    });
+  }
+}
+seedNewCategories();
+
 // Reminders go out from a check every 15 minutes (each one once; see server/push.js).
 const runReminders = (at) => require('./push').remind(db, { selectRows, tz: APP_TZ, subject: PUBLIC_URL, now: at }).catch((e) => { console.error('reminders:', e.message); return 0; });
 // Every 15 minutes: holdings follow the market, new accounts get their published details, and a tax limit for a new

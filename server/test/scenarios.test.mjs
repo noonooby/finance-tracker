@@ -33,7 +33,7 @@ globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v
 const realFetch = globalThis.fetch;
 globalThis.fetch = (u, o) => realFetch(String(u).startsWith('/') ? base + u : u, o);
 const lib = path.join(tmp, 'lib'); fs.mkdirSync(lib);
-for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js', 'room.js', 'issues.js', 'merchants.js', 'lines.js']) {
+for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js', 'room.js', 'issues.js', 'merchants.js', 'lines.js', 'cards.js']) {
   const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
   fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
 }
@@ -1932,4 +1932,60 @@ test('merchants the app knows from the start: the names on real statements land 
   assert.equal(CR.suggestCategoryId([{ key: 'timhortons', category_id: 'treats' }], 'TIM HORTONS #1769', cats, false), 'treats');
   assert.equal(CR.suggestCategoryId([], 'ROGERS', cats, false), '');
   assert.equal(K.guessCategory('Fuel').id, 'transportation');
+});
+
+test('bills, leases, insurers and mortgages are known by name, and a bill service goes by its amount', async () => {
+  const cat = (d, income = false) => (K.knownCategory(d, income) || {}).id || null;
+  assert.equal(cat('Pine'), 'housing');
+  assert.equal(cat('SONNET INSURANCE COMPANY WATERLOO ON'), 'insurance');
+  assert.equal(cat('TOYOTA FINANCIAL SERVICES'), 'transportation');
+  assert.equal(cat('PAYPLAN BY RBC PAD'), 'loan_payments');
+  assert.equal(cat('FREEDOM MOBILE'), 'utilities');
+  assert.equal(cat('ENTERPRISE RENT-A-CAR'), 'transportation');
+  assert.equal(cat('CHEXY TORONTO ON'), 'housing');
+  assert.equal(K.throughService('CHEXY RENT TORONTO ON'), 'Chexy');
+  assert.equal(K.throughService('TIM HORTONS'), null);
+  // The same name is the lease at one amount and the condo fees at another.
+  const past = [{ date: '2026-10-19', description: 'CHEXY TORONTO ON', amount: 340.86, category_id: 'transportation' }, { date: '2026-10-27', description: 'CHEXY TORONTO ON', amount: 918.64, category_id: 'housing' }];
+  assert.equal(K.throughCategory('CHEXY TORONTO ON', 340.86, past).category_id, 'transportation');
+  assert.equal(K.throughCategory('CHEXY TORONTO ON', 918.64, past).category_id, 'housing');
+  assert.equal(K.throughCategory('CHEXY TORONTO ON', 101.75, past).known.id, 'housing');
+  assert.equal(K.throughCategory('CHEXY CAR LEASE', 500, []).known.id, 'transportation');
+  assert.equal(K.throughCategory('LOBLAWS', 50, past), null);
+});
+
+test('cards are known by name: what they give back, and the plans they can hold', async () => {
+  const C = await import(pathToFileURL(path.join(lib, 'cards.mjs')));
+  const tri = { id: 't1', name: 'World Elite Mastercard (Canadian Tire Bank)' }, amz = { id: 'a1', name: 'Amazon.ca Rewards' }, scotia = { id: 's1', name: 'Scotia Momentum Visa Infinite + Card' };
+  assert.equal(C.cardProgram(tri).kind, 'CT Money');
+  assert.equal(C.cardProgram({ name: 'SimplyCash® Preferred Card from Am...' }).id, 'amex_simplycash_preferred');
+  assert.equal(C.cardProgram({ name: 'Money-Back World Mastercard' }).id, 'tangerine_money_back');
+  assert.equal(C.cardProgram({ name: 'PC® Mastercard®' }).kind, 'PC Optimum points');
+  assert.equal(C.cardProgram({ name: 'Rogers Credit card ending 4131' }).id, 'rogers');
+  assert.equal(C.cardProgram({ name: 'Some Other Visa' }), null);
+  assert.equal(C.cardProgram({ name: 'Triangle', is_gift_card: true }), null);
+  // Built-in rates: by store, then by category, then the everyday rate. A rate you set comes first.
+  assert.equal(P.rewardRate(tri, false, 'shopping', 'CANADIAN TIRE #123'), 4);
+  assert.equal(P.rewardRate(tri, false, 'groceries', 'FARM BOY'), 3);
+  assert.equal(P.rewardRate(tri, false, 'dining', 'TIM HORTONS'), 1);
+  assert.equal(P.rewardRate(scotia, false, 'groceries_ab12cd34', 'METRO'), 4);
+  assert.equal(P.rewardRate(amz, false, 'shopping', 'AMZN Mktp CA*5E1'), 2.5);
+  assert.equal(P.rewardRate({ ...tri, reward_percent: 2 }, false, 'shopping', 'CANADIAN TIRE #123'), 2);
+  assert.equal(P.rewardRate({ name: 'Some Other Visa' }), 0);
+  const tx = [{ date: '2026-11-03', type: 'expense', amount: 100, payment_method: 'credit_card', payment_method_id: 't1', category_id: 'shopping', description: 'PARTY CITY 838' }];
+  assert.equal(P.rewardsEarned(tri, tx, '2026-11'), 4);
+  // A store plan belongs inside the one card known to hold it.
+  assert.equal(C.planHome('#838 PARTY CITY - Monthly Equal Payment Plan', [tri, amz, scotia]).id, 't1');
+  assert.equal(C.planHome('Amazon.ca instalment plan', [tri, amz]).id, 'a1');
+  assert.equal(C.planHome('#838 PARTY CITY - Monthly Equal Payment Plan', [amz, scotia]), null);
+  assert.equal(C.planHome('PARTY CITY plan', [tri, { id: 't2', name: 'Triangle Mastercard' }]), null);
+  assert.equal(C.knownLender('PayPlan by RBC - IKEA').kind, 'bnpl');
+  assert.equal(C.knownLender('Pine').kind, 'mortgage');
+  assert.equal(C.knownLender('Toyota Financial Services').kind, 'car_lease');
+  assert.equal(C.knownLender('Scotia savings'), null);
+  // The list of things to sort out offers to put such a plan inside its card.
+  const loan = { id: 'l1', name: '#838 PARTY CITY - Monthly Equal Payment Plan', loan_type: 'plan', balance: 300, payment_amount: 25, next_payment_date: '2026-12-01' };
+  const found = I.issues({ creditCards: [{ ...tri, credit_limit: 5000 }], loans: [loan], today: '2026-11-26' }).find((x) => x.id === 'planhome:l1');
+  assert.ok(found && found.fixes[0].values.on_card_id === 't1');
+  assert.ok(!I.issues({ creditCards: [{ ...tri, credit_limit: 5000 }], loans: [{ ...loan, on_card_id: 't1' }], today: '2026-11-26' }).some((x) => x.id === 'planhome:l1'));
 });
