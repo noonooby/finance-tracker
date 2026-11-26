@@ -5,6 +5,7 @@ import RecentTransactions from '../shared/RecentTransactions';
 import { expiryStatus } from './cardMath';
 import { useFinanceData } from '../../hooks/useFinanceData';
 import { cardSplit } from '../../utils/finance';
+import { Issues } from '../shared/Issues';
 
 /**
  * Read-only view of one credit or gift card with its actions.
@@ -106,7 +107,7 @@ export default function CardItem({
                 <span className={muted}>Everything else, at the card's rate if carried</span>
                 <span className="tabular-nums shrink-0">{formatCurrency(split.rest)}</span>
               </div>
-              {split.over > 0 && <div className="text-warning">The plans add up to {formatCurrency(split.over)} more than the card shows. Update the card's balance or the plans.</div>}
+              {split.over > 0 && <Issues compact only={(i) => i.kind === 'plans' && i.ref === String(card.id)} />}
             </div>
           )}
         </div>

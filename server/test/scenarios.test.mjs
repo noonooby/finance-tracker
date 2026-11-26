@@ -33,7 +33,7 @@ globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v
 const realFetch = globalThis.fetch;
 globalThis.fetch = (u, o) => realFetch(String(u).startsWith('/') ? base + u : u, o);
 const lib = path.join(tmp, 'lib'); fs.mkdirSync(lib);
-for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js', 'room.js']) {
+for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js', 'room.js', 'issues.js']) {
   const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
   fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
 }
@@ -43,6 +43,7 @@ const F = await import(pathToFileURL(path.join(lib, 'finance.mjs')));
 const S = await import(pathToFileURL(path.join(lib, 'spending.mjs')));
 const P = await import(pathToFileURL(path.join(lib, 'plans.mjs')));
 const R = await import(pathToFileURL(path.join(lib, 'room.mjs')));
+const I = await import(pathToFileURL(path.join(lib, 'issues.mjs')));
 await client.auth.devSignIn();
 
 const db = client;
@@ -1706,4 +1707,38 @@ test('lookups can be turned off, pointed at a name you give, redone for one acco
   await assert.rejects(api('/api/details', { table: 'users', id: 'x' }), /Unknown table/);
   delete process.env.LOOKUP_STUB;
   await db.from('settings').delete().eq('key', 'lookups');
+});
+
+// ---------- anything that does not match: one list, each entry with fixes that work in place ----------
+test('mismatches: each kind is listed once with its fixes, and one left alone stays quiet until its figures change', () => {
+  const card = { id: 'c1', name: 'Visa', balance: 1000 };
+  const loans = [{ id: 'p1', name: 'Phone plan', balance: 900, on_card_id: 'c1', payment_amount: 50 }, { id: 'p2', name: 'Sofa plan', balance: 400, on_card_id: 'c1', payment_amount: 40 }];
+  const investments = [{ id: 'i1', name: 'TFSA', kind: 'TFSA', holdings: [{ shown: 'VEQT', symbol: 'VEQT.TO', units: 10, value: 400 }, { name: 'Bank fund', units: 5, value: 120 }, { name: 'GIC', value: 1000 }] }];
+  const input = {
+    checks: [{ id: 's1', name: 'Chequing', account_id: 'b1', date: '2026-11-01', value: 500, app_now: 450, left: 50, status: 'open', source: 'screenshot' }],
+    stale: [{ kind: 'bank', id: 'b2', name: 'Savings', value: 2000, asOf: '2026-08-01', label: 'on 2026-08-01', signed: 2000 }],
+    creditCards: [card], loans, investments,
+    rooms: [{ kind: 'TFSA', known: true, over: 300, room: -300, cost_month: 3 }, { kind: 'RRSP', known: true, over: 0, stale: true, as_of: '2025-03-01' }, { kind: 'FHSA', known: false }],
+    taxMissing: [2023], today: '2026-11-26',
+  };
+  const list = I.issues(input);
+  assert.deepEqual(list.map((i) => i.id), ['check:s1', 'plans:c1', 'price:i1:Bank fund', 'room-over:TFSA', 'room-old:RRSP', 'taxyear:2023', 'stale:bank_account:b2']);
+  const by = Object.fromEntries(list.map((i) => [i.kind + (i.kind === 'room' ? i.ref : ''), i]));
+  // Every entry says what disagrees and has at least one fix besides leaving it.
+  for (const i of list) { assert.ok(i.title && i.text && i.sig != null, i.id); assert.ok(i.fixes.some((f) => f.do !== 'leave' && f.do !== 'dismiss'), i.id); assert.ok(i.fixes.some((f) => f.do === 'leave' || f.do === 'dismiss'), i.id); }
+  assert.deepEqual(by.check.fixes.map((f) => f.do), ['correct', 'go', 'go', 'dismiss']);
+  // The card's plans: the card balance or any one plan can be set right there.
+  assert.deepEqual(by.plans.fixes.filter((f) => f.do === 'amount').map((f) => [f.target, f.start]), [['credit_card:c1', 1300], ['loan:p1', 900], ['loan:p2', 400]]);
+  assert.match(by.plans.text, /\$1,300\.00.*\$1,000\.00/);
+  // Only the holding with units and no ticker is asked about: a priced one and one with no units are not.
+  assert.deepEqual(by.price.fixes[0], { do: 'ticker', label: 'Give its ticker', ask: 'Ticker, for example VEQT.TO', inv: 'i1', index: 1 });
+  assert.deepEqual(by.stale.fixes.map((f) => f.do), ['amount', 'same', 'go', 'leave']);
+
+  // Left alone: quiet while the figures are the same, back when they change. A balance check is closed on the server instead.
+  const quiet = Object.fromEntries(list.map((i) => [i.id, i.sig]));
+  assert.deepEqual(I.issues({ ...input, quiet }).map((i) => i.id), ['check:s1']);
+  const moved = I.issues({ ...input, quiet, creditCards: [{ ...card, balance: 1100 }], today: '2026-12-02' }).map((i) => i.id);
+  assert.deepEqual(moved, ['check:s1', 'plans:c1', 'stale:bank_account:b2']);
+  // Nothing wrong, nothing listed.
+  assert.deepEqual(I.issues({ creditCards: [{ ...card, balance: 1300 }], loans, investments: [{ id: 'i1', name: 'TFSA', holdings: null }] }), []);
 });

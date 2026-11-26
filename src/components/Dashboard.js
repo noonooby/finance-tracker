@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, Camera, AlertTriangle, CheckCircle2, Repeat, Hand, Check } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
-import { api } from '../utils/server';
 import { position, monthEndFor, monthlyCost, upcoming, billDates } from '../utils/finance';
 import { goalsProgress, goalsThisMonth, freeAtMonthEnd, chargesToCheck, priceChanges, spendingPace } from '../utils/plans';
 import { server } from '../utils/server';
 import { budgetMonth, monthOf, findRecurring, spentByCategory, monthRange, prevMonth } from '../utils/spending';
 import { formatCurrency, formatDate, parseDay } from '../utils/helpers';
-import { Card, Section, Stat, Badge, Button } from './shared/ui';
+import { Card, Section, Stat, Badge, Button, Num } from './shared/ui';
+import { Issues } from './shared/Issues';
 
 // Home: the one place to see where you stand, what is due, what debt costs, and anything that does not add up.
 // Everything here is worked out by utils/finance.js from the balances you gave and the lines recorded since.
@@ -26,11 +26,6 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const d = useFinanceData();
   const schedules = d.incomeSchedules;
-  const [checks, setChecks] = useState([]);
-  useEffect(() => {
-    if (d.dataLoading) return;
-    api('/api/checks', null, 'GET').then((x) => setChecks(x || [])).catch(() => setChecks([]));
-  }, [d.dataLoading, d.transactions]);
 
   const today = useMemo(() => new Date(), []);
   const [goals, setGoals] = useState([]);
@@ -119,15 +114,15 @@ export default function Dashboard() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-xs text-muted">Net worth today</div>
-            <div className={`text-3xl font-bold tabular-nums ${p.netWorth < 0 ? 'text-negative' : ''}`}>{d.dataLoading ? <span className="skeleton inline-block w-40 h-8 rounded-lg" /> : formatCurrency(p.netWorth)}</div>
+            <div className={`text-3xl font-bold tabular-nums ${p.netWorth < 0 ? 'text-negative' : ''}`}>{d.dataLoading ? <span className="skeleton inline-block w-40 h-8 rounded-lg" /> : <Num value={p.netWorth} />}</div>
             <div className="text-xs text-muted mt-1">Have {formatCurrency(p.totalHave)} · Owe {formatCurrency(p.totalOwe)}{p.mortgage ? ` (mortgage ${formatCurrency(p.mortgage)})` : ''}</div>
           </div>
           <ChevronRight size={18} className="text-muted mt-1" aria-hidden="true" />
         </div>
         <div className="mt-3 grid grid-cols-3 gap-3 pt-3 border-t border-line">
-          <Stat label="Spendable" value={formatCurrency(p.liquid)} />
-          <Stat label="Month end" value={formatCurrency(m.atEnd)} tone={m.atEnd < 0 ? 'negative' : undefined} />
-          <Stat label="Debt costs" value={`${formatCurrency(cost.total)}`} sub="a month" tone={cost.total > 0 ? 'warning' : undefined} />
+          <Stat label="Spendable" value={<Num value={p.liquid} />} />
+          <Stat label="Month end" value={<Num value={m.atEnd} />} tone={m.atEnd < 0 ? 'negative' : undefined} />
+          <Stat label="Debt costs" value={<Num value={cost.total} />} sub="a month" tone={cost.total > 0 ? 'warning' : undefined} />
         </div>
         {!d.dataLoading && (free.budgetLeft > 0 || free.goalNeed > 0) && (
           <div className={`text-xs mt-3 ${free.free < 0 ? 'text-negative' : 'text-muted'}`}>
@@ -136,19 +131,13 @@ export default function Dashboard() {
         )}
       </Card>
 
-      {(checks.length > 0 || p.stale.length > 0) ? (
-        <Card role="link" tabIndex={0} onClick={() => navigate('/position')} onKeyDown={(e) => { if (e.key === 'Enter') navigate('/position'); }} className="press cursor-pointer flex items-start gap-3 border-warning/40">
-          <AlertTriangle size={18} className="text-warning mt-0.5 shrink-0" aria-hidden="true" />
-          <span className="flex-1 text-sm">
-            {checks.length > 0 && <span className="block font-medium">{checks.length} {checks.length === 1 ? 'balance does' : 'balances do'} not add up</span>}
-            {p.stale.length > 0 && <span className="block text-muted">{p.stale.length} {p.stale.length === 1 ? 'figure is' : 'figures are'} more than 35 days old</span>}
-            <span className="block text-xs text-muted mt-0.5">Open to see where and by how much.</span>
-          </span>
-          <ChevronRight size={18} className="text-muted" aria-hidden="true" />
-        </Card>
-      ) : (
-        <div className="flex items-center gap-2 px-1 text-xs text-positive"><CheckCircle2 size={14} aria-hidden="true" /> Every balance is current and adds up.</div>
-      )}
+      <Issues limit={4}
+        empty={<div className="flex items-center gap-2 px-1 text-xs text-positive"><CheckCircle2 size={14} aria-hidden="true" /> Nothing to sort out. Every figure is current and adds up.</div>}
+        wrap={(body, n) => (
+          <Section title="To sort out" action={n > 0 ? <Badge tone="warning">{n}</Badge> : null}>
+            <Card padded={false} className="overflow-hidden">{body}</Card>
+          </Section>
+        )} />
 
       {notices.length > 0 && (
         <Section title="To look at">

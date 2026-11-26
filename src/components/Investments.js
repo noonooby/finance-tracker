@@ -8,6 +8,7 @@ import { formatCurrency, generateId, localDate } from '../utils/helpers';
 import { freshness } from '../utils/finance';
 import { showToast } from '../utils/toast';
 import UpdateValue from './position/UpdateValue';
+import { Issues } from './shared/Issues';
 
 // What one investment account holds. Each holding with a ticker follows the market price; the account's value is
 // the holdings plus its cash. Adding one checks the ticker first, so nothing is saved without a price.
@@ -153,6 +154,7 @@ export default function Investments({ darkMode }) {
                 <button type="button" onClick={() => remove(table, r)} aria-label={`Remove ${r.name}`} className={muted}><Trash2 size={16} /></button>
               </div>
               {table === 'investments' && <Holdings row={r} onDone={d.loadAllData} />}
+              {table === 'investments' && <Issues compact only={(i) => i.kind === 'price' && i.ref === String(r.id)} />}
             </li>
           );
         })}

@@ -1,11 +1,12 @@
-import React, { useId } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { formatCurrency } from '../../utils/helpers';
 
 // Small building blocks that use the colour tokens, so they follow the chosen theme and dark mode.
 const cx = (...c) => c.filter(Boolean).join(' ');
 
 export function Card({ as: Tag = 'div', className, padded = true, children, ...rest }) {
   return (
-    <Tag className={cx('rounded-2xl border border-line bg-surface', padded && 'p-4', className)} {...rest}>
+    <Tag className={cx('card rounded-2xl border border-line bg-surface', padded && 'p-4', className)} {...rest}>
       {children}
     </Tag>
   );
@@ -84,6 +85,29 @@ export function Field({ label, hint, error, as = 'input', id, className, childre
       ) : null}
     </div>
   );
+}
+
+// A money figure that glides to its new value when it changes, so a moving balance is seen to move.
+const still = () => typeof window === 'undefined' || !window.matchMedia || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+export function Num({ value, format = formatCurrency }) {
+  const target = Number(value) || 0;
+  const [shown, setShown] = useState(target);
+  const from = useRef(target);
+  useEffect(() => {
+    const start = from.current;
+    if (start === target || still()) { from.current = target; setShown(target); return undefined; }
+    let raf, t0 = null;
+    const step = (t) => {
+      if (t0 == null) t0 = t;
+      const k = Math.min(1, (t - t0) / 600), e = 1 - Math.pow(1 - k, 3);
+      const v = start + (target - start) * e;
+      from.current = v; setShown(v);
+      if (k < 1) raf = requestAnimationFrame(step); else { from.current = target; setShown(target); }
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
+  return <span className="tabular-nums">{format(shown)}</span>;
 }
 
 const TONES = { positive: 'text-positive', negative: 'text-negative', warning: 'text-warning', accent: 'text-accent' };
