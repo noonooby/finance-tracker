@@ -1,6 +1,6 @@
 // The Accounts page: chequing, savings and cash, kept under their banks. Adding, changing, removing, pinning and
 // moving money live in bank-accounts/useBankAccountActions; the sums in bank-accounts/calculations.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Camera, Plus, ArrowRightLeft, ChevronDown, Landmark } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
@@ -12,12 +12,16 @@ import AccountCard from './bank-accounts/AccountCard';
 import TransferForm from './bank-accounts/TransferForm';
 import { Card, Section, Button, EmptyState, Hint, Num } from './shared/ui';
 import { Issues } from './shared/Issues';
+import { isLine, lineTerms, keptTotal } from '../utils/accounts';
 
 const NO_BANK = 'Other Accounts';
 const LINKS = [['/cards', 'Cards'], ['/investments', 'Investments'], ['/loans', 'Loans'], ['/holdings', 'Everything you hold'], ['/position', 'Where you stand'], ['/transactions', 'Transactions']];
 
 export default function BankAccounts({ darkMode, bankAccounts, loans, creditCards, onUpdate, focusTarget, onClearFocus, onNavigateToTransactions }) {
-  const a = useBankAccountActions({ bankAccounts, onUpdate });
+  const a = useBankAccountActions({ bankAccounts, loans, onUpdate });
+  const { investments = [] } = useFinanceData();
+  const creditLines = useMemo(() => (loans || []).filter((l) => !l.on_card_id && isLine(l)).map((l) => ({ id: l.id, name: l.name, ...lineTerms(l, investments) })), [loans, investments]);
+  const kept = keptTotal(bankAccounts);
   const navigate = useNavigate();
   const { transactions = [], loadAllData } = useFinanceData();
   const accountRefs = useRef({});
@@ -57,18 +61,24 @@ export default function BankAccounts({ darkMode, bankAccounts, loans, creditCard
             <Hint label="About this total">Every account on this page added together, cash included. An account in overdraft takes away from it. Cards, loans and investments are on their own pages.</Hint>
           </div>
           <div className="text-3xl font-bold tabular-nums tracking-tight"><Num value={total} /></div>
+          {kept > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-muted mt-1">
+              {formatCurrency(total - kept)} to spend · {formatCurrency(kept)} kept so a monthly fee is not charged
+              <Hint label="About money kept">Some accounts charge no monthly fee while a set amount stays in them. That amount is yours and counts in what you have, but spending it brings the fee back, so it is left out of what you can spend. Open the account to change this.</Hint>
+            </div>
+          )}
           <div className="text-xs text-muted">{bankAccounts.length === 1 ? 'One account' : `${bankAccounts.length} accounts`}{banks > 0 ? ` at ${banks === 1 ? 'one bank' : `${banks} banks`}` : ''}</div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => navigate('/screenshot')}><Camera size={16} aria-hidden="true" /> Add a picture</Button>
           <Button variant="secondary" onClick={() => (a.showAddForm ? a.resetForm() : a.setShowAddForm(true))}><Plus size={16} aria-hidden="true" /> {a.showAddForm ? 'Close' : 'Add by hand'}</Button>
-          {bankAccounts.length > 1 && <Button variant="secondary" onClick={() => a.setShowTransferForm(!a.showTransferForm)}><ArrowRightLeft size={16} aria-hidden="true" /> {a.showTransferForm ? 'Close' : 'Move money'}</Button>}
+          {(bankAccounts.length > 1 || (bankAccounts.length > 0 && creditLines.length > 0)) && <Button variant="secondary" onClick={() => a.setShowTransferForm(!a.showTransferForm)}><ArrowRightLeft size={16} aria-hidden="true" /> {a.showTransferForm ? 'Close' : 'Move money'}</Button>}
         </div>
       </Card>
 
       {a.showTransferForm && (
         <div className="page-enter">
-          <TransferForm darkMode={darkMode} bankAccounts={bankAccounts} transferData={a.transferData} setTransferData={a.setTransferData} recentTransfers={a.recentTransfers}
+          <TransferForm darkMode={darkMode} bankAccounts={bankAccounts} lines={creditLines} transferData={a.transferData} setTransferData={a.setTransferData} recentTransfers={a.recentTransfers}
             onTransfer={a.handleTransfer} onCancel={a.resetTransferForm} processing={a.isActionProcessing('transfer-accounts')} />
         </div>
       )}

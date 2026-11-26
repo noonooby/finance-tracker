@@ -5,7 +5,7 @@ import ActionButton from '../shared/ActionButton';
 import FrequentMark from './FrequentMark';
 import { inputClass, labelClass, strongLabelClass, panelClass, chipClass } from './styles';
 
-function AccountSelect({ darkMode, label, value, onChange, bankAccounts }) {
+function AccountSelect({ darkMode, label, value, onChange, bankAccounts, lines = [] }) {
   return (
     <div>
       <label className={labelClass(darkMode)}>{label}</label>
@@ -16,6 +16,11 @@ function AccountSelect({ darkMode, label, value, onChange, bankAccounts }) {
             {account.name} - {formatCurrency(account.balance)}
           </option>
         ))}
+        {lines.length > 0 && (
+          <optgroup label="Lines of credit">
+            {lines.map((l) => <option key={l.id} value={`loan:${l.id}`}>{l.name}{l.left != null ? ` - ${formatCurrency(l.left)} left to take` : ` - ${formatCurrency(l.used)} used`}</option>)}
+          </optgroup>
+        )}
       </select>
     </div>
   );
@@ -24,6 +29,7 @@ function AccountSelect({ darkMode, label, value, onChange, bankAccounts }) {
 export default function TransferForm({
   darkMode,
   bankAccounts,
+  lines = [],
   transferData,
   setTransferData,
   recentTransfers,
@@ -71,6 +77,7 @@ export default function TransferForm({
           value={transferData.fromAccount}
           onChange={(e) => setTransferData({ ...transferData, fromAccount: e.target.value, toAccount: String(transferData.toAccount) === String(e.target.value) ? '' : transferData.toAccount })}
           bankAccounts={bankAccounts}
+          lines={lines}
         />
         <AccountSelect
           darkMode={darkMode}
@@ -81,6 +88,7 @@ export default function TransferForm({
         />
       </div>
 
+      {String(transferData.fromAccount).startsWith('loan:') && <p className="text-xs text-muted">Money taken from a line of credit: the account goes up and what is owed on the line goes up by the same amount. Interest is charged on what is used.</p>}
       <div>
         <label className={labelClass(darkMode)}>Amount *</label>
         <input

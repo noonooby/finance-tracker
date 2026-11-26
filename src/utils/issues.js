@@ -4,6 +4,7 @@
 //           (name the holding), 'same' (set a known figure), 'unlink' (the plan is not inside this card), 'go' (open a page), 'leave' (stay quiet until the figures change).
 import { cardSplit } from './finance';
 import { planHome, looksLikePlan } from './cards';
+import { keptIn, lineTerms } from './accounts';
 
 const money = (n) => `$${(Math.round(Number(n) * 100) / 100).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const TARGET = { bank: 'bank_account', cash: 'bank_account', card: 'credit_card', card_credit: 'credit_card', gift_card: 'credit_card', loan: 'loan', mortgage: 'loan', investment: 'investment', asset: 'asset' };
@@ -121,10 +122,27 @@ export function issues({ checks = [], stale = [], snapshots = [], bankAccounts =
   }
   for (const l of loans) {
     if (!(Number(l.balance) > 0)) continue;
+    // A line of credit has no fixed payment: what matters is its limit and its rate.
+    const line = !l.on_card_id && lineTerms(l, investments);
+    if (line) {
+      ask('loans', l, 'the line of credit', [
+        { field: 'credit_limit', missing: line.limit == null, label: 'Limit', short: 'the limit', use: 'how much is left to take', ask: `Limit of ${l.name}`, input: 'number' },
+        { field: 'interest_rate', missing: line.rate == null, label: 'Interest % a year', short: 'the rate', use: 'what it costs each month', ask: `Yearly rate on ${l.name}, in percent`, input: 'number' },
+      ]);
+      continue;
+    }
     ask('loans', l, l.on_card_id ? 'the plan' : 'the loan', [
       { field: 'payment_amount', missing: blank(l.payment_amount), label: 'Payment each time', short: 'the payment', use: 'what it takes each month', ask: `Payment on ${l.name}`, input: 'number' },
       { field: 'next_payment_date', missing: !day10(l.next_payment_date), label: 'Next payment day', short: 'the next payment day', use: 'when it is paid down', ask: `Day of the next payment on ${l.name}`, input: 'date' },
     ]);
+  }
+  // An account below the balance that keeps its monthly fee away.
+  for (const a of bankAccounts) {
+    const k = keptIn(a);
+    if (!(k.short > 0)) continue;
+    add({ id: `need:bank_accounts:min:${a.id}`, sig: `${String(today).slice(0, 7)}:${k.min}`, kind: 'need', ref: String(a.id), title: `${a.name} is ${money(k.short)} below what keeps its fee away`,
+      text: `${a.name} charges ${money(k.fee)} a month unless ${money(k.min)} stays in it every day of the month. It holds ${money(Number(a.balance) || 0)} now, so this month's fee is charged unless it was above that all month.`,
+      fixes: [{ do: 'go', label: 'Move money in', to: '/bank-accounts' }, { do: 'set', label: 'I pay the fee instead', table: 'bank_accounts', id: a.id, values: { keep_minimum: false } }, leave()] });
   }
   // A payment plan that stands on its own although one of your cards is known to hold plans from that store: inside
   // the card it is part of the card's balance; on its own it is counted as a second debt.

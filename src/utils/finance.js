@@ -1,4 +1,5 @@
 import { nextBillDate, billPaid, dayOfMonth, nextDue, dueDatesBetween } from './spending';
+import { keptTotal, accountTerms, lineTerms } from './accounts';
 // Money arithmetic that does not change anything: interest, amortization, how current each figure is, and where you stand.
 // Pure functions, so the screens and the scenario tests use the same rules.
 
@@ -108,13 +109,15 @@ export function position({ bankAccounts = [], creditCards = [], loans = [], inve
   const sum = (xs) => round2(xs.reduce((s, x) => s + x.value, 0));
   const totalHave = sum(have), totalOwe = sum(owe);
   const mortgage = sum(owe.filter((x) => x.kind === 'mortgage'));
-  const liquid = sum(have.filter((x) => x.kind === 'bank' || x.kind === 'cash')) - sum(owe.filter((x) => x.kind === 'bank'));
+  // Money kept in an account so its monthly fee is not charged is yours, but not there to spend.
+  const kept = keptTotal(bankAccounts);
+  const liquid = sum(have.filter((x) => x.kind === 'bank' || x.kind === 'cash')) - sum(owe.filter((x) => x.kind === 'bank')) - kept;
   const all = [...have, ...owe];
   return {
     have, owe, totalHave, totalOwe, netWorth: round2(totalHave - totalOwe),
     mortgage, debtExcludingMortgage: round2(totalOwe - mortgage),
     investments: sum(have.filter((x) => x.kind === 'investment')),
-    liquid: round2(liquid),
+    liquid: round2(liquid), kept,
     stale: all.filter((x) => x.stale && x.value),
     upToDate: all.every((x) => !x.stale || !x.value),
   };
@@ -201,12 +204,16 @@ export function monthlyCost({ creditCards = [], loans = [], bankAccounts = [] },
     const bal = Number(l.balance) || 0;
     if (bal <= 0) continue;
     const n = PAYMENTS_PER_YEAR[l.frequency || 'monthly'] || 12;
-    add(l.name, bal * periodicRate(l) * n / 12, Number(l.interest_rate) > 0 ? `interest at ${l.interest_rate}%` : 'no interest');
+    // A line of credit with no rate of its own follows prime (see accounts.js).
+    const line = !(Number(l.interest_rate) > 0) && lineTerms(l);
+    if (line && line.rate != null) add(l.name, line.month, `interest at about ${line.rate}%, ${line.rate_from}`);
+    else add(l.name, bal * periodicRate(l) * n / 12, Number(l.interest_rate) > 0 ? `interest at ${l.interest_rate}%` : 'no interest');
   }
   for (const a of bankAccounts) {
     const bal = Number(a.balance) || 0;
     if (bal >= 0 || !a.allows_overdraft) continue;
-    add(a.name, (-bal) * (Number(a.overdraft_rate) || 0) / 100 / 12 + (Number(a.overdraft_monthly_fee) || 0), 'overdraft interest and monthly fee');
+    const t = accountTerms(a);
+    add(a.name, (-bal) * (t.overdraftRate || 0) / 100 / 12 + (t.overdraftFee || 0), t.overdraftFee ? 'overdraft interest and monthly fee' : `overdraft interest${t.overdraftRate ? ` at ${t.overdraftRate}%` : ''}, no fee for the protection`);
   }
   items.sort((x, y) => y.amount - x.amount);
   return { total: round2(items.reduce((s, x) => s + x.amount, 0)), items };

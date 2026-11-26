@@ -6,6 +6,9 @@ import { formatFrequency } from '../../utils/sentenceCase';
 import { effectOn } from '../../utils/lines';
 import { Badge, Hint } from '../shared/ui';
 import MoveLine, { canMove, sidesOf } from '../shared/MoveLine';
+import { accountTerms, keptIn } from '../../utils/accounts';
+import { server } from '../../utils/server';
+import { showToast } from '../../utils/toast';
 
 const KIND = { checking: 'Chequing', savings: 'Savings', cash: 'Cash', investment: 'Investment' };
 const day = (d) => { const x = String(d || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : null; };
@@ -48,6 +51,26 @@ export default function AccountCard({ account, open, onToggle, isPinned, linkedL
       <div className={`fold ${open ? 'open' : ''}`}><div>
         {open && (
           <div className="px-4 pb-4 pt-3 space-y-4 border-t border-line">
+            {(() => {
+              const t = accountTerms(account), k = keptIn(account);
+              if (!(t.fee > 0) && t.overdraftRate == null && !t.pkg) return null;
+              const setKeep = async (keep) => { const { error } = await server.from('bank_accounts').update({ keep_minimum: keep }).eq('id', account.id); if (error) showToast.error(error.message); else if (onChanged) onChanged(); };
+              return (
+                <div className="rounded-xl bg-surface-2 px-3 py-2.5 space-y-1 text-xs">
+                  <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wide text-muted">
+                    {t.pkg ? t.pkg.label : 'Fees'}
+                    <Hint label="About these figures">{t.pkg ? `${t.pkg.note} ` : ''}{t.yours ? 'Figures you set on the account are used first. ' : 'These are the bank\'s published figures; change the account to set your own. '}The bank's own statement is the one that counts.</Hint>
+                  </div>
+                  {t.fee > 0 && <div>Monthly fee {formatCurrency(t.fee)}{t.min > 0 ? `, not charged while ${formatCurrency(t.min)} stays in the account` : ''}.</div>}
+                  {k.kept > 0 && <div><b>{formatCurrency(k.usable)}</b> to spend. {formatCurrency(k.kept)} is kept so the fee is not charged.</div>}
+                  {k.short > 0 && <div className="text-warning">{formatCurrency(k.short)} below {formatCurrency(k.min)}: the {formatCurrency(k.fee)} fee is charged this month unless the balance stays above it every day.</div>}
+                  {t.min > 0 && t.fee > 0 && (k.on
+                    ? <button type="button" className="font-medium text-accent" onClick={() => setKeep(false)}>I pay the fee instead: count all of it as money to spend</button>
+                    : <button type="button" className="font-medium text-accent" onClick={() => setKeep(true)}>Keep {formatCurrency(t.min)} here so the fee is not charged</button>)}
+                  {t.overdraftRate != null && <div>Overdraft: {t.overdraftFee > 0 ? `${formatCurrency(t.overdraftFee)} a month for the protection` : 'no fee for the protection'}, {t.overdraftRate}% a year on what is overdrawn.</div>}
+                </div>
+              );
+            })()}
             {balance < 0 && account.allows_overdraft && (
               <p className="text-xs text-negative">In overdraft. Limit {formatCurrency(account.overdraft_limit || 0)}, {formatCurrency((Number(account.overdraft_limit) || 0) + balance)} left of it.</p>
             )}

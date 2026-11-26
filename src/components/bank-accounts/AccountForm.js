@@ -127,6 +127,20 @@ export default function AccountForm({
 
       {!isCash && (
       <div className={`pt-3 mt-3 border-t border-line`}>
+        <h4 className={`text-sm font-semibold mb-1 text-fg`}>Monthly fee</h4>
+        <p className="text-xs text-muted mb-2">Leave empty to use what is known for this account, if it is a known package.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs">Fee a month
+            <input type="number" step="0.01" min="0" inputMode="decimal" placeholder="0.00" value={formData.account_monthly_fee || ''} onChange={(e) => set({ account_monthly_fee: e.target.value })} className={inputClass(darkMode)} />
+          </label>
+          <label className="block text-xs">Not charged while this much stays in
+            <input type="number" step="0.01" min="0" inputMode="decimal" placeholder="0.00" value={formData.fee_waiver_min || ''} onChange={(e) => set({ fee_waiver_min: e.target.value })} className={inputClass(darkMode)} />
+          </label>
+        </div>
+      </div>
+      )}
+      {!isCash && (
+      <div className={`pt-3 mt-3 border-t border-line`}>
         <h4 className={`text-sm font-semibold mb-3 text-fg`}>Overdraft Settings</h4>
         <label className="flex items-center gap-2 mb-3">
           <input

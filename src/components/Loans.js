@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import ThroughNote from './shared/ThroughNote';
+import LineNote from './loans/LineNote';
 import { Plus, Edit2, X, TrendingUp, ListFilter, Star } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, generateId } from '../utils/helpers';
 import { formatFrequency } from '../utils/sentenceCase';
@@ -592,6 +593,7 @@ export default function Loans({
                     </div>
                   )}
                   <ThroughNote item={loan} amount={loan.payment_amount} cards={creditCards} />
+                  <LineNote loan={loan} />
                   <PayoffSummary loan={loan} darkMode={darkMode} />
                   {loan.frequency && (
                     <div className={`text-xs text-muted mt-1`}>

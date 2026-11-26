@@ -50,6 +50,8 @@ export function paymentSourceOf(formData, { bankAccounts = [], creditCards = [] 
 export function payFrom(source, amount, { bankAccounts = [], creditCards = [] } = {}) {
   const { type, id } = parseSource(source);
   if (type === 'investment') return { table: 'investments', id, delta: -amount, floor: 0 };
+  // Money taken from a line of credit: what is owed on it goes up.
+  if (type === 'loan') return { table: 'loans', id, delta: amount };
   if (type === 'bank_account') {
     const a = bankAccounts.find((x) => String(x.id) === String(id));
     if (!a) throw new Error('That bank account no longer exists.');
@@ -80,10 +82,10 @@ export function payInto(target, amount, { creditCards = [] } = {}) {
 // The other side of a payment or transfer when it is an account the app does not hold: only the side the app
 // holds changes, and the line still says where the money came from or went.
 export const OUTSIDE = 'outside';
-const sourceName = (source, { bankAccounts = [], creditCards = [], investments = [] }) => {
+const sourceName = (source, { bankAccounts = [], creditCards = [], investments = [], loans = [] }) => {
   const { type, id } = parseSource(source);
   if (type === OUTSIDE) return 'An account not in the app';
-  const list = type === 'bank_account' ? bankAccounts : type === 'investment' ? investments : creditCards;
+  const list = type === 'bank_account' ? bankAccounts : type === 'investment' ? investments : type === 'loan' ? loans : creditCards;
   return (list.find((x) => String(x.id) === String(id)) || {}).name || null;
 };
 

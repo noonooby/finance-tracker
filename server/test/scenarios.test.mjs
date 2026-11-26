@@ -33,7 +33,7 @@ globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v
 const realFetch = globalThis.fetch;
 globalThis.fetch = (u, o) => realFetch(String(u).startsWith('/') ? base + u : u, o);
 const lib = path.join(tmp, 'lib'); fs.mkdirSync(lib);
-for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js', 'room.js', 'issues.js', 'merchants.js', 'lines.js', 'cards.js']) {
+for (const f of ['server.js', 'money.js', 'helpers.js', 'finance.js', 'spending.js', 'categoryRules.js', 'plans.js', 'room.js', 'issues.js', 'merchants.js', 'lines.js', 'cards.js', 'accounts.js']) {
   const src = fs.readFileSync(path.join(root, 'src', 'utils', f), 'utf8').replace(/from '\.\/(\w+)'/g, "from './$1.mjs'");
   fs.writeFileSync(path.join(lib, f.replace('.js', '.mjs')), src);
 }
@@ -1988,4 +1988,58 @@ test('cards are known by name: what they give back, and the plans they can hold'
   const found = I.issues({ creditCards: [{ ...tri, credit_limit: 5000 }], loans: [loan], today: '2026-11-26' }).find((x) => x.id === 'planhome:l1');
   assert.ok(found && found.fixes[0].values.on_card_id === 't1');
   assert.ok(!I.issues({ creditCards: [{ ...tri, credit_limit: 5000 }], loans: [{ ...loan, on_card_id: 't1' }], today: '2026-11-26' }).some((x) => x.id === 'planhome:l1'));
+});
+
+test('account packages and lines of credit are known: money kept for the fee is not money to spend, and a line can fund an account', async () => {
+  const A = await import(pathToFileURL(path.join(lib, 'accounts.mjs')));
+  const ult = { id: 'u1', name: 'Ultimate Package', institution: 'Scotiabank', balance: 7500, account_type: 'checking' };
+  assert.equal(A.accountPackage(ult).id, 'scotia_ultimate');
+  assert.equal(A.accountPackage({ name: 'Savings', institution: 'Scotiabank' }), null);
+  assert.equal(A.accountPackage({ name: 'Ultimate Package', account_type: 'cash' }), null);
+  const t = A.accountTerms(ult);
+  assert.deepEqual([t.fee, t.min, t.overdraftFee, t.overdraftRate], [30.95, 6000, 0, 21]);
+  assert.deepEqual(A.keptIn(ult), { kept: 6000, usable: 1500, short: 0, fee: 30.95, min: 6000, on: true });
+  assert.equal(A.keptIn({ ...ult, balance: 5200 }).short, 800);
+  assert.equal(A.keptIn({ ...ult, balance: 5200 }).kept, 0);
+  assert.equal(A.keptIn({ ...ult, keep_minimum: false }).kept, 0);
+  // Your own figures come first.
+  assert.equal(A.keptIn({ ...ult, fee_waiver_min: 5000 }).kept, 5000);
+  assert.equal(A.accountTerms({ ...ult, overdraft_monthly_fee: 5 }).overdraftFee, 5);
+  // What you can spend leaves the kept money out; net worth does not.
+  const pos = F.position({ bankAccounts: [ult, { id: 's1', name: 'Savings', balance: 1000 }] });
+  assert.equal(pos.liquid, 2500); assert.equal(pos.kept, 6000); assert.equal(pos.netWorth, 8500);
+  // Below the minimum it is listed to sort out; overdraft on this package costs interest only.
+  assert.ok(I.issues({ bankAccounts: [{ ...ult, balance: 5200, institution: 'Scotiabank' }], today: '2026-11-26' }).some((x) => x.id === 'need:bank_accounts:min:u1'));
+  const cost = F.monthlyCost({ bankAccounts: [{ ...ult, balance: -1200, allows_overdraft: true }] });
+  assert.equal(cost.total, 21);
+  // Lines of credit.
+  const ploc = { id: 'p1', name: 'Portfolio line of credit', loan_type: 'line_of_credit', balance: 4000, interest_rate: 0 };
+  const inv = [{ id: 'i1', name: 'Wealthsimple TFSA', balance: 40000 }, { id: 'i2', name: 'Questrade RRSP', balance: 90000 }];
+  const lt = A.lineTerms(ploc, inv);
+  assert.equal(lt.rate, 5.2); assert.equal(lt.limit, 14000); assert.equal(lt.left, 10000); assert.equal(lt.month, 17.33);
+  assert.equal(A.lineTerms({ ...ploc, interest_rate: 4.2, credit_limit: 20000 }, inv).left, 16000);
+  assert.equal(A.lineTerms({ name: 'ScotiaLine Line of Credit', loan_type: 'line_of_credit', balance: 100 }, inv).rate, null);
+  assert.equal(A.lineTerms({ name: 'Car loan', loan_type: 'loan', balance: 100 }), null);
+  assert.equal(F.monthlyCost({ loans: [ploc] }).total, 17.33);
+  const asked = I.issues({ loans: [{ id: 'sl', name: 'ScotiaLine Line of Credit', loan_type: 'line_of_credit', balance: 100 }], today: '2026-11-26' }).find((x) => x.id === 'need:loans:sl');
+  assert.deepEqual(asked.sums.map((s) => s.fix.field), ['credit_limit', 'interest_rate']);
+  // Taking money from a line: the account goes up and what is owed goes up.
+  const leg = M.payFrom('loan:p1', 500, {});
+  assert.deepEqual(leg, { table: 'loans', id: 'p1', delta: 500 });
+});
+
+test('money taken from a line of credit lands in the account and is owed on the line, and undoing it puts both back', async () => {
+  const acc = 'draw-acc', loan = 'draw-line';
+  await client.from('bank_accounts').insert({ id: acc, name: 'Draw chequing', balance: 100, account_type: 'checking' });
+  await client.from('loans').insert({ id: loan, name: 'Portfolio line of credit', loan_type: 'line_of_credit', balance: 1000, principal: 1000, interest_rate: 0 });
+  const get = async (t, id) => Number((await client.from(t).select('*').eq('id', id).maybeSingle()).data.balance);
+  const r = await M.recordTransfer({ amount: 500, from: `loan:${loan}`, to: `bank_account:${acc}`, date: '2026-11-26', description: 'From the line' },
+    { bankAccounts: [{ id: acc, name: 'Draw chequing' }], loans: [{ id: loan, name: 'Portfolio line of credit' }] });
+  assert.equal(await get('bank_accounts', acc), 600);
+  assert.equal(await get('loans', loan), 1500);
+  assert.equal(r.transaction.payment_method, 'loan');
+  assert.equal(r.transaction.payment_method_name, 'Portfolio line of credit');
+  await M.reverseTransaction(r.transaction.id);
+  assert.equal(await get('bank_accounts', acc), 100);
+  assert.equal(await get('loans', loan), 1000);
 });

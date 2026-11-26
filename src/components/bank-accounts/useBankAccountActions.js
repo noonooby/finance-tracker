@@ -1,7 +1,7 @@
 // State and data access for the Bank Accounts page.
 // All money changes go through utils/db and utils/money, as before.
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { formatCurrency, generateId, validateBankAccountData } from '../../utils/helpers';
+import { formatCurrency, generateId, validateBankAccountData, localDate } from '../../utils/helpers';
 import useAsyncAction from '../../hooks/useAsyncAction';
 import { showToast } from '../../utils/toast';
 import {
@@ -11,6 +11,7 @@ import {
   dbOperation
 } from '../../utils/db';
 import { logActivity } from '../../utils/activityLogger';
+import { recordTransfer } from '../../utils/money';
 import { getUserPreferences, togglePinnedBankAccount } from '../../utils/userPreferencesManager';
 import { saveTransferContext, getRecentTransferDescriptions } from '../../utils/formContexts';
 import {
@@ -27,6 +28,7 @@ import {
 
 export default function useBankAccountActions({
   bankAccounts,
+  loans = [],
   onUpdate
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -297,6 +299,23 @@ export default function useBankAccountActions({
     const amount = Math.round(rawAmount * 100) / 100;
     if (!Number.isFinite(amount) || amount <= 0) {
       showToast.error('Enter an amount above zero.');
+      return;
+    }
+
+    // Money taken from a line of credit into an account.
+    if (String(transferData.fromAccount).startsWith('loan:')) {
+      const line = loans.find((l) => `loan:${l.id}` === String(transferData.fromAccount));
+      const into = bankAccounts.find((a) => String(a.id) === String(transferData.toAccount));
+      if (!line || !into) { showToast.error('Choose the line of credit and the account the money goes to.'); return; }
+      setSaving(true);
+      try {
+        await executeAction('transfer-accounts', async () => {
+          await recordTransfer({ amount, from: `loan:${line.id}`, to: `bank_account:${into.id}`, date: transferData.date || localDate(), description: transferData.description || `From ${line.name}` }, { bankAccounts, loans });
+          await onUpdate();
+          resetTransferForm();
+        });
+        showToast.success(`${formatCurrency(amount)} taken from ${line.name} into ${into.name}`);
+      } finally { setSaving(false); }
       return;
     }
 
