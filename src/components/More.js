@@ -76,6 +76,7 @@ export default function More() {
 
       <Section title="Look back">
         <Item icon={Activity} label="Activity" hint="Everything you changed, with undo" to="/activity" />
+        <Item icon={FileText} label="Tax years" hint="What each return said, what is due next, and next year's RRSP room" to="/tax" />
         <Item icon={FileSpreadsheet} label="The year" hint="A year added up for tax time, with files to download" to="/year" />
         <Item icon={BarChart3} label="Reports" hint="Spending by category, month and payment method" to="/reports" />
       </Section>

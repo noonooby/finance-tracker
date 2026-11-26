@@ -35,7 +35,9 @@ const TABLES = new Set(['snapshots', 'activities', 'alert_history', 'bank_accoun
   // every picture read, kept with what was read from it; lines whose account is not known yet
   'scans', 'held_lines',
   // savings goals; credit scores you typed in, by bureau and day
-  'goals', 'credit_scores']);
+  'goals', 'credit_scores',
+  // one row for each tax year, from your returns and notices of assessment
+  'tax_years']);
 // Tables whose balance /api/money may change, and the fields it may change.
 const MONEY_FIELDS = { bank_accounts: ['balance'], credit_cards: ['balance'], loans: ['balance'], investments: ['balance'], assets: ['balance'] };
 // Tables only the server writes.
@@ -614,6 +616,11 @@ function snapshot(uid, b) {
   });
 }
 
+// ---------- what may be looked up online: each kind can be turned off by the person (settings row 'lookups') ----------
+// Looked up: market prices (the ticker is sent), published details of a product (its name is sent), and a new year's
+// tax limit (nothing about the person is sent). What comes back is kept and not fetched again unless asked for.
+const lookupPrefs = (uid) => { const v = (selectRows(uid, { table: 'settings', filters: [['key', 'eq', 'lookups']], limit: 1 })[0] || {}).value || {}; return { prices: v.prices !== false, details: v.details !== false, tax_limits: v.tax_limits !== false }; };
+
 // ---------- holdings: an investment account that lists what it holds is valued at market prices ----------
 const prices = require('./prices');
 // Sets what an account holds (from a screen or typed in), finds each ticker, and values the account.
@@ -638,6 +645,7 @@ async function setHoldings(uid, b) {
 // Brings every account with holdings to the current prices. A price that did not come keeps the last value.
 async function reprice(uid) {
   let changed = 0;
+  if (!lookupPrefs(uid).prices) return 0;
   for (const r of selectRows(uid, { table: 'investments', filters: [] }).filter((x) => Array.isArray(x.holdings) && x.holdings.some((h) => h && h.symbol && h.units > 0))) {
     const w = await prices.worth(db, r);
     if (!w.live) continue;
@@ -658,11 +666,13 @@ async function reprice(uid) {
 const INFO_KIND = { credit_cards: 'credit_card', bank_accounts: 'bank_account', loans: 'loan', investments: 'investment' };
 const INFO_FOR = { credit_card: ['purchase_rate', 'cash_rate', 'annual_fee'], bank_account: ['account_monthly_fee', 'overdraft_rate', 'overdraft_monthly_fee', 'overdraft_use_fee'], loan: ['rate_low', 'rate_high', 'setup_fee'], investment: ['account_yearly_fee', 'trade_fee', 'management_fee'] };
 const INFO_FIELDS = ['purchase_rate', 'cash_rate', 'annual_fee', 'overdraft_rate', 'overdraft_monthly_fee', 'overdraft_use_fee', 'account_monthly_fee', 'rate_low', 'rate_high', 'setup_fee', 'account_yearly_fee', 'trade_fee', 'management_fee'];
-const productName = (tbl, r) => String(tbl === 'bank_accounts' ? [r.institution, r.name].filter(Boolean).join(' ') : tbl === 'loans' ? (r.provider || '') : (r.name || '')).trim();
+const productName = (tbl, r) => String(r.lookup_name ? r.lookup_name : tbl === 'bank_accounts' ? [r.institution, r.name].filter(Boolean).join(' ') : tbl === 'loans' ? (r.provider || '') : (r.name || '')).trim();
 const wantsInfo = (tbl, r) => {
   if (tbl === 'credit_cards' && r.is_gift_card) return false;
   if (tbl === 'bank_accounts' && r.account_type === 'cash') return false;
   const name = productName(tbl, r);
+  // Turned off for this one, or its figures were set by the person: it is left as it is.
+  if (r.info_off || (r.info && r.info.edited)) return false;
   if (name.length < 3) return false;
   if (r.info && r.info.for === name) return false;
   return !(r.info_for === name && ((Number(r.info_tries) || 0) >= 3 || r.info_tried === today()));
@@ -670,12 +680,20 @@ const wantsInfo = (tbl, r) => {
 // When the lookup service does not answer (busy, over its limit), nothing is counted as tried: lookups rest for an
 // hour and then carry on where they stopped.
 let lookupsRestUntil = 0;
-async function fillProducts(uid, max = 4) {
-  if (!process.env.LOOKUP_STUB && !require('./keystore').get()) return 0;
-  if (Date.now() < lookupsRestUntil) return 0;
+async function fillProducts(uid, max = 4, only = null) {
+  if (!process.env.LOOKUP_STUB && !require('./keystore').get()) { if (only) fail(503, 'Looking up details is not set up yet.'); return 0; }
+  if (Date.now() < lookupsRestUntil) { if (only) fail(503, 'The lookup service is not answering right now. It is tried again within the hour.'); return 0; }
+  if (!only && !lookupPrefs(uid).details) return 0;
+  // Asked for one account again: what was kept for it is cleared first, so it is looked up fresh.
+  if (only) {
+    if (!INFO_KIND[only.table]) fail(400, 'Unknown table');
+    tx(() => { const r = selectRows(uid, { table: only.table, filters: [['id', 'eq', String(only.id)]], limit: 1 })[0]; if (!r) fail(404, 'That account is not in the app.');
+      const { info: _i, info_tries: _t, info_tried: _d, info_for: _f, info_off: _o, ...rest } = r; db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(rest), only.table, String(r.id), uid); });
+  }
   let done = 0;
   for (const [tbl, kind] of Object.entries(INFO_KIND)) {
-    for (const r of selectRows(uid, { table: tbl, filters: [] })) {
+    if (only && only.table !== tbl) continue;
+    for (const r of selectRows(uid, { table: tbl, filters: only ? [['id', 'eq', String(only.id)]] : [] })) {
       if (done >= max) return done;
       if (!wantsInfo(tbl, r)) continue;
       const name = productName(tbl, r);
@@ -696,7 +714,7 @@ async function fillProducts(uid, max = 4) {
           if (tbl === 'bank_accounts' && n.allows_overdraft) { fill('overdraft_rate', res.overdraft_rate); fill('overdraft_monthly_fee', res.overdraft_monthly_fee); fill('overdraft_use_fee', res.overdraft_use_fee); }
           if ((tbl === 'bank_accounts' || tbl === 'investments') && !n.institution && res.issuer) { n.institution = res.issuer; info.filled.push('institution'); }
           n.info = info;
-        } else if (tries >= 3) n.info = { for: name, found: false, checked: today() };
+        } else if (tries >= 3 || only) n.info = { for: name, found: false, checked: today() };
         db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), tbl, String(n.id), uid);
       });
     }
@@ -720,7 +738,7 @@ route('POST', '/api/holdings', (req, b) => setHoldings(authUser(req).id, b));
 route('POST', '/api/prices', async (req) => ({ changed: await reprice(authUser(req).id) }));
 route('POST', '/api/quote', async (req, b) => { authUser(req); const f = await prices.find(db, { symbol: b.symbol, currency: b.currency, crypto: b.crypto === true }); const pick = (q) => ({ symbol: q.symbol, name: q.name, price: q.price, currency: q.currency }); return { quote: f.quote ? pick(f.quote) : null, choices: (f.choices || []).map(pick) }; });
 route('GET', '/api/tax-facts', (req) => { authUser(req); return require('./taxfacts').facts(db); });
-route('POST', '/api/details', async (req) => ({ done: await fillProducts(authUser(req).id) }));
+route('POST', '/api/details', async (req, b) => ({ done: await fillProducts(authUser(req).id, 4, b && b.table && b.id != null ? { table: String(b.table), id: b.id } : null) }));
 route('POST', '/api/money', (req, b) => money(authUser(req).id, b));
 route('POST', '/api/lookup-rates', async (req, b) => { authUser(req); try { return await require('./rates').lookup(String(b.kind || ''), b.name); } catch (e) { if (e.status) fail(e.status, e.message); throw e; } });
 // Exchange rate for a day (purchases in another currency are recorded in the home currency, keeping the original).
@@ -902,7 +920,7 @@ route('POST', '/api/read-screenshot', async (req, b) => {
   const uid = authUser(req).id;
   const all = (t) => selectRows(uid, { table: t, filters: [] });
   const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), assets: all('assets'), bills: all('bills'), scores: all('credit_scores'), held: all('held_lines'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db,
+  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), assets: all('assets'), bills: all('bills'), scores: all('credit_scores'), taxYears: all('tax_years'), held: all('held_lines'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db,
     // Every picture read is kept with what was read from it, so nothing has to be chosen or read twice.
     keep: (row) => { const old = selectRows(uid, { table: 'scans', filters: [['source_id', 'eq', row.source_id]], limit: 1 })[0]; return old ? updateRows(uid, 'scans', [['id', 'eq', old.id]], row) : insertRow(uid, 'scans', { id: crypto.randomUUID(), ...row }); } };
   try { return await require('./reader').read(uid, b, ctx); } catch (e) { if (e.status) fail(e.status, e.message); throw e; }
@@ -911,7 +929,7 @@ route('POST', '/api/read-set', async (req, b) => {
   const uid = authUser(req).id;
   const all = (t) => selectRows(uid, { table: t, filters: [] });
   const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), assets: all('assets'), bills: all('bills'), scores: all('credit_scores'), held: all('held_lines'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db,
+  const ctx = { bankAccounts: all('bank_accounts'), creditCards: all('credit_cards'), loans: all('loans'), investments: all('investments'), assets: all('assets'), bills: all('bills'), scores: all('credit_scores'), taxYears: all('tax_years'), held: all('held_lines'), transactions: selectRows(uid, { table: 'transactions', filters: [['date', 'gte', since]] }), today: b.today, db,
     kept: (id) => selectRows(uid, { table: 'scans', filters: [['source_id', 'eq', String(id)]], limit: 1 })[0] || null };
   try { return await require('./reader').readSet(uid, b, ctx); } catch (e) { if (e.status) fail(e.status, e.message); throw e; }
 });
@@ -989,7 +1007,7 @@ const server = http.createServer(async (req, res) => {
         const out = await r.fn(req, body, m.slice(1), url);
         if (/^\/api\/(read-|ask$)/.test(url.pathname) && out && process.env.NODE_ENV !== 'test') {
           const c = out.statement && out.statement.check;
-          console.log(`done ${url.pathname} ${Date.now() - began}ms kind=${out.kind || '-'}${Array.isArray(out.lines) ? ` lines=${out.lines.length}` : ''}${Array.isArray(out.parts) ? ` parts=${out.parts.length}` : ''}${c ? ` adds_up=${c.adds_up} off=${c.off}` : ''}${out.score ? ' score=found' : ''}${(out.tax_room || []).length ? ` room=${out.tax_room.length}` : ''}${(out.holdings_updates || []).length ? ` holdings=${out.holdings_updates.length}` : ''}${Array.isArray(out.new_accounts) ? ` new_accounts=${out.new_accounts.length} new_loans=${(out.new_loans || []).length} new_bills=${(out.new_bills || []).length} changes=${(out.updates || []).length} balances=${(out.balances || []).length}` : ''}`);
+          console.log(`done ${url.pathname} ${Date.now() - began}ms kind=${out.kind || '-'}${Array.isArray(out.lines) ? ` lines=${out.lines.length}` : ''}${Array.isArray(out.parts) ? ` parts=${out.parts.length}` : ''}${c ? ` adds_up=${c.adds_up} off=${c.off}` : ''}${out.score ? ' score=found' : ''}${(out.tax_room || []).length ? ` room=${out.tax_room.length}` : ''}${out.tax_year ? ` tax_year=${out.tax_year.year}` : ''}${(out.holdings_updates || []).length ? ` holdings=${out.holdings_updates.length}` : ''}${Array.isArray(out.new_accounts) ? ` new_accounts=${out.new_accounts.length} new_loans=${(out.new_loans || []).length} new_bills=${(out.new_bills || []).length} changes=${(out.updates || []).length} balances=${(out.balances || []).length}` : ''}`);
         }
         return send(200, out);
       }
@@ -1060,7 +1078,7 @@ async function runUpkeep() {
     try { await reprice(uid); } catch (e) { console.error('prices:', e.message); }
     try { await fillProducts(uid, 2); } catch (e) { console.error('details:', e.message); }
   }
-  try { await require('./taxfacts').keepUp(db, today()); } catch (e) { console.error('tax figures:', e.message); }
+  try { if (users.some((uid) => lookupPrefs(uid).tax_limits)) await require('./taxfacts').keepUp(db, today()); } catch (e) { console.error('tax figures:', e.message); }
 }
 if (require.main === module) {
   setTimeout(runUpkeep, 90e3);
@@ -1069,4 +1087,4 @@ if (require.main === module) {
   setTimeout(runReminders, 60e3);
   setInterval(runReminders, 15 * 60e3).unref();
 }
-module.exports = { server, db, money, reverse, runQuery, runReminders, setHoldings, reprice, fillProducts, runUpkeep };
+module.exports = { server, db, money, reverse, runQuery, runReminders, setHoldings, reprice, fillProducts, runUpkeep, _wakeLookups: () => { lookupsRestUntil = 0; } };

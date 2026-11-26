@@ -3,6 +3,8 @@ import { Edit2, X, ShoppingBag, ListFilter, Star, Gift } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil } from '../../utils/helpers';
 import RecentTransactions from '../shared/RecentTransactions';
 import { expiryStatus } from './cardMath';
+import { useFinanceData } from '../../hooks/useFinanceData';
+import { cardSplit } from '../../utils/finance';
 
 /**
  * Read-only view of one credit or gift card with its actions.
@@ -22,6 +24,8 @@ export default function CardItem({
   const muted = 'text-muted';
   const expiry = card.has_expiry && card.expiry_date ? expiryStatus(card.expiry_date) : null;
   const daysToDue = card.due_date ? getDaysUntil(card.due_date) : null;
+  const { loans = [] } = useFinanceData();
+  const split = card.is_gift_card ? null : cardSplit(card, loans);
 
   return (
     <>
@@ -88,6 +92,22 @@ export default function CardItem({
                 )}
               </div>
             )
+          )}
+          {split && split.plans.length > 0 && (
+            <div className="mt-2 rounded-xl bg-surface-2 px-3 py-2 text-xs space-y-1">
+              <div className="font-medium text-fg">What this balance is made of</div>
+              {split.plans.map((p) => (
+                <div key={p.id} className="flex justify-between gap-3">
+                  <span className={`min-w-0 truncate ${muted}`}>{p.name}{p.payment > 0 ? ` · ${formatCurrency(p.payment)} a month` : ''}{p.rate > 0 ? ` · ${p.rate}%` : ''}</span>
+                  <span className="tabular-nums shrink-0">{formatCurrency(p.balance)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between gap-3">
+                <span className={muted}>Everything else, at the card's rate if carried</span>
+                <span className="tabular-nums shrink-0">{formatCurrency(split.rest)}</span>
+              </div>
+              {split.over > 0 && <div className="text-warning">The plans add up to {formatCurrency(split.over)} more than the card shows. Update the card's balance or the plans.</div>}
+            </div>
           )}
         </div>
         <div className="flex gap-1 sm:gap-2">

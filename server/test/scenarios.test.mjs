@@ -1637,3 +1637,73 @@ test('a new card or account gets its published details once; a figure you entere
   assert.equal((await get('credit_cards', later.id)).info_tries, undefined);
   delete process.env.LOOKUP_STUB;
 });
+
+test('a card balance is split into the payment plans inside it and the rest, and only the rest carries the card rate', () => {
+  const cardX = { id: 'x', name: 'Visa', balance: 5000, interest_rate: 20, minimum_payment: 300 };
+  const loansX = [{ id: 'p1', name: 'Plan A', on_card_id: 'x', balance: 1800, payment_amount: 150, frequency: 'monthly', interest_rate: 0 }, { id: 'p2', name: 'Plan B', on_card_id: 'x', balance: 1200, payment_amount: 50, frequency: 'biweekly' },
+    { id: 'p3', name: 'Paid plan', on_card_id: 'x', balance: 0 }, { id: 'o', name: 'Other card plan', on_card_id: 'y', balance: 999 }, { id: 'l', name: 'Car', balance: 9000, on_card_id: null }];
+  const s = F.cardSplit(cardX, loansX);
+  assert.deepEqual([s.plans.length, s.inPlans, s.rest, s.over], [2, 3000, 2000, 0]);
+  assert.equal(s.payments, 150 + Math.round(50 * 26 / 12 * 100) / 100);
+  const cost = F.monthlyCost({ creditCards: [cardX], loans: loansX, bankAccounts: [] }).items.find((i) => i.name === 'Visa');
+  assert.equal(cost.amount, Math.round(2000 * 20 / 100 / 12 * 100) / 100);
+  // Plans that add up to more than the card shows are flagged, and nothing goes below zero.
+  const over = F.cardSplit({ ...cardX, balance: 2500 }, loansX);
+  assert.deepEqual([over.rest, over.over], [0, 500]);
+  for (const bad of [null, {}, { id: 'x', balance: 'abc' }, { id: 'x', balance: -50 }]) assert.equal(F.cardSplit(bad, loansX).rest, 0);
+  assert.deepEqual(F.cardSplit({ id: '', balance: 100 }, [{ on_card_id: '', balance: 50 }, { on_card_id: null, balance: 50 }]).plans, []);
+});
+
+test('tax years: what comes next follows the returns on record, and every assumed figure says where it came from', () => {
+  const years = [{ year: 2023, employment_income: 70000, refund: 1200 }, { year: 2025, employment_income: 90000, total_income: 91000, pension_adjustment: 4000, balance_owing: 300 }, { year: 'x' }];
+  const rrspNow = { known: true, room: 10000 };
+  let n = R.taxNext({ years, rrspNow, facts, today: '2026-11-26' });
+  assert.deepEqual(n.missing, [2024]);
+  assert.deepEqual(n.due.map((d) => d.year), [2026]);                        // 2025 is on record
+  assert.equal(R.filingDeadline(2026), '2027-04-30'); assert.equal(R.filingDeadline(2027), '2028-05-01');   // April 30, 2028 is a Sunday
+  assert.deepEqual(n.results, [{ year: 2025, amount: -300 }, { year: 2023, amount: 1200 }]);
+  // 18% of 90,000 is 16,200, under the 2027 limit; less the 4,000 pension adjustment.
+  assert.deepEqual([n.rrsp.year, n.rrsp.adds, n.rrsp.estimate, n.rrsp.earned_from, n.rrsp.pa_from], [2027, 12200, 22200, 'your 2025 return', 'your 2025 return']);
+  // Set by the person: a high income is capped at the yearly limit.
+  n = R.taxNext({ years, rrspNow, facts, today: '2026-11-26', assume: { earned: 400000, pa: 0 } });
+  assert.deepEqual([n.rrsp.adds, n.rrsp.estimate, n.rrsp.earned_from], [35390, 45390, 'set by you']);
+  // No room on record: what is added is still known, the total is not made up.
+  n = R.taxNext({ years, rrspNow: { known: false }, facts, today: '2026-11-26' });
+  assert.deepEqual([n.rrsp.adds, n.rrsp.estimate], [12200, null]);
+  // Nothing on record: last year's return is named as missing and due, and nothing is estimated.
+  n = R.taxNext({ years: [], rrspNow: null, facts, today: '2026-11-26' });
+  assert.deepEqual([n.missing, n.rrsp, n.due.map((d) => [d.year, d.late])], [[2025], null, [[2025, true], [2026, false]]]);
+});
+
+test('lookups can be turned off, pointed at a name you give, redone for one account, and never replace figures you set', async () => {
+  const set = (value) => db.from('settings').upsert({ key: 'lookups', value }, { onConflict: 'key' });
+  srv._wakeLookups();                                                               // the rest from the failed lookup above is over
+  const cardL = await add('credit_cards', { name: 'My everyday card', balance: 0, credit_limit: 500, info_off: true });
+  process.env.LOOKUP_STUB = JSON.stringify({ found: true, issuer: 'Test Bank', purchase_rate: 19.99, source_url: 'https://example.test/a' });
+  // Turned off: nothing is looked up, and prices do not move.
+  await set({ details: false, prices: false });
+  assert.equal((await api('/api/details', {})).done, 0);
+  assert.equal((await api('/api/prices', {})).changed, 0);
+  await set({ details: true });
+  // Off for this one account only: the others waiting are looked up, this one is not.
+  let turns = 0;
+  while ((await api('/api/details', {})).done > 0) assert.ok(++turns < 80);
+  assert.equal((await get('credit_cards', cardL.id)).info, undefined);
+  // A name you give is the one looked up.
+  await db.from('credit_cards').update({ info_off: false, lookup_name: 'Tangerine World Mastercard' }).eq('id', cardL.id);
+  assert.equal((await api('/api/details', {})).done, 1);
+  let r = await get('credit_cards', cardL.id);
+  assert.deepEqual([r.info.for, r.info.product, r.interest_rate], ['Tangerine World Mastercard', 'Tangerine World Mastercard', 19.99]);
+  // Figures you set stay, even when the name changes; asking again for this one replaces them.
+  await db.from('credit_cards').update({ info: { ...r.info, purchase_rate: 12, edited: true }, lookup_name: 'Another name' }).eq('id', cardL.id);
+  assert.equal((await api('/api/details', {})).done, 0);
+  assert.equal((await get('credit_cards', cardL.id)).info.purchase_rate, 12);
+  assert.equal((await api('/api/details', { table: 'credit_cards', id: cardL.id })).done, 1);
+  r = await get('credit_cards', cardL.id);
+  assert.deepEqual([r.info.purchase_rate, r.info.edited, r.info.for], [19.99, undefined, 'Another name']);
+  assert.equal(r.interest_rate, 19.99);                                             // a rate already on the card is not touched
+  await assert.rejects(api('/api/details', { table: 'credit_cards', id: 'not-mine' }), /not in the app/);
+  await assert.rejects(api('/api/details', { table: 'users', id: 'x' }), /Unknown table/);
+  delete process.env.LOOKUP_STUB;
+  await db.from('settings').delete().eq('key', 'lookups');
+});

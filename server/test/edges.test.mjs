@@ -915,3 +915,36 @@ test('reading: holdings and room on a screen are kept in one shape, and one acco
   assert.deepEqual(p.tax_room, [{ kind: 'TFSA', room: 12500, as_of: '2026-01-01' }]);
   assert.equal(p.lines.length, 0);
 });
+
+test('reading: a payment plan inside a card is added inside that card, whether the card is in the app or on the same picture', () => {
+  const base = { bankAccounts: [], loans: [], investments: [], assets: [], bills: [], scores: [], held: [], transactions: [], today: '2026-11-26' };
+  const has = { ...base, creditCards: [{ id: 'c1', name: 'CIBC Dividend Visa', last4: '4321', balance: 5000 }, { id: 'g1', name: 'Gift', is_gift_card: true }] };
+  let p = reader.plan({ kind: 'balance', accounts: [
+    { name: 'CIBC Dividend Visa', last4: '4321', type: 'credit_card', balance: 5200 },
+    { name: 'Pace It: Best Buy', type: 'loan', loan_kind: 'plan', balance: 1800, payment_amount: 150, on_card: 'Visa ending 4321' },
+    { name: 'Pace It: Flights', type: 'loan', loan_kind: 'plan', balance: 900, payment_amount: 75 },
+    { name: 'Car loan', type: 'loan', loan_kind: 'car_lease', balance: 12000, on_card: 'nothing like a card' },
+  ] }, has, 's1');
+  assert.deepEqual(p.new_loans.map((l) => [l.name, l.loan_type, (l.on_card && l.on_card.id) || null]), [['Pace It: Best Buy', 'plan', 'c1'], ['Pace It: Flights', 'plan', 'c1'], ['Car loan', 'car_lease', null]]);
+  assert.equal(p.lines.length, 0);
+  // The card is new on this picture: the plan points at the card being added.
+  p = reader.plan({ kind: 'balance', accounts: [{ name: 'Amex Cobalt', last4: '1005', type: 'credit_card', balance: 3000 }, { name: 'Plan It 1', type: 'loan', loan_kind: 'plan', balance: 600, on_card: 'Amex Cobalt' }] }, { ...base, creditCards: [] }, 's2');
+  assert.equal(p.new_accounts.length, 1);
+  assert.equal(p.new_loans[0].on_card.id, p.new_accounts[0].id);
+  // Two cards and no card named: it is not guessed.
+  p = reader.plan({ kind: 'balance', accounts: [{ name: 'Card A', last4: '1111', type: 'credit_card', balance: 1 }, { name: 'Card B', last4: '2222', type: 'credit_card', balance: 1 }, { name: 'Plan', type: 'loan', loan_kind: 'plan', balance: 600 }] }, { ...base, creditCards: [] }, 's3');
+  assert.equal(p.new_loans[0].on_card, undefined);
+});
+
+test('reading: a return or notice gives one tax year in a known shape, and its next-year limit becomes RRSP room', () => {
+  const ctx = { bankAccounts: [], creditCards: [], loans: [], investments: [], assets: [], bills: [], scores: [], held: [], transactions: [], today: '2026-11-26', taxYears: [{ id: 'ty1', year: 2025, total_income: 91000 }] };
+  let p = reader.plan({ kind: 'other', tax_year: { year: '2025', total_income: '91,000.00', employment_income: 90000, refund: 1250.5, balance_owing: null, rrsp_limit_next: '14,300', net_income: -5, taxable_income: 'n/a', made_up: 7 } }, ctx, 's1');
+  assert.deepEqual(p.tax_year, { year: 2025, total_income: 91000, employment_income: 90000, refund: 1250.5, rrsp_limit_next: 14300, existing_id: 'ty1', same: false });
+  assert.deepEqual(p.tax_room, [{ kind: 'RRSP', room: 14300, as_of: '2026-01-01' }]);
+  p = reader.plan({ kind: 'other', tax_year: { year: 2025, total_income: 91000 } }, ctx, 's2');
+  assert.equal(p.tax_year.same, true);
+  // Both a refund and a balance owing cannot be right: neither is kept. A year that is not a year gives nothing.
+  p = reader.plan({ kind: 'other', tax_year: { year: 2024, refund: 5, balance_owing: 9, total_income: 1 } }, ctx, 's3');
+  assert.deepEqual([p.tax_year.refund, p.tax_year.balance_owing, p.tax_year.existing_id], [undefined, undefined, null]);
+  for (const bad of [{ year: 2031, total_income: 5 }, { year: 'last', total_income: 5 }, { year: 2024 }, 'text', 5, [], null]) assert.equal(reader.plan({ kind: 'other', tax_year: bad }, ctx, 's4').tax_year, null);
+});

@@ -19,18 +19,21 @@ Return JSON:
  "bill":{"payee":"who is billed for it, as shown","amount":number,"due_date":"YYYY-MM-DD or null","frequency":"weekly|biweekly|monthly|quarterly|yearly or null"} or null (only for a bill, an invoice or a renewal notice),
  "credit_score":{"bureau":"Equifax, TransUnion or Experian as shown, or null","score":whole number,"date":"YYYY-MM-DD it is dated or was updated, or null"} or null (only when the screen shows a credit score),
  "statement":{"account_name":"","last4":"or null","period_start":"YYYY-MM-DD","period_end":"YYYY-MM-DD","opening_balance":number,"closing_balance":number} or null (only for a statement),
- "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|investment|property|gift_card|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null,"statement_balance":number or null,"autopay":true|false|null,"loan_kind":"loan|mortgage|line_of_credit|car_lease|bnpl|plan|student or null","payment_amount":number or null,"payment_frequency":"weekly|biweekly|semimonthly|monthly or null","interest_rate":number or null,
+ "accounts":[{"name":"as shown","last4":"1234 or null","type":"chequing|savings|credit_card|loan|investment|property|gift_card|other","balance":number or null,"available":number or null,"credit_limit":number or null,"due_date":"YYYY-MM-DD or null","minimum_payment":number or null,"statement_balance":number or null,"autopay":true|false|null,"loan_kind":"loan|mortgage|line_of_credit|car_lease|bnpl|plan|student or null","payment_amount":number or null,"payment_frequency":"weekly|biweekly|semimonthly|monthly or null","interest_rate":number or null,"on_card":"for a payment plan inside a credit card: that card's name or last 4 digits as shown, else null",
    "holdings":[{"symbol":"ticker as shown, or null","name":"as shown","units":number of shares or units,"price":market price of one unit or null,"value":market value of this holding or null,"currency":"CAD|USD or another 3-letter code when shown, else null"}] or null (only for an investment account that lists what it holds),"cash":cash held inside that investment account or null}],
  "tax_room":[{"kind":"TFSA|RRSP|FHSA","room":number,"as_of":"YYYY-MM-DD"}] or null (only when a tax agency screen or letter states contribution room),
+ "tax_year":{"year":the tax year as a whole number,"total_income":number or null,"net_income":number or null,"taxable_income":number or null,"employment_income":number or null,"rrsp_deducted":number or null,"pension_adjustment":number or null,"refund":number or null,"balance_owing":number or null,"rrsp_limit_next":"the RRSP deduction limit for the following year, as a number, when stated, else null","unused_rrsp":number or null,"tuition_carry":number or null} or null (only for a tax return, a return summary or a notice of assessment),
  "lines":[{"date":"YYYY-MM-DD","merchant":"as shown","amount":number,"direction":"out"|"in","pending":true|false,"account_name":"as shown or null","last4":"or null","y":whole number from 0 to 100 saying how far down the picture this line sits (0 is the top edge, 100 the bottom edge),
    "type":"purchase|income|refund|card_payment|transfer|fee|interest","currency":"3-letter code only when the line shows a currency other than the account's (e.g. USD), else null","original_amount":"the amount in that other currency when the line also shows the converted amount, else null","other_account":"for card_payment or transfer: the other account's name or last 4 digits as shown, else null",
    "category":"one short category: for a purchase or fee (Groceries, Dining, Transport, Fuel, Bills, Utilities, Phone, Shopping, Entertainment, Health, Travel, Subscriptions, Rent, Insurance, Education, Personal care, Gifts, Fees); for income (Salary, Freelance, Interest, Government, Refund, Other income); else null"}],
  "receipt":{"merchant":"","date":"YYYY-MM-DD","total":number,"items":[{"name":"","amount":number}]} or null,
  "notes":"anything unclear, short"}
 Rules: a screen that shows an account or card summary (balance, statement balance, due date, autopay, rewards) and no list of transactions is kind "balance": fill accounts and leave lines empty. Summary figures such as cash back, rewards, available credit or the statement amount are never lines.
+An equal payment plan, instalment plan or "plan it" set up inside a credit card (a purchase or balance turned into fixed monthly payments) is its own account of type "loan" with loan_kind "plan": balance is what is left of that plan, payment_amount its monthly payment, on_card the card it is inside. The card stays one account with its full balance, which already includes its plans; a plan is never a line.
 A loan, mortgage, line of credit, car lease or loan, student loan, or a pay-later plan (Klarna, Affirm, PayPal Pay in 4 and the like) is an account of type "loan": balance is what is still owed, due_date the next payment day, payment_amount the amount of each payment, interest_rate the yearly percentage, each only when shown. Name it as shown; when no name is visible, name it by the provider or by what it is ("Pay later").
 An investment or registered account (TFSA, RRSP, FHSA, RESP, brokerage, crypto, pension, GIC) is an account of type "investment" with its value as balance. When the screen lists what the account holds (shares, funds, coins), list each under that account's holdings with its units exactly as shown (all decimals); price is the market price of one unit and value its market value, never the cost or the gain. Holdings are never lines.
-A Canada Revenue Agency screen, notice of assessment or letter that states contribution room is kind "other" with tax_room filled: TFSA contribution room, the RRSP deduction limit (or available contribution room), FHSA participation room. as_of is the day the figure is stated for: January 1 of the year for room given "as of January 1" or "for YEAR", else the date shown. Room is never an account or a line. A screen showing a credit score is kind "credit_score": the score is the main number (300 to 900), never a rating word, a change or a range.
+A Canada Revenue Agency screen, notice of assessment or letter that states contribution room is kind "other" with tax_room filled: TFSA contribution room, the RRSP deduction limit (or available contribution room), FHSA participation room. as_of is the day the figure is stated for: January 1 of the year for room given "as of January 1" or "for YEAR", else the date shown. Room is never an account or a line.
+A tax return, a tax return summary or a notice of assessment is kind "other" with tax_year filled from what is shown: total income (line 15000), net income (line 23600), taxable income (line 26000), employment income (line 10100), the RRSP deduction claimed (line 20800), the pension adjustment (line 20600), the refund or the balance owing (only one of the two, as a positive number), unused RRSP contributions and unused tuition carried forward. Figures not shown are null, never guessed. A return is never an account or a line. A screen showing a credit score is kind "credit_score": the score is the main number (300 to 900), never a rating word, a change or a range.
 A pay slip, pay stub or payroll screen (Workday and the like) is kind "pay_slip" with no lines. A bill, invoice or renewal notice from a company (utility, phone, insurance, tax, condo fees, a subscription) is kind "bill": fill bill and leave lines empty. A home, vehicle or other property shown with its value is an account of type "property". A gift card or store credit shown with what is left on it is an account of type "gift_card".
 Payroll, salary or direct deposit from an employer is income with category Salary; a payment to a credit card (e.g. "PAYMENT THANK YOU", "VISA PAYMENT") is card_payment; money moved between the person's own accounts is transfer; pay and deposits are income.
 For a statement, list every transaction in the period and report the closing balance as the account's balance; for a credit card, balances are what is owed.
@@ -91,6 +94,17 @@ const ROOM_KINDS = new Set(['TFSA', 'RRSP', 'FHSA']);
 const qty = (v) => { const n = typeof v === 'string' ? Number(v.replace(/[,\s]/g, '')) : typeof v === 'number' ? v : NaN; return Number.isFinite(n) && n > 0 && n < 1e12 ? n : null; };
 const held = (v) => list(v, 200).map((h) => { const cur = String(words(h.currency, 8) || '').toUpperCase(); return { symbol: String(words(h.symbol, 15) || '').toUpperCase().replace(/[^A-Z0-9.^=-]/g, '') || null, name: words(h.name, 80) || '', units: qty(h.units), price: qty(h.price), value: money(h.value), currency: /^[A-Z]{3}$/.test(cur) ? cur : null }; })
   .filter((h) => (h.symbol || h.name) && (h.units != null || h.value > 0));
+// One tax year as read from a return or a notice: a real year, and only amounts that are plain non-negative numbers.
+const TAX_FIELDS = ['total_income', 'net_income', 'taxable_income', 'employment_income', 'rrsp_deducted', 'pension_adjustment', 'refund', 'balance_owing', 'rrsp_limit_next', 'unused_rrsp', 'tuition_carry'];
+function taxYear(v, today) {
+  const t = obj(v);
+  const year = t ? Number(t.year) : NaN;
+  if (!t || !Number.isInteger(year) || year < 1990 || year > Number(String(today).slice(0, 4))) return null;
+  const out = { year };
+  for (const f of TAX_FIELDS) { const n = money(t[f]); if (n != null && n >= 0 && n < 1e9) out[f] = n; }
+  if (out.refund > 0 && out.balance_owing > 0) { delete out.refund; delete out.balance_owing; }
+  return Object.keys(out).length > 1 ? out : null;
+}
 const yes = (v) => (v === true || v === 'true' ? true : v === false || v === 'false' ? false : null);
 function tidy(reading, today) {
   const r = obj(reading) || {};
@@ -102,6 +116,7 @@ function tidy(reading, today) {
     minimum_payment: money(a.minimum_payment), statement_balance: money(a.statement_balance), autopay: yes(a.autopay),
     loan_kind: words(a.loan_kind, 20), payment_amount: money(a.payment_amount), payment_frequency: words(a.payment_frequency, 20),
     interest_rate: (() => { const n = money(a.interest_rate); return n != null && n >= 0 && n <= 100 ? n : null; })(),
+    on_card: a.type === 'loan' ? words(a.on_card, 60) : null,
     holdings: a.type === 'investment' ? held(a.holdings) : [], cash: a.type === 'investment' ? money(a.cash) : null,
   })).filter((a) => a.name || a.last4 || a.balance != null || a.holdings.length);
   const lines = list(r.lines, 3000).map((l) => {
@@ -130,6 +145,7 @@ function tidy(reading, today) {
     credit_score: sc ? { bureau: words(sc.bureau, 40), score: money(sc.score), date: day(sc.date, today) } : null,
     tax_room: list(r.tax_room, 6).map((x) => ({ kind: String(words(x.kind, 8) || '').toUpperCase(), room: money(x.room), as_of: day(x.as_of, today) }))
       .filter((x, i, all) => ROOM_KINDS.has(x.kind) && x.room != null && x.as_of && all.findIndex((y) => y.kind === x.kind) === i),
+    tax_year: taxYear(r.tax_year, today),
     notes: words(r.notes, 400) || '',
   };
   Object.defineProperty(out, '_tidy', { value: true, enumerable: false });
@@ -316,6 +332,7 @@ function settled(reading, ctx, sourceId) {
 const CASH = (a) => a && !['loan', 'investment', 'property'].includes(a.type);
 function together(parts, all) {
   const accounts = [], lines = [], notes = [], tax = [];
+  let taxY = null;
   let before = null;
   // Screens of one statement (the same account and closing day) stay a statement; anything else is read loosely.
   const sts = parts.map((x) => tidy(x.reading).statement).filter(Boolean);
@@ -334,8 +351,9 @@ function together(parts, all) {
     if (own) before = own; else if (shown.length) before = null;
     if (r.notes) notes.push(String(r.notes));
     tax.push(...(tidy(r).tax_room || []));
+    if (!taxY && tidy(r).tax_year) taxY = tidy(r).tax_year;
   });
-  return { kind: statement ? 'statement' : lines.length ? 'transactions' : 'balance', accounts, lines, statement, tax_room: tax, notes: [...new Set(notes)].join(' ').slice(0, 400) };
+  return { kind: statement ? 'statement' : lines.length ? 'transactions' : 'balance', accounts, lines, statement, tax_room: tax, tax_year: taxY, notes: [...new Set(notes)].join(' ').slice(0, 400) };
 }
 
 function plan(reading, ctx, sourceId) {
@@ -492,7 +510,14 @@ function plan(reading, ctx, sourceId) {
     }
     if (mine) { if (pos(a.balance) != null) balances.push({ account: { type: 'loan', id: mine.id, name: mine.name }, shown: pos(a.balance), current: Math.round(Number(mine.balance || 0) * 100) / 100, differs: pos(a.balance) !== Math.round(Number(mine.balance || 0) * 100) / 100, snapshot_date: mine.snapshot_date || null }); continue; }
     if (new_loans.some((l) => norm(l.name) === norm(name))) continue;
-    new_loans.push({ id: 'newloan:' + new_loans.length, name, loan_type: LOAN_KINDS.has(a.loan_kind) ? a.loan_kind : 'loan', balance: pos(a.balance),
+    // A plan inside a card names its card: one the app has, or one being added from this picture. With one card on the
+    // picture and no name given, it is that card.
+    const cardsShown = withDrafts.filter((x) => x._type === 'credit_card' && !x.is_gift_card && !x.gift);
+    const onlyCard = (reading.accounts || []).filter((x) => x && x.type === 'credit_card');
+    const host = a.on_card ? resolveAccount(cardsShown, { name: a.on_card, last4: (String(a.on_card).match(/\d{4}/) || [])[0] || null, type: 'credit_card' })
+      : a.loan_kind === 'plan' && onlyCard.length === 1 ? resolveAccount(cardsShown, onlyCard[0]) : null;
+    new_loans.push({ id: 'newloan:' + new_loans.length, name, loan_type: host ? 'plan' : LOAN_KINDS.has(a.loan_kind) ? a.loan_kind : 'loan', balance: pos(a.balance),
+      ...(host ? { on_card: { id: host.id, name: host.name } } : {}),
       payment_amount: pos(a.payment_amount) || pos(a.minimum_payment), frequency: LOAN_FREQS.has(a.payment_frequency) ? a.payment_frequency : 'monthly',
       next_payment_date: realDay(a.due_date),
       interest_rate: Number.isFinite(Number(a.interest_rate)) && a.interest_rate !== null && Number(a.interest_rate) >= 0 && Number(a.interest_rate) <= 100 ? Number(a.interest_rate) : null });
@@ -546,6 +571,13 @@ function plan(reading, ctx, sourceId) {
     if (!new_investments.some((l) => norm(l.name) === norm(name))) new_investments.push({ id: 'newinv:' + new_investments.length, name, balance: value, ...(lists ? { holdings: a.holdings, cash: a.cash == null ? null : a.cash } : {}), table: prop ? 'assets' : 'investments',
       kind: prop ? (/home|house|condo|apartment|property/i.test(name) ? 'Home' : /car|vehicle|truck|suv/i.test(name) ? 'Car' : 'Other') : (String(name).toUpperCase().match(/\b(TFSA|RRSP|FHSA|RESP)\b/) || [])[1] || (/crypto|bitcoin|ethereum/i.test(name) ? 'Crypto' : /pension/i.test(name) ? 'Pension' : /broker|trading|invest|stocks/i.test(name) ? 'Brokerage' : 'Other') });
   }
+  // A tax year the app already has is filled in with what this picture adds; the limit a notice gives for the next
+  // year is also that year's RRSP room, unless the picture states room itself.
+  const ty = reading.tax_year || null;
+  const hadYear = ty ? (ctx.taxYears || []).find((x) => Number(x.year) === ty.year) : null;
+  const tax_year = ty ? { ...ty, existing_id: hadYear ? hadYear.id : null, same: !!hadYear && TAX_FIELDS.every((f) => ty[f] == null || Number(hadYear[f]) === ty[f]) } : null;
+  const tax_room = [...(reading.tax_room || [])];
+  if (ty && ty.rrsp_limit_next != null && !tax_room.some((x) => x.kind === 'RRSP') && `${ty.year + 1}-01-01` <= today) tax_room.push({ kind: 'RRSP', room: ty.rrsp_limit_next, as_of: `${ty.year + 1}-01-01` });
   const sc = reading.credit_score ? planScore(reading.credit_score, ctx.today || new Date().toLocaleDateString('en-CA')) : null;
   // A score from the same bureau for the same day is the one already recorded: it is updated, or left alone when the same.
   const hadScore = sc && sc.score != null ? (ctx.scores || []).find((x) => norm(x.bureau) === norm(sc.bureau) && String(x.date || '').slice(0, 10) === sc.date) : null;
@@ -565,7 +597,7 @@ function plan(reading, ctx, sourceId) {
   }
   const unknown = (reading.accounts || []).filter(a => !['loan', 'investment', 'property'].includes(a.type) && !resolveAccount(withDrafts, a)).map(a => ({ name: a.name, last4: a.last4 || null, type: a.type || null }));
   const new_accounts = drafts.map(({ _type, ...d }) => ({ ...d, type: _type }));
-  return sound({ source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, new_investments, holdings_updates, tax_room: reading.tax_room || [], new_bills, updates, credit_score, held_done, pay_slip: reading.kind === 'pay_slip', unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' }, today);
+  return sound({ source_id: sourceId, kind: reading.kind || 'other', note_account: noted ? noted.name : null, statement, lines, balances: statement ? balances.filter(b => !statement.account || String(b.account.id) !== String(statement.account.id)) : balances, new_accounts, new_loans, new_investments, holdings_updates, tax_room, tax_year, new_bills, updates, credit_score, held_done, pay_slip: reading.kind === 'pay_slip', unknown_accounts: unknown, receipt: reading.receipt || null, notes: reading.notes || '' }, today);
 }
 
 // The optional note: plain text, one paragraph, at most 300 characters, with the quote markers removed.
@@ -573,7 +605,7 @@ function cleanNote(n) {
   return String(n || '').replace(/[<>]{2,}/g, ' ').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
 }
 
-const nothing = (sourceId) => ({ source_id: sourceId, kind: 'other', note_account: null, statement: null, lines: [], balances: [], new_accounts: [], new_loans: [], new_investments: [], holdings_updates: [], tax_room: [], new_bills: [], updates: [], credit_score: null, held_done: [], pay_slip: false, unknown_accounts: [], receipt: null, notes: 'This picture is kept. It could not be sorted yet.' });
+const nothing = (sourceId) => ({ source_id: sourceId, kind: 'other', note_account: null, statement: null, lines: [], balances: [], new_accounts: [], new_loans: [], new_investments: [], holdings_updates: [], tax_room: [], tax_year: null, new_bills: [], updates: [], credit_score: null, held_done: [], pay_slip: false, unknown_accounts: [], receipt: null, notes: 'This picture is kept. It could not be sorted yet.' });
 const READINGS = new Map();
 // body: { image: base64 (no data: prefix) or data URL, mime }
 async function read(uid, body, ctx) {

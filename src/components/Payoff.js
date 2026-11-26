@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { TrendingDown } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { payoffPlan } from '../utils/plans';
-import { cardRate, PAYMENTS_PER_YEAR } from '../utils/finance';
+import { cardRate, cardSplit, PAYMENTS_PER_YEAR } from '../utils/finance';
 import { formatCurrency } from '../utils/helpers';
 import { Card, Section, Field, Stat, EmptyState } from './shared/ui';
 
@@ -21,18 +21,20 @@ export default function Payoff() {
   const debts = useMemo(() => {
     const out = [];
     for (const l of d.loans || []) {
-      if (!(Number(l.balance) > 0) || l.on_card_id || (l.loan_type === 'mortgage' && !withMortgage)) continue;
+      // A plan inside a card is a debt of its own, with its own rate and payment; the card below counts only the rest.
+      if (!(Number(l.balance) > 0) || (l.loan_type === 'mortgage' && !withMortgage)) continue;
       // With no payment known there is nothing to plan from; it is named below instead.
       if (!(Number(l.payment_amount) > 0)) continue;
       const perYear = PAYMENTS_PER_YEAR[l.frequency || 'monthly'] || 12;
       out.push({ id: `loan:${l.id}`, name: l.name, balance: Number(l.balance), rate: Number(l.interest_rate) || 0, min: round2((Number(l.payment_amount) || 0) * perYear / 12) });
     }
     for (const c of d.creditCards || []) {
-      const bal = Number(c.balance) || 0;
+      const split = cardSplit(c, d.loans || []);
+      const bal = split.rest;
       if (c.is_gift_card || !(bal > 0)) continue;
       // A card that pays itself in full each month carries no debt.
       if (c.connected_payment_source && (c.autopay_mode || 'statement') === 'statement') continue;
-      out.push({ id: `card:${c.id}`, name: c.name, balance: bal, rate: cardRate(c, today), min: Number(c.minimum_payment) || Math.min(bal, Math.max(10, round2(bal * 0.03))) });
+      out.push({ id: `card:${c.id}`, name: c.name, balance: bal, rate: cardRate(c, today), min: Math.max(0, round2((Number(c.minimum_payment) || 0) - split.payments)) || Math.min(bal, Math.max(10, round2(bal * 0.03))) });
     }
     return out;
   }, [d.loans, d.creditCards, withMortgage, today]);

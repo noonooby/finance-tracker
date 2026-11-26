@@ -17,6 +17,7 @@ function Holdings({ row, onDone }) {
   const [form, setForm] = useState({ symbol: '', units: '' });
   const [choices, setChoices] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [units, setUnits] = useState(null);           // { i, value } while the units of one holding are being changed
   const list = Array.isArray(row.holdings) ? row.holdings : [];
   const save = async (holdings, cash) => {
     setBusy(true);
@@ -42,7 +43,13 @@ function Holdings({ row, onDone }) {
     <div className="mt-2 space-y-1.5">
       {list.map((h, i) => (
         <div key={`${h.symbol || h.name}-${i}`} className="flex items-baseline gap-2 text-sm">
-          <span className="min-w-0 flex-1 truncate">{h.symbol || h.shown || h.name} <span className="text-xs text-muted">{h.units ? `${h.units} units` : ''}{h.symbol && h.price ? ` at ${h.price} ${h.currency || ''}` : ''}{!h.symbol ? ' · no market price, kept as given' : !h.live ? ' · last price' : ''}</span></span>
+          <span className="min-w-0 flex-1 truncate">{h.symbol || h.shown || h.name} {units && units.i === i ? (
+            <form className="inline-flex items-center gap-2" onSubmit={async (e) => { e.preventDefault(); if (!(Number(units.value) > 0)) return showToast.error('Enter how many units you hold.'); if (await save(list.map((x, j) => ({ ...sent(x), ...(j === i ? { units: Number(units.value), value: null } : {}) })))) setUnits(null); }}>
+              <input className="w-24 px-2 py-1 border rounded-lg border-line bg-surface-2 text-fg text-sm" type="number" step="any" inputMode="decimal" value={units.value} onChange={(e) => setUnits({ i, value: e.target.value })} aria-label={`Units of ${h.symbol || h.name}`} autoFocus />
+              <button type="submit" disabled={busy} className="text-xs font-medium text-accent">Save</button>
+              <button type="button" className="text-xs text-muted" onClick={() => setUnits(null)}>Cancel</button>
+            </form>
+          ) : h.units ? <button type="button" className="text-xs text-accent" onClick={() => setUnits({ i, value: String(h.units) })}>{h.units} units</button> : null} <span className="text-xs text-muted">{h.symbol && h.price ? ` at ${h.price} ${h.currency || ''}` : ''}{!h.symbol ? ' · no market price, kept as given' : !h.live ? ' · last price' : ''}</span></span>
           <span className="tabular-nums shrink-0">{h.value != null ? formatCurrency(h.value) : ''}</span>
           <button type="button" disabled={busy} onClick={() => window.confirm(`Remove ${h.symbol || h.name} from ${row.name}?`) && save(list.filter((_, j) => j !== i).map(sent))} aria-label={`Remove ${h.symbol || h.name}`} className="text-muted"><X size={14} /></button>
         </div>

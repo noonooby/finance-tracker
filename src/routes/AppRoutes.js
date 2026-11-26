@@ -33,6 +33,7 @@ const Payoff = lazy(() => import('../components/Payoff'));
 const YearSummary = lazy(() => import('../components/YearSummary'));
 const CashCalendar = lazy(() => import('../components/CashCalendar'));
 const Room = lazy(() => import('../components/Room'));
+const TaxYears = lazy(() => import('../components/TaxYears'));
 const Everything = lazy(() => import('../components/Everything'));
 const CreditScore = lazy(() => import('../components/CreditScore'));
 
@@ -281,6 +282,7 @@ export function AppRoutes() {
         <Route path="/position" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Position} /></Suspense>} />
         <Route path="/investments" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Investments} /></Suspense>} />
         <Route path="/bills" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Bills} /></Suspense>} />
+        <Route path="/tax" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={TaxYears} /></Suspense>} />
         <Route path="/room" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Room} /></Suspense>} />
         <Route path="/holdings" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={Everything} /></Suspense>} />
         <Route path="/year" element={<Suspense fallback={<LoadingFallback />}><ThemedPage Page={YearSummary} /></Suspense>} />

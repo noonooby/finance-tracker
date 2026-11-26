@@ -8,6 +8,7 @@ import { formatCurrency, formatDate, generateId } from '../utils/helpers';
 import { loadPending, savePending, clearPending } from '../utils/pendingScan';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { suggestCategoryId } from '../utils/categoryRules';
+import { TAX_FIELDS } from '../utils/room';
 import { Camera, Image as ImageIcon } from 'lucide-react';
 
 // The part of a picture a question is about: a strip around the line, with the line marked when its place is known.
@@ -115,6 +116,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   // What accounts hold (so their value follows the market) and contribution room stated by the tax agency.
   const [heldDrafts, setHeldDrafts] = useState([]);
   const [roomDrafts, setRoomDrafts] = useState([]);
+  const [taxDraft, setTaxDraft] = useState(null);
   const [removals, setRemovals] = useState({});
   const [open, setOpen] = useState(null);
   const [done, setDone] = useState(null);
@@ -188,7 +190,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const advance = (readIt) => {
     const [next, ...rest] = queueRef.current;
     putQueue(rest); setNoteOpen(false);
-    setProposal(null); setDrafts([]); setRows([]); setFixes([]); setLoanDrafts([]); setInvDrafts([]); setHeldDrafts([]); setRoomDrafts([]); setScoreDraft(null); setChanges([]); setBillDrafts([]); setError(''); setResumed(false);
+    setProposal(null); setDrafts([]); setRows([]); setFixes([]); setLoanDrafts([]); setInvDrafts([]); setHeldDrafts([]); setRoomDrafts([]); setTaxDraft(null); setScoreDraft(null); setChanges([]); setBillDrafts([]); setError(''); setResumed(false);
     if (!next) { setImage(null); setNote(''); clearPending(); return; }
     setImage(next.image); setNote(next.note || '');
     savePending({ queue: rest, image: next.image, note: next.note || '' });
@@ -370,8 +372,9 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       setInvDrafts((p.new_investments || []).map((x) => ({ ...x, on: true, balance: x.balance == null ? '' : String(x.balance) })));
       setHeldDrafts((p.holdings_updates || []).map((h) => ({ ...h, on: true })));
       setRoomDrafts((p.tax_room || []).map((r) => ({ ...r, on: true })));
+      setTaxDraft(p.tax_year ? { ...p.tax_year, on: !p.tax_year.same } : null);
       setScoreDraft(p.credit_score ? { on: !p.credit_score.same, bureau: p.credit_score.bureau || '', score: String(p.credit_score.score), date: p.credit_score.date || new Date().toLocaleDateString('en-CA') } : null);
-      setLoanDrafts((p.new_loans || []).map((l) => ({ ...l, on: true, balance: l.balance == null ? '' : String(l.balance), payment_amount: l.payment_amount == null ? '' : String(l.payment_amount),
+      setLoanDrafts((p.new_loans || []).map((l) => ({ ...l, on_card_ref: l.on_card ? (String(l.on_card.id).startsWith('new:') ? l.on_card.id : `credit_card:${l.on_card.id}`) : '', on: true, balance: l.balance == null ? '' : String(l.balance), payment_amount: l.payment_amount == null ? '' : String(l.payment_amount),
         next_payment_date: l.next_payment_date || '', interest_rate: l.interest_rate == null ? '' : String(l.interest_rate) })));
       setRemovals({}); setEdit({});
   }
@@ -493,7 +496,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       try {
         const owed = Math.round((Number(l.balance) || 0) * 100) / 100;
         const { error: e } = await server.from('loans').insert({ id: generateId(), name: l.name.trim(), principal: owed, balance: owed, interest_rate: Number(l.interest_rate) || 0,
-          loan_type: l.loan_type || 'loan', payment_amount: Math.round((Number(l.payment_amount) || 0) * 100) / 100, frequency: l.frequency || 'monthly', next_payment_date: /^\d{4}-\d{2}-\d{2}$/.test(l.next_payment_date || '') ? l.next_payment_date : null,
+          loan_type: l.loan_type || 'loan', on_card_id: (() => { const r = l.on_card_ref ? (realRef[l.on_card_ref] || l.on_card_ref) : ''; return r.startsWith('credit_card:') ? r.slice(12) : null; })(), payment_amount: Math.round((Number(l.payment_amount) || 0) * 100) / 100, frequency: l.frequency || 'monthly', next_payment_date: /^\d{4}-\d{2}-\d{2}$/.test(l.next_payment_date || '') ? l.next_payment_date : null,
           fee_percent: 0, setup_fee: 0, alert_days: 3, recurring_duration_type: 'indefinite', recurring_occurrences_completed: 0, from_screenshot: proposal.source_id, created_at: new Date().toISOString() });
         if (e) throw new Error(e.message);
         result.created.push(l.name);
@@ -512,6 +515,16 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
     for (const h of heldDrafts.filter((v) => v.on)) {
       try { await api('/api/holdings', { id: h.id, holdings: h.holdings, ...(h.cash != null ? { cash: h.cash } : {}) }); result.created.push(`what ${h.name} holds`); }
       catch (err) { result.failed.push(`${h.name}: ${err.message}`); }
+    }
+    if (taxDraft && taxDraft.on) {
+      try {
+        // Only what this picture shows is written, so figures from an earlier picture of the same year stay.
+        const { on: _on, same: _same, existing_id, ...row } = taxDraft;
+        const { error: e } = existing_id ? await server.from('tax_years').update(row).eq('id', existing_id)
+          : await server.from('tax_years').insert({ id: generateId(), ...row, from_screenshot: proposal.source_id, created_at: new Date().toISOString() });
+        if (e) throw new Error(e.message);
+        result.created.push(`tax year ${row.year}`);
+      } catch (err) { result.failed.push(`Tax year: ${err.message}`); }
     }
     if (roomDrafts.some((r) => r.on)) {
       try {
@@ -657,7 +670,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const showValue = (c, v) => (v == null ? 'not set' : c.kind === 'text' ? String(v) : c.kind === 'money' ? formatCurrency(v) : c.kind === 'later' ? (formatDate(v) || v) : `${v}%`);
   const invNeeds = (x) => (!x.on ? null : !x.name.trim() ? 'Enter a name' : null);
   const scoreNeeds = (x) => (!x || !x.on ? null : !(Number.isInteger(Number(x.score)) && Number(x.score) >= 300 && Number(x.score) <= 900) ? 'A score is a whole number from 300 to 900' : !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '') ? 'Choose the day' : null);
-  const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length + loanDrafts.filter((l) => l.on).length + invDrafts.filter((x) => x.on).length + heldDrafts.filter((x) => x.on).length + roomDrafts.filter((x) => x.on).length + (scoreDraft && scoreDraft.on ? 1 : 0) + changes.filter((c) => c.on).length + billDrafts.filter((b) => b.on).length;
+  const chosen = rows.filter((r) => r.on).length + fixes.length + drafts.filter((d) => d.on).length + loanDrafts.filter((l) => l.on).length + invDrafts.filter((x) => x.on).length + heldDrafts.filter((x) => x.on).length + roomDrafts.filter((x) => x.on).length + (taxDraft && taxDraft.on ? 1 : 0) + (scoreDraft && scoreDraft.on ? 1 : 0) + changes.filter((c) => c.on).length + billDrafts.filter((b) => b.on).length;
   const draftNeeds = (d) => (!d.on ? null : !d.name.trim() ? 'Enter a name' : null);
   const homelessRow = (r) => ['Choose the account', 'Choose the card', 'Choose both accounts'].includes(missing(r));
   const blocked = rows.filter((r) => r.on && missing(r) && !homelessRow(r)).length + drafts.filter(draftNeeds).length + loanDrafts.filter(loanNeeds).length + invDrafts.filter(invNeeds).length + (scoreNeeds(scoreDraft) ? 1 : 0) + billDrafts.filter(billNeeds).length;
@@ -999,6 +1012,20 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               <p className={`text-sm ${muted}`}>The account's value then follows the market price of each holding.</p>
             </section>
           )}
+          {taxDraft && (
+            <section className="space-y-2">
+              <h3 className="text-base font-semibold">Tax year</h3>
+              <div className="rounded-lg border p-3 space-y-1 border-line">
+                <label className="flex items-center gap-3 text-base font-medium">
+                  <input type="checkbox" className="w-5 h-5" checked={taxDraft.on} onChange={(e) => setTaxDraft({ ...taxDraft, on: e.target.checked })} />
+                  {taxDraft.existing_id ? `Add to your ${taxDraft.year} tax year` : `Keep your ${taxDraft.year} tax year`}
+                </label>
+                {TAX_FIELDS.filter(([k]) => taxDraft[k] != null).map(([k, label]) => <div key={k} className="flex justify-between gap-3 text-sm text-muted"><span>{label}</span><span className="tabular-nums">{formatCurrency(taxDraft[k])}</span></div>)}
+                {taxDraft.same && <p className={`text-sm ${muted}`}>The same figures are already on record.</p>}
+              </div>
+              <p className={`text-sm ${muted}`}>Kept under More, Tax years, where each figure can be changed.</p>
+            </section>
+          )}
           {roomDrafts.length > 0 && (
             <section className="space-y-2">
               <h3 className="text-base font-semibold">Contribution room</h3>
@@ -1074,7 +1101,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     <input type="checkbox" className="w-5 h-5" checked={l.on} onChange={(e) => setLoan(l.id, { on: e.target.checked })} />
                     Add {l.name}
                   </label>
-                  {l.on && <div className="flex items-center justify-between gap-3 text-sm text-muted"><span className="min-w-0 truncate">{`${l.balance !== '' ? `${formatCurrency(Number(l.balance))} owed` : 'Balance not known yet'}${Number(l.payment_amount) > 0 ? ` · ${formatCurrency(Number(l.payment_amount))} each payment` : ''}`}</span><button type="button" className="press shrink-0 font-medium text-accent" aria-expanded={!!edit[l.id]} onClick={() => setEdit((e) => ({ ...e, [l.id]: !e[l.id] }))}>{edit[l.id] ? 'Done' : 'Edit'}</button></div>}
+                  {l.on && <div className="flex items-center justify-between gap-3 text-sm text-muted"><span className="min-w-0 truncate">{`${l.on_card_ref ? 'Inside a card · ' : ''}${l.balance !== '' ? `${formatCurrency(Number(l.balance))} owed` : 'Balance not known yet'}${Number(l.payment_amount) > 0 ? ` · ${formatCurrency(Number(l.payment_amount))} each payment` : ''}`}</span><button type="button" className="press shrink-0 font-medium text-accent" aria-expanded={!!edit[l.id]} onClick={() => setEdit((e) => ({ ...e, [l.id]: !e[l.id] }))}>{edit[l.id] ? 'Done' : 'Edit'}</button></div>}
                   {l.on && (edit[l.id] || !!loanNeeds(l)) && (
                     <div className="grid grid-cols-2 gap-2">
                       <label className="block text-sm"><span className={muted}>Name</span>
@@ -1083,6 +1110,12 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                         <select className={input} value={l.loan_type} onChange={(e) => setLoan(l.id, { loan_type: e.target.value })}>
                           <option value="loan">Loan</option><option value="mortgage">Mortgage</option><option value="line_of_credit">Line of credit</option><option value="car_lease">Car lease or car loan</option>
                           <option value="bnpl">Pay later</option><option value="plan">Equal payment plan</option><option value="student">Student loan</option>
+                        </select></label>
+                      <label className="block text-sm col-span-2"><span className={muted}>Inside a card (its balance already includes this)</span>
+                        <select className={input} value={l.on_card_ref || ''} onChange={(e) => setLoan(l.id, { on_card_ref: e.target.value, ...(e.target.value ? { loan_type: 'plan' } : {}) })}>
+                          <option value="">No, a debt of its own</option>
+                          {creditCards.filter((c) => !c.is_gift_card).map((c) => <option key={c.id} value={`credit_card:${c.id}`}>{c.name}</option>)}
+                          {drafts.filter((x) => x.on && x.type === 'credit_card' && !x.gift).map((x) => <option key={x.id} value={x.id}>{x.name} (being added)</option>)}
                         </select></label>
                       <label className="block text-sm"><span className={muted}>Still owed</span>
                         <input className={input} type="number" step="0.01" min="0" inputMode="decimal" value={l.balance} onChange={(e) => setLoan(l.id, { balance: e.target.value })} /></label>

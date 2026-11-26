@@ -122,7 +122,10 @@ export default function Room() {
         <h1 className="text-2xl font-bold tracking-tight">Room left</h1>
         <p className="text-sm text-muted mt-1">How much more can go into each registered account. Give the room the tax agency shows once; what you record going in and out after that is counted for you.</p>
       </div>
-      <Button variant="secondary" onClick={() => navigate('/screenshot')}>Add a picture of your CRA account or notice</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={() => navigate('/screenshot')}>Add a picture of your CRA account or notice</Button>
+        <Button variant="secondary" onClick={() => navigate('/tax')}>Tax years</Button>
+      </div>
       {!facts && <Card><p className="text-sm text-muted">The yearly figures could not be loaded. Open this page once while connected.</p></Card>}
       {rows.map((r) => <Kind key={r.kind} kind={r.kind} r={r} stated={stated[r.kind]} onSave={save} />)}
 

@@ -173,6 +173,17 @@ export function cardRate(card, today = new Date()) {
   return Number(card.interest_rate) || 0;
 }
 
+// What a card's balance is made of: each payment plan inside it (a loan with on_card_id) and the rest, which is the
+// part that is charged the card's rate when carried. over: the plans add up to more than the card shows, so one of
+// the figures is out of date.
+export function cardSplit(card, loans = []) {
+  const bal = Math.max(0, Number(card && card.balance) || 0);
+  const plans = loans.filter((l) => card && l.on_card_id != null && l.on_card_id !== '' && String(l.on_card_id) === String(card.id) && Number(l.balance) > 0)
+    .map((l) => ({ id: l.id, name: l.name, balance: round2(Number(l.balance)), payment: round2((Number(l.payment_amount) || 0) * (PAYMENTS_PER_YEAR[l.frequency || 'monthly'] || 12) / 12), rate: Number(l.interest_rate) || 0, next: l.next_payment_date ? String(l.next_payment_date).slice(0, 10) : null }));
+  const inPlans = round2(plans.reduce((s, p) => s + p.balance, 0));
+  return { plans, inPlans, rest: round2(Math.max(0, bal - inPlans)), over: inPlans > bal ? round2(inPlans - bal) : 0, payments: round2(plans.reduce((s, p) => s + p.payment, 0)) };
+}
+
 // What carrying your debt costs in a month, line by line, roughly: card interest (none when autopay pays the full balance),
 // loan interest, overdraft interest and fees, and annual fees spread over the year.
 export function monthlyCost({ creditCards = [], loans = [], bankAccounts = [] }, today = new Date()) {
@@ -181,8 +192,7 @@ export function monthlyCost({ creditCards = [], loans = [], bankAccounts = [] },
   for (const c of creditCards) {
     if (c.is_gift_card) continue;
     const bal = Number(c.balance) || 0;
-    const inPlans = loans.filter((l) => String(l.on_card_id) === String(c.id)).reduce((s, l) => s + (Number(l.balance) || 0), 0);
-    const revolving = Math.max(0, bal - inPlans);
+    const revolving = bal > 0 ? cardSplit(c, loans).rest : 0;
     const paidInFull = c.connected_payment_source && (c.autopay_mode || 'statement') === 'statement';
     if (revolving > 0 && !paidInFull) add(c.name, revolving * cardRate(c, today) / 100 / 12, `interest at ${cardRate(c, today)}% if the balance is carried`);
     if (Number(c.annual_fee) > 0) add(c.name, Number(c.annual_fee) / 12, 'annual fee, per month');

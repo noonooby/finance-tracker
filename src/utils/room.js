@@ -88,3 +88,55 @@ export function rooms({ stated = {}, investments = [], transactions = [], facts,
   return ROOM_KINDS.filter((k) => have.has(k) || (stated[k] && stated[k].room != null && stated[k].room !== ''))
     .map((k) => ({ ...room(k, stated[k], movements(k, investments, transactions), facts, today), accounts: investments.filter((i) => String(i.kind || '').toUpperCase() === k) }));
 }
+
+// ---------- tax years: what the returns on record say, and what follows from them ----------
+export const TAX_FIELDS = [
+  ['total_income', 'Total income'], ['employment_income', 'Employment income'], ['net_income', 'Net income'], ['taxable_income', 'Taxable income'],
+  ['rrsp_deducted', 'RRSP deduction claimed'], ['pension_adjustment', 'Pension adjustment'], ['refund', 'Refund'], ['balance_owing', 'Balance owing'],
+  ['rrsp_limit_next', 'RRSP limit for the next year'], ['unused_rrsp', 'Unused RRSP contributions'], ['tuition_carry', 'Tuition carried forward'],
+];
+const has = (v) => v !== '' && v != null && Number.isFinite(Number(v));
+
+// The day a return is due: April 30 of the next year, moved to Monday on a weekend.
+export function filingDeadline(year) {
+  const d = new Date(Number(year) + 1, 3, 30);
+  if (d.getDay() === 6) d.setDate(d.getDate() + 2);
+  if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+  return d.toLocaleDateString('en-CA');
+}
+
+// What comes next, from the years on record. Every figure that is assumed is named with where it came from, and
+// each can be set by the person (assume: { earned, pa } for the current year).
+//   rrspNow: room('RRSP', ...) for today, when known.
+export function taxNext({ years = [], rrspNow = null, facts, today, assume = {} }) {
+  const now = Number(String(today).slice(0, 4));
+  const list = years.filter((y) => Number.isInteger(Number(y.year))).map((y) => ({ ...y, year: Number(y.year) })).sort((a, b) => b.year - a.year);
+  const last = list[0] || null;
+  const out = { years: list, last, missing: [], results: [], rrsp: null, due: [] };
+  if (list.length) {
+    const first = list[list.length - 1].year;
+    for (let y = first; y < now; y++) if (!list.some((x) => x.year === y)) out.missing.push(y);
+  } else out.missing.push(now - 1);
+  // Returns still to come: last year's while it is not on record, and this year's.
+  if (!list.some((x) => x.year === now - 1)) out.due.push({ year: now - 1, date: filingDeadline(now - 1), late: filingDeadline(now - 1) < today });
+  out.due.push({ year: now, date: filingDeadline(now), late: false });
+  // How the last returns ended, newest first.
+  out.results = list.filter((y) => has(y.refund) || has(y.balance_owing)).slice(0, 5).map((y) => ({ year: y.year, amount: round2(has(y.refund) && Number(y.refund) > 0 ? Number(y.refund) : -(Number(y.balance_owing) || 0)) }));
+  // Next year's RRSP room: what is unused now, plus 18% of this year's earned income up to the yearly limit, less the
+  // pension adjustment. Earned income and the pension adjustment are assumed the same as the last return unless set.
+  if (facts) {
+    const from = (field) => list.find((y) => has(y[field]));
+    const eRow = from('employment_income') || from('total_income');
+    const earned = has(assume.earned) ? Number(assume.earned) : eRow ? Number(has(eRow.employment_income) ? eRow.employment_income : eRow.total_income) : null;
+    const pRow = from('pension_adjustment');
+    const pa = has(assume.pa) ? Number(assume.pa) : pRow ? Number(pRow.pension_adjustment) : 0;
+    const cap = facts.rrsp[now + 1] != null ? facts.rrsp[now + 1] : null;
+    if (earned != null && cap != null) {
+      const adds = round2(Math.max(0, Math.min(earned * facts.rrsp_share, cap) - pa));
+      const base = rrspNow && rrspNow.known ? rrspNow.room : null;
+      out.rrsp = { year: now + 1, earned: round2(earned), earned_from: has(assume.earned) ? 'set by you' : `your ${eRow.year} return`, pa: round2(pa), pa_from: has(assume.pa) ? 'set by you' : pRow ? `your ${pRow.year} return` : 'none on record',
+        cap, adds, base, estimate: base == null ? null : round2(base + adds) };
+    }
+  }
+  return out;
+}
