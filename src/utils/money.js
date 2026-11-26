@@ -243,6 +243,10 @@ export function replaceTransaction(oldId, recordNew) {
   try { return recordNew(); } finally { pendingReplace = null; }
 }
 
+// Lines that were put on the wrong account go to the right one, of the same kind. lines: [{ id, from: 'bank_account:ID' }].
+// Moving them back is the same call the other way.
+export const moveLines = (lines, to) => api('/api/lines/move', { moves: lines.map((l) => ({ id: l.id, from: l.from })), to });
+
 // The balance you saw on a day (a screenshot, the bank app, counting cash). The server compares it with the app.
 // apply: the difference is recorded as an undoable adjustment and the day becomes the account's snapshot date, so lines
 // dated before it are kept as history and can't move today's balance again. Without apply a difference stays open to explain.

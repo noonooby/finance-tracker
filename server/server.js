@@ -562,6 +562,56 @@ function reverseInner(uid, id, b = {}) {
 }
 const reverse = (uid, id, b) => tx(() => reverseInner(uid, id, b));
 
+// ---------- lines on the wrong account ----------
+// body: { moves: [{ id, from: 'bank_account:ID' }], to: 'bank_account:ID' }, all or nothing.
+// Each line's part on one account goes to another of the same kind (bank to bank, card to card). What the line did to
+// the first balance is taken back and done to the second, each by the rule that already decides whether a line counts:
+// a line an account's snapshot covers is history there and moves nothing. The line stays one line, with its date and
+// amount, and keeps a record of where it was. Moving it back is the same step the other way.
+const REF_TABLE = { bank_account: 'bank_accounts', credit_card: 'credit_cards' };
+const SIDE_FIELDS = ['payment_method_id', 'card_id', 'to_account_id', 'from_account_id'];
+function moveLines(uid, b) {
+  const part = (v) => { const [type, ...rest] = String(v || '').split(':'); return [type, rest.join(':')]; };
+  const [tt, tid] = part(b.to);
+  const table = REF_TABLE[tt];
+  const moves = Array.isArray(b.moves) ? b.moves.slice(0, 500) : [];
+  if (!table || !tid) fail(400, 'Choose the account these belong to');
+  if (!moves.length) fail(400, 'Choose at least one line');
+  return tx(() => {
+    const to = selectRows(uid, { table, filters: [['id', 'eq', tid]], limit: 1 })[0];
+    if (!to) fail(404, 'That account no longer exists');
+    const out = [];
+    for (const m of moves) {
+      const t = selectRows(uid, { table: 'transactions', filters: [['id', 'eq', String((m && m.id) || '')]], limit: 1 })[0];
+      if (!t) fail(404, 'One of these lines no longer exists');
+      const what = `${String(t.description || 'This line').slice(0, 40)}`;
+      const [ft, fid] = part(m.from);
+      if (ft !== tt) fail(400, `${what}: choose an account of the same kind as the one it is on`);
+      if (fid === tid) fail(400, `${what} is already on ${to.name}`);
+      if (t.status === 'undone' || t.status === 'deleted') fail(409, `${what} was undone, so there is nothing to move`);
+      if (t.type === 'adjustment') fail(409, 'A balance correction belongs to its account. Undo it from Activity instead.');
+      const on = (l, id) => l && l.table === table && String(l.id) === id;
+      const real = (t._legs || []).filter((l) => on(l, fid)), hist = (t.history_only || []).filter((l) => on(l, fid));
+      const named = SIDE_FIELDS.filter((k) => t[k] != null && String(t[k]) === fid);
+      if (!real.length && !hist.length && !named.length) fail(409, `${what} is not on that account`);
+      if ([...(t._legs || []), ...(t.history_only || [])].some((l) => on(l, tid)) || SIDE_FIELDS.some((k) => t[k] != null && String(t[k]) === tid)) fail(409, `${what} already has ${to.name} on its other side`);
+      applyLegs(uid, real.map((l) => ({ ...l, delta: -l.delta })), t);
+      const done = applyLegs(uid, [...real.map((l) => ({ table, id: tid, field: l.field, delta: l.delta })), ...hist.map((h) => ({ table, id: tid, delta: h.amount }))], t);
+      const n = { ...t, updated_at: now() };
+      n._legs = [...(t._legs || []).filter((l) => !on(l, fid)), ...done.filter((d) => d.history_only == null).map(({ table: tb, id, field, delta }) => ({ table: tb, id, field, delta }))];
+      const history = [...(t.history_only || []).filter((l) => !on(l, fid)), ...done.filter((d) => d.history_only != null).map((d) => ({ table: d.table, id: d.id, amount: d.history_only }))];
+      if (history.length) n.history_only = history; else delete n.history_only;
+      for (const k of named) n[k] = tid;
+      if (named.includes('payment_method_id')) n.payment_method_name = to.name;
+      n.moved = [...(Array.isArray(t.moved) ? t.moved : []).slice(-9), { from: fid, to: tid, at: now() }];
+      db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), 'transactions', String(t.id), uid);
+      out.push({ id: t.id, from: `${ft}:${fid}` });
+    }
+    const after = selectRows(uid, { table, filters: [['id', 'eq', tid]], limit: 1 })[0];
+    return { moved: out, to: { ref: `${tt}:${tid}`, name: to.name, balance: after ? after.balance : null } };
+  });
+}
+
 // ---------- snapshots: the balance you saw, on a day ----------
 // body: { table, id | key, value, date?, source?, apply? }
 //  - records what the account showed and how far the app was from it (gap)
@@ -882,6 +932,7 @@ route('POST', '/api/restore-all', (req, b) => {
   });
 });
 route('POST', '/api/transactions/:id/reverse', (req, b, [id]) => reverse(authUser(req).id, id, b));
+route('POST', '/api/lines/move', (req, b) => moveLines(authUser(req).id, b));
 // Which build of the screens the server is handing out (the name of its main script), so an open app can tell it is behind.
 let buildName = null;
 const build = () => {

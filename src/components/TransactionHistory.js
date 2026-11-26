@@ -408,7 +408,7 @@ export default function TransactionHistory({
   return (
     <div className="space-y-4">
       {editing && (
-        <EditTransaction transaction={editing} categories={categories} bankAccounts={bankAccounts} creditCards={creditCards} loans={loans}
+        <EditTransaction transaction={editing} transactions={transactions} categories={categories} bankAccounts={bankAccounts} creditCards={creditCards} loans={loans}
           onClose={() => setEditing(null)} onSaved={async () => { await onUpdate(); await loadTransactions(); }} />
       )}
       {/* Add Transaction Modal */}

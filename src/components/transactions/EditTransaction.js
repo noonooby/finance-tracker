@@ -4,6 +4,7 @@ import { server } from '../../utils/server';
 import { recordExpense, replaceTransaction } from '../../utils/money';
 import { showToast } from '../../utils/toast';
 import { Button, Field } from '../shared/ui';
+import MoveLine, { canMove } from '../shared/MoveLine';
 
 // Changing a saved line. The description, category and notes change in place. For a plain purchase the amount, date
 // and account can change too: the server takes the old line back and records the new one in one step, so the balances
@@ -13,7 +14,8 @@ export const plainPurchase = (t, creditCards = []) => !!t && t.type === 'expense
   && (t.payment_method === 'bank_account' || t.payment_method === 'credit_card') && t.payment_method_id != null
   && !(t.payment_method === 'credit_card' && (creditCards.find((c) => String(c.id) === String(t.payment_method_id)) || {}).is_gift_card);
 
-export default function EditTransaction({ transaction: t, categories = [], bankAccounts = [], creditCards = [], loans = [], onClose, onSaved }) {
+export default function EditTransaction({ transaction: t, transactions = [], categories = [], bankAccounts = [], creditCards = [], loans = [], onClose, onSaved }) {
+  const [moving, setMoving] = useState(false);
   const money = plainPurchase(t, creditCards);
   const split = Array.isArray(t.splits) && t.splits.length > 0;
   const [v, setV] = useState({ description: t.description || '', notes: t.notes || '', category_id: t.category_id ? String(t.category_id) : '',
@@ -51,6 +53,7 @@ export default function EditTransaction({ transaction: t, categories = [], bankA
     } finally { setSaving(false); }
   };
 
+  if (moving) return <MoveLine line={t} transactions={transactions} bankAccounts={bankAccounts} creditCards={creditCards} onClose={() => setMoving(false)} onDone={async () => { await onSaved(); onClose(); }} />;
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label="Change this line" onClick={onClose}>
       <form onSubmit={save} onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-surface border border-line p-4 space-y-3">
@@ -74,9 +77,10 @@ export default function EditTransaction({ transaction: t, categories = [], bankA
             </Field>
           </>
         ) : (
-          <p className="text-xs text-muted">The amount, date and account of this kind of line stay as they are. To change them, delete the line and record it again.</p>
+          <p className="text-xs text-muted">The amount and date of this kind of line stay as they are. To change them, delete the line and record it again.</p>
         )}
         <Field label="Notes" value={v.notes} onChange={set('notes')} maxLength={200} />
+        {canMove(t, { bankAccounts, creditCards }) && <button type="button" className="press text-sm font-medium text-accent" onClick={() => setMoving(true)}>On the wrong account? Move it</button>}
         <div className="flex gap-2">
           <Button type="submit" loading={saving}>Save</Button>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>

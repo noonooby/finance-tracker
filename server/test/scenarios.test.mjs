@@ -1827,3 +1827,41 @@ test('a picture names its bank: accounts at another bank are never meant, and a 
   assert.equal(both[1].account, null);
   assert.equal(both[1].bank, 'Wealthsimple');
 });
+
+test('a line on the wrong account moves to the right one: both balances follow, history stays history, and it moves back', async () => {
+  const mk = async (name) => { const id = 'mv' + name; await db.from('bank_accounts').insert({ id, name: 'Move ' + name, balance: 100, account_type: 'checking', created_at: new Date().toISOString() }); return id; };
+  const a = await mk('a'), b = await mk('b'), c = await mk('c');
+  const acc = await accounts();
+  const inc = await M.recordIncome({ amount: 30, target: `bank_account:${a}`, date: '2026-11-19', source_name: 'EFT Deposit' }, acc);
+  const out = await M.recordTransfer({ amount: 20, from: `bank_account:${a}`, to: 'outside', date: '2026-11-19', description: 'Transfer out' }, acc);
+  assert.equal((await get('bank_accounts', a)).balance, 110);
+  // Income and a transfer, which could not be moved before.
+  const r = await M.moveLines([{ id: inc.transaction.id, from: `bank_account:${a}` }, { id: out.transaction.id, from: `bank_account:${a}` }], `bank_account:${b}`);
+  assert.equal(r.moved.length, 2);
+  assert.equal((await get('bank_accounts', a)).balance, 100);
+  assert.equal((await get('bank_accounts', b)).balance, 110);
+  const moved = await get('transactions', inc.transaction.id);
+  assert.equal(moved.payment_method_id, b);
+  assert.equal(moved.payment_method_name, 'Move b');
+  assert.equal(moved.moved[0].from, a);
+  // Undo still puts the money back on the account the line is on now.
+  await M.reverseTransaction(out.transaction.id);
+  assert.equal((await get('bank_accounts', b)).balance, 130);
+  // An account whose balance was seen on a later day already counts the line: it becomes history there.
+  await M.recordSnapshot({ target: `bank_account:${c}`, value: 100, date: '2026-11-25' });
+  await M.moveLines([{ id: inc.transaction.id, from: `bank_account:${b}` }], `bank_account:${c}`);
+  assert.equal((await get('bank_accounts', b)).balance, 100);
+  assert.equal((await get('bank_accounts', c)).balance, 100);
+  assert.deepEqual((await get('transactions', inc.transaction.id)).history_only, [{ table: 'bank_accounts', id: c, amount: 30 }]);
+  // And back again to an account with no such day: it counts once more.
+  await M.moveLines([{ id: inc.transaction.id, from: `bank_account:${c}` }], `bank_account:${a}`);
+  assert.equal((await get('bank_accounts', a)).balance, 130);
+  assert.equal((await get('transactions', inc.transaction.id)).history_only, undefined);
+  // Refused: another kind of account, the same account, a line that is not there, all or nothing.
+  const card = (await accounts()).creditCards[0];
+  await assert.rejects(M.moveLines([{ id: inc.transaction.id, from: `bank_account:${a}` }], `credit_card:${card.id}`), /same kind/);
+  await assert.rejects(M.moveLines([{ id: inc.transaction.id, from: `bank_account:${a}` }], `bank_account:${a}`), /already on/);
+  await assert.rejects(M.moveLines([{ id: inc.transaction.id, from: `bank_account:${a}` }, { id: inc.transaction.id, from: `bank_account:${c}` }], `bank_account:${b}`), /not on that account|already/);
+  assert.equal((await get('bank_accounts', a)).balance, 130);
+  assert.equal((await get('bank_accounts', b)).balance, 100);
+});

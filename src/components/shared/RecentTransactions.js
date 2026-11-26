@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Settings } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/helpers';
+import { effectOn } from '../../utils/lines';
+import { useFinanceData } from '../../hooks/useFinanceData';
+import MoveLine, { canMove } from './MoveLine';
 import { getCardTransactions, getLoanTransactions, getBankAccountTransactions } from '../../utils/db';
 import {
   getUserPreferences,
@@ -29,6 +32,9 @@ export default function RecentTransactions({
   const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [moving, setMoving] = useState(null);
+  const { bankAccounts = [], creditCards = [], transactions: everyLine = [], loadAllData } = useFinanceData();
+  const ref = entityType === 'bank_account' ? `bank_account:${entityId}` : entityType === 'card' ? `credit_card:${entityId}` : null;
 
   // Load preferences on mount
   useEffect(() => {
@@ -129,29 +135,6 @@ export default function RecentTransactions({
     }
   };
 
-  const getTransactionColor = (txn) => {
-    // Special case: Loan payment from credit card
-    if (txn.type === 'payment' && txn.loan_id && txn.card_id && entityType === 'card') {
-      return 'text-red-600'; // Charge to card (increases debt)
-    }
-    
-    // Payment transactions reduce balance (green/negative)
-    if (txn.type === 'payment') {
-      return 'text-green-600';
-    }
-    
-    // For bank accounts, deposits are positive (green), withdrawals are negative (red)
-    if (entityType === 'bank_account') {
-      if (txn.type === 'income' || txn.type === 'cash_deposit' || txn.type === 'transfer_in') {
-        return 'text-green-600';
-      }
-      return 'text-red-600';
-    }
-    
-    // For cards and loans, expenses increase balance (red/positive)
-    return 'text-red-600';
-  };
-
   const getTransactionSign = (txn) => {
     // Special case: Loan payment from credit card
     if (txn.type === 'payment' && txn.loan_id && txn.card_id && entityType === 'card') {
@@ -243,28 +226,32 @@ export default function RecentTransactions({
             <div className={`text-xs text-center py-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
               No recent transactions
             </div>
-          ) : (
-            transactions.map(txn => (
-              <div 
-                key={txn.id} 
-                className={`flex justify-between items-center text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                <div className="flex-1 truncate mr-2">
-                  <div className="truncate">
-                    {txn.description || txn.category_name || txn.income_source || txn.type}
+          ) : (<>
+            {ref && <p className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Tap a line that is on the wrong account to move it.</p>}
+            {transactions.map(txn => {
+              // What the line did to this account decides its sign: money in or out of a bank account, more or less owed on a card or loan.
+              const did = effectOn(txn, entityType, entityId);
+              const up = did != null ? did >= 0 : getTransactionSign(txn) === '+';
+              const good = entityType === 'bank_account' ? up : !up;
+              const movable = ref && canMove(txn, { bankAccounts, creditCards });
+              const Row = movable ? 'button' : 'div';
+              return (
+                <Row key={txn.id} {...(movable ? { type: 'button', onClick: () => setMoving(txn), 'aria-label': `${txn.description || 'Line'}: wrong account?` } : {})}
+                  className={`w-full flex justify-between items-center text-left text-xs ${movable ? 'press rounded-lg -mx-1 px-1 py-0.5' : ''} ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  <div className="flex-1 truncate mr-2">
+                    <div className="truncate">{txn.description || txn.category_name || txn.income_source || txn.type}</div>
+                    <div className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{formatDate(txn.date)}</div>
                   </div>
-                  <div className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {formatDate(txn.date)}
+                  <div className={`font-medium flex-shrink-0 ${good ? 'text-green-600' : 'text-red-600'}`}>
+                    {up ? '+' : '-'}{formatCurrency(Math.abs(did != null ? did : txn.amount))}
                   </div>
-                </div>
-                <div className={`font-medium flex-shrink-0 ${getTransactionColor(txn)}`}>
-                  {getTransactionSign(txn)}{formatCurrency(txn.amount)}
-                </div>
-              </div>
-            ))
-          )}
+                </Row>
+              );
+            })}
+          </>)}
         </div>
       )}
+      {moving && <MoveLine line={moving} from={ref} transactions={everyLine} bankAccounts={bankAccounts} creditCards={creditCards} onClose={() => setMoving(null)} onDone={async () => { await loadAllData(); await loadTransactions(); }} />}
     </div>
   );
 }
