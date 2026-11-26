@@ -8,6 +8,7 @@ import { recordSnapshot, resolveSnapshot } from '../../utils/money';
 import { position } from '../../utils/finance';
 import { rooms as roomsOf, taxNext } from '../../utils/room';
 import { issues } from '../../utils/issues';
+import { taxFactsNow, loadTaxFacts } from '../../utils/taxFacts';
 import { formatCurrency, localDate } from '../../utils/helpers';
 import { showToast } from '../../utils/toast';
 import { Picture } from './Picture';
@@ -16,8 +17,7 @@ import { Picture } from './Picture';
 // that work in place. utils/issues.js decides what is listed; this file draws it and carries the fixes out.
 
 // What the list needs beyond the accounts, loaded once and shared by every place that shows a block.
-const cached = () => { try { return JSON.parse(localStorage.getItem('tax_facts') || 'null'); } catch { return null; } };
-let state = { checks: [], snaps: [], quiet: {}, stated: {}, years: [], facts: cached(), ready: false };
+let state = { checks: [], snaps: [], quiet: {}, stated: {}, years: [], facts: taxFactsNow(), ready: false };
 let loading = null;
 const subs = new Set();
 const set = (next) => { state = { ...state, ...next }; subs.forEach((f) => f()); };
@@ -28,7 +28,7 @@ function refresh() {
       api('/api/checks', null, 'GET').catch(() => state.checks),
       server.from('settings').select('*').then((r) => r.data || []).catch(() => null),
       server.from('tax_years').select('*').then((r) => r.data || []).catch(() => state.years),
-      state.facts ? state.facts : api('/api/tax-facts', undefined, 'GET').catch(() => null),
+      loadTaxFacts(),
       server.from('snapshots').select('*').then((r) => r.data || []).catch(() => state.snaps),
     ]);
     const get = (k) => (settings ? ((settings.find((r) => r.key === k) || {}).value || {}) : null);

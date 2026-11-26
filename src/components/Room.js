@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFinanceData } from '../hooks/useFinanceData';
-import { server, api } from '../utils/server';
+import { server } from '../utils/server';
+import { useTaxFacts } from '../utils/taxFacts';
 import { room, movements, ROOM_KINDS } from '../utils/room';
-import { formatCurrency, localDate, parseDay } from '../utils/helpers';
+import { formatCurrency, localDate, longDay as day } from '../utils/helpers';
 import { showToast } from '../utils/toast';
-import { Card, Section, Button } from './shared/ui';
+import { Card, Section, Button, Line } from './shared/ui';
 
 // Room left in the TFSA, RRSP and FHSA: one figure from the tax agency for each, then the sums follow what is
 // recorded going in and out. Nothing here is advice; it is arithmetic on the published rules.
@@ -15,12 +16,6 @@ const WHERE = {
   RRSP: 'Your notice of assessment shows your RRSP deduction limit for the year.',
   FHSA: 'Your CRA account or notice of assessment shows your FHSA participation room.',
 };
-const day = (d) => { const x = parseDay(d); return x ? x.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : d; };
-const cached = () => { try { return JSON.parse(localStorage.getItem('tax_facts') || 'null'); } catch { return null; } };
-
-function Line({ label, value }) {
-  return <div className="flex items-baseline justify-between gap-3 text-sm"><span className="text-muted">{label}</span><span className="tabular-nums text-right">{value}</span></div>;
-}
 
 function Kind({ kind, r, stated, onSave }) {
   const [edit, setEdit] = useState(false);
@@ -93,7 +88,7 @@ function Kind({ kind, r, stated, onSave }) {
 export default function Room() {
   const { investments = [], transactions = [] } = useFinanceData();
   const navigate = useNavigate();
-  const [facts, setFacts] = useState(cached);
+  const facts = useTaxFacts();
   const [stated, setStated] = useState({});
   const today = localDate();
 
@@ -101,10 +96,7 @@ export default function Room() {
     const { data } = await server.from('settings').select('*').eq('key', 'tax_room').maybeSingle();
     setStated((data && data.value) || {});
   }, []);
-  useEffect(() => {
-    load().catch(() => {});
-    api('/api/tax-facts', undefined, 'GET').then((f) => { setFacts(f); try { localStorage.setItem('tax_facts', JSON.stringify(f)); } catch { /* shown without being kept */ } }).catch(() => {});
-  }, [load]);
+  useEffect(() => { load().catch(() => {}); }, [load]);
 
   const save = async (kind, value) => {
     const next = { ...stated, [kind]: value };

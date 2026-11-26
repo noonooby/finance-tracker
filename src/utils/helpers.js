@@ -305,3 +305,6 @@ export function defaultBankAccount(bankAccounts) {
   const list = bankAccounts || [];
   return list.find((a) => a.is_primary) || list.find((a) => a.account_type !== 'cash') || list[0] || null;
 }
+
+// A day written out in full, for example November 26, 2026.
+export const longDay = (d) => { const x = parseDay(d); return x ? x.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : d; };

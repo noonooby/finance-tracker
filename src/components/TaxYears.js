@@ -2,18 +2,16 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
-import { server, api } from '../utils/server';
+import { server } from '../utils/server';
+import { useTaxFacts } from '../utils/taxFacts';
 import { room, movements, taxNext, TAX_FIELDS } from '../utils/room';
-import { formatCurrency, generateId, localDate, parseDay } from '../utils/helpers';
+import { formatCurrency, generateId, localDate, longDay as day } from '../utils/helpers';
 import { showToast } from '../utils/toast';
-import { Card, Section, Button, EmptyState } from './shared/ui';
+import { Card, Section, Button, EmptyState, Line } from './shared/ui';
 
 // Your tax years: what each return or notice of assessment said, and what follows from them. Each figure that is
 // assumed says where it came from and can be set by you. Sums on the published rules, not advice.
-const day = (d) => { const x = parseDay(d); return x ? x.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : d; };
-const cached = () => { try { return JSON.parse(localStorage.getItem('tax_facts') || 'null'); } catch { return null; } };
 const input = 'mt-1 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-fg';
-const Line = ({ label, value }) => <div className="flex items-baseline justify-between gap-3 text-sm"><span className="text-muted">{label}</span><span className="tabular-nums text-right">{value}</span></div>;
 
 function YearForm({ start, taken, onSave, onCancel }) {
   const [f, setF] = useState(() => ({ year: start.year || '', ...Object.fromEntries(TAX_FIELDS.map(([k]) => [k, start[k] == null ? '' : String(start[k])])) }));
@@ -49,7 +47,7 @@ export default function TaxYears() {
   const [years, setYears] = useState([]);
   const [stated, setStated] = useState({});
   const [assume, setAssume] = useState({});
-  const [facts, setFacts] = useState(cached);
+  const facts = useTaxFacts();
   const [editing, setEditing] = useState(null);       // a row id, or 'new'
   const [setting, setSetting] = useState(null);       // the assumptions form: { earned, pa }
   const today = localDate();
@@ -61,10 +59,7 @@ export default function TaxYears() {
     const get = (k) => ((s.data || []).find((r) => r.key === k) || {}).value || {};
     setStated(get('tax_room')); setAssume(get('tax_assume'));
   }, []);
-  useEffect(() => {
-    load().catch(() => {});
-    api('/api/tax-facts', undefined, 'GET').then((f) => { setFacts(f); try { localStorage.setItem('tax_facts', JSON.stringify(f)); } catch { /* shown without being kept */ } }).catch(() => {});
-  }, [load]);
+  useEffect(() => { load().catch(() => {}); }, [load]);
 
   const mine = useMemo(() => assume[now] || {}, [assume, now]);
   const next = useMemo(() => taxNext({ years, rrspNow: facts ? room('RRSP', stated.RRSP, movements('RRSP', investments, transactions), facts, today) : null, facts, today, assume: mine }), [years, stated, investments, transactions, facts, today, mine]);

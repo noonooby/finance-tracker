@@ -110,6 +110,11 @@ export function Num({ value, format = formatCurrency }) {
   return <span className="tabular-nums">{format(shown)}</span>;
 }
 
+// A label with its figure on the right.
+export function Line({ label, value }) {
+  return <div className="flex items-baseline justify-between gap-3 text-sm"><span className="text-muted">{label}</span><span className="tabular-nums text-right">{value}</span></div>;
+}
+
 const TONES = { positive: 'text-positive', negative: 'text-negative', warning: 'text-warning', accent: 'text-accent' };
 
 export function Stat({ label, value, sub, tone, className }) {
