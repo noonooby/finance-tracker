@@ -8,6 +8,7 @@ import { formatCurrency, formatDate, generateId } from '../utils/helpers';
 import { loadPending, savePending, clearPending } from '../utils/pendingScan';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { pickCategory } from '../utils/categoryRules';
+import { Progress } from './shared/ui';
 import { planHome, looksLikePlan, knownLender, loanFor, lineFor } from '../utils/cards';
 import { recordLoanPayment } from '../utils/money';
 import { TAX_FIELDS } from '../utils/room';
@@ -802,7 +803,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   const showLine = (i) => { setOpen(i); setTimeout(() => { const el = document.getElementById(`scan-line-${i}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-24">
       <div>
         <h1 className={`text-2xl font-bold text-fg`}>Scan</h1>
         <p className={`text-sm ${muted}`}>
@@ -812,7 +813,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
 
       <div className={`border rounded-lg p-4 space-y-3 ${card}`}>
         {!aiReady && (
-          <p role="status" className="text-sm rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 px-3 py-2">
+          <p role="status" className="text-sm rounded-lg bg-warning/10 text-warning px-3 py-2">
             Reading photos needs a Gemini key. The owner of the app adds it once in Settings. Until then you can add transactions from Home.
           </p>
         )}
@@ -889,8 +890,9 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           </div>
         )}
         {reading && (
-          <div role="status" className="rounded-xl border border-line bg-surface-2 px-3 py-3 space-y-1">
-            <p className="font-medium">{readCount ? `Reading ${readCount.of} pictures: ${readCount.done} done` : 'Reading'} ({secs}s)</p>
+          <div role="status" className="rounded-2xl border border-line bg-surface px-4 py-4 space-y-2">
+            <Progress label={readCount ? `Reading ${readCount.of} pictures` : 'Reading'} value={readCount ? readCount.done : null} max={readCount ? readCount.of : null} />
+            <p className="text-xs text-muted tabular-nums">{secs}s</p>
             {secs >= 25 && <p className="text-sm text-muted">Still reading. A busy reading service is tried again by itself, which can take a minute or two.</p>}
           </div>
         )}
@@ -947,11 +949,11 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               })}
             </section>
           )}
-          {blocked > waiting.length && <p className="text-sm text-amber-600">{blocked - waiting.length === 1 ? 'One thing' : `${blocked - waiting.length} things`} to add below {blocked - waiting.length === 1 ? 'needs' : 'need'} a name: look for the amber text, or untick {blocked - waiting.length === 1 ? 'it' : 'them'}.</p>}
+          {blocked > waiting.length && <p className="text-sm text-warning">{blocked - waiting.length === 1 ? 'One thing' : `${blocked - waiting.length} things`} to add below {blocked - waiting.length === 1 ? 'needs' : 'need'} a name: look for the amber text, or untick {blocked - waiting.length === 1 ? 'it' : 'them'}.</p>}
           {elsewhere.map((g) => {
             const n = g.list.length, ys = g.list.map((r) => r.y).filter((v) => v != null);
             return (
-              <div key={g.key} className="rounded-xl border border-amber-500/50 p-3 space-y-3">
+              <div key={g.key} className="rounded-xl border border-warning/50 p-3 space-y-3">
                 <Picture url={picUrl(g.list[0].src)} y={ys.length ? ys.reduce((a, v) => a + v, 0) / ys.length : null} mark={n === 1} />
                 <div>
                   <p className="font-medium">{n === 1 ? 'One line is' : `${n} lines are`} already saved under {g.from.name}. This picture shows {n === 1 ? 'it' : 'them'} on {nameOf(g.to)}.</p>
@@ -1012,7 +1014,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               <p className={`text-xs ${muted}`}>Lines before your latest balance are added as history and don't change today's balance. The closing balance is checked against the app after saving.</p>
               {proposal.statement.not_on_statement.length > 0 && (
                 <div className="mt-2 space-y-1">
-                  <div className="font-medium text-amber-600">In the app for this period but not on the statement</div>
+                  <div className="font-medium text-warning">In the app for this period but not on the statement</div>
                   {proposal.statement.not_on_statement.map((t) => (
                     <label key={t.id} className="flex items-center gap-2 text-xs">
                       <input type="checkbox" checked={!!removals[t.id]} onChange={(e) => setRemovals((m) => ({ ...m, [t.id]: e.target.checked }))} />
@@ -1063,7 +1065,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                       )}
                     </div>
                   )}
-                  {draftNeeds(d) && <div className="text-xs text-amber-600">{draftNeeds(d)}</div>}
+                  {draftNeeds(d) && <div className="text-xs text-warning">{draftNeeds(d)}</div>}
                 </div>
               ))}
             </section>
@@ -1118,7 +1120,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                           <input className={input} type="date" value={b.next_date} onChange={(e) => setBill({ next_date: e.target.value })} /></label>
                       </div>
                     )}
-                    {billNeeds(b) && <div className="text-sm text-amber-600">{billNeeds(b)}</div>}
+                    {billNeeds(b) && <div className="text-sm text-warning">{billNeeds(b)}</div>}
                   </div>
                 );
               })}
@@ -1186,7 +1188,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                       <input className={input} type="date" value={scoreDraft.date} onChange={(e) => setScoreDraft({ ...scoreDraft, date: e.target.value })} /></label>
                   </div>
                 )}
-                {scoreNeeds(scoreDraft) && <div className="text-sm text-amber-600">{scoreNeeds(scoreDraft)}</div>}
+                {scoreNeeds(scoreDraft) && <div className="text-sm text-warning">{scoreNeeds(scoreDraft)}</div>}
               </div>
             </section>
           )}
@@ -1214,7 +1216,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                           <input className={input} type="number" step="0.01" inputMode="decimal" value={x.balance} placeholder="Not shown" onChange={(e) => setInv({ balance: e.target.value })} /></label>
                       </div>
                     )}
-                    {invNeeds(x) && <div className="text-sm text-amber-600">{invNeeds(x)}</div>}
+                    {invNeeds(x) && <div className="text-sm text-warning">{invNeeds(x)}</div>}
                   </div>
                 );
               })}
@@ -1270,13 +1272,13 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     </div>
                   )}
                   {l.on && l.known && <div className="text-xs text-muted">{l.known}</div>}
-                  {loanNeeds(l) && <div className="text-sm text-amber-600">{loanNeeds(l)}</div>}
+                  {loanNeeds(l) && <div className="text-sm text-warning">{loanNeeds(l)}</div>}
                 </div>
               ))}
             </section>
           )}
           {proposal.unknown_accounts.length > 0 && (
-            <p className="text-sm text-amber-600">Also on the screenshot but not added: {proposal.unknown_accounts.map((a) => a.name).join(', ')}.</p>
+            <p className="text-sm text-warning">Also on the screenshot but not added: {proposal.unknown_accounts.map((a) => a.name).join(', ')}.</p>
           )}
 
           <section className="space-y-1">
@@ -1298,7 +1300,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                           {formatDate(r.date) || r.date}{r.pending ? ', pending' : ''} · {KIND_TEXT[r.kind] || r.kind} · {lineSummary(r)}{cat ? ` · ${cat.name}` : ''}
                         </div>
                         {r.action !== 'record' && r.action !== 'choose_account' && <div className={`text-xs ${muted}`}>{r.why || STATUS_TEXT[r.action]}</div>}
-                        {need && (homelessRow(r) ? <div className={`text-xs ${muted}`}>No account yet: kept for later</div> : <div className="text-sm text-amber-600">{need}</div>)}
+                        {need && (homelessRow(r) ? <div className={`text-xs ${muted}`}>No account yet: kept for later</div> : <div className="text-sm text-warning">{need}</div>)}
                         {r.doubt && <div className="text-xs text-warning">The balance shown beside this line does not fit its amount. Check it against the picture.</div>}
                         {!r.on && r.why === 'Dated after today' && <div className={`text-xs ${muted}`}>Dated after today: tick it if it has happened</div>}
                         {historyOnly(r) && <div className={`text-xs ${muted}`}>Before your snapshot of {historyOnly(r)}: kept as history, today's balance does not change</div>}
@@ -1306,7 +1308,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                         {r.items && <div className={`text-xs ${muted}`}>{r.items.length} items from the receipt{receiptSplits(r).splits ? `, split into ${receiptSplits(r).splits.length} categories` : ''}. Open Edit to give items their own category.</div>}
                       </div>
                       <div className="text-right">
-                        <div className={r.kind === 'purchase' ? 'text-base font-semibold tabular-nums' : 'text-base font-semibold tabular-nums text-green-600'}>{formatCurrency(r.amount)}</div>
+                        <div className={r.kind === 'purchase' ? 'text-base font-semibold tabular-nums' : 'text-base font-semibold tabular-nums text-positive'}>{formatCurrency(r.amount)}</div>
                         {editable && <button type="button" className="press text-sm font-medium py-1 text-blue-600 dark:text-blue-400" onClick={() => setOpen(open === r.i ? null : r.i)} aria-expanded={open === r.i}>{open === r.i ? 'Done' : 'Edit'}</button>}
                       </div>
                     </div>
@@ -1393,20 +1395,20 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
 
       {big && createPortal(
         <div className="fixed inset-0 z-50 bg-black/90 flex flex-col" role="dialog" aria-modal="true" aria-label="The picture, large">
-          <div className="flex justify-end p-3">{(big === image?.url || queue.some((q) => q.image.url === big)) && <button type="button" className="press rounded-xl border border-white/60 text-white px-4 py-2 font-medium mr-2" onClick={() => { if (big === image.url) removePicture(); else { putQueue(queueRef.current.filter((q) => q.image.url !== big)); keepWaiting(); } setBig(null); }}>Remove</button>}<button type="button" className="press rounded-xl bg-white text-black px-4 py-2 font-medium" onClick={() => setBig(null)}>Close</button></div>
+          <div className="flex justify-end p-3">{(big === image?.url || queue.some((q) => q.image.url === big)) && <button type="button" className="press rounded-xl border border-white/60 text-white px-4 py-2 font-medium mr-2" onClick={() => { if (big === image.url) removePicture(); else { putQueue(queueRef.current.filter((q) => q.image.url !== big)); keepWaiting(); } setBig(null); }}>Remove</button>}<button type="button" className="press rounded-xl bg-surface text-black px-4 py-2 font-medium" onClick={() => setBig(null)}>Close</button></div>
           <div className="flex-1 overflow-auto px-2 pb-6" style={{ touchAction: 'pinch-zoom pan-x pan-y' }}><img src={big} alt="The picture, large" className="w-full max-w-3xl mx-auto" /></div>
         </div>
       , document.body)}
       {image && createPortal(
-        <div className="fixed inset-x-0 z-20 border-t border-line bg-background/95 backdrop-blur-md" style={{ bottom: 'calc(58px + env(safe-area-inset-bottom))' }}>
-          <div className="max-w-3xl mx-auto px-4 py-3 flex gap-2">
+        <div className="fixed inset-x-0 z-20 px-3 pointer-events-none" style={{ bottom: 'calc(6.25rem + env(safe-area-inset-bottom))' }}>
+          <div className="navbar pointer-events-auto max-w-md mx-auto rounded-3xl p-2 flex gap-2">
           <button type="button" onClick={() => readTogether(image, note, null, false, !!proposal)} disabled={reading || saving}
-            className={`press px-4 py-3 rounded-xl font-medium disabled:opacity-50 ${proposal ? 'border border-line bg-surface text-fg' : 'flex-1 bg-accent text-accent-contrast hover:opacity-90'}`}>
+            className={`press px-4 py-3 rounded-2xl font-semibold disabled:opacity-50 ${proposal ? 'border border-line bg-surface text-fg' : 'flex-1 bg-accent text-accent-contrast hover:opacity-90'}`}>
             {reading ? 'Reading...' : proposal ? 'Read again' : image.typed ? 'Read again' : queue.length > 0 ? `Start reading (${queue.length + 1} chosen)` : image.csv ? 'Read file' : image.pdf ? 'Read statement' : 'Read screenshot'}
           </button>
           {proposal && chosen - blocked <= 0 && (
             <button data-skip type="button" onClick={() => { setDone(null); advance(true); }} disabled={saving || reading}
-              className="press flex-1 px-4 py-3 rounded-xl bg-accent text-accent-contrast font-medium hover:opacity-90 disabled:opacity-50">
+              className="press flex-1 px-4 py-3 rounded-2xl bg-accent text-accent-contrast font-semibold hover:opacity-90 disabled:opacity-50">
               {queue.length > 0 ? `Skip to the next (${queue.length} waiting)` : 'Close'}
             </button>
           )}
@@ -1415,7 +1417,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           )}
           {proposal && chosen - blocked > 0 && (
             <button type="button" onClick={save} disabled={saving || reading}
-              className="press flex-1 px-4 py-3 rounded-xl bg-accent text-accent-contrast font-medium hover:opacity-90 disabled:opacity-50">
+              className="press flex-1 px-4 py-3 rounded-2xl bg-accent text-accent-contrast font-semibold hover:opacity-90 disabled:opacity-50">
               {saving ? 'Saving...' : `Save ${chosen - blocked} ${chosen - blocked === 1 ? 'item' : 'items'}`}
             </button>
           )}
@@ -1434,7 +1436,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           {done.held > 0 && <div className="mt-1">{done.held === 1 ? 'One line has' : `${done.held} lines have`} no account yet. {done.held === 1 ? 'It is' : 'They are'} kept under "Waiting for an account" and filed when a later picture shows it.</div>}
           {done.left > 0 && <div className="mt-1">{done.left === 1 ? 'One thing was' : `${done.left} things were`} left because a detail is missing. {done.left === 1 ? 'It stays' : 'They stay'} above until you fill {done.left === 1 ? 'it' : 'them'} in, or tap {queue.length > 0 ? 'Skip to the next' : 'Close'} to leave {done.left === 1 ? 'it' : 'them'}.</div>}
           {done.failed.length > 0 && (
-            <ul className="mt-2 text-red-600 list-disc pl-5">{done.failed.map((f) => <li key={f}>{f}</li>)}</ul>
+            <ul className="mt-2 text-negative list-disc pl-5">{done.failed.map((f) => <li key={f}>{f}</li>)}</ul>
           )}
           <div className={`mt-1 ${muted}`}>Each saved line can be undone from Transactions or Activity.</div>
         </div>

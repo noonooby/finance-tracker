@@ -16,49 +16,14 @@ export default function ToastContainer({ darkMode = false }) {
       containerClassName=""
       containerStyle={{}}
       toastOptions={{
-        // Global toast options
-        className: '',
         duration: 3000,
         style: {
-          borderRadius: '8px',
-          fontSize: '14px',
-          padding: '12px 16px',
-          maxWidth: '500px',
+          borderRadius: '18px', fontSize: '15px', fontWeight: 500, lineHeight: 1.35, padding: '12px 16px', maxWidth: '92vw',
+          background: 'rgb(var(--surface))', color: 'rgb(var(--text))', border: '1px solid rgb(var(--border))',
+          boxShadow: '0 16px 40px -16px rgb(var(--shadow) / .45)',
         },
-        
-        // Default options for success toasts
-        success: {
-          duration: 3000,
-          style: {
-            background: '#10B981',
-            color: '#fff',
-          },
-          iconTheme: {
-            primary: '#fff',
-            secondary: '#10B981',
-          },
-        },
-        
-        // Default options for error toasts
-        error: {
-          duration: 5000,
-          style: {
-            background: '#EF4444',
-            color: '#fff',
-          },
-          iconTheme: {
-            primary: '#fff',
-            secondary: '#EF4444',
-          },
-        },
-        
-        // Default options for loading toasts
-        loading: {
-          style: {
-            background: darkMode ? '#374151' : '#6B7280',
-            color: '#fff',
-          },
-        },
+        success: { duration: 3000, iconTheme: { primary: 'rgb(var(--positive))', secondary: 'rgb(var(--surface))' } },
+        error: { duration: 5000, iconTheme: { primary: 'rgb(var(--negative))', secondary: 'rgb(var(--surface))' } },
       }}
     />
   );

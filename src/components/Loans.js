@@ -455,21 +455,21 @@ export default function Loans({
           <button
             onClick={handleProcessDuePayments}
             disabled={isProcessing}
-            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base ${
+            className={`flex items-center gap-1.5 px-4 h-11 rounded-xl font-medium text-sm ${
               isProcessing
                 ? 'bg-surface-2 text-muted border border-line cursor-not-allowed'
                 : 'press bg-surface-2 text-fg border border-line hover:bg-line/60'
             }`}
             title="Process all overdue loans from all payment sources"
           >
-            {isProcessing ? 'Processing...' : 'Process Due Payments'}
+            {isProcessing ? 'Processing...' : 'Record payments due'}
           </button>
           <button
             onClick={() => (showAddForm ? resetForm() : setShowAddForm(true))}
-            className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 text-sm sm:text-base"
+            className="press flex items-center gap-1.5 bg-accent text-accent-contrast px-4 h-11 rounded-xl font-semibold text-sm"
           >
-            <Plus size={20} />
-            {showAddForm ? 'Cancel' : 'Add Loan'}
+            <Plus size={18} />
+            {showAddForm ? 'Cancel' : 'Add a loan'}
           </button>
         </div>
       </div>
@@ -564,12 +564,12 @@ export default function Loans({
                 /* DISPLAY MODE - Loan Info */
                 <>
               {/* Loan Header */}
-              <div className="flex justify-between items-start mb-3">
-                <div>
+              <div className="flex flex-wrap justify-between items-start gap-x-2 mb-3">
+                <div className="flex-1 min-w-[55%]">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-bold text-base sm:text-lg">{loan.name}</h3>
+                    <h3 className="font-semibold text-lg leading-snug">{loan.name}</h3>
                     {pinnedLoans.includes(loan.id) && (
-                      <Star size={16} className="text-yellow-500 fill-current" title="Pinned" />
+                      <Star size={16} className="text-warning fill-current" title="Pinned" />
                     )}
                     {loan.connected_payment_source && loan.connected_payment_source_id && (
                       <span className={`text-xs px-2 py-0.5 rounded ${
@@ -597,7 +597,7 @@ export default function Loans({
                   <PayoffSummary loan={loan} darkMode={darkMode} />
                   {loan.frequency && (
                     <div className={`text-xs text-muted mt-1`}>
-                      <span>Frequency: {formatFrequency(loan.frequency)}</span>
+                      <span>Paid {formatFrequency(loan.frequency)}</span>
                       {loan.recurring_duration_type && (
                         <span className="ml-2">
                           {loan.recurring_duration_type === 'until_date' && loan.recurring_until_date && (
@@ -612,55 +612,55 @@ export default function Loans({
                     </div>
                   )}
                 </div>
-                <div className="flex gap-1 sm:gap-2">
+                <div className="flex ml-auto -mr-2 shrink-0">
                   <button
                     onClick={() => handleTogglePin(loan.id)}
-                    className={`p-1.5 sm:p-2 rounded min-h-[44px] sm:min-h-0 flex items-center justify-center ${
+                    className={`icon-btn ${
                       pinnedLoans.includes(loan.id)
-                        ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
+                        ? 'text-warning hover:bg-surface-2'
                         : 'text-muted hover:bg-surface-2'
                     }`}
                     title={pinnedLoans.includes(loan.id) ? 'Unpin loan' : 'Pin loan'}
                   >
-                    <Star size={16} className={`sm:w-[18px] sm:h-[18px] ${pinnedLoans.includes(loan.id) ? 'fill-current' : ''}`} />
+                    <Star size={18} className={`${pinnedLoans.includes(loan.id) ? 'fill-current' : ''}`} />
                   </button>
                   <button
                     onClick={() => onNavigateToTransactions && onNavigateToTransactions({ loan: loan.id })}
-                    className={`p-2 text-accent hover:bg-accent-soft rounded`}
+                    className="icon-btn text-muted hover:bg-surface-2"
                     title="View transactions"
                   >
-                    <ListFilter size={16} className="sm:w-[18px] sm:h-[18px]" />
+                    <ListFilter size={18} />
                   </button>
                   <button 
                     onClick={() => handleEdit(loan)} 
-                    className={`p-2 text-accent hover:bg-accent-soft rounded`}
+                    className="icon-btn text-muted hover:bg-surface-2"
                   >
-                    <Edit2 size={16} className="sm:w-[18px] sm:h-[18px]" />
+                    <Edit2 size={18} />
                   </button>
                   <button 
                     onClick={() => handleDelete(loan.id)} 
-                    className={`p-2 text-negative hover:bg-negative/10 rounded`}
+                    className="icon-btn text-muted hover:bg-negative/10 hover:text-negative"
                   >
-                    <X size={16} className="sm:w-[18px] sm:h-[18px]" />
+                    <X size={18} />
                   </button>
                 </div>
               </div>
 
-              {/* Next Payment: nothing is due on a loan with nothing left to pay */}
+              {/* Next payment nothing is due on a loan with nothing left to pay */}
               {!(Number(loan.balance) > 0) && (
                 <div className="mb-3 text-sm pb-3 border-b border-line text-muted">Paid off</div>
               )}
               {loan.next_payment_date && Number(loan.balance) > 0 && (
                 <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b border-line`}>
-                  <span className={'text-muted'}>Next Payment:</span>
+                  <span className={'text-muted'}>Next payment</span>
                   <div className="text-right">
                     <div className="font-medium">{formatDate(loan.next_payment_date)}</div>
                     {getDaysUntil(loan.next_payment_date) !== null && (
                       <div className={`text-xs ${
                         getDaysUntil(loan.next_payment_date) < 0
-                          ? 'text-red-600 font-bold'
+                          ? 'text-negative font-bold'
                           : getDaysUntil(loan.next_payment_date) <= (loan.alert_days || 7) 
-                          ? 'text-red-600 font-semibold' 
+                          ? 'text-negative font-semibold' 
                           : 'text-muted'
                       }`}>
                         {getDaysUntil(loan.next_payment_date) < 0
@@ -683,11 +683,11 @@ export default function Loans({
                 entityName={loan.name}
               />
 
-              {/* Payment Form or Make Payment Button */}
+              {/* Payment Form or Make a payment Button */}
               <ActionButton
                 onClick={() => handleMakePayment(loan)}
                 variant="primary"
-                idleText="Make Payment"
+                idleText="Make a payment"
                 fullWidth
               />
             </>

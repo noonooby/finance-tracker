@@ -57,7 +57,7 @@ export default function AccountCard({ account, open, onToggle, isPinned, linkedL
               const setKeep = async (keep) => { const { error } = await server.from('bank_accounts').update({ keep_minimum: keep }).eq('id', account.id); if (error) showToast.error(error.message); else if (onChanged) onChanged(); };
               return (
                 <div className="rounded-xl bg-surface-2 px-3 py-2.5 space-y-1 text-xs">
-                  <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wide text-muted">
+                  <div className="flex items-center gap-1.5 text-[0.9375rem] font-semibold text-fg">
                     {t.pkg ? t.pkg.label : 'Fees'}
                     <Hint label="About these figures">{t.pkg ? `${t.pkg.note} ` : ''}{t.yours ? 'Figures you set on the account are used first. ' : 'These are the bank\'s published figures; change the account to set your own. '}The bank's own statement is the one that counts.</Hint>
                   </div>
@@ -76,7 +76,7 @@ export default function AccountCard({ account, open, onToggle, isPinned, linkedL
             )}
 
             <div className="space-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+              <div className="flex items-center gap-1.5 text-[0.9375rem] font-semibold text-fg">
                 Latest lines
                 <Hint label="About these lines">What went in and out of this account, newest first. A line that belongs to another account: tap it and choose the right one. Lines dated before the day the balance was last seen are kept as history and do not change it.</Hint>
               </div>

@@ -11,8 +11,8 @@ export function ProtectedRoute({ children }) {
 
   if (initializing) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="text-xl text-gray-600 dark:text-gray-400">Initializing...</div>
+      <div className="min-h-screen flex items-center justify-center bg-surface-2">
+        <div className="text-xl text-muted">Initializing...</div>
       </div>
     );
   }

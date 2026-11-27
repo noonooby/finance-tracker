@@ -1,32 +1,19 @@
 import React from 'react';
-import { TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { Card, Num } from '../shared/ui';
 
-export default function TransactionSummaryCards({ darkMode, totals, formatCurrency }) {
-  return (
-    <div className="grid grid-cols-3 gap-4">
-      <div className={`bg-surface rounded-2xl p-4`}>
-        <div className="flex items-center gap-2 text-green-600 mb-2">
-          <TrendingUp size={20} />
-          <span className="font-medium">Income</span>
-        </div>
-        <p className="text-2xl font-bold">{formatCurrency(totals.income)}</p>
-      </div>
-      
-      <div className={`bg-surface rounded-2xl p-4`}>
-        <div className="flex items-center gap-2 text-red-600 mb-2">
-          <TrendingDown size={20} />
-          <span className="font-medium">Expenses</span>
-        </div>
-        <p className="text-2xl font-bold">{formatCurrency(totals.expense)}</p>
-      </div>
-      
-      <div className={`bg-surface rounded-2xl p-4`}>
-        <div className="flex items-center gap-2 text-blue-600 mb-2">
-          <DollarSign size={20} />
-          <span className="font-medium">Payments</span>
-        </div>
-        <p className="text-2xl font-bold">{formatCurrency(totals.payment)}</p>
-      </div>
+// What the lines shown add up to: money in, money spent, and payments on cards and loans.
+export default function TransactionSummaryCards({ totals, formatCurrency }) {
+  const cell = (label, value, tone) => (
+    <div className="min-w-0 px-3 first:pl-0 last:pr-0">
+      <div className="text-xs text-muted">{label}</div>
+      <div className={`text-base font-semibold tabular-nums truncate ${tone}`}><Num value={value} format={formatCurrency} /></div>
     </div>
+  );
+  return (
+    <Card className="grid grid-cols-3 divide-x divide-line">
+      {cell('In', totals.income, 'text-positive')}
+      {cell('Spent', totals.expense, 'text-fg')}
+      {cell('Payments', totals.payment, 'text-accent')}
+    </Card>
   );
 }

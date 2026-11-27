@@ -145,7 +145,7 @@ export default function Investments({ darkMode }) {
               <div className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{r.name}</div>
-                  <div className={`text-xs ${!follows && f.stale ? 'text-amber-600 dark:text-amber-400' : muted}`}>{[r.kind, r.institution].filter(Boolean).join(' · ')} · {follows ? `follows the market${r.priced_at ? `, priced ${new Date(r.priced_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}` : `value ${r.balance_as_of ? `as of ${f.label}` : 'never updated'}${f.stale ? ' · out of date' : ''}`}</div>
+                  <div className={`text-xs ${!follows && f.stale ? 'text-warning' : muted}`}>{[r.kind, r.institution].filter(Boolean).join(' · ')} · {follows ? `follows the market${r.priced_at ? `, priced ${new Date(r.priced_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}` : `value ${r.balance_as_of ? `as of ${f.label}` : 'never updated'}${f.stale ? ' · out of date' : ''}`}</div>
                 </div>
                 <div className="text-right">
                   <div className="font-semibold tabular-nums">{formatCurrency(r.balance)}</div>

@@ -137,7 +137,7 @@ export default function CreditCards({
             }`}
             title="Process all overdue credit cards from connected payment sources"
           >
-            {a.isProcessing ? 'Processing...' : 'Process Due Payments'}
+            {a.isProcessing ? 'Processing...' : 'Record payments due'}
           </button>
           <button
             onClick={() => {
@@ -150,7 +150,7 @@ export default function CreditCards({
             className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base"
           >
             <Plus size={20} />
-            {a.showAddForm ? 'Cancel' : 'Add Card'}
+            {a.showAddForm ? 'Cancel' : 'Add a card'}
           </button>
         </div>
       </div>

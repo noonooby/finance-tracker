@@ -107,7 +107,7 @@ export default function AccountForm({
         <label className={labelClass(darkMode)}>Institution (Optional)</label>
         <input
           type="text"
-          placeholder="e.g., Chase, Bank of America"
+          placeholder="e.g., Scotiabank, Tangerine"
           value={formData.institution}
           onChange={(e) => set({ institution: e.target.value })}
           className={inputClass(darkMode)}

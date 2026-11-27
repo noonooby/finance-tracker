@@ -277,7 +277,7 @@ export default function GiftCardOperations({
 
         <div className={`p-3 rounded-2xl mb-4 bg-surface-2`}>
           <div className="text-sm text-muted">Current Balance</div>
-          <div className="text-2xl font-bold text-green-600">{formatCurrency(giftCard.balance)}</div>
+          <div className="text-2xl font-bold text-positive">{formatCurrency(giftCard.balance)}</div>
         </div>
 
         {/* Operation Type Toggle */}

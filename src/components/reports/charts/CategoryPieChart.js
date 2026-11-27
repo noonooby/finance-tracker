@@ -25,7 +25,7 @@ export default function CategoryPieChart({ data, darkMode }) {
       return (
         <div className={`bg-surface border-line p-3 rounded-2xl shadow-lg border`}>
           <p className="font-medium">{data.name}</p>
-          <p className="text-sm text-green-600 font-semibold">{formatCurrency(data.value)}</p>
+          <p className="text-sm text-positive font-semibold">{formatCurrency(data.value)}</p>
           <p className="text-xs text-muted">{((data.value / chartData.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%</p>
         </div>
       );

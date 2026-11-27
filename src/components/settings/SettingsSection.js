@@ -30,7 +30,7 @@ export default function SettingsSection({
   children
 }) {
   const cardBorder = danger ? ('border border-line') : '';
-  const chevronClass = danger ? 'text-red-600' : undefined;
+  const chevronClass = danger ? 'text-negative' : undefined;
 
   return (
     <div className={`bg-surface${cardBorder} rounded-lg overflow-hidden`}>
@@ -47,7 +47,7 @@ export default function SettingsSection({
             <h3 className="text-lg font-semibold">{title}</h3>
           </div>
         ) : (
-          <h3 className={`text-lg font-semibold${danger ? ' text-red-600' : ''}`}>{title}</h3>
+          <h3 className={`text-lg font-semibold${danger ? ' text-negative' : ''}`}>{title}</h3>
         )}
         {expanded ? <ChevronUp size={20} className={chevronClass} /> : <ChevronDown size={20} className={chevronClass} />}
       </button>

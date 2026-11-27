@@ -35,7 +35,7 @@ export function Picture({ id, url: given, label, y, mark }) {
     <>
       <button type="button" onClick={() => setBig(true)} aria-label={`Look at the whole picture${label ? `: ${label}` : ''}`} className="press relative block w-full h-28 overflow-hidden rounded-xl border border-line bg-surface-2 text-left">
         <img src={url} alt="" className="w-full h-full object-cover" style={{ objectPosition: `50% ${at == null ? 0 : at}%` }} />
-        {at != null && mark && <span aria-hidden="true" className="absolute inset-x-0 h-10 border-y-2 border-amber-500 bg-amber-400/20" style={{ top: `calc(${at}% - 20px)` }} />}
+        {at != null && mark && <span aria-hidden="true" className="absolute inset-x-0 h-10 border-y-2 border-warning/40 bg-amber-400/20" style={{ top: `calc(${at}% - 20px)` }} />}
         {label && <span className="absolute inset-x-0 bottom-0 px-2.5 py-1 text-[11px] font-medium text-white bg-gradient-to-t from-black/70 to-transparent">{label} · tap to open</span>}
       </button>
       {big && <Viewer url={url} onClose={() => setBig(false)} />}

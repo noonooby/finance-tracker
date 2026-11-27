@@ -134,7 +134,7 @@ export default function PaymentMethodAnalysis({
           </button>
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:bg-green-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:opacity-90 transition-colors"
           >
             <FileSpreadsheet size={18} />
             Export Excel
@@ -312,8 +312,8 @@ export default function PaymentMethodAnalysis({
                               </td>
                               <td className="py-2 px-3">
                                 <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                                  transaction.type === 'income' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                                  transaction.type === 'expense' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                                  transaction.type === 'income' ? 'bg-positive/10 text-positive' :
+                                  transaction.type === 'expense' ? 'bg-negative/10 text-negative' :
                                   'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                                 }`}>
                                   {transaction.type}

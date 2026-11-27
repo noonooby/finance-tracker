@@ -14,10 +14,10 @@ export function Card({ as: Tag = 'div', className, padded = true, children, ...r
 
 export function Section({ title, action, className, children }) {
   return (
-    <section className={cx('space-y-2', className)}>
+    <section className={cx('space-y-2.5', className)}>
       {(title || action) && (
         <div className="flex items-center justify-between gap-3 px-1">
-          {title && <h2 className="text-xs font-semibold uppercase tracking-wide text-muted min-w-0 truncate">{title}</h2>}
+          {title && <h2 className="text-[0.9375rem] font-semibold text-fg min-w-0 truncate">{title}</h2>}
           {action && <div className="shrink-0 text-right">{action}</div>}
         </div>
       )}
@@ -27,15 +27,15 @@ export function Section({ title, action, className, children }) {
 }
 
 const VARIANTS = {
-  primary: 'bg-accent text-accent-contrast hover:opacity-90',
+  primary: 'bg-accent text-accent-contrast hover:opacity-90 shadow-sm shadow-accent/30',
   secondary: 'bg-surface-2 text-fg border border-line hover:bg-line/60',
   ghost: 'bg-transparent text-accent hover:bg-accent-soft',
   danger: 'bg-negative text-white hover:opacity-90',
 };
 const SIZES = {
-  sm: 'text-sm px-3 py-1.5 min-h-[36px]',
-  md: 'text-sm px-4 py-2.5',
-  lg: 'text-base px-5 py-3',
+  sm: 'text-sm px-3.5 py-1.5 min-h-[40px] rounded-xl',
+  md: 'text-[0.9375rem] px-5 py-2.5 min-h-[48px] rounded-2xl',
+  lg: 'text-base px-6 py-3 min-h-[54px] rounded-2xl',
 };
 
 export function Button({ variant = 'primary', size = 'md', loading = false, disabled, className, children, type = 'button', ...rest }) {
@@ -45,7 +45,7 @@ export function Button({ variant = 'primary', size = 'md', loading = false, disa
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={cx(
-        'press inline-flex items-center justify-center gap-2 rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed',
+        'press inline-flex items-center justify-center gap-2 font-semibold disabled:opacity-45 disabled:cursor-not-allowed disabled:shadow-none',
         VARIANTS[variant] || VARIANTS.primary,
         SIZES[size] || SIZES.md,
         className
@@ -59,7 +59,7 @@ export function Button({ variant = 'primary', size = 'md', loading = false, disa
 }
 
 export const controlClass =
-  'w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-fg placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none';
+  'w-full rounded-2xl border border-line bg-surface-2 px-4 py-3 text-fg placeholder:text-muted focus:border-accent focus:bg-surface focus:ring-4 focus:ring-accent/15 outline-none';
 
 export function Field({ label, hint, error, as = 'input', id, className, children, ...rest }) {
   const autoId = useId();
@@ -67,8 +67,8 @@ export function Field({ label, hint, error, as = 'input', id, className, childre
   const Tag = as;
   const describedBy = error ? `${fieldId}-error` : hint ? `${fieldId}-hint` : undefined;
   return (
-    <div className={cx('space-y-1', className)}>
-      {label && <label htmlFor={fieldId} className="block text-sm font-medium text-fg">{label}</label>}
+    <div className={cx('space-y-1.5', className)}>
+      {label && <label htmlFor={fieldId} className="block text-sm font-medium text-muted">{label}</label>}
       <Tag
         id={fieldId}
         aria-invalid={error ? true : undefined}
@@ -79,7 +79,7 @@ export function Field({ label, hint, error, as = 'input', id, className, childre
         {children}
       </Tag>
       {error ? (
-        <p id={`${fieldId}-error`} className="text-xs text-negative">{error}</p>
+        <p id={`${fieldId}-error`} className="text-sm text-negative">{error}</p>
       ) : hint ? (
         <p id={`${fieldId}-hint`} className="text-xs text-muted">{hint}</p>
       ) : null}
@@ -112,7 +112,7 @@ export function Num({ value, format = formatCurrency }) {
 
 // A label with its figure on the right.
 export function Line({ label, value }) {
-  return <div className="flex items-baseline justify-between gap-3 text-sm"><span className="text-muted">{label}</span><span className="tabular-nums text-right">{value}</span></div>;
+  return <div className="flex items-baseline justify-between gap-3 text-sm py-0.5"><span className="text-muted">{label}</span><span className="tabular-nums text-right font-medium">{value}</span></div>;
 }
 
 const TONES = { positive: 'text-positive', negative: 'text-negative', warning: 'text-warning', accent: 'text-accent' };
@@ -121,7 +121,7 @@ export function Stat({ label, value, sub, tone, className }) {
   return (
     <div className={cx('min-w-0', className)}>
       <div className="text-xs text-muted">{label}</div>
-      <div className={cx('text-xl font-semibold tabular-nums truncate', TONES[tone] || 'text-fg')}>{value}</div>
+      <div className={cx('text-lg font-semibold tabular-nums truncate', TONES[tone] || 'text-fg')}>{value}</div>
       {sub && <div className="text-xs text-muted">{sub}</div>}
     </div>
   );
@@ -149,7 +149,7 @@ export function Hint({ label = 'What this means', align = 'left', children }) {
   return (
     <span ref={box} className="relative inline-flex align-middle">
       <button type="button" aria-label={label} aria-expanded={open} onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className="press grid place-items-center w-5 h-5 rounded-full border border-line text-[11px] font-semibold leading-none text-muted hover:text-accent hover:border-accent">?</button>
+        className="hint-btn press grid place-items-center w-[22px] h-[22px] rounded-full border border-line text-xs font-semibold leading-none text-muted hover:text-accent hover:border-accent">?</button>
       {open && (
         <span role="note" className={cx('page-enter absolute top-7 z-30 w-64 max-w-[80vw] rounded-xl border border-line bg-surface p-3 text-xs font-normal normal-case tracking-normal leading-relaxed text-fg shadow-lg', align === 'right' ? 'right-0' : 'left-0')}>
           {children}
@@ -171,13 +171,27 @@ export function EmptyState({ icon: Icon, title, text, action, className }) {
   return (
     <div className={cx('flex flex-col items-center text-center gap-2 px-6 py-10', className)}>
       {Icon && (
-        <span className="mb-1 grid place-items-center w-12 h-12 rounded-2xl bg-accent-soft text-accent">
-          <Icon size={22} aria-hidden="true" />
+        <span className="tick mb-1 grid place-items-center w-14 h-14 rounded-3xl bg-accent-soft text-accent">
+          <Icon size={26} aria-hidden="true" />
         </span>
       )}
-      {title && <p className="font-semibold text-fg">{title}</p>}
+      {title && <p className="text-lg font-semibold text-fg">{title}</p>}
       {text && <p className="text-sm text-muted max-w-sm">{text}</p>}
       {action && <div className="mt-2">{action}</div>}
+    </div>
+  );
+}
+
+// How far along counted work is: "3 of 8". With no count it is a moving bar, so waiting is seen to be working.
+export function Progress({ value, max, label, className }) {
+  const counted = Number(max) > 0 && value != null;
+  const pct = counted ? Math.max(0, Math.min(100, (Number(value) / Number(max)) * 100)) : 0;
+  return (
+    <div className={cx('space-y-1.5', className)}>
+      {label && <div className="flex items-baseline justify-between gap-3 text-sm"><span className="font-medium">{label}</span>{counted && <span className="text-muted tabular-nums">{value} of {max}</span>}</div>}
+      {counted
+        ? <div className="meter busy" role="progressbar" aria-valuemin={0} aria-valuemax={max} aria-valuenow={value}><span style={{ width: `${pct}%` }} /></div>
+        : <div className="loadbar rounded-full" role="progressbar" aria-label={label || 'Working'} />}
     </div>
   );
 }

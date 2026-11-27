@@ -59,7 +59,7 @@ export default function SaveFilterDialog({
           </div>
           
           {saveError && (
-            <div className="p-3 bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-lg text-sm">
+            <div className="p-3 bg-negative/10 text-negative rounded-lg text-sm">
               {saveError}
             </div>
           )}
@@ -76,7 +76,7 @@ export default function SaveFilterDialog({
           </button>
           <button
             onClick={onSave}
-            className="flex-1 px-4 py-2 press bg-accent text-accent-contrast rounded-lg hover:bg-green-700"
+            className="flex-1 px-4 py-2 press bg-accent text-accent-contrast rounded-lg hover:opacity-90"
           >
             Save Filter
           </button>

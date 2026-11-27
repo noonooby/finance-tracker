@@ -133,7 +133,7 @@ export default function CategorySelect({
       {/* Main Input */}
       <div className="relative">
         <div className={`flex items-center gap-2 w-full px-3 py-2 border rounded-lg cursor-text ${
-          darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+          darkMode ? 'bg-surface-2 border-line text-white' : 'bg-surface border-line text-fg'
         }`}
           onClick={() => {
             setIsOpen(true);
@@ -144,13 +144,13 @@ export default function CategorySelect({
             <>
               {(() => {
                 const IconComponent = Icons[selectedCategory.icon] || Icons.Package;
-                return <IconComponent size={18} className="text-gray-500 flex-shrink-0" />;
+                return <IconComponent size={18} className="text-muted flex-shrink-0" />;
               })()}
               <span className="flex-1">{selectedCategory.name}</span>
             </>
           ) : (
             <>
-              <Search size={18} className="text-gray-400 flex-shrink-0" />
+              <Search size={18} className="text-muted flex-shrink-0" />
               <input
                 ref={inputRef}
                 type="text"
@@ -162,7 +162,7 @@ export default function CategorySelect({
                 onFocus={() => setIsOpen(true)}
                 placeholder={placeholder}
                 className={`flex-1 outline-none bg-transparent ${
-                  darkMode ? 'text-white placeholder-gray-400' : 'text-gray-900 placeholder-gray-500'
+                  darkMode ? 'text-white placeholder:text-muted' : 'text-fg placeholder:text-muted'
                 }`}
               />
             </>
@@ -175,7 +175,7 @@ export default function CategorySelect({
                 onChange('');
                 setSearchQuery('');
               }}
-              className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+              className="text-muted hover:text-fg flex-shrink-0"
             >
               <X size={16} />
             </button>
@@ -186,13 +186,13 @@ export default function CategorySelect({
       {/* Dropdown */}
       {isOpen && !showCreateForm && (
         <div className={`absolute z-50 w-full mt-1 border rounded-lg shadow-lg max-h-64 overflow-y-auto ${
-          darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'
+          darkMode ? 'bg-surface-2 border-line' : 'bg-surface border-line'
         }`}>
           {/* Filtered Categories */}
           {filteredCategories.length > 0 ? (
             <div>
               <div className={`px-3 py-2 text-xs font-semibold ${
-                darkMode ? 'text-gray-400' : 'text-gray-500'
+                darkMode ? 'text-muted' : 'text-muted'
               }`}>
                 {searchQuery ? 'Matching Categories' : 'Select Category'}
               </div>
@@ -206,10 +206,10 @@ export default function CategorySelect({
                     className={`w-full flex items-center gap-3 px-3 py-2 transition-colors ${
                       value === category.id
                         ? darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-50 text-blue-700'
-                        : darkMode ? 'hover:bg-gray-600 text-gray-200' : 'hover:bg-gray-50 text-gray-900'
+                        : darkMode ? 'hover:bg-surface-2 text-fg' : 'hover:bg-surface-2 text-fg'
                     }`}
                   >
-                    <IconComponent size={18} className="text-gray-500 flex-shrink-0" />
+                    <IconComponent size={18} className="text-muted flex-shrink-0" />
                     <span className="flex-1 text-left">{category.name}</span>
                     {value === category.id && (
                       <Check size={16} className="flex-shrink-0" />
@@ -220,7 +220,7 @@ export default function CategorySelect({
             </div>
           ) : searchQuery && (
             <div className={`px-3 py-8 text-center ${
-              darkMode ? 'text-gray-400' : 'text-gray-500'
+              darkMode ? 'text-muted' : 'text-muted'
             }`}>
               <div className="text-sm">No categories found</div>
               <div className="text-xs mt-1">Continue typing and press enter to create</div>
@@ -230,14 +230,14 @@ export default function CategorySelect({
           {/* Create New Option */}
           {showCreateOption && (
             <>
-              <div className={`border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`} />
+              <div className={`border-t ${darkMode ? 'border-line' : 'border-line'}`} />
               <button
                 type="button"
                 onClick={handleCreateClick}
                 className={`w-full flex items-center gap-3 px-3 py-3 transition-colors ${
                   darkMode 
-                    ? 'bg-green-900/20 hover:bg-green-900/30 text-green-300' 
-                    : 'bg-green-50 hover:bg-green-100 text-green-700'
+                    ? 'bg-positive/10 hover:bg-surface-2 text-positive' 
+                    : 'bg-positive/10 hover:bg-surface-2 text-positive'
                 }`}
               >
                 <Plus size={18} className="flex-shrink-0" />
@@ -253,12 +253,12 @@ export default function CategorySelect({
       {/* Inline Create Form */}
       {showCreateForm && (
         <div className={`absolute z-50 w-full mt-1 border rounded-lg shadow-lg p-4 ${
-          darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'
+          darkMode ? 'bg-surface-2 border-line' : 'bg-surface border-line'
         }`}>
           <div className="space-y-3">
             <div>
               <label className={`block text-xs font-medium mb-1 ${
-                darkMode ? 'text-gray-300' : 'text-gray-700'
+                darkMode ? 'text-muted' : 'text-muted'
               }`}>
                 Category Name
               </label>
@@ -267,7 +267,7 @@ export default function CategorySelect({
                 value={newCategoryData.name}
                 onChange={(e) => setNewCategoryData({ ...newCategoryData, name: e.target.value })}
                 className={`w-full px-3 py-2 border rounded-lg text-sm ${
-                  darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'
+                  darkMode ? 'bg-surface-2 border-line text-white' : 'bg-surface border-line'
                 }`}
                 placeholder="Category name"
                 autoFocus
@@ -276,7 +276,7 @@ export default function CategorySelect({
 
             <div>
               <label className={`block text-xs font-medium mb-1 ${
-                darkMode ? 'text-gray-300' : 'text-gray-700'
+                darkMode ? 'text-muted' : 'text-muted'
               }`}>
                 Icon
               </label>
@@ -289,7 +289,7 @@ export default function CategorySelect({
 
             <div>
               <label className={`block text-xs font-medium mb-1 ${
-                darkMode ? 'text-gray-300' : 'text-gray-700'
+                darkMode ? 'text-muted' : 'text-muted'
               }`}>
                 Color
               </label>
@@ -302,7 +302,7 @@ export default function CategorySelect({
                     className={`flex items-center gap-1.5 px-2 py-1.5 rounded border-2 transition-all text-xs ${
                       newCategoryData.color === color.value
                         ? 'border-blue-500 ring-1 ring-blue-200'
-                        : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'
+                        : darkMode ? 'border-line hover:border-accent' : 'border-line hover:border-accent'
                     }`}
                   >
                     <div
@@ -320,7 +320,7 @@ export default function CategorySelect({
                 type="button"
                 onClick={handleCreateCategory}
                 disabled={creating || !newCategoryData.name.trim()}
-                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-positive text-white rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
               >
                 <Check size={16} />
                 {creating ? 'Creating...' : 'Create & Select'}
@@ -330,7 +330,7 @@ export default function CategorySelect({
                 onClick={handleCancelCreate}
                 disabled={creating}
                 className={`px-3 py-2 rounded-lg text-sm ${
-                  darkMode ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  darkMode ? 'bg-surface-2 text-fg hover:bg-surface-2' : 'bg-surface-2 text-muted hover:bg-surface-2'
                 }`}
               >
                 Cancel

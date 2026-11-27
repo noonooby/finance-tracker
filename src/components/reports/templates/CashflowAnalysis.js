@@ -126,7 +126,7 @@ export default function CashflowAnalysis({
           </button>
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:bg-green-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:opacity-90 transition-colors"
           >
             <FileSpreadsheet size={18} />
             Export Excel
@@ -290,10 +290,10 @@ export default function CashflowAnalysis({
               {trendData.map((trend, index) => (
                 <tr key={index} className={`border-b border-line`}>
                   <td className="py-3 px-4 font-medium">{trend.displayName}</td>
-                  <td className="text-right py-3 px-4 text-green-600 dark:text-green-400">
+                  <td className="text-right py-3 px-4 text-positive">
                     {formatCurrency(trend.income)}
                   </td>
-                  <td className="text-right py-3 px-4 text-red-600 dark:text-red-400">
+                  <td className="text-right py-3 px-4 text-negative">
                     {formatCurrency(trend.expenses)}
                   </td>
                   <td className="text-right py-3 px-4 text-blue-600 dark:text-blue-400">
@@ -301,8 +301,8 @@ export default function CashflowAnalysis({
                   </td>
                   <td className={`text-right py-3 px-4 font-semibold ${
                     trend.net >= 0 
-                      ? 'text-green-600 dark:text-green-400' 
-                      : 'text-red-600 dark:text-red-400'
+                      ? 'text-positive' 
+                      : 'text-negative'
                   }`}>
                     {formatCurrency(trend.net)}
                   </td>
@@ -315,10 +315,10 @@ export default function CashflowAnalysis({
             <tfoot>
               <tr className={`border-t-2 border-line font-bold`}>
                 <td className="py-3 px-4">Total</td>
-                <td className="text-right py-3 px-4 text-green-600 dark:text-green-400">
+                <td className="text-right py-3 px-4 text-positive">
                   {formatCurrency(summary.totalIncome)}
                 </td>
-                <td className="text-right py-3 px-4 text-red-600 dark:text-red-400">
+                <td className="text-right py-3 px-4 text-negative">
                   {formatCurrency(summary.totalExpenses)}
                 </td>
                 <td className="text-right py-3 px-4 text-blue-600 dark:text-blue-400">
@@ -326,8 +326,8 @@ export default function CashflowAnalysis({
                 </td>
                 <td className={`text-right py-3 px-4 ${
                   summary.netCashflow >= 0 
-                    ? 'text-green-600 dark:text-green-400' 
-                    : 'text-red-600 dark:text-red-400'
+                    ? 'text-positive' 
+                    : 'text-negative'
                 }`}>
                   {formatCurrency(summary.netCashflow)}
                 </td>
@@ -366,8 +366,8 @@ export default function CashflowAnalysis({
                     </td>
                     <td className="py-2 px-3">
                       <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                        transaction.type === 'income' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                        transaction.type === 'expense' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                        transaction.type === 'income' ? 'bg-positive/10 text-positive' :
+                        transaction.type === 'expense' ? 'bg-negative/10 text-negative' :
                         'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                       }`}>
                         {transaction.type}
@@ -384,8 +384,8 @@ export default function CashflowAnalysis({
                       {transaction.payment_method_name || transaction.payment_method || '-'}
                     </td>
                     <td className={`py-2 px-3 text-right font-semibold ${
-                      transaction.type === 'income' ? 'text-green-600 dark:text-green-400' :
-                      transaction.type === 'expense' ? 'text-red-600 dark:text-red-400' :
+                      transaction.type === 'income' ? 'text-positive' :
+                      transaction.type === 'expense' ? 'text-negative' :
                       'text-blue-600 dark:text-blue-400'
                     }`}>
                       {formatCurrency(transaction.amount)}

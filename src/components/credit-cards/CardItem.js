@@ -30,12 +30,12 @@ export default function CardItem({
 
   return (
     <>
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex-1">
+      <div className="flex flex-wrap justify-between items-start gap-x-2 mb-3">
+        <div className="flex-1 min-w-[55%]">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-bold text-base sm:text-lg">{card.name}</h3>
+            <h3 className="font-semibold text-lg leading-snug">{card.name}</h3>
             {isPinned && (
-              <Star size={16} className="text-yellow-500 fill-current" aria-label="Pinned" />
+              <Star size={16} className="text-warning fill-current" aria-label="Pinned" />
             )}
             {card.is_gift_card && (
               <span className={`text-xs px-2 py-0.5 rounded font-medium flex items-center gap-1 ${
@@ -56,10 +56,10 @@ export default function CardItem({
           <div
             className={`text-xl sm:text-2xl font-bold mt-1 ${
               card.balance < 0
-                ? 'text-green-600'
+                ? 'text-positive'
                 : card.balance === 0
                 ? 'text-muted'
-                : 'text-red-600'
+                : 'text-negative'
             }`}
           >
             {formatCurrency(card.balance)}
@@ -78,7 +78,7 @@ export default function CardItem({
               )}
               {expiry && (
                 <div className={`text-xs mt-1 font-medium ${
-                  expiry.tone === 'expired' ? 'text-red-600' : expiry.tone === 'soon' ? 'text-orange-600' : muted
+                  expiry.tone === 'expired' ? 'text-negative' : expiry.tone === 'soon' ? 'text-warning' : muted
                 }`}>
                   {expiry.text}
                 </div>
@@ -111,53 +111,53 @@ export default function CardItem({
             </div>
           )}
         </div>
-        <div className="flex gap-1 sm:gap-2">
+        <div className="flex ml-auto -mr-2 shrink-0">
           <button
             onClick={onTogglePin}
-            className={`p-1.5 sm:p-2 rounded min-h-[44px] sm:min-h-0 flex items-center justify-center ${
+            className={`icon-btn ${
               isPinned
-                ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
+                ? 'text-warning hover:bg-surface-2'
                 : 'text-muted hover:bg-surface-2'
             }`}
             title={isPinned ? 'Unpin card' : 'Pin card'}
             aria-label={isPinned ? `Unpin ${card.name}` : `Pin ${card.name}`}
           >
-            <Star size={16} className={`sm:w-[18px] sm:h-[18px] ${isPinned ? 'fill-current' : ''}`} />
+            <Star size={18} className={`${isPinned ? 'fill-current' : ''}`} />
           </button>
           <button
             onClick={onViewTransactions}
-            className={`p-2 text-accent hover:bg-accent-soft rounded`}
+            className="icon-btn text-muted hover:bg-surface-2"
             title="View transactions"
             aria-label={`View transactions for ${card.name}`}
           >
-            <ListFilter size={16} className="sm:w-[18px] sm:h-[18px]" />
+            <ListFilter size={18} />
           </button>
           <button
             onClick={onEdit}
-            className={`p-2 text-accent hover:bg-accent-soft rounded`}
+            className="icon-btn text-muted hover:bg-surface-2"
             aria-label={`Edit ${card.name}`}
           >
-            <Edit2 size={16} className="sm:w-[18px] sm:h-[18px]" />
+            <Edit2 size={18} />
           </button>
           <button
             onClick={onDelete}
-            className={`p-2 text-negative hover:bg-negative/10 rounded`}
+            className="icon-btn text-muted hover:bg-negative/10 hover:text-negative"
             aria-label={`Delete ${card.name}`}
           >
-            <X size={16} className="sm:w-[18px] sm:h-[18px]" />
+            <X size={18} />
           </button>
         </div>
       </div>
 
       {!card.is_gift_card && card.due_date && (
         <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b border-line`}>
-          <span className={'text-muted'}>Due Date:</span>
+          <span className={'text-muted'}>Due</span>
           <div className="text-right">
             <div className="font-medium">{formatDate(card.due_date)}</div>
             {!(Number(card.balance) > 0) ? (
               <div className={`text-xs ${muted}`}>Nothing owed</div>
             ) : daysToDue >= 0 && (
-              <div className={`text-xs ${daysToDue <= (card.alert_days || 7) ? 'text-red-600 font-semibold' : muted}`}>
+              <div className={`text-xs ${daysToDue <= (card.alert_days || 7) ? 'text-negative font-semibold' : muted}`}>
                 {daysToDue === 0 ? 'Due today' : daysToDue === 1 ? '1 day' : `${daysToDue} days`}
               </div>
             )}
@@ -198,13 +198,13 @@ export default function CardItem({
             className="flex items-center justify-center gap-2 press bg-surface-2 text-fg border border-line hover:bg-line/60 py-2 rounded-xl font-medium"
           >
             <ShoppingBag size={18} />
-            Add Expense
+            Add a purchase
           </button>
           <button
             onClick={onMakePayment}
             className="press bg-accent text-accent-contrast py-2 rounded-xl font-medium hover:opacity-90"
           >
-            Make Payment
+            Make a payment
           </button>
         </div>
       )}

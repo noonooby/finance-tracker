@@ -11,7 +11,7 @@ export default function LineNote({ loan }) {
   if (!t) return null;
   return (
     <div className="mt-2 rounded-xl bg-surface-2 px-3 py-2.5 space-y-1 text-xs">
-      <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wide text-muted">
+      <div className="flex items-center gap-1.5 text-[0.9375rem] font-semibold text-fg">
         {t.label}
         <Hint label="About this line of credit">{t.note} Prime is {PRIME.rate}% as of {longDay(PRIME.as_of)}. A rate or limit you set on the loan is used first. To take money from it, use Move money on the Accounts page and choose this line as where it comes from.</Hint>
       </div>

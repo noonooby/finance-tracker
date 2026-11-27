@@ -100,7 +100,7 @@ export default function CreditCardForm({
           <button
             type="button"
             onClick={() => setFormData({ ...formData, isGiftCard: true })}
-            className={typeButton(formData.isGiftCard, 'border-green-600 press bg-accent text-accent-contrast')}
+            className={typeButton(formData.isGiftCard, 'border-positive/40 press bg-accent text-accent-contrast')}
           >
             <Gift size={18} />
             Gift Card

@@ -40,29 +40,29 @@ export default function ActionButton({
       disabled: 'bg-gray-400 cursor-not-allowed',
     },
     success: {
-      base: 'bg-green-600 hover:bg-green-700 text-white',
-      processing: 'bg-green-500 cursor-not-allowed',
+      base: 'bg-positive hover:opacity-90 text-white',
+      processing: 'bg-positive/100 cursor-not-allowed',
       disabled: 'bg-gray-400 cursor-not-allowed',
     },
     danger: {
-      base: 'bg-red-600 hover:bg-red-700 text-white',
-      processing: 'bg-red-500 cursor-not-allowed',
+      base: 'bg-negative hover:opacity-90 text-white',
+      processing: 'bg-negative/100 cursor-not-allowed',
       disabled: 'bg-gray-400 cursor-not-allowed',
     },
     secondary: {
-      base: 'bg-gray-600 hover:bg-gray-700 text-white',
+      base: 'bg-surface-2 hover:bg-surface-2 text-white',
       processing: 'bg-gray-500 cursor-not-allowed',
       disabled: 'bg-gray-400 cursor-not-allowed',
     },
     warning: {
       base: 'bg-orange-600 hover:bg-orange-700 text-white',
-      processing: 'bg-orange-500 cursor-not-allowed',
+      processing: 'bg-warning/100 cursor-not-allowed',
       disabled: 'bg-gray-400 cursor-not-allowed',
     },
     ghost: {
-      base: 'bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600',
-      processing: 'bg-gray-100 dark:bg-gray-700 cursor-not-allowed',
-      disabled: 'bg-gray-100 dark:bg-gray-700 cursor-not-allowed opacity-50',
+      base: 'bg-transparent hover:bg-surface-2 text-muted border border-line',
+      processing: 'bg-surface-2 cursor-not-allowed',
+      disabled: 'bg-surface-2 cursor-not-allowed opacity-50',
     },
   };
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Moon, Sun, Plus, HelpCircle } from 'lucide-react';
+import { Moon, Sun, HelpCircle } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { useTheme } from '../hooks/useTheme';
 import QuickAdd from '../components/QuickAdd';
@@ -23,35 +23,30 @@ export function MainLayout() {
   const { openAddTransaction } = useUI();
   const location = useLocation();
   const navigate = useNavigate();
-  const iconBtn = 'p-2 rounded-xl text-muted hover:bg-surface-2 hover:text-fg';
-  // The add button steps aside while you scroll down or type, so it never sits on top of what you are reading or
-  // filling in. It comes back when you scroll up, reach the top, or stop typing.
+  const iconBtn = 'grid place-items-center w-11 h-11 rounded-full text-muted hover:bg-surface-2 hover:text-fg';
   const scroller = useRef(null);
-  const [away, setAway] = useState(false);
-  const [quick, setQuick] = useState(false);
+  // Typing made easy everywhere: a figure field opens the number pad with a decimal point, and tapping a figure
+  // selects it so the next key replaces it instead of adding to it.
   useEffect(() => {
-    const el = scroller.current;
-    if (!el) return undefined;
-    let last = el.scrollTop;
-    const typing = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); };
-    const onScroll = () => {
-      const y = el.scrollTop, bottom = y + el.clientHeight >= el.scrollHeight - 24;
-      if (typing() || bottom) setAway(true);
-      else if (y < 40 || y < last - 6) setAway(false);
-      else if (y > last + 6) setAway(true);
-      last = y;
+    const onFocus = (e) => {
+      const el = e.target;
+      if (!el || el.tagName !== 'INPUT') return;
+      if (el.type === 'number') {
+        if (!el.getAttribute('inputmode')) el.setAttribute('inputmode', 'decimal');
+        if (el.value && !el.readOnly) { try { el.select(); } catch { /* not selectable */ } }
+      }
+      if (!el.getAttribute('enterkeyhint') && el.form) el.setAttribute('enterkeyhint', 'done');
+      if ((el.type === 'text' || el.type === 'number' || el.type === 'search') && !el.getAttribute('autocomplete')) el.setAttribute('autocomplete', 'off');
     };
-    const onFocus = () => setAway(typing() || (el.scrollTop > 40 && el.scrollTop + el.clientHeight >= el.scrollHeight - 24));
-    el.addEventListener('scroll', onScroll, { passive: true });
     document.addEventListener('focusin', onFocus);
-    document.addEventListener('focusout', onFocus);
-    return () => { el.removeEventListener('scroll', onScroll); document.removeEventListener('focusin', onFocus); document.removeEventListener('focusout', onFocus); };
+    return () => document.removeEventListener('focusin', onFocus);
   }, []);
-  useEffect(() => { setAway(false); if (scroller.current) scroller.current.scrollTop = 0; }, [location.pathname]);
+  const [quick, setQuick] = useState(false);
+  useEffect(() => { if (scroller.current) scroller.current.scrollTop = 0; }, [location.pathname]);
 
   return (
     <div className="app-shell flex flex-col bg-background text-fg">
-      <header className="bg-background/85 backdrop-blur-md border-b border-line/70 px-4 py-2.5 flex-shrink-0 z-10"
+      <header className="bg-background/85 backdrop-blur-md px-4 py-2 flex-shrink-0 z-10"
         style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))' }}>
         <div className="flex justify-between items-center max-w-3xl mx-auto">
           <button type="button" onClick={() => navigate('/')} className="press flex items-center gap-2 text-left rounded-xl" aria-label="Go to Home">
@@ -61,8 +56,7 @@ export function MainLayout() {
             <span className="text-lg font-semibold tracking-tight">Finance</span>
           </button>
           <div className="flex items-center gap-1">
-            {(isMigrating || dataLoading) && <span className="text-xs text-muted mr-2 flex items-center gap-1.5" role="status"><span className="spinner" aria-hidden="true" />Loading</span>}
-            <button type="button" onClick={() => navigate('/help')} className={iconBtn} aria-label="Help">
+                        <button type="button" onClick={() => navigate('/help')} className={iconBtn} aria-label="Help">
               <HelpCircle size={22} />
             </button>
             <button type="button" onClick={toggleDarkMode} className={iconBtn} aria-label={darkMode ? 'Use light mode' : 'Use dark mode'}>
@@ -71,6 +65,7 @@ export function MainLayout() {
           </div>
         </div>
       </header>
+      <div className={`flex-shrink-0 ${isMigrating || dataLoading ? 'loadbar' : 'h-[3px]'}`} role={isMigrating || dataLoading ? 'status' : undefined} aria-label={isMigrating || dataLoading ? 'Loading' : undefined} />
 
       {offlineAt && (
         <div role="status" className="bg-warning/10 text-warning text-sm px-4 py-2 flex items-center justify-between gap-3">
@@ -87,25 +82,16 @@ export function MainLayout() {
 
       <main className="flex-1 min-h-0 relative">
         <div ref={scroller} className="page-scroll absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-contain">
-          <div key={location.pathname} className="page-enter p-4 pb-44 max-w-3xl mx-auto">
+          <div key={location.pathname} className="page-enter px-4 pt-4 pb-36 max-w-3xl mx-auto">
             <Outlet />
           </div>
         </div>
       </main>
 
-      {location.pathname !== '/screenshot' && <button
-        type="button"
-        onClick={() => setQuick(true)}
-        className={`fab ${away ? 'away' : ''} press fixed right-4 w-14 h-14 bg-accent text-accent-contrast rounded-2xl shadow-md shadow-accent/20 hover:opacity-90 flex items-center justify-center z-20`}
-        style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))', touchAction: 'manipulation' }}
-        aria-label="Add"
-      >
-        <Plus size={28} />
-      </button>}
 
       {quick && <QuickAdd onClose={() => setQuick(false)} onFullForm={openAddTransaction} />}
 
-      <BottomNavigation darkMode={darkMode} />
+      <BottomNavigation onAdd={() => setQuick((q) => !q)} adding={quick} />
     </div>
   );
 }

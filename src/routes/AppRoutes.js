@@ -43,8 +43,8 @@ const CreditScore = lazy(() => import('../components/CreditScore'));
 const LoadingFallback = () => {
   const { darkMode } = useTheme();
   return (
-    <div className={`flex items-center justify-center min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      <div className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+    <div className={`flex items-center justify-center min-h-screen ${darkMode ? 'bg-surface' : 'bg-surface-2'}`}>
+      <div className={`text-lg ${darkMode ? 'text-muted' : 'text-muted'}`}>
         Loading...
       </div>
     </div>

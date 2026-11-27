@@ -274,7 +274,7 @@ export default function Reports({ darkMode, categories }) {
           {/* Favorites Section */}
           {favoriteTemplates.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-semibold text-yellow-600 dark:text-yellow-400 mb-3 flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-warning mb-3 flex items-center gap-2">
                 <Star size={16} className="fill-current" />
                 Favorites
               </h3>
@@ -375,7 +375,7 @@ export default function Reports({ darkMode, categories }) {
                       <div className="flex items-start justify-between mb-2">
                         <h4 className="font-semibold text-sm">{template.name}</h4>
                         {template.is_favorite && (
-                          <Star size={14} className="text-yellow-500 fill-current flex-shrink-0" />
+                          <Star size={14} className="text-warning fill-current flex-shrink-0" />
                         )}
                       </div>
                       
@@ -483,7 +483,7 @@ export default function Reports({ darkMode, categories }) {
                   className="rounded"
                 />
                 <label htmlFor="saveAsFavorite" className="text-sm flex items-center gap-1">
-                  <Star size={14} className={saveAsFavorite ? 'text-yellow-500 fill-current' : ''} />
+                  <Star size={14} className={saveAsFavorite ? 'text-warning fill-current' : ''} />
                   Mark as favorite
                 </label>
               </div>
@@ -506,7 +506,7 @@ export default function Reports({ darkMode, categories }) {
               </div>
               
               {saveError && (
-                <div className="p-3 bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-lg text-sm">
+                <div className="p-3 bg-negative/10 text-negative rounded-lg text-sm">
                   {saveError}
                 </div>
               )}
@@ -529,7 +529,7 @@ export default function Reports({ darkMode, categories }) {
               </button>
               <button
                 onClick={handleSaveTemplate}
-                className="flex-1 px-4 py-2 press bg-accent text-accent-contrast rounded-lg hover:bg-green-700"
+                className="flex-1 px-4 py-2 press bg-accent text-accent-contrast rounded-lg hover:opacity-90"
               >
                 Save Template
               </button>

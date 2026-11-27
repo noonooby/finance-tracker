@@ -17,7 +17,7 @@ export default function Rewards({ creditCards = [] }) {
   return (
     <div className="rounded-2xl border border-line bg-surface p-4">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted">Rewards, about</div>
+        <div className="text-[0.9375rem] font-semibold text-fg">Rewards, about</div>
         <Hint label="About rewards" align="right">Worked out from what was charged to each card. A rate you set on a card is used first. A card with no rate of its own uses the published rates for that card. Yearly caps and welcome offers are not counted, so the card's own statement is the real count.</Hint>
       </div>
       <ul className="divide-y divide-line mt-1">

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Save, FolderOpen } from 'lucide-react';
+import { Save, FolderOpen, ListX } from 'lucide-react';
+import { Card, EmptyState } from './shared/ui';
+import { localDate } from '../utils/helpers';
 import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import { reverseTransaction } from '../utils/money';
@@ -405,6 +407,22 @@ export default function TransactionHistory({
     );
   }
 
+  // Lines a day at a time, newest day first, in the order they are listed.
+  const days = [];
+  for (const t of filteredTransactions) {
+    const day = String(t.date || '').slice(0, 10);
+    const last = days[days.length - 1];
+    if (last && last[0] === day) last[1].push(t); else days.push([day, [t]]);
+  }
+  const dayTitle = (day) => {
+    const today = localDate();
+    const y = new Date(`${today}T12:00:00`); y.setDate(y.getDate() - 1);
+    if (day === today) return 'Today';
+    if (day === y.toLocaleDateString('en-CA')) return 'Yesterday';
+    const d = new Date(`${day}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? 'No date' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', ...(day.slice(0, 4) !== today.slice(0, 4) ? { year: 'numeric' } : {}) });
+  };
+
   return (
     <div className="space-y-4">
       {editing && (
@@ -431,7 +449,7 @@ export default function TransactionHistory({
 
       {/* Header with Actions */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
-        <h2 className="text-xl md:text-2xl font-bold">Transactions</h2>
+        <h1 className="text-2xl font-bold tracking-tight">Activity</h1>
         
         <div className="flex flex-wrap gap-2">
           <QuickFiltersDropdown
@@ -442,14 +460,14 @@ export default function TransactionHistory({
           
           <button
             onClick={() => setShowFiltersPanel(!showFiltersPanel)}
-            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg ${
+            className={`press flex items-center gap-1.5 px-3.5 h-10 text-sm font-medium rounded-xl ${
               showFiltersPanel
                 ? 'bg-accent text-accent-contrast'
                 : 'bg-surface-2 hover:bg-line/60 text-fg'
             }`}
           >
-            <FolderOpen size={18} />
-            Saved Filters
+            <FolderOpen size={16} />
+            Saved
             {savedFilters.length > 0 && (
               <span className={`text-xs px-2 py-0.5 rounded-full ${
                 showFiltersPanel ? 'bg-blue-500' : 'bg-accent text-accent-contrast'
@@ -461,10 +479,10 @@ export default function TransactionHistory({
           
           <button
             onClick={() => setShowSaveDialog(true)}
-            className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base press bg-accent text-accent-contrast rounded-lg hover:bg-green-700"
+            className="press flex items-center gap-1.5 px-3.5 h-10 text-sm font-medium rounded-xl bg-surface-2 text-fg"
           >
-            <Save size={18} />
-            Save Filter
+            <Save size={16} />
+            Save this view
           </button>
         </div>
       </div>
@@ -521,24 +539,23 @@ export default function TransactionHistory({
         onClearFilters={handleClearFilters}
       />
 
-      {/* Transaction List */}
-      <div className="space-y-2">
-        {filteredTransactions.length === 0 ? (
-          <div className={`bg-surface rounded-lg p-8 text-center`}>
-            <p className="text-muted">No transactions found</p>
-          </div>
-        ) : (
-          filteredTransactions.map((transaction) => (
-            <TransactionCard
-              key={transaction.id}
-              transaction={transaction}
-              darkMode={darkMode}
-              onDelete={handleDelete}
-              onEdit={setEditing}
-            />
-          ))
-        )}
-      </div>
+      {/* The lines, a day at a time */}
+      {filteredTransactions.length === 0 ? (
+        <Card><EmptyState icon={ListX} title="Nothing here" text="No line matches. Clear the search or the filters, or add a picture." /></Card>
+      ) : (
+        <div className="space-y-4">
+          {days.map(([day, list]) => (
+            <section key={day} className="space-y-1.5">
+              <h2 className="px-1 text-sm font-semibold text-muted">{dayTitle(day)}</h2>
+              <Card padded={false} className="divide-y divide-line overflow-hidden">
+                {list.map((transaction) => (
+                  <TransactionCard key={transaction.id} transaction={transaction} darkMode={darkMode} onDelete={handleDelete} onEdit={setEditing} />
+                ))}
+              </Card>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

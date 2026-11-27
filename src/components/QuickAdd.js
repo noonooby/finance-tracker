@@ -212,6 +212,17 @@ export default function QuickAdd({ onClose, onFullForm }) {
             </form>
           ) : (
             <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); save(false); }}>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => go('/screenshot')} className="press flex items-center gap-2.5 rounded-2xl border border-line bg-surface-2 px-3.5 py-3 text-left">
+                  <span className="grid place-items-center w-9 h-9 rounded-xl bg-accent-soft text-accent shrink-0"><Camera size={18} aria-hidden="true" /></span>
+                  <span className="min-w-0"><span className="block text-sm font-semibold">Picture</span><span className="block text-xs text-muted truncate">Or a statement</span></span>
+                </button>
+                <button type="button" onClick={() => setMode('sentence')} className="press flex items-center gap-2.5 rounded-2xl border border-line bg-surface-2 px-3.5 py-3 text-left">
+                  <span className="grid place-items-center w-9 h-9 rounded-xl bg-accent-soft text-accent shrink-0"><PenLine size={18} aria-hidden="true" /></span>
+                  <span className="min-w-0"><span className="block text-sm font-semibold">Sentence</span><span className="block text-xs text-muted truncate">Type it out</span></span>
+                </button>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-muted" aria-hidden="true"><span className="h-px flex-1 bg-line" />or by hand<span className="h-px flex-1 bg-line" /></div>
               <label className="block text-center">
                 <span className="sr-only">Amount</span>
                 <span className="inline-flex items-baseline justify-center gap-1 w-full">
@@ -262,14 +273,10 @@ export default function QuickAdd({ onClose, onFullForm }) {
               </div>
 
               <div className="space-y-2 pt-1">
-                <Button type="submit" loading={busy} disabled={!!fault} className="w-full">{fault || (<><Check size={18} aria-hidden="true" /> Save</>)}</Button>
+                <Button type="submit" size="lg" loading={busy} disabled={!!fault} className="w-full">{fault || (<><Check size={18} aria-hidden="true" /> Save</>)}</Button>
                 <div className="flex items-center justify-between text-sm">
                   <button type="button" disabled={!!fault || busy} onClick={() => save(true)} className="font-medium text-accent disabled:opacity-40 py-1">Save and add another{saved > 0 ? ` (${saved} saved)` : ''}</button>
-                  <button type="button" onClick={() => setMode('sentence')} className="font-medium text-accent py-1">Say it in a sentence</button>
-                </div>
-                <div className="flex items-center justify-between text-xs text-muted">
-                  <button type="button" onClick={() => go('/screenshot')} className="py-1 underline underline-offset-2">Add a picture</button>
-                  <button type="button" onClick={() => { onClose(); onFullForm(); }} className="py-1 underline underline-offset-2">More options</button>
+                  <button type="button" onClick={() => { onClose(); onFullForm(); }} className="font-medium text-muted py-1">More options</button>
                 </div>
               </div>
             </form>

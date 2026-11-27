@@ -164,11 +164,11 @@ export default function RecentTransactions({
   }
 
   return (
-    <div className={`mb-3 pb-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+    <div className={`mb-3 pb-3 border-b ${darkMode ? 'border-line' : 'border-line'}`}>
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={handleToggleCollapse}
-          className={`flex items-center gap-1 text-xs font-medium ${darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-600 hover:text-gray-800'}`}
+          className={`flex items-center gap-1 text-xs font-medium ${darkMode ? 'text-muted hover:text-fg' : 'text-muted hover:text-fg'}`}
         >
           {isCollapsed ? (
             <ChevronRight size={14} />
@@ -182,15 +182,15 @@ export default function RecentTransactions({
           <div className="relative">
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className={`p-1 rounded ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+              className={`p-1 rounded ${darkMode ? 'hover:bg-surface-2 text-muted' : 'hover:bg-surface-2 text-muted'}`}
               title="Transaction display settings"
             >
               <Settings size={12} />
             </button>
             
             {showSettings && (
-              <div className={`absolute right-0 top-6 z-10 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'} border rounded-lg shadow-lg p-2 min-w-[120px]`}>
-                <div className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <div className={`absolute right-0 top-6 z-10 ${darkMode ? 'bg-surface-2 border-line' : 'bg-surface border-line'} border rounded-lg shadow-lg p-2 min-w-[120px]`}>
+                <div className={`text-xs font-medium mb-1 ${darkMode ? 'text-muted' : 'text-muted'}`}>
                   Show last:
                 </div>
                 <div className="space-y-1">
@@ -202,8 +202,8 @@ export default function RecentTransactions({
                         displayCount === count
                           ? 'bg-blue-600 text-white'
                           : darkMode
-                            ? 'hover:bg-gray-600 text-gray-300'
-                            : 'hover:bg-gray-100 text-gray-700'
+                            ? 'hover:bg-surface-2 text-muted'
+                            : 'hover:bg-surface-2 text-muted'
                       }`}
                     >
                       {count} transactions
@@ -219,15 +219,15 @@ export default function RecentTransactions({
       {!isCollapsed && (
         <div className="space-y-1.5">
           {loading ? (
-            <div className={`text-xs text-center py-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            <div className={`text-xs text-center py-2 ${darkMode ? 'text-muted' : 'text-muted'}`}>
               Loading...
             </div>
           ) : transactions.length === 0 ? (
-            <div className={`text-xs text-center py-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            <div className={`text-xs text-center py-2 ${darkMode ? 'text-muted' : 'text-muted'}`}>
               No recent transactions
             </div>
           ) : (<>
-            {ref && <p className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Tap a line that is on the wrong account to move it.</p>}
+            {ref && <p className={`text-[10px] ${darkMode ? 'text-muted' : 'text-muted'}`}>Tap a line that is on the wrong account to move it.</p>}
             {transactions.map(txn => {
               // What the line did to this account decides its sign: money in or out of a bank account, more or less owed on a card or loan.
               const did = effectOn(txn, entityType, entityId);
@@ -237,12 +237,12 @@ export default function RecentTransactions({
               const Row = movable ? 'button' : 'div';
               return (
                 <Row key={txn.id} {...(movable ? { type: 'button', onClick: () => setMoving(txn), 'aria-label': `${txn.description || 'Line'}: wrong account?` } : {})}
-                  className={`w-full flex justify-between items-center text-left text-xs ${movable ? 'press rounded-lg -mx-1 px-1 py-0.5' : ''} ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  className={`w-full flex justify-between items-center text-left text-xs ${movable ? 'press rounded-lg -mx-1 px-1 py-0.5' : ''} ${darkMode ? 'text-muted' : 'text-muted'}`}>
                   <div className="flex-1 truncate mr-2">
                     <div className="truncate">{txn.description || txn.category_name || txn.income_source || txn.type}</div>
-                    <div className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{formatDate(txn.date)}</div>
+                    <div className={`text-[10px] ${darkMode ? 'text-muted' : 'text-muted'}`}>{formatDate(txn.date)}</div>
                   </div>
-                  <div className={`font-medium flex-shrink-0 ${good ? 'text-green-600' : 'text-red-600'}`}>
+                  <div className={`font-medium flex-shrink-0 ${good ? 'text-positive' : 'text-negative'}`}>
                     {up ? '+' : '-'}{formatCurrency(Math.abs(did != null ? did : txn.amount))}
                   </div>
                 </Row>

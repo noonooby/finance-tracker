@@ -322,17 +322,17 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
 
   const getActionColor = (actionType) => {
     switch (actionType) {
-      case 'add': return 'text-green-600';
+      case 'add': return 'text-positive';
       case 'edit': return 'text-blue-600';
       case 'edit_setting': return 'text-blue-600';
-      case 'delete': return 'text-red-600';
+      case 'delete': return 'text-negative';
       case 'payment': return 'text-purple-600';
-      case 'expense': return 'text-orange-600';
-      case 'gift_card_reload': return 'text-green-600';
-      case 'cash_withdrawal': return 'text-orange-600';
+      case 'expense': return 'text-warning';
+      case 'gift_card_reload': return 'text-positive';
+      case 'cash_withdrawal': return 'text-warning';
       case 'cash_deposit': return 'text-teal-600';
-      case 'set_budget': return 'text-green-600';
-      case 'delete_budget': return 'text-red-600';
+      case 'set_budget': return 'text-positive';
+      case 'delete_budget': return 'text-negative';
       case 'setting_change': return 'text-muted';
       default: return 'text-muted';
     }
@@ -574,7 +574,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
                 onChange={(e) => handleToggleChange(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-line peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <div className="w-11 h-6 bg-line peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface after:border-line after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
             </label>
           </div>
         </div>

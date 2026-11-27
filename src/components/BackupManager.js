@@ -268,9 +268,9 @@ export default function BackupManager() {
           </label>
         </div>
 
-        <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-          <p className="text-xs text-amber-800 dark:text-amber-200">
+        <div className="mt-3 p-3 bg-warning/10 border border-warning/40 rounded-lg flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-warning">
             Importing a backup will <strong>replace all current data</strong>. Make sure to export a backup first.
           </p>
         </div>
@@ -333,7 +333,7 @@ export default function BackupManager() {
       {/* Bulk Transaction Edit Section */}
       <div className="bg-surface rounded-xl border border-line p-6">
         <div className="flex items-start gap-3 mb-4">
-          <FileSpreadsheet className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5" />
+          <FileSpreadsheet className="w-5 h-5 text-positive mt-0.5" />
           <div className="flex-1">
             <h3 className="font-semibold text-fg">
               Bulk transaction updates
@@ -407,7 +407,7 @@ export default function BackupManager() {
 
               {importPreview.preview.errors > 0 && (
                 <div className="flex items-start gap-2">
-                  <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                  <AlertCircle className="w-5 h-5 text-warning mt-0.5" />
                   <div>
                     <div className="font-semibold text-fg">
                       {importPreview.preview.errors} errors found
@@ -482,7 +482,7 @@ export default function BackupManager() {
 
               {uploadPreview.preview.errors > 0 && (
                 <div className="flex items-start gap-2">
-                  <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                  <AlertCircle className="w-5 h-5 text-warning mt-0.5" />
                   <div>
                     <div className="font-semibold text-fg">
                       {uploadPreview.preview.errors} errors found
@@ -517,12 +517,12 @@ export default function BackupManager() {
 
               {/* Error preview */}
               {uploadPreview.preview.preview?.errors?.length > 0 && (
-                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 text-xs">
-                  <div className="font-semibold text-amber-700 dark:text-amber-300 mb-2">
+                <div className="bg-warning/10 rounded-lg p-3 text-xs">
+                  <div className="font-semibold text-warning mb-2">
                     Sample errors:
                   </div>
                   {uploadPreview.preview.preview.errors.slice(0, 3).map((e, i) => (
-                    <div key={i} className="text-amber-600 dark:text-amber-400">
+                    <div key={i} className="text-warning">
                       Row {e.row}: {e.error}
                     </div>
                   ))}

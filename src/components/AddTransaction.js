@@ -397,7 +397,7 @@ export default function AddTransaction({
                 })}
                 className={`p-3 rounded-lg border-2 transition-colors ${
                   formData.type === 'expense'
-                    ? 'border-red-500 bg-red-50 text-red-700'
+                    ? 'border-negative/40 bg-negative/10 text-negative'
                     : 'border-line hover:border-accent'
                 }`}
               >

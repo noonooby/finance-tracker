@@ -1,6 +1,5 @@
 import React from 'react';
 import { Trash2, TrendingUp, TrendingDown, DollarSign, Pencil } from 'lucide-react';
-import { parseDay } from '../../utils/helpers';
 
 /**
  * Transaction Card Component
@@ -29,11 +28,6 @@ export default function TransactionCard({
       style: 'currency',
       currency: 'USD'
     }).format(amount);
-  };
-
-  const formatDate = (dateString) => {
-    const date = parseDay(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const formatPaymentMethod = (transaction) => {
@@ -75,141 +69,56 @@ export default function TransactionCard({
   const getTypeIcon = (type) => {
     switch (type) {
       case 'income':
-        return <TrendingUp className="text-green-600" size={20} />;
+        return <TrendingUp className="text-positive" size={18} />;
       case 'expense':
-        return <TrendingDown className="text-red-600" size={20} />;
+        return <TrendingDown className="text-negative" size={18} />;
       case 'payment':
       case 'loan_payment':
       case 'credit_card_payment':
-        return <DollarSign className="text-blue-600" size={20} />;
+        return <DollarSign className="text-accent" size={18} />;
       default:
-        return <DollarSign className="text-muted" size={20} />;
+        return <DollarSign className="text-muted" size={18} />;
     }
   };
 
   const getTypeColor = (type) => {
     switch (type) {
       case 'income':
-        return 'text-green-600 bg-green-50';
+        return 'text-positive bg-positive/10';
       case 'expense':
-        return 'text-red-600 bg-red-50';
+        return 'text-negative bg-negative/10';
       case 'payment':
       case 'loan_payment':
       case 'credit_card_payment':
-        return 'text-blue-600 bg-blue-50';
+        return 'text-accent bg-accent-soft';
       default:
         return 'text-muted bg-surface-2';
     }
   };
 
-  // Build info chips
-  const formattedType = formatLabel(transaction.type || 'transaction');
-  const formattedMethod = formatPaymentMethod(transaction);
-  const statusLabel = transaction.status ? formatLabel(transaction.status) : null;
-  
-  const infoChips = [
-    { label: 'Type', value: formattedType }
-  ];
-
-  if (formattedMethod) {
-    infoChips.push({ label: 'Method', value: formattedMethod });
-  }
-
-  if (statusLabel && statusLabel.toLowerCase() !== 'active') {
-    infoChips.push({ label: 'Status', value: statusLabel });
-  }
-
-  const chipClass = 'bg-surface-2 text-fg';
+  const isIn = transaction.type === 'income' || transaction.type === 'refund';
+  const isOut = transaction.type === 'expense';
+  const method = formatPaymentMethod(transaction);
+  const kind = isOut || transaction.type === 'income' ? null : formatLabel(transaction.type || '');
+  const cat = Array.isArray(transaction.splits) && transaction.splits.length ? `Split: ${transaction.splits.map((p) => p.category_name || 'No category').join(', ')}` : transaction.category_name;
+  const sub = [kind, method, cat, transaction.original_currency ? `${transaction.original_currency} ${Number(transaction.original_amount).toFixed(2)}` : null].filter(Boolean).join(' · ');
 
   return (
-    <div
-      className={`bg-surface border-line border rounded-2xl p-4 hover:shadow-md transition-shadow ${isUndone ? 'opacity-75' : ''}`}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3 flex-1">
-          <div className={`p-2 rounded-lg ${getTypeColor(transaction.type)}`}>
-            {getTypeIcon(transaction.type)}
-          </div>
-          
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className={`font-semibold ${isUndone ? 'line-through text-muted' : ''}`}>
-                {formatDescription(transaction)}
-              </h3>
-              {Array.isArray(transaction.splits) && transaction.splits.length ? (
-                <span className="text-xs px-2 py-1 rounded bg-surface-2" title={transaction.splits.map((p) => `${p.category_name || 'No category'} ${formatCurrency(p.amount)}`).join(', ')}>
-                  Split: {transaction.splits.map((p) => p.category_name || 'No category').join(', ')}
-                </span>
-              ) : transaction.category_name && (
-                <span className={`text-xs px-2 py-1 rounded bg-surface-2`}>
-                  {transaction.category_name}
-                </span>
-              )}
-              {transaction.original_currency && (
-                <span className="text-xs px-2 py-1 rounded bg-surface-2" title={transaction.fx_rate ? `Rate ${transaction.fx_rate}` : undefined}>
-                  {transaction.original_currency} {Number(transaction.original_amount).toFixed(2)}
-                </span>
-              )}
-              {isUndone && (
-                <span className="text-xs px-2 py-1 rounded bg-surface-2 text-muted">
-                  Undone
-                </span>
-              )}
-            </div>
-            
-            <div className={`flex items-center gap-3 text-sm ${isUndone ? 'text-muted line-through' : 'text-muted'}`}>
-              <span>{formatDate(transaction.date)}</span>
-            </div>
-            
-            {infoChips.length > 0 && (
-              <div className={`flex flex-wrap gap-2 mt-2 text-xs ${isUndone ? 'text-muted' : ''}`}>
-                {infoChips.map((chip, index) => (
-                  <span
-                    key={`${transaction.id}-${chip.label}-${index}`}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded ${chipClass}`}
-                  >
-                    <span className="font-semibold">{chip.label}:</span>
-                    <span>{chip.value}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {transaction.notes && (
-              <p className={`text-sm mt-1 ${isUndone ? 'text-muted line-through' : 'text-muted'}`}>
-                {transaction.notes}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <p className={`text-xl font-bold ${
-            transaction.type === 'income' ? 'text-green-600' : 
-            transaction.type === 'expense' ? 'text-red-600' : 
-            'text-blue-600'
-          } ${isUndone ? 'line-through text-muted' : ''}`}>
-            {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
-          </p>
-          
-          {onEdit && !isUndone && transaction.status !== 'deleted' && (
-            <button
-              onClick={() => onEdit(transaction)}
-              className="p-2 rounded-lg hover:bg-surface-2 text-muted"
-              title="Change"
-              aria-label={`Change ${transaction.description || 'this line'}`}
-            >
-              <Pencil size={18} />
-            </button>
-          )}
-          <button
-            onClick={() => onDelete(transaction)}
-            className={`p-2 rounded-lg hover:bg-surface-2 text-red-600`}
-            title="Delete"
-          >
-            <Trash2 size={18} />
-          </button>
-        </div>
+    <div className={`flex items-center gap-3 px-4 py-3 ${isUndone ? 'opacity-60' : ''}`}>
+      <span className={`shrink-0 grid place-items-center w-10 h-10 rounded-2xl ${getTypeColor(transaction.type)}`} aria-hidden="true">{getTypeIcon(transaction.type)}</span>
+      <div className="flex-1 min-w-0">
+        <div className={`text-[0.9375rem] font-medium truncate ${isUndone ? 'line-through text-muted' : ''}`}>{formatDescription(transaction)}</div>
+        <div className="text-xs text-muted line-clamp-2">{sub}{isUndone ? ' · Undone' : ''}</div>
+        {transaction.notes && <div className="text-xs text-muted truncate">{transaction.notes}</div>}
+      </div>
+      <div className={`shrink-0 text-[0.9375rem] font-semibold tabular-nums ${isUndone ? 'line-through text-muted' : isIn ? 'text-positive' : 'text-fg'}`}>
+        {isIn ? '+' : isOut ? '-' : ''}{formatCurrency(transaction.amount)}
+      </div>
+      <div className="shrink-0 flex items-center -mr-2">
+        {onEdit && !isUndone && transaction.status !== 'deleted' && (
+          <button type="button" onClick={() => onEdit(transaction)} className="icon-btn text-muted hover:bg-surface-2" aria-label={`Change ${transaction.description || 'this line'}`}><Pencil size={17} aria-hidden="true" /></button>
+        )}
+        <button type="button" onClick={() => onDelete(transaction)} className="icon-btn text-muted hover:bg-surface-2 hover:text-negative" aria-label={`Undo or delete ${transaction.description || 'this line'}`}><Trash2 size={17} aria-hidden="true" /></button>
       </div>
     </div>
   );

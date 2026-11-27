@@ -59,7 +59,7 @@ export default function Position({ darkMode }) {
     <li className="py-2 flex items-center gap-3">
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate">{x.name}</div>
-        <div className={`text-xs ${x.stale ? 'text-amber-600 dark:text-amber-400' : muted}`}>{KIND[x.kind]} · {x.asOf ? `as of ${x.label}` : 'never updated'}{x.stale ? ' · out of date' : ''}</div>
+        <div className={`text-xs ${x.stale ? 'text-warning' : muted}`}>{KIND[x.kind]} · {x.asOf ? `as of ${x.label}` : 'never updated'}{x.stale ? ' · out of date' : ''}</div>
       </div>
       <div className="text-right">
         <div className="font-semibold tabular-nums">{formatCurrency(x.value)}</div>
@@ -73,10 +73,10 @@ export default function Position({ darkMode }) {
       <h1 className="text-2xl font-bold">Where you stand</h1>
       <section className={card}>
         <div className={`text-sm ${muted}`}>Net worth today</div>
-        <div className={`text-3xl font-bold tabular-nums ${p.netWorth < 0 ? 'text-red-600' : ''}`}>{formatCurrency(p.netWorth)}</div>
+        <div className={`text-3xl font-bold tabular-nums ${p.netWorth < 0 ? 'text-negative' : ''}`}>{formatCurrency(p.netWorth)}</div>
         <div className={`text-sm mt-1 ${muted}`}>You have {formatCurrency(p.totalHave)} and owe {formatCurrency(p.totalOwe)}{p.mortgage ? `, of which ${formatCurrency(p.mortgage)} is the mortgage` : ''}.</div>
         <Sparkline data={hist} />
-        <div className={`mt-2 text-sm ${p.upToDate ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+        <div className={`mt-2 text-sm ${p.upToDate ? 'text-positive' : 'text-warning'}`}>
           {p.upToDate ? 'Every figure was updated in the last ' + STALE_DAYS + ' days.' : `${p.stale.length} figure${p.stale.length > 1 ? 's are' : ' is'} more than ${STALE_DAYS} days old or never updated. Tap Update next to each one.`}
         </div>
       </section>
@@ -87,9 +87,9 @@ export default function Position({ darkMode }) {
         <h2 className="font-semibold">To the end of the month ({formatDate(m.end)})</h2>
         <dl className="mt-2 grid grid-cols-2 gap-y-1 text-sm">
           <dt className={muted}>Spendable now (bank and cash)</dt><dd className="text-right tabular-nums">{formatCurrency(m.now)}</dd>
-          <dt className={muted}>Pay coming in</dt><dd className="text-right tabular-nums text-green-600">+{formatCurrency(m.coming)}</dd>
-          <dt className={muted}>Loan, card and bill payments due</dt><dd className="text-right tabular-nums text-red-600">-{formatCurrency(m.going)}</dd>
-          <dt className="font-semibold">Left at month end</dt><dd className={`text-right font-semibold tabular-nums ${m.atEnd < 0 ? 'text-red-600' : ''}`}>{formatCurrency(m.atEnd)}</dd>
+          <dt className={muted}>Pay coming in</dt><dd className="text-right tabular-nums text-positive">+{formatCurrency(m.coming)}</dd>
+          <dt className={muted}>Loan, card and bill payments due</dt><dd className="text-right tabular-nums text-negative">-{formatCurrency(m.going)}</dd>
+          <dt className="font-semibold">Left at month end</dt><dd className={`text-right font-semibold tabular-nums ${m.atEnd < 0 ? 'text-negative' : ''}`}>{formatCurrency(m.atEnd)}</dd>
         </dl>
       </section>
 

@@ -123,7 +123,7 @@ export default function CategoryAnalysis({
           </button>
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:bg-green-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:opacity-90 transition-colors"
           >
             <FileSpreadsheet size={18} />
             Export Excel

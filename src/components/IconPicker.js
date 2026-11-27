@@ -149,12 +149,12 @@ export default function IconPicker({ selectedIcon, onSelect, darkMode = false })
         onClick={() => setShowPicker(!showPicker)}
         className={`w-full px-3 py-2 border rounded-lg text-left flex items-center gap-2 ${
           darkMode
-            ? 'bg-gray-700 border-gray-600 text-white'
-            : 'bg-white border-gray-300 text-gray-900'
+            ? 'bg-surface-2 border-line text-white'
+            : 'bg-surface border-line text-fg'
         }`}
       >
-        <SelectedIconComponent size={20} className="text-gray-500" />
-        <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+        <SelectedIconComponent size={20} className="text-muted" />
+        <span className={darkMode ? 'text-muted' : 'text-muted'}>
           {selectedIcon ? COMMON_ICONS.find(i => i.name === selectedIcon)?.label || 'Change icon' : 'Select icon'}
         </span>
       </button>
@@ -170,7 +170,7 @@ export default function IconPicker({ selectedIcon, onSelect, darkMode = false })
           
           <div
             className={`absolute z-50 mt-2 w-full rounded-lg shadow-xl border p-3 ${
-              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+              darkMode ? 'bg-surface border-line' : 'bg-surface border-line'
             }`}
           >
             {/* Search */}
@@ -179,7 +179,7 @@ export default function IconPicker({ selectedIcon, onSelect, darkMode = false })
                 <Search
                   size={16}
                   className={`absolute left-3 top-1/2 -translate-y-1/2 ${
-                    darkMode ? 'text-gray-400' : 'text-gray-500'
+                    darkMode ? 'text-muted' : 'text-muted'
                   }`}
                 />
                 <input
@@ -189,8 +189,8 @@ export default function IconPicker({ selectedIcon, onSelect, darkMode = false })
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className={`w-full pl-9 pr-3 py-2 text-sm border rounded-lg ${
                     darkMode
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                      ? 'bg-surface-2 border-line text-white placeholder:text-muted'
+                      : 'bg-surface border-line text-fg placeholder:text-muted'
                   }`}
                   autoFocus
                 />
@@ -214,19 +214,19 @@ export default function IconPicker({ selectedIcon, onSelect, darkMode = false })
                           ? 'bg-blue-900 ring-2 ring-blue-500'
                           : 'bg-blue-100 ring-2 ring-blue-500'
                         : darkMode
-                        ? 'hover:bg-gray-700'
-                        : 'hover:bg-gray-100'
+                        ? 'hover:bg-surface-2'
+                        : 'hover:bg-surface-2'
                     }`}
                     title={icon.label}
                   >
-                    <IconComponent size={20} className={darkMode ? 'text-gray-300' : 'text-gray-600'} />
+                    <IconComponent size={20} className={darkMode ? 'text-muted' : 'text-muted'} />
                   </button>
                 );
               })}
             </div>
             
             {filteredIcons.length === 0 && (
-              <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <div className={`text-center py-8 ${darkMode ? 'text-muted' : 'text-muted'}`}>
                 <p className="text-sm">No icons found</p>
                 <p className="text-xs mt-1">Try a different search term</p>
               </div>

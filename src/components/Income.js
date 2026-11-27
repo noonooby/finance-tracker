@@ -613,8 +613,8 @@ export default function Income({
                           </div>
                           <div>
                             Next: {formatDate(nextDate)} 
-                            {isDueToday && <span className="text-green-600 font-medium ml-2">· Due today</span>}
-                            {isOverdue && <span className="text-red-600 font-medium ml-2">· Overdue</span>}
+                            {isDueToday && <span className="text-positive font-medium ml-2">· Due today</span>}
+                            {isOverdue && <span className="text-negative font-medium ml-2">· Overdue</span>}
                             {!isDueToday && !isOverdue && <span className="ml-2">• {daysUntil} days</span>}
                           </div>
                           <div>Deposits to: {depositAccountName}{(schedule.splits || []).map((sp) => {
@@ -684,7 +684,7 @@ export default function Income({
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="text-2xl font-bold text-green-600">{formatCurrency(inc.amount)}</div>
+                    <div className="text-2xl font-bold text-positive">{formatCurrency(inc.amount)}</div>
                     <div className="flex gap-1">
                       <button
                         onClick={() => onNavigateToTransactions && onNavigateToTransactions({ incomeSource: inc.id })}

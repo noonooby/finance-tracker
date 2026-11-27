@@ -98,8 +98,8 @@ export default function GiftCardBalanceModal({
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className={`p-3 rounded-full ${isAddOperation ? 'bg-green-100 dark:bg-green-900/20' : 'bg-orange-100 dark:bg-orange-900/20'}`}>
-              {isAddOperation ? <Plus size={24} className="text-green-600" /> : <Minus size={24} className="text-orange-600" />}
+            <div className={`p-3 rounded-full ${isAddOperation ? 'bg-positive/10' : 'bg-warning/10'}`}>
+              {isAddOperation ? <Plus size={24} className="text-positive" /> : <Minus size={24} className="text-warning" />}
             </div>
             <div>
               <h3 className="text-lg font-bold">
@@ -125,7 +125,7 @@ export default function GiftCardBalanceModal({
             <div className={`text-xs text-muted mb-1`}>
               Current Balance
             </div>
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-2xl font-bold text-positive">
               {formatCurrency(giftCard.balance)}
             </div>
           </div>

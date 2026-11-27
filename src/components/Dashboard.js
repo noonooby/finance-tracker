@@ -110,16 +110,16 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
-      <Card role="link" tabIndex={0} onClick={() => navigate('/position')} onKeyDown={(e) => { if (e.key === 'Enter') navigate('/position'); }} className="press cursor-pointer">
+      <Card role="link" tabIndex={0} onClick={() => navigate('/position')} onKeyDown={(e) => { if (e.key === 'Enter') navigate('/position'); }} className="hero press cursor-pointer !p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-xs text-muted">Net worth today</div>
-            <div className={`text-3xl font-bold tabular-nums ${p.netWorth < 0 ? 'text-negative' : ''}`}>{d.dataLoading ? <span className="skeleton inline-block w-40 h-8 rounded-lg" /> : <Num value={p.netWorth} />}</div>
+            <div className="text-sm text-muted">Net worth today</div>
+            <div className={`text-4xl font-bold tabular-nums tracking-tight mt-0.5 ${p.netWorth < 0 ? 'text-negative' : ''}`}>{d.dataLoading ? <span className="skeleton inline-block w-40 h-8 rounded-lg" /> : <Num value={p.netWorth} />}</div>
             <div className="text-xs text-muted mt-1">Have {formatCurrency(p.totalHave)} · Owe {formatCurrency(p.totalOwe)}{p.mortgage ? ` (mortgage ${formatCurrency(p.mortgage)})` : ''}</div>
           </div>
           <ChevronRight size={18} className="text-muted mt-1" aria-hidden="true" />
         </div>
-        <div className="mt-3 grid grid-cols-3 gap-3 pt-3 border-t border-line">
+        <div className="mt-4 grid grid-cols-3 gap-3 pt-4 border-t border-line">
           <Stat label="Spendable" value={<Num value={p.liquid} />} />
           <Stat label="Month end" value={<Num value={m.atEnd} />} tone={m.atEnd < 0 ? 'negative' : undefined} />
           <Stat label="Debt costs" value={<Num value={cost.total} />} sub="a month" tone={cost.total > 0 ? 'warning' : undefined} />

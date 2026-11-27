@@ -11,7 +11,7 @@ export default function PayoffSummary({ loan, darkMode }) {
     return plan.payoffDate ? <div className={`text-xs mt-1 ${muted}`}>Paid off around {formatDate(plan.payoffDate)} (no interest rate set)</div> : null;
   }
   if (plan.neverPaysOff) {
-    return <div className="text-xs mt-1 text-red-600">The payment does not cover the interest, so this never gets paid off.</div>;
+    return <div className="text-xs mt-1 text-negative">The payment does not cover the interest, so this never gets paid off.</div>;
   }
   const next = plan.rows[0];
   return (

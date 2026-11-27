@@ -438,7 +438,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                       <button
                         onClick={() => handleSaveEdit(category.id)}
                         disabled={saving}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg hover:bg-green-700 disabled:opacity-50"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg hover:opacity-90 disabled:opacity-50"
                       >
                         <Check size={16} />
                         Save
@@ -466,7 +466,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                         <div className="flex items-center gap-2">
                           <span className="font-semibold">{category.name}</span>
                           {isFavorite && (
-                            <Star size={14} className="text-yellow-500 fill-current" title="Favorite" />
+                            <Star size={14} className="text-warning fill-current" title="Favorite" />
                           )}
                         </div>
                         {category.is_system && (
@@ -489,7 +489,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                         onClick={() => handleToggleFavorite(category.id)}
                         className={`p-2 rounded-lg transition-colors ${
                           isFavorite
-                            ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
+                            ? 'text-warning hover:bg-surface-2'
                             : 'text-muted hover:bg-surface-2'
                         }`}
                         title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}

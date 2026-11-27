@@ -36,7 +36,7 @@ export default function More() {
       <h1 className="text-2xl font-bold tracking-tight">More</h1>
 
       <section className="space-y-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wide px-1 text-muted">Colour</h2>
+        <h2 className="text-[0.9375rem] font-semibold px-1 text-fg">Colour</h2>
         <div className={`${card} p-4 flex flex-wrap gap-3`} role="group" aria-label="App colour">
           {themes.map((t) => (
             <button

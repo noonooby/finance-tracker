@@ -4,10 +4,10 @@ import { formatCurrency } from '../../../utils/reportHelpers';
 export default function SummaryCard({ title, value, subtitle, icon: Icon, color = 'blue', darkMode, formatValue = true }) {
   const colorClasses = {
     blue: 'bg-blue-500',
-    green: 'bg-green-500',
-    red: 'bg-red-500',
+    green: 'bg-positive/100',
+    red: 'bg-negative/100',
     purple: 'bg-purple-500',
-    orange: 'bg-orange-500',
+    orange: 'bg-warning/100',
     gray: 'bg-line'
   };
 

@@ -177,7 +177,7 @@ export default function AnnualReview({
           </button>
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:bg-green-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:opacity-90 transition-colors"
           >
             <FileSpreadsheet size={18} />
             Export Excel
@@ -246,7 +246,7 @@ export default function AnnualReview({
             <div className="text-center">
               <p className="text-sm text-muted mb-2">Income Growth</p>
               <p className={`text-3xl font-bold ${
-                yearComparison.growth.income >= 0 ? 'text-green-600' : 'text-red-600'
+                yearComparison.growth.income >= 0 ? 'text-positive' : 'text-negative'
               }`}>
                 {yearComparison.growth.income >= 0 ? '+' : ''}{yearComparison.growth.income}%
               </p>
@@ -257,7 +257,7 @@ export default function AnnualReview({
             <div className="text-center">
               <p className="text-sm text-muted mb-2">Expense Change</p>
               <p className={`text-3xl font-bold ${
-                yearComparison.growth.expenses <= 0 ? 'text-green-600' : 'text-red-600'
+                yearComparison.growth.expenses <= 0 ? 'text-positive' : 'text-negative'
               }`}>
                 {yearComparison.growth.expenses >= 0 ? '+' : ''}{yearComparison.growth.expenses}%
               </p>
@@ -268,7 +268,7 @@ export default function AnnualReview({
             <div className="text-center">
               <p className="text-sm text-muted mb-2">Net Cashflow Change</p>
               <p className={`text-3xl font-bold ${
-                yearComparison.growth.net >= 0 ? 'text-green-600' : 'text-red-600'
+                yearComparison.growth.net >= 0 ? 'text-positive' : 'text-negative'
               }`}>
                 {yearComparison.growth.net >= 0 ? '+' : ''}{yearComparison.growth.net}%
               </p>
@@ -345,17 +345,17 @@ export default function AnnualReview({
               {monthlyTrends.map((month, index) => (
                 <tr key={index} className={`border-b border-line`}>
                   <td className="py-3 px-4 font-medium">{month.displayName}</td>
-                  <td className="text-right py-3 px-4 text-green-600 dark:text-green-400">
+                  <td className="text-right py-3 px-4 text-positive">
                     {formatCurrency(month.income)}
                   </td>
-                  <td className="text-right py-3 px-4 text-red-600 dark:text-red-400">
+                  <td className="text-right py-3 px-4 text-negative">
                     {formatCurrency(month.expenses)}
                   </td>
                   <td className="text-right py-3 px-4 text-blue-600 dark:text-blue-400">
                     {formatCurrency(month.payments)}
                   </td>
                   <td className={`text-right py-3 px-4 font-semibold ${
-                    month.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    month.net >= 0 ? 'text-positive' : 'text-negative'
                   }`}>
                     {formatCurrency(month.net)}
                   </td>
@@ -366,17 +366,17 @@ export default function AnnualReview({
             <tfoot>
               <tr className={`border-t-2 border-line font-bold`}>
                 <td className="py-3 px-4">Total</td>
-                <td className="text-right py-3 px-4 text-green-600 dark:text-green-400">
+                <td className="text-right py-3 px-4 text-positive">
                   {formatCurrency(summary.totalIncome)}
                 </td>
-                <td className="text-right py-3 px-4 text-red-600 dark:text-red-400">
+                <td className="text-right py-3 px-4 text-negative">
                   {formatCurrency(summary.totalExpenses)}
                 </td>
                 <td className="text-right py-3 px-4 text-blue-600 dark:text-blue-400">
                   {formatCurrency(summary.totalPayments)}
                 </td>
                 <td className={`text-right py-3 px-4 ${
-                  summary.netCashflow >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  summary.netCashflow >= 0 ? 'text-positive' : 'text-negative'
                 }`}>
                   {formatCurrency(summary.netCashflow)}
                 </td>
