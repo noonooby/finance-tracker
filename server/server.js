@@ -574,6 +574,28 @@ function reverseInner(uid, id, b = {}) {
 }
 const reverse = (uid, id, b) => tx(() => reverseInner(uid, id, b));
 
+// Two categories with one name and one kind are one category (names are unique; see checkCategory). The older one is kept:
+// every line, split part and merchant rule of the other is moved to it, then the other is removed. -> how many were merged
+function mergeTwinCategories(uid) {
+  const cats = selectRows(uid, { table: 'categories' }).sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  const keep = new Map(), into = new Map();
+  for (const c of cats) {
+    const k = `${c.is_income ? 1 : 0}|${String(c.name || '').trim().toLowerCase()}`;
+    if (keep.has(k)) into.set(String(c.id), keep.get(k)); else keep.set(k, c);
+  }
+  if (!into.size) return 0;
+  const save = db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?');
+  for (const tbl of ['transactions', 'category_rules', 'bills']) for (const r of selectRows(uid, { table: tbl })) {
+    let changed = false;
+    const to = into.get(String(r.category_id));
+    if (to) { r.category_id = to.id; r.category_name = to.name; changed = true; }
+    for (const p of Array.isArray(r.splits) ? r.splits : []) { const t = into.get(String(p.category_id)); if (t) { p.category_id = t.id; p.category_name = t.name; changed = true; } }
+    if (changed) save.run(JSON.stringify(r), tbl, String(r.id), uid);
+  }
+  for (const id of into.keys()) db.prepare('DELETE FROM rows WHERE tbl = ? AND id = ? AND user_id = ?').run('categories', id, uid);
+  return into.size;
+}
+
 // ---------- history from a ledger ----------
 // Accounts with the balance each has on a stated day, and every line up to that day (see history.js for the rules).
 // Nothing here moves a balance: each account is saved with its stated balance, and its lines are kept as history.
@@ -584,7 +606,15 @@ function importHistory(uid, file) {
     const has = (tbl, id) => !!db.prepare('SELECT 1 FROM rows WHERE tbl = ? AND id = ?').get(tbl, String(id));
     const put = db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)');
     const out = { accounts: 0, assets: 0, bills: 0, pay: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
-    for (const c of p.categories) if (!has('categories', c.id)) { put.run('categories', c.id, uid, JSON.stringify({ ...c, user_id: uid, created_at: now() })); out.categories++; }
+    // A category the person already has (the same name and kind) is the one used.
+    const mineNow = new Map(selectRows(uid, { table: 'categories' }).map((c) => [`${c.is_income ? 1 : 0}|${String(c.name || '').trim().toLowerCase()}`, c]));
+    const use = new Map();
+    for (const c of p.categories) {
+      const twin = mineNow.get(`${c.is_income ? 1 : 0}|${c.name.trim().toLowerCase()}`);
+      if (twin) { if (String(twin.id) !== c.id) use.set(c.id, twin); continue; }
+      if (!has('categories', c.id)) { put.run('categories', c.id, uid, JSON.stringify({ ...c, user_id: uid, created_at: now() })); out.categories++; }
+    }
+    for (const r of p.rows) { const to = use.get(r.category_id); if (to) { r.category_id = to.id; r.category_name = to.name; } }
     for (const a of p.accounts) if (!has(a.table, a.id)) { insertRow(uid, a.table, { ...a.values, created_at: now() }); out.accounts++; }
     for (const a of p.assets) if (!has('assets', a.id)) { insertRow(uid, 'assets', { ...a, created_at: now() }); out.assets++; }
     for (const b of p.bills) if (!has('bills', b.id)) { insertRow(uid, 'bills', { ...b, created_at: now() }); out.bills++; }
@@ -608,6 +638,7 @@ function importHistory(uid, file) {
       put.run('category_rules', id, uid, JSON.stringify({ id, user_id: uid, ...r, created_at: now(), updated_at: now() }));
       out.rules++;
     }
+    out.merged = mergeTwinCategories(uid);
     return out;
   });
 }
@@ -1306,4 +1337,4 @@ if (require.main === module) {
   setTimeout(runReminders, 60e3);
   setInterval(runReminders, 15 * 60e3).unref();
 }
-module.exports = { server, db, importHistory, userFor, tx, money, reverse, runQuery, runReminders, setHoldings, reprice, fillProducts, runUpkeep, _wakeLookups: () => { lookupsRestUntil = 0; searchRefused = false; } };
+module.exports = { server, db, importHistory, mergeTwinCategories, userFor, tx, money, reverse, runQuery, runReminders, setHoldings, reprice, fillProducts, runUpkeep, _wakeLookups: () => { lookupsRestUntil = 0; searchRefused = false; } };

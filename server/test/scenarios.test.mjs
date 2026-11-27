@@ -2227,7 +2227,11 @@ test('history from a ledger: balances are the stated ones, pairs become one line
       { id: 'pay', kind: 'income', name: 'Acme pay', payee: 'Acme', amount: 2000, next: '2026-12-08', every: 'biweekly', bank: 'Ledger chequing 1111' },
     ],
   };
+  // A category the person already has under another id is used, not doubled.
+  require(path.join(root, 'server', 'server.js')).db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)')
+    .run('categories', 'dining-old', uid, JSON.stringify({ id: 'dining-old', user_id: uid, name: 'Dining', is_income: false, created_at: '2026-01-01T00:00:00.000Z' }));
   const out = importHistory(uid, file);
+  assert.equal(out.merged, 0);
   assert.deepEqual([out.accounts, out.assets, out.lines, out.bills, out.pay], [5, 1, 7, 1, 1]);
   assert.equal(out.problems.length, 1);
   const again = importHistory(uid, file);
@@ -2247,6 +2251,8 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   const kind = (id) => tx.find((t) => t.external_id === id);
   assert.equal(kind('1').type, 'expense');
   assert.equal(kind('1').category_name, 'Dining');
+  assert.equal(kind('1').category_id, 'dining-old');
+  assert.equal((await mine('categories')).filter((c) => c.name === 'Dining').length, 1);
   assert.equal(kind('2').type, 'refund');
   assert.equal(kind('3').type, 'payment');
   assert.equal(kind('3').card_id, byKey(cards, 'visa-2').id);
