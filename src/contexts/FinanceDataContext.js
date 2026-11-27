@@ -15,16 +15,16 @@ export const FinanceDataContext = createContext(null);
 
 export function FinanceDataProvider({ children }) {
   // Financial entity states
-  const [creditCards, setCreditCards] = useState([]);
-  const [loans, setLoans] = useState([]);
+  const [allCreditCards, setCreditCards] = useState([]);
+  const [allLoans, setLoans] = useState([]);
   const [income, setIncome] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
-  const [bankAccounts, setBankAccounts] = useState([]);
+  const [allBankAccounts, setBankAccounts] = useState([]);
   
   // Money held in accounts (cash is one of the bank accounts)
   const [availableCash, setAvailableCash] = useState(0);
-  const [investments, setInvestments] = useState([]);
+  const [allInvestments, setInvestments] = useState([]);
   const [assets, setAssets] = useState([]);
   const [incomeSchedules, setIncomeSchedules] = useState([]);
   const [categoryRules, setCategoryRules] = useState([]);
@@ -228,6 +228,15 @@ export function FinanceDataProvider({ children }) {
     await loadBankAccounts();
   }, [loadBankAccounts]);
 
+  // A closed account keeps its history but is left out of every list, total and choice. Screens are handed the open
+  // ones; the closed ones are listed in one place (Everything you hold), where each can be reopened.
+  const closedAccounts = useMemo(() => [['bank_accounts', allBankAccounts], ['credit_cards', allCreditCards], ['loans', allLoans], ['investments', allInvestments]]
+    .flatMap(([table, rows]) => (rows || []).filter((r) => r && r.archived).map((r) => ({ table, r }))), [allBankAccounts, allCreditCards, allLoans, allInvestments]);
+  const bankAccounts = useMemo(() => (allBankAccounts || []).filter((r) => !r.archived), [allBankAccounts]);
+  const creditCards = useMemo(() => (allCreditCards || []).filter((r) => !r.archived), [allCreditCards]);
+  const loans = useMemo(() => (allLoans || []).filter((r) => !r.archived), [allLoans]);
+  const investments = useMemo(() => (allInvestments || []).filter((r) => !r.archived), [allInvestments]);
+
   // Calculated values
   const displayAvailableCash = calculateTotalBankBalance(bankAccounts);
   const totalCreditCardDebt = creditCards.reduce((sum, card) => sum + (Number(card.balance) || 0), 0);
@@ -244,6 +253,7 @@ export function FinanceDataProvider({ children }) {
     availableCash,
     investments,
     assets,
+    closedAccounts,
     incomeSchedules,
     categoryRules,
     setCategoryRules,
@@ -279,7 +289,7 @@ export function FinanceDataProvider({ children }) {
     displayAvailableCash,
     totalCreditCardDebt,
     totalLoanDebt,
-  }), [creditCards, loans, income, transactions, categories, bankAccounts, availableCash, investments, assets, incomeSchedules, categoryRules, bills, budgets, offlineAt, dataLoading, loadError,
+  }), [creditCards, loans, income, transactions, categories, bankAccounts, availableCash, investments, assets, closedAccounts, incomeSchedules, categoryRules, bills, budgets, offlineAt, dataLoading, loadError,
     latestActivities, loadAllData, loadDataProgressively, loadBankAccounts, loadCategories, loadLatestActivities,
     handleUpdateCash, displayAvailableCash, totalCreditCardDebt, totalLoanDebt]);
 

@@ -574,6 +574,82 @@ function reverseInner(uid, id, b = {}) {
 }
 const reverse = (uid, id, b) => tx(() => reverseInner(uid, id, b));
 
+// ---------- history from a ledger ----------
+// Accounts with the balance each has on a stated day, and every line up to that day (see history.js for the rules).
+// Nothing here moves a balance: each account is saved with its stated balance, and its lines are kept as history.
+// Running it again with the same file adds nothing: every account, category and line has an id made from the file's own.
+function importHistory(uid, file) {
+  const p = require('./history').plan(file, uid);
+  return tx(() => {
+    const has = (tbl, id) => !!db.prepare('SELECT 1 FROM rows WHERE tbl = ? AND id = ?').get(tbl, String(id));
+    const put = db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)');
+    const out = { accounts: 0, assets: 0, bills: 0, pay: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
+    for (const c of p.categories) if (!has('categories', c.id)) { put.run('categories', c.id, uid, JSON.stringify({ ...c, user_id: uid, created_at: now() })); out.categories++; }
+    for (const a of p.accounts) if (!has(a.table, a.id)) { insertRow(uid, a.table, { ...a.values, created_at: now() }); out.accounts++; }
+    for (const a of p.assets) if (!has('assets', a.id)) { insertRow(uid, 'assets', { ...a, created_at: now() }); out.assets++; }
+    for (const b of p.bills) if (!has('bills', b.id)) { insertRow(uid, 'bills', { ...b, created_at: now() }); out.bills++; }
+    for (const s of p.pay) if (!has('income_schedules', s.id)) { insertRow(uid, 'income_schedules', { ...s, created_at: now(), updated_at: now() }); out.pay++; }
+    const rules = new Map();
+    for (const r of p.rows) {
+      if (has('transactions', r.id)) { out.already++; continue; }
+      put.run('transactions', r.id, uid, JSON.stringify({ ...r, user_id: uid }));
+      out.lines++;
+      // What each merchant's category is: the newest line from it decides, as when lines are saved one at a time.
+      if (!r.category_id || !['expense', 'income', 'refund'].includes(r.type)) continue;
+      const key = require('./reader').mkey(r.description);
+      if (key.length < 3) continue;
+      const was = rules.get(key);
+      rules.set(key, { key, merchant: String(r.description).slice(0, 60), category_id: r.category_id, category_name: r.category_name || null, source: 'learned',
+        uses: was && was.category_id === r.category_id ? was.uses + 1 : 1, last_date: r.date });
+    }
+    for (const r of rules.values()) {
+      const id = `rule:${uid}:${r.key}`;
+      if (has('category_rules', id)) continue;
+      put.run('category_rules', id, uid, JSON.stringify({ id, user_id: uid, ...r, created_at: now(), updated_at: now() }));
+      out.rules++;
+    }
+    return out;
+  });
+}
+
+// ---------- what another program of yours may read ----------
+// Accounts and lines, read only, for a ledger you keep elsewhere. It answers only to the key kept in the file
+// export.key beside the database (never in the code or the log), and only for the person named in export.user.
+// Each line says which accounts it moved and by how much, signed as that account's own statement would show it
+// (above zero is money into the account; a purchase on a card is below zero).
+const exportFile = (name) => path.join(path.dirname(process.env.DB_PATH || path.join(__dirname, 'finance.db')), name);
+function exportFor(req, since) {
+  let key = '', who = '';
+  try { key = fs.readFileSync(exportFile('export.key'), 'utf8').trim(); who = fs.readFileSync(exportFile('export.user'), 'utf8').trim(); } catch { fail(404, 'Not found'); }
+  const given = String(req.headers['x-export-key'] || '');
+  const a = crypto.createHash('sha256').update(given).digest(), b = crypto.createHash('sha256').update(key).digest();
+  if (key.length < 32 || !crypto.timingSafeEqual(a, b)) fail(401, 'Not allowed');
+  const u = db.prepare('SELECT id FROM users WHERE lower(email) = lower(?)').get(who);
+  if (!u) fail(404, 'Not found');
+  const uid = u.id, accounts = [], byId = new Map();
+  for (const table of Object.keys(MONEY_FIELDS)) for (const r of selectRows(uid, { table })) {
+    const owes = table === 'credit_cards' || table === 'loans';
+    const acct = { id: r.id, key: r.external_key || null, table, name: r.name, institution: r.institution || null, last4: r.last4 || null, balance: Number(r.balance) || 0, owed: owes,
+      balance_as_of: r.balance_as_of || null, archived: !!r.archived, updated_at: r.updated_at || r.created_at || null };
+    accounts.push(acct); byId.set(`${table}:${r.id}`, acct);
+  }
+  const from = since && !Number.isNaN(Date.parse(since)) ? new Date(since).toISOString() : '';
+  const lines = [];
+  for (const t of selectRows(uid, { table: 'transactions' })) {
+    const changed = t.updated_at || t.created_at || '';
+    const fresh = t.source !== 'import' || t.updated_at;
+    if (from && !(fresh && changed >= from)) continue;
+    const moves = [...(t._legs || []).map((l) => ({ ...l, amount: l.delta })), ...(t.history_only || [])].map((l) => {
+      const acct = byId.get(`${l.table}:${l.id}`);
+      return acct ? { account_id: acct.id, account_key: acct.key, account: acct.name, amount: fromCents((acct.owed ? -1 : 1) * cents(l.amount)) } : null;
+    }).filter((m) => m && m.amount);
+    lines.push({ id: t.id, external_id: t.external_id || null, type: t.type, date: String(t.date || '').slice(0, 10), amount: Number(t.amount) || 0, description: t.description || '',
+      category: t.category_name || null, ledger_category: t.ledger_category || null, moves, pending: t.pending === true, undone: t.status === 'undone' || t.status === 'deleted',
+      source: t.source === 'import' ? 'import' : t.from_screenshot ? 'picture' : 'typed', created_at: t.created_at || null, updated_at: t.updated_at || null });
+  }
+  return { as_of: now(), since: from || null, accounts, lines };
+}
+
 // ---------- lines on the wrong account ----------
 // body: { moves: [{ id, from: 'bank_account:ID' }], to: 'bank_account:ID' }, all or nothing.
 // Each line's part on one account goes to another of the same kind (bank to bank, card to card). What the line did to
@@ -661,12 +737,13 @@ function snapshot(uid, b) {
     //  - A line dated on the day of the balance the app already had was kept as history, as if that balance included
     //    it. A newer balance that differs by exactly that line says it came after: it is counted now.
     // When some of those lines add up to the difference to the cent, nothing is corrected. The checkpoint is kept as
+    // A line brought in with a reconciled ledger is known to be inside the balance that came with it: it is never one of these.
     // what the account shows once the pending lines post, so the lines between two checkpoints still add up.
     if (!newer && gap && (b.table === 'bank_accounts' || b.table === 'credit_cards')) {
       const dayOf = (t) => String(t.date || '').slice(0, 10);
       const mine = (xs) => (xs || []).filter((l) => l.table === b.table && String(l.id) === String(r.id));
       const rows = selectRows(uid, { table: 'transactions' }).filter((t) => t.status !== 'undone' && t.status !== 'deleted' && t.type !== 'adjustment' && isDay(dayOf(t)) && dayOf(t) <= day);
-      const held = isDay(r.snapshot_date) ? rows.filter((t) => t.pending !== true && dayOf(t) === r.snapshot_date)
+      const held = isDay(r.snapshot_date) ? rows.filter((t) => t.pending !== true && t.source !== 'import' && dayOf(t) === r.snapshot_date)
         .map((t) => ({ t, v: mine(t.history_only).reduce((s, h) => s + cents(h.amount), 0), held: true })).filter((x) => x.v) : [];
       const pend = rows.filter((t) => t.pending === true).map((t) => ({ t, v: -mine(t._legs).reduce((s, l) => s + cents(l.delta), 0) })).filter((x) => x.v);
       const items = [...held, ...pend], n = items.length;
@@ -989,6 +1066,7 @@ const build = () => {
   if (buildName === null) { try { buildName = (fs.readFileSync(path.join(__dirname, '..', 'build', 'index.html'), 'utf8').match(/static\/js\/(main\.[\w.]+\.js)/) || [])[1] || ''; } catch { buildName = ''; } }
   return buildName;
 };
+route('GET', '/api/export', (req, b, m, url) => exportFor(req, url.searchParams.get('since')));
 route('GET', '/api/config', () => ({ google: !!(G_ID && G_SECRET), dev: !!DEV_USER, ai: require('./models').ready(), build: build() }));
 // The Gemini key: whether it is set and whether this user may set it. Never the key itself.
 route('GET', '/api/gemini-key', (req) => { const u = authUser(req); const ks = require('./keystore'); return { set: ks.isSet(), canSet: !ks.isSet() && ks.mayManage(db, u) }; });
@@ -1104,7 +1182,11 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': hashed ? 'public, max-age=31536000, immutable' : 'no-cache' });
     return fs.createReadStream(file).pipe(res);
   }
-  const send = (s, o) => { res.writeHead(s, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o)); };
+  const send = (s, o) => {
+    const text = JSON.stringify(o), head = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+    if (text.length < 4000 || !/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) { res.writeHead(s, head); return res.end(text); }
+    require('zlib').gzip(text, { level: 4 }, (err, packed) => { if (err) { res.writeHead(s, head); return res.end(text); } res.writeHead(s, { ...head, 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' }); res.end(packed); });
+  };
   // One line in the log for each request that was refused, and for each reading: what it was and how it came out.
   // No names, descriptions or balances are written.
   const began = Date.now();
@@ -1224,4 +1306,4 @@ if (require.main === module) {
   setTimeout(runReminders, 60e3);
   setInterval(runReminders, 15 * 60e3).unref();
 }
-module.exports = { server, db, money, reverse, runQuery, runReminders, setHoldings, reprice, fillProducts, runUpkeep, _wakeLookups: () => { lookupsRestUntil = 0; searchRefused = false; } };
+module.exports = { server, db, importHistory, userFor, tx, money, reverse, runQuery, runReminders, setHoldings, reprice, fillProducts, runUpkeep, _wakeLookups: () => { lookupsRestUntil = 0; searchRefused = false; } };

@@ -2194,3 +2194,90 @@ test('a bank line to a lender is a payment on the loan you have with it; money f
   assert.equal(C.lineFor('Transfer from portfolio line of credit', two).id, 'w');
   assert.equal(C.lineFor('line of credit', two), null, 'two lines and no name: not guessed');
 });
+
+test('history from a ledger: balances are the stated ones, pairs become one line, totals follow the rules, twice adds nothing', async () => {
+  const { importHistory, userFor } = require(path.join(root, 'server', 'server.js'));
+  const uid = userFor('ledger@test.local');
+  const file = {
+    rules: { outside: ['Friends:'], refunds: ['Refunds & credits'], loan_payments: { 'Housing: Mortgage': 'home-loan' } },
+    accounts: [
+      { key: 'chq-1', institution: 'Scotiabank', name: 'Ledger chequing 1111', kind: 'chequing', currency: 'CAD', balance: 500, balance_date: '2026-11-27', closed: false, last4: '1111' },
+      { key: 'visa-2', institution: 'Scotiabank', name: 'Ledger Visa 2222', kind: 'credit_card', currency: 'CAD', balance: 120.5, balance_date: '2026-11-27', closed: false, last4: '2222', credit_limit: 5000 },
+      { key: 'old-sav', institution: 'Neo', name: 'Old savings', kind: 'savings', currency: 'CAD', balance: 0, balance_date: '2026-11-27', closed: true },
+      { key: 'home-loan', institution: 'Pine', name: 'Home mortgage', kind: 'loan', currency: 'CAD', balance: 300000, balance_date: '2026-11-27', closed: false, rate: 3.6, payment_amount: 1300, frequency: 'biweekly', next_due: '2026-12-04' },
+      { key: 'loc', institution: 'Wealthsimple', name: 'Portfolio line of credit', kind: 'investment', currency: 'CAD', balance: -1000, balance_date: '2026-11-27', closed: false },
+    ],
+    lines: [
+      { id: '1', date: '2026-11-20', account: 'visa-2', description: 'TIM HORTONS #1634 NORTH YORK, ON', amount: -4.5, currency: 'CAD', category: 'Restaurants & delivery', transfer_id: null },
+      { id: '2', date: '2026-11-21', account: 'visa-2', description: 'AMAZON RETURN', amount: 20, currency: 'CAD', category: 'Refunds & credits', transfer_id: null },
+      { id: '3', date: '2026-11-22', account: 'chq-1', description: 'VISA PAYMENT', amount: -100, currency: 'CAD', category: 'Transfer: Credit card payment', transfer_id: 'T1' },
+      { id: '4', date: '2026-11-23', account: 'visa-2', description: 'PAYMENT THANK YOU', amount: 100, currency: 'CAD', category: 'Transfer: Credit card payment', transfer_id: 'T1' },
+      { id: '5', date: '2026-11-24', account: 'chq-1', description: 'PAYROLL ACME', amount: 2000, currency: 'CAD', category: 'Income: Payroll', transfer_id: null },
+      { id: '6', date: '2026-11-24', account: 'chq-1', description: 'E-TRANSFER TO SAM', amount: -50, currency: 'CAD', category: 'Friends: sent', transfer_id: null },
+      { id: '7', date: '2026-11-25', account: 'chq-1', description: 'PINE MORTGAGE PAD', amount: -1300, currency: 'CAD', category: 'Housing: Mortgage', transfer_id: null },
+      { id: '8', date: '2026-11-25', account: 'chq-1', description: 'TO OLD SAVINGS', amount: -30, currency: 'CAD', category: 'Transfer: Between own accounts', transfer_id: 'G1' },
+      { id: '9', date: '2026-11-25', account: 'old-sav', description: 'DEPOSIT', amount: 10, currency: 'CAD', category: 'Transfer: Between own accounts', transfer_id: 'G1' },
+      { id: '10', date: '2026-11-25', account: 'old-sav', description: 'DEPOSIT', amount: 20, currency: 'CAD', category: 'Transfer: Between own accounts', transfer_id: 'G1' },
+      { id: '11', date: '2026-11-26', account: 'chq-1', description: 'memo line', amount: 0, currency: 'CAD', category: 'Groceries', transfer_id: null },
+    ],
+    assets: [{ name: 'Home: 1 Main St', value: 400000 }],
+    schedules: [
+      { id: 'visa-2222', kind: 'card', name: 'Visa', amount: 80, amount_kind: 'statement', minimum: 10, next: '2026-12-10', every: 'monthly', autopay: false, conf: 'confirmed' },
+      { id: 'hydro', kind: 'bill', name: 'Hydro', payee: 'Hydro', amount: 85, next: '2026-12-01', every: 'monthly', remind: true },
+      { id: 'pay', kind: 'income', name: 'Acme pay', payee: 'Acme', amount: 2000, next: '2026-12-08', every: 'biweekly', bank: 'Ledger chequing 1111' },
+    ],
+  };
+  const out = importHistory(uid, file);
+  assert.deepEqual([out.accounts, out.assets, out.lines, out.bills, out.pay], [5, 1, 7, 1, 1]);
+  assert.equal(out.problems.length, 1);
+  const again = importHistory(uid, file);
+  assert.deepEqual([again.accounts, again.lines, again.already, again.bills, again.pay, again.categories, again.rules], [0, 0, 7, 0, 0, 0, 0]);
+
+  const { token } = await api('/api/dev-login', { email: 'ledger@test.local' });
+  const mine = async (table) => (await (await realFetch(`${base}/api/db`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ table, action: 'select' }) })).json()).data;
+  const [banks, cards, loans, tx] = [await mine('bank_accounts'), await mine('credit_cards'), await mine('loans'), await mine('transactions')];
+  const byKey = (rows, k) => rows.find((r) => r.external_key === k);
+  // No line moved a balance: each account has the balance the file states, on the day it states.
+  assert.equal(byKey(banks, 'chq-1').balance, 500);
+  assert.equal(byKey(cards, 'visa-2').balance, 120.5);
+  assert.equal(byKey(cards, 'visa-2').statement_balance, 80);
+  assert.equal(byKey(banks, 'old-sav').archived, true);
+  assert.equal(byKey(loans, 'home-loan').loan_type, 'mortgage');
+  assert.equal(byKey(loans, 'loc').balance, 1000);
+  const kind = (id) => tx.find((t) => t.external_id === id);
+  assert.equal(kind('1').type, 'expense');
+  assert.equal(kind('1').category_name, 'Dining');
+  assert.equal(kind('2').type, 'refund');
+  assert.equal(kind('3').type, 'payment');
+  assert.equal(kind('3').card_id, byKey(cards, 'visa-2').id);
+  assert.deepEqual(kind('3').external_ids, ['3', '4']);
+  assert.equal(kind('5').type, 'income');
+  assert.equal(kind('6').type, 'transfer');
+  assert.equal(kind('7').type, 'loan_payment');
+  assert.equal(kind('7').loan_id, byKey(loans, 'home-loan').id);
+  assert.equal(kind('8').type, 'transfer');
+  assert.equal(kind('8').amount, 30);
+  assert.equal(tx.every((t) => !t._legs && t.history_only.length >= 1), true);
+  // Spending and income for the month follow the rules: the coffee less the refund; the pay only.
+  const spent = Object.values(S.spentByCategory(tx, '2026-11-01', '2026-11-30')).reduce((a, b) => a + b, 0);
+  assert.equal(Math.round(spent * 100) / 100, -15.5);
+  // What is due on the card is its statement, not everything charged since.
+  const due = F.upcoming({ creditCards: cards, loans: [], bankAccounts: banks, bills: [] }, new Date(2026, 10, 28));
+  assert.equal(due.find((x) => x.kind === 'card').amount, 80);
+  // A picture of the card later shows the same coffee under a shorter name: it is the line already there.
+  assert.equal(CR.suggestCategoryId([{ key: 'timhortonsnorthyorkon', category_id: 'x', uses: 3 }], 'Tim Hortons', [{ id: 'x' }]), 'x');
+
+  // The read-only way out answers only to its key.
+  const dir = path.dirname(process.env.DB_PATH);
+  assert.equal((await realFetch(`${base}/api/export`)).status, 404);
+  fs.writeFileSync(path.join(dir, 'export.key'), 'k'.repeat(40)); fs.writeFileSync(path.join(dir, 'export.user'), 'ledger@test.local');
+  assert.equal((await realFetch(`${base}/api/export`, { headers: { 'x-export-key': 'wrong' } })).status, 401);
+  const ex = await (await realFetch(`${base}/api/export`, { headers: { 'x-export-key': 'k'.repeat(40) } })).json();
+  assert.equal(ex.accounts.length, 6);
+  const pay = ex.lines.find((l) => l.external_id === '3');
+  assert.deepEqual(pay.moves.map((m) => [m.account_key, m.amount]), [['chq-1', -100], ['visa-2', 100]]);
+  assert.equal(ex.lines.find((l) => l.external_id === '1').moves[0].amount, -4.5);
+  const later = await (await realFetch(`${base}/api/export?since=2020-01-01T00:00:00Z`, { headers: { 'x-export-key': 'k'.repeat(40) } })).json();
+  assert.equal(later.lines.length, 0);
+  fs.rmSync(path.join(dir, 'export.key')); fs.rmSync(path.join(dir, 'export.user'));
+});

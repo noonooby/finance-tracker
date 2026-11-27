@@ -16,6 +16,10 @@ function findRule(rules, description) {
   if (exact) return exact;
   let best = null;
   for (const r of rules) if (r.key && r.key.length >= 4 && k.startsWith(r.key) && (!best || r.key.length > best.key.length)) best = r;
+  if (best || k.length < 4) return best;
+  // The other way round: the rule was learned from a longer name (a statement's "TIM HORTONS #1634 NORTH YORK") and this is
+  // the short one. The rule used most wins.
+  for (const r of rules) if (r.key && r.key.startsWith(k) && (!best || (Number(r.uses) || 0) > (Number(best.uses) || 0))) best = r;
   return best;
 }
 

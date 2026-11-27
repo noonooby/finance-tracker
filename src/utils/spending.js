@@ -30,6 +30,8 @@ export function touchesAccount(t, table, id) {
   if (!t || id == null) return false;
   const k = String(id), is = (x) => x != null && String(x) === k;
   if ((t._legs || []).some((l) => l && l.table === table && is(l.id))) return true;
+  // A line kept as history (dated before the account's stated balance) was on the account all the same.
+  if ((t.history_only || []).some((l) => l && l.table === table && is(l.id))) return true;
   const kind = { bank_accounts: 'bank_account', credit_cards: 'credit_card', loans: 'loan' }[table];
   if (t.payment_method === kind && is(t.payment_method_id)) return true;
   if (table === 'bank_accounts') return is(t.bank_account_id) || is(t.from_account_id) || is(t.to_account_id);

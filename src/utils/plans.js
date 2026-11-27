@@ -257,7 +257,9 @@ export function yearSummary(transactions, year) {
       for (const p of parts) {
         const name = p.category_name || 'No category';
         add(spend, name, sign * (Number(p.amount) || 0));
-        if (/\bfees?\b/i.test(name)) fees += sign * (Number(p.amount) || 0);
+        // Fees a bank or card charged: a category named for them ("Fees", "Bank fees", "Fees & interest charged"), not one that
+        // only has the word in it (condo fees, government fees).
+        if (/^((bank|card|account|service|banking)\s+)?fees?\b/i.test(String(name).trim())) fees += sign * (Number(p.amount) || 0);
       }
     }
     if (Number(t.interest_amount) > 0) interest += Number(t.interest_amount);

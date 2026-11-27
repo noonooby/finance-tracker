@@ -237,9 +237,13 @@ export function upcoming({ creditCards = [], loans = [], bankAccounts = [], bill
     if (bal > 0 && (inWindow(d) || late(d))) {
       const mode = c.autopay_mode || 'statement';
       const min = Number(c.minimum_payment) || Math.min(bal, Math.max(10, round2(bal * 0.03)));
-      const amount = mode === 'fixed' ? Math.min(bal, Number(c.autopay_fixed) || bal) : mode === 'minimum' ? min : bal;
+      // The statement for this due day, when it is known: that is what is asked for, and it leaves out what was charged since.
+      const onStatement = c.statement_due && String(c.statement_due).slice(0, 10) === d;
+      const stated = onStatement && c.statement_balance != null && c.statement_balance !== '' ? Math.min(bal, Number(c.statement_balance) || 0) : null;
+      const amount = mode === 'fixed' ? Math.min(bal, Number(c.autopay_fixed) || bal) : mode === 'minimum' ? min : stated != null ? stated : bal;
       out.push({ date: d, name: c.name, amount: round2(amount), kind: 'card', cash: true, auto: !!c.connected_payment_source, from: c.connected_payment_source ? nameOf(c.connected_payment_source, c.connected_payment_source_id) : null,
-        note: late(d) ? 'past due' : !c.connected_payment_source ? `minimum ${round2(min)}` : mode === 'minimum' ? 'autopay pays the minimum; interest applies on the rest' : null });
+        note: late(d) ? 'past due' : stated != null && mode === 'statement' ? `statement balance · minimum ${round2(Math.min(min, stated))}` : onStatement && mode === 'statement' ? 'statement not out yet · this is the whole balance'
+          : !c.connected_payment_source ? `minimum ${round2(min)}` : mode === 'minimum' ? 'autopay pays the minimum; interest applies on the rest' : null });
     }
     if (c.promo_end && inWindow(c.promo_end) && c.promo_rate != null && c.promo_rate !== '') {
       out.push({ date: c.promo_end, name: c.name, amount: null, kind: 'promo_end', auto: false, note: `promo rate of ${c.promo_rate}% ends; then ${Number(c.interest_rate) || 0}%` });

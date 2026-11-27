@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ask } from '../utils/confirm';
 import { Save, FolderOpen, ListX } from 'lucide-react';
 import { Card, EmptyState } from './shared/ui';
@@ -329,6 +329,18 @@ export default function TransactionHistory({
   };
 
   const [editing, setEditing] = useState(null);
+  // Years of lines are not all drawn at once: the newest first, more as you reach the end of the list.
+  const STEP = 80;
+  const [shown, setShown] = useState(STEP);
+  const more = useRef(null);
+  useEffect(() => { setShown(STEP); }, [filteredTransactions]);
+  useEffect(() => {
+    const node = more.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) setShown((n) => n + STEP); }, { rootMargin: '600px' });
+    io.observe(node);
+    return () => io.disconnect();
+  });
   // === CRITICAL FINANCIAL LOGIC (STAYS HERE - DO NOT EXTRACT) ===
   // Money goes back through the server: exactly what the transaction moved, on the same accounts.
   // A transaction with no recorded legs moved nothing through this path, so it is only marked.
@@ -404,7 +416,7 @@ export default function TransactionHistory({
 
   // Lines a day at a time, newest day first, in the order they are listed.
   const days = [];
-  for (const t of filteredTransactions) {
+  for (const t of filteredTransactions.slice(0, shown)) {
     const day = String(t.date || '').slice(0, 10);
     const last = days[days.length - 1];
     if (last && last[0] === day) last[1].push(t); else days.push([day, [t]]);
@@ -527,6 +539,11 @@ export default function TransactionHistory({
               </Card>
             </section>
           ))}
+          {filteredTransactions.length > shown && (
+            <div ref={more} className="text-center">
+              <button type="button" className="press chip" onClick={() => setShown((n) => n + STEP)}>Show more ({(filteredTransactions.length - shown).toLocaleString()} older)</button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -42,6 +42,13 @@ Amounts are positive numbers; direction "out" is money spent or charged, "in" is
 A year missing from a date: use YEAR_NOW unless that puts the date in the future, then the year before. Today is TODAY.`;
 
 const mkey = (m) => String(m || '').toLowerCase().replace(/^(sq|sp|tst|klarna|paypal|pp)\s*\*\s*/, '').replace(/[^a-z]/g, '').slice(0, 24);
+// Two names for one merchant: the same key, or one is the start of the other (a statement says "TIM HORTONS #1634 NORTH YORK",
+// the bank's app says "Tim Hortons").
+const sameMerchant = (a, b) => { const x = mkey(a), y = mkey(b); return !!x && !!y && (x === y || (Math.min(x.length, y.length) >= 4 && (x.startsWith(y) || y.startsWith(x)))); };
+// A saved line is the one a picture shows when any of the names kept for it fits (a movement between two accounts keeps both sides' words).
+const namedLike = (t, merchant) => [t.description, t.notes, ...(Array.isArray(t.texts) ? t.texts : [])].some((s) => s && sameMerchant(s, merchant));
+// Whether a saved line was on this account, on either side of it.
+const onAccount = (t, id) => [t.payment_method_id, t.card_id, t.loan_id, t.to_account_id, t.from_account_id].some((x) => x != null && String(x) === String(id));
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const dayDiff = (a, b) => Math.abs((Date.parse(a) - Date.parse(b)) / 864e5);
 
@@ -504,11 +511,11 @@ function plan(reading, ctx, sourceId) {
     if (!(amount > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(String(l.date || ''))) { out.action = 'skip'; out.why = 'No clear amount or date'; return out; }
     if (!acct) { out.action = 'choose_account'; out.why = 'Choose which account this is'; }
     // Already recorded by hand (same account, amount, merchant, within a day): offered unticked.
-    const same = acct && transactions.find(t => t.status !== 'undone' && t.status !== 'deleted' && String(t.payment_method_id) === String(acct.id)
-      && sameMoney(t) && dayDiff(t.date, l.date) <= 1 && mkey(t.description) && mkey(t.description) === mkey(l.merchant));
+    const same = acct && transactions.find(t => t.status !== 'undone' && t.status !== 'deleted' && onAccount(t, acct.id)
+      && sameMoney(t) && dayDiff(t.date, l.date) <= 1 && namedLike(t, l.merchant));
     const ids = [acct && acct.id, other && other.id].filter(Boolean).map(String);
     const samePair = !same && (kind === 'card_payment' || kind === 'transfer') && ids.length && transactions.find(t => t.status !== 'undone' && t.status !== 'deleted'
-      && (t.type === 'credit_card_payment' || t.type === 'transfer') && sameMoney(t) && dayDiff(t.date, l.date) <= 3
+      && ['credit_card_payment', 'payment', 'loan_payment', 'transfer'].includes(t.type) && sameMoney(t) && dayDiff(t.date, l.date) <= 3
       && [t.payment_method_id, t.card_id, t.to_account_id, t.from_account_id].filter(Boolean).map(String).some(x => ids.includes(x)));
     if (samePair) { out.action = 'already'; out.existing_id = samePair.id; out.why = 'Looks already recorded from the other account'; }
     if (same && !l.pending && same.pending) { out.action = 'mark_posted'; out.existing_id = same.id; out.why = 'Posts the pending line already recorded'; }
@@ -520,7 +527,7 @@ function plan(reading, ctx, sourceId) {
       const did = (t, id) => { let c = 0, seen = false; for (const x of [...(t._legs || []), ...(t.history_only || [])]) if (x && x.table === table && String(x.id) === String(id)) { c += Number(x.delta != null ? x.delta : x.amount) || 0; seen = true; } return seen ? c : null; };
       const up = (l.direction === 'in') === (acct._type !== 'credit_card');
       const twin = transactions.find((t) => t.status !== 'undone' && t.status !== 'deleted' && t.payment_method === acct._type && t.payment_method_id != null && String(t.payment_method_id) !== String(acct.id)
-        && ['expense', 'income', 'refund'].includes(t.type) && sameMoney(t) && dayDiff(t.date, l.date) <= 1 && mkey(t.description) && mkey(t.description) === mkey(l.merchant)
+        && ['expense', 'income', 'refund'].includes(t.type) && sameMoney(t) && dayDiff(t.date, l.date) <= 1 && namedLike(t, l.merchant)
         && (() => { const d = did(t, t.payment_method_id); return d != null && d !== 0 && (d > 0) === up; })());
       const home = twin && all.find((a) => a._type === acct._type && String(a.id) === String(twin.payment_method_id));
       if (twin && home) { out.action = 'already'; out.existing_id = twin.id; out.elsewhere = { type: home._type, id: home.id, name: home.name }; out.why = `Already saved under ${home.name}`; }
@@ -529,7 +536,7 @@ function plan(reading, ctx, sourceId) {
     // A posted line whose pending version is recorded from an earlier screenshot (date may move a few days).
     if (out.action === 'record' && acct && !l.pending) {
       const pend = transactions.find(t => t.pending && t.status === 'active' && String(t.payment_method_id) === String(acct.id)
-        && sameMoney(t) && mkey(t.description) === mkey(l.merchant) && dayDiff(t.date, l.date) <= 7);
+        && sameMoney(t) && namedLike(t, l.merchant) && dayDiff(t.date, l.date) <= 7);
       if (pend) { out.action = 'mark_posted'; out.existing_id = pend.id; out.why = 'Posts the pending line already recorded'; }
     }
     return out;

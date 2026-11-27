@@ -98,6 +98,14 @@ export default function Everything() {
     for (const x of all) { const k = x.where.toLowerCase(); if (!by.has(k)) by.set(k, { where: x.where, items: [] }); by.get(k).items.push(x); }
     return [...by.values()].sort((a, b) => (a.where === 'Not stated') - (b.where === 'Not stated') || a.where.localeCompare(b.where));
   }, [d.bankAccounts, d.creditCards, d.loans, d.investments, d.assets]);
+  // A closed account keeps its history and leaves every list, total and choice. Only one with nothing in it can be closed.
+  const setClosed = async (table, r, archived) => {
+    const { error } = await server.from(table).update({ archived, ...(archived ? { info_off: true } : {}) }).eq('id', r.id);
+    if (error) return showToast.error(error.message);
+    await d.loadAllData();
+    showToast.success(archived ? `${r.name} is closed. Its history is kept.` : `${r.name} is open again.`);
+  };
+  const closed = d.closedAccounts || [];
   const waiting = prefs.details !== false && groups.some((g) => g.items.some((x) => !x.r.info && !x.r.info_off && !['Cash', 'Gift card'].includes(x.kind) && x.where !== 'Property'));
 
   const fetchNow = async () => {
@@ -139,6 +147,8 @@ export default function Everything() {
                   {can && (open === key
                     ? <Change table={table} r={r} held={where} onCancel={() => setOpen(null)} onDone={async () => { await d.loadAllData(); setOpen(null); }} />
                     : <button type="button" className="text-xs font-medium text-accent" onClick={() => setOpen(key)}>Change</button>)}
+                  {table && kind !== 'Cash' && open !== key && !(Math.abs(Number(r.balance) || 0) >= 0.005) && (
+                    <button type="button" className="ml-4 text-xs font-medium text-muted" onClick={() => setClosed(table, r, true)}>Close this account</button>)}
                   {r.info && !r.info.found && !r.info_off && <div className="text-xs text-muted">No published details were found under this name. Name it as the bank does, for example "Amex Cobalt", to look again.</div>}
                 </div>
               );
@@ -146,6 +156,18 @@ export default function Everything() {
           </Card>
         </Section>
       ))}
+      {closed.length > 0 && (
+        <Section title="Closed accounts" action={<span className="text-xs text-muted">{closed.length}</span>}>
+          <Card padded={false} className="divide-y divide-line">
+            {closed.map(({ table, r }) => (
+              <div key={`${table}-${r.id}`} className="px-4 py-3 flex items-center justify-between gap-3">
+                <span className="min-w-0"><span className="block font-medium truncate">{r.name}</span><span className="block text-xs text-muted">{r.institution ? `${r.institution} · ` : ''}History kept</span></span>
+                <button type="button" className="shrink-0 text-xs font-medium text-accent" onClick={() => setClosed(table, r, false)}>Reopen</button>
+              </div>
+            ))}
+          </Card>
+        </Section>
+      )}
       <Section title="What is looked up online">
         <Card className="space-y-3">
           {LOOKUPS.map(([k, label, note]) => (
