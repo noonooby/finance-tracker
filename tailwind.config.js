@@ -21,6 +21,8 @@ const scaleVars = (scale) => Object.fromEntries(SHADES.map((s) => [`--accent-${s
 const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 
 module.exports = {
+  // A tap on a phone must not leave the hover look stuck on the thing tapped.
+  future: { hoverOnlyWhenSupported: true },
   content: ['./src/**/*.{js,jsx,ts,tsx}'],
   darkMode: 'class',
   theme: {

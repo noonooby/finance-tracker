@@ -9,6 +9,7 @@ import { formatFrequency } from '../utils/sentenceCase';
 import { processDueIncomeSchedules, getIncomeSchedules, toggleIncomeSchedule, deleteIncomeSchedule } from '../utils/schedules';
 import useAsyncAction from '../hooks/useAsyncAction';
 import ActionButton from './shared/ActionButton';
+import { EmptyState } from './shared/ui';
 import { showToast } from '../utils/toast';
 import {
   useIncomeOperations,
@@ -318,7 +319,7 @@ export default function Income({
             }}
             className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 text-sm sm:text-base rounded-xl"
           >
-            <Plus size={20} />
+            {!showAddForm && <Plus size={20} />}
             {showAddForm ? 'Cancel' : 'Add income'}
           </button>
         </div>
@@ -556,6 +557,10 @@ export default function Income({
             />
           </div>
         </div>
+      )}
+
+      {!showAddForm && income.length === 0 && schedules.length === 0 && (
+        <EmptyState icon={Calendar} title="No income yet" text="Add your pay once and the app records it each payday. A picture of a deposit works too." />
       )}
 
       {/* Income Schedules Section */}

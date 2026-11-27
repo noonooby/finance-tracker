@@ -70,9 +70,9 @@ export default function BankAccounts({ bankAccounts, loans, creditCards, onUpdat
           <div className="text-xs text-muted">{bankAccounts.length === 1 ? 'One account' : `${bankAccounts.length} accounts`}{banks > 0 ? ` at ${banks === 1 ? 'one bank' : `${banks} banks`}` : ''}</div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => navigate('/screenshot')}><Camera size={16} aria-hidden="true" /> Add a picture</Button>
-          <Button variant="secondary" onClick={() => (a.showAddForm ? a.resetForm() : a.setShowAddForm(true))}><Plus size={16} aria-hidden="true" /> {a.showAddForm ? 'Close' : 'Add by hand'}</Button>
-          {(bankAccounts.length > 1 || (bankAccounts.length > 0 && creditLines.length > 0)) && <Button variant="secondary" onClick={() => a.setShowTransferForm(!a.showTransferForm)}><ArrowRightLeft size={16} aria-hidden="true" /> {a.showTransferForm ? 'Close' : 'Move money'}</Button>}
+          <Button className="w-full" onClick={() => navigate('/screenshot')}><Camera size={16} aria-hidden="true" /> Add a picture</Button>
+          <Button className="flex-1" variant="secondary" onClick={() => (a.showAddForm ? a.resetForm() : a.setShowAddForm(true))}>{!a.showAddForm && <Plus size={16} aria-hidden="true" />} {a.showAddForm ? 'Close' : 'Add by hand'}</Button>
+          {(bankAccounts.length > 1 || (bankAccounts.length > 0 && creditLines.length > 0)) && <Button className="flex-1" variant="secondary" onClick={() => a.setShowTransferForm(!a.showTransferForm)}><ArrowRightLeft size={16} aria-hidden="true" /> {a.showTransferForm ? 'Close' : 'Move money'}</Button>}
         </div>
       </Card>
 

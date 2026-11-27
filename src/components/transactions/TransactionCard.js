@@ -106,7 +106,7 @@ export default function TransactionCard({
     <div className={`flex items-center gap-3 px-4 py-3 ${isUndone ? 'opacity-60' : ''}`}>
       <span className={`shrink-0 grid place-items-center w-10 h-10 rounded-2xl ${getTypeColor(transaction.type)}`} aria-hidden="true">{getTypeIcon(transaction.type)}</span>
       <div className="flex-1 min-w-0">
-        <div className={`text-[0.9375rem] font-medium truncate ${isUndone ? 'line-through text-muted' : ''}`}>{formatDescription(transaction)}</div>
+        <div className={`text-[0.9375rem] font-medium line-clamp-2 ${isUndone ? 'line-through text-muted' : ''}`}>{formatDescription(transaction)}</div>
         <div className="text-xs text-muted line-clamp-2">{sub}{isUndone ? ' · Undone' : ''}</div>
         {transaction.notes && <div className="text-xs text-muted truncate">{transaction.notes}</div>}
       </div>

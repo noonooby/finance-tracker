@@ -464,7 +464,7 @@ export default function Loans({
             onClick={() => (showAddForm ? resetForm() : setShowAddForm(true))}
             className="press flex items-center gap-1.5 bg-accent text-accent-contrast px-4 h-11 rounded-xl font-semibold text-sm"
           >
-            <Plus size={18} />
+            {!showAddForm && <Plus size={18} />}
             {showAddForm ? 'Cancel' : 'Add a loan'}
           </button>
         </div>
@@ -589,7 +589,7 @@ export default function Loans({
                   <PayoffSummary loan={loan} />
                   {loan.frequency && (
                     <div className="text-xs text-muted mt-1">
-                      <span>Paid {formatFrequency(loan.frequency)}</span>
+                      <span>Paid {formatFrequency(loan.frequency).toLowerCase()}</span>
                       {loan.recurring_duration_type && (
                         <span className="ml-2">
                           {loan.recurring_duration_type === 'until_date' && loan.recurring_until_date && (

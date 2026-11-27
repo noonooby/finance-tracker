@@ -423,7 +423,7 @@ export default function ActivityFeed({ onUpdate }) {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-8">
-        <div className="text-muted">Loading activities...</div>
+        <div className="text-muted">Loading...</div>
       </div>
     );
   }
@@ -432,7 +432,7 @@ export default function ActivityFeed({ onUpdate }) {
     return (
       <div className="card rounded-2xl border border-line bg-surface p-4 py-10 text-center text-muted">
         <Activity size={48} className="mx-auto mb-4 text-muted" />
-        <p className="text-muted">No recent activities</p>
+        <p className="text-muted">Nothing yet</p>
         <p className="text-sm text-muted mt-2">Your actions will appear here</p>
       </div>
     );
@@ -447,7 +447,7 @@ export default function ActivityFeed({ onUpdate }) {
         </h2>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <span className="text-sm text-muted">
-            {filteredActivities.length} of {activities.length} activities
+            {filteredActivities.length} of {activities.length} shown
           </span>
           <button
             onClick={() => setShowPreferences(!showPreferences)}
@@ -554,7 +554,7 @@ export default function ActivityFeed({ onUpdate }) {
             }}
             className="px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg"
           >
-            <option value="all">All entity types</option>
+            <option value="all">Everything</option>
             <option value="card">Credit cards</option>
             <option value="loan">Loans</option>
             <option value="bank_account">Bank accounts</option>
@@ -591,7 +591,7 @@ export default function ActivityFeed({ onUpdate }) {
       {filteredActivities.length === 0 && (
         <div className="card rounded-2xl border border-line bg-surface p-4 py-10 text-center text-muted">
           <Activity size={48} className="mx-auto mb-4 text-muted" />
-          <p className="text-muted">No activities found</p>
+          <p className="text-muted">Nothing matches</p>
           <p className="text-sm text-muted mt-2">Try adjusting your filters</p>
         </div>
       )}
@@ -651,10 +651,10 @@ export default function ActivityFeed({ onUpdate }) {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`font-semibold capitalize ${getActionColor(activity.action_type)}`}>
+                    <span className={`font-semibold first-letter:uppercase ${getActionColor(activity.action_type)}`}>
                       {activity.action_type.replace(/_/g, ' ')}
                     </span>
-                    <span className="text-sm text-muted capitalize">
+                    <span className="text-sm text-muted">
                       {activity.entity_type.replace(/_/g, ' ')}
                     </span>
                     {isSystemActivity(activity) && (
@@ -705,7 +705,7 @@ export default function ActivityFeed({ onUpdate }) {
                     className={`flex items-center gap-1 px-3 py-2 text-sm rounded-xl transition-colors ${
                       undoingId === activity.id
                         ? 'bg-line text-muted cursor-not-allowed'
-                        : 'bg-accent-soft hover:bg-accent-soft text-white'
+                        : 'press bg-accent-soft text-accent font-medium'
                     }`}
                     title="Undo this action"
                   >

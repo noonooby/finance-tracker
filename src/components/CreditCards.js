@@ -80,7 +80,6 @@ export default function CreditCards({
         />
       )}
 
-      <Rewards creditCards={creditCards} />
       <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-4">
         <h2 className="text-2xl font-bold tracking-tight">Credit cards</h2>
         <div className="flex gap-2">
@@ -106,11 +105,12 @@ export default function CreditCards({
             }}
             className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 rounded-xl text-sm sm:text-base"
           >
-            <Plus size={20} />
+            {!a.showAddForm && <Plus size={20} />}
             {a.showAddForm ? 'Cancel' : 'Add a card'}
           </button>
         </div>
       </div>
+      <Rewards creditCards={creditCards} />
 
       {a.processingResults && (
         <div className="bg-accent-soft border-accent/30 border rounded-xl p-3 text-sm">

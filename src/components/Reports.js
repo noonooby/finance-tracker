@@ -524,7 +524,7 @@ export default function Reports({ categories }) {
         <div className="space-y-6">
           {/* Template Selector */}
           <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
-            <h2 className="text-lg font-semibold mb-4">Select report template</h2>
+            <h2 className="text-lg font-semibold mb-4">Choose a report</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <button
                 onClick={() => setActiveTemplate('monthly')}
@@ -539,7 +539,7 @@ export default function Reports({ categories }) {
                   <h3 className="font-semibold">Monthly summary</h3>
                 </div>
                 <p className="text-sm text-muted">
-                  Complete overview of income, expenses, and trends
+                  What came in, what went out and how it changed
                 </p>
               </button>
 
@@ -556,7 +556,7 @@ export default function Reports({ categories }) {
                   <h3 className="font-semibold">Category analysis</h3>
                 </div>
                 <p className="text-sm text-muted">
-                  Deep dive into spending by category
+                  What you spent in each category
                 </p>
               </button>
 
@@ -573,7 +573,7 @@ export default function Reports({ categories }) {
                   <h3 className="font-semibold">Payment methods</h3>
                 </div>
                 <p className="text-sm text-muted">
-                  Track usage across payment methods
+                  Which accounts and cards you paid with
                 </p>
               </button>
 
@@ -590,7 +590,7 @@ export default function Reports({ categories }) {
                   <h3 className="font-semibold">Cashflow analysis</h3>
                 </div>
                 <p className="text-sm text-muted">
-                  Monitor money movement and balances
+                  Money in against money out, day by day
                 </p>
               </button>
 

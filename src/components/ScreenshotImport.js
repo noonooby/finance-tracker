@@ -823,7 +823,7 @@ export default function ScreenshotImport({ bankAccounts = [], creditCards = [], 
             Take a photo
             <input type="file" accept="image/*" capture="environment" onChange={pick} className="sr-only" />
           </label>
-          <label className="press cursor-pointer flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-line py-5 font-medium">
+          <label className="press cursor-pointer flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-line px-2 py-5 font-medium text-center">
             <ImageIcon size={26} aria-hidden="true" />
             Screenshot or statement
             <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf,text/csv,.csv" multiple onChange={pick} className="sr-only" />
