@@ -8,7 +8,7 @@ export function UIProvider({ children }) {
   const location = useLocation();
   
   const [focusTarget, setFocusTarget] = useState(null);
-  const [showAddTransactionModal, setShowAddTransactionModal] = useState(false);
+  const [adding, setAdding] = useState(null);
 
   // Get current view from URL path
   const currentView = location.pathname.replace('/', '') || 'dashboard';
@@ -41,31 +41,22 @@ export function UIProvider({ children }) {
     }
   }, [navigate]);
 
-  const openAddTransaction = useCallback(() => {
-    const currentPath = location.pathname;
-    if (currentPath !== '/transactions') {
-      navigate('/transactions');
-    }
-    setShowAddTransactionModal(true);
-  }, [navigate, location.pathname]);
-
-  const closeAddTransaction = useCallback(() => {
-    setShowAddTransactionModal(false);
-  }, []);
+  // preset: { kind, source, to, amount } when a card or a loan opens the form for itself.
+  const openAdd = useCallback((preset) => setAdding({ preset: preset && typeof preset === 'object' && !preset.nativeEvent ? preset : null }), []);
+  const closeAdd = useCallback(() => setAdding(null), []);
 
   const value = {
     currentView,
     focusTarget,
-    showAddTransactionModal,
+    adding,
     setCurrentView: handleViewChange, // Alias for compatibility
     setFocusTarget,
-    setShowAddTransactionModal,
     handleNavigate,
     clearFocusTarget,
     handleViewChange,
     navigateToTransactionHistory,
-    openAddTransaction,
-    closeAddTransaction,
+    openAdd,
+    closeAdd,
   };
 
   return (

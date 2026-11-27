@@ -4,7 +4,6 @@
 // A figure you set on an account or a loan yourself always comes first.
 import { plainName } from './merchants';
 
-export const CHECKED = '2026-11-26';
 // The prime rate the big banks use, which lines of credit follow.
 export const PRIME = { rate: 4.7, as_of: '2026-10-29' };
 
@@ -72,7 +71,7 @@ const LINES = [
     note: 'Money you can take and pay back as you like, up to a limit. The rate follows prime plus a margin set for you. Interest is charged only on what is used, and the least you pay each month is usually the interest.' },
 ];
 export const isLine = (loan) => !!loan && (loan.loan_type === 'line_of_credit' || LINES.some((l) => l.match.some((all) => all.every((w) => words(loan.name).has(w)))));
-export function knownLine(loan) {
+function knownLine(loan) {
   if (!isLine(loan)) return null;
   const have = words(`${loan.name || ''} ${loan.lender || ''} ${loan.institution || ''}`);
   return LINES.find((l) => l.match.some((all) => all.every((w) => have.has(w)))) || LINES[LINES.length - 1];

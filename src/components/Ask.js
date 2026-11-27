@@ -71,7 +71,7 @@ export default function Ask() {
           <textarea rows={2} maxLength={300} value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(text); } }}
             placeholder="Ask a question, or type what you spent"
-            className="w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-fg placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none" />
+            className="field" />
         </label>
         <Button type="submit" loading={busy} disabled={!text.trim()} aria-label="Send"><Send size={18} aria-hidden="true" /></Button>
       </form>

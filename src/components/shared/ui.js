@@ -58,8 +58,8 @@ export function Button({ variant = 'primary', size = 'md', loading = false, disa
   );
 }
 
-export const controlClass =
-  'w-full rounded-2xl border border-line bg-surface-2 px-4 py-3 text-fg placeholder:text-muted focus:border-accent focus:bg-surface focus:ring-4 focus:ring-accent/15 outline-none';
+const controlClass =
+  'field';
 
 export function Field({ label, hint, error, as = 'input', id, className, children, ...rest }) {
   const autoId = useId();

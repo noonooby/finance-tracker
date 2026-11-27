@@ -16,7 +16,6 @@ import {
 import { parseDay, formatDate } from '../../../utils/helpers';
 
 export default function PaymentMethodAnalysis({ 
-  darkMode, 
   transactions, 
   categories,
   onExportExcel,
@@ -69,7 +68,7 @@ export default function PaymentMethodAnalysis({
 
   const handleExportExcel = () => {
     const reportData = {
-      name: 'Payment Method Analysis',
+      name: 'Payment method analysis',
       filters,
       summary,
       transactions: filteredData,
@@ -81,7 +80,7 @@ export default function PaymentMethodAnalysis({
 
   const handleExportCSV = () => {
     const reportData = {
-      name: 'Payment Method Analysis',
+      name: 'Payment method analysis',
       filters,
       summary,
       transactions: filteredData,
@@ -114,34 +113,34 @@ export default function PaymentMethodAnalysis({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">Payment Method Analysis</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Payment method analysis</h2>
           <p className="text-sm text-muted">
             {formatDate(filters.startDate)} - {formatDate(filters.endDate)}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-4 py-2 rounded-xl font-medium transition-colors ${
               showFilters
                 ? 'bg-accent text-accent-contrast'
                 : 'bg-surface-2 hover:bg-line/60'
             }`}
           >
-            {showFilters ? 'Hide' : 'Show'} Filters
+            {showFilters ? 'Hide filters' : 'Filters'}
           </button>
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:opacity-90 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-xl font-medium hover:opacity-90 transition-colors"
           >
             <FileSpreadsheet size={18} />
-            Export Excel
+            Export to Excel
           </button>
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-xl font-medium hover:opacity-90 transition-colors"
           >
             <Download size={18} />
             Export CSV
@@ -152,7 +151,6 @@ export default function PaymentMethodAnalysis({
       {/* Filter Panel */}
       {showFilters && (
         <FilterPanel
-          darkMode={darkMode}
           filters={filters}
           onFiltersChange={setFilters}
           categories={categories}
@@ -162,48 +160,44 @@ export default function PaymentMethodAnalysis({
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
-          title="Total Transactions"
+          title="Total transactions"
           value={filteredData.length}
           subtitle="All payment methods"
           icon={CreditCard}
           color="blue"
-          darkMode={darkMode}
           formatValue={false}
         />
         <SummaryCard
-          title="Total Amount"
+          title="Total amount"
           value={totalAmount}
           subtitle="Across all methods"
           icon={CreditCard}
           color="green"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Payment Methods Used"
+          title="Payment methods used"
           value={paymentMethodData.length}
           subtitle="Unique methods"
           icon={CreditCard}
           color="purple"
-          darkMode={darkMode}
           formatValue={false}
         />
         <SummaryCard
-          title="Average per Method"
+          title="Average per method"
           value={paymentMethodData.length > 0 ? totalAmount / paymentMethodData.length : 0}
           subtitle="Per payment type"
           icon={CreditCard}
           color="orange"
-          darkMode={darkMode}
         />
       </div>
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Payment Method Distribution Pie Chart */}
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Payment Method Distribution</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Payment method distribution</h3>
           {chartData.length > 0 ? (
-            <CategoryPieChart data={chartData} darkMode={darkMode} />
+            <CategoryPieChart data={chartData} />
           ) : (
             <div className="flex items-center justify-center h-64 text-muted">
               No payment method data to display
@@ -212,15 +206,14 @@ export default function PaymentMethodAnalysis({
         </div>
 
         {/* Payment Methods Bar Chart */}
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Usage by Payment Method</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Usage by payment method</h3>
           {paymentMethodData.length > 0 ? (
             <ComparisonBarChart
               data={paymentMethodData.map(method => ({
                 name: method.name,
                 amount: method.total
               }))}
-              darkMode={darkMode}
               dataKeys={[
                 { key: 'amount', name: 'Total', color: '#3B82F6' }
               ]}
@@ -234,11 +227,10 @@ export default function PaymentMethodAnalysis({
       </div>
 
       {/* Transaction Trend */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">Transaction Volume Trend</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">Transaction volume trend</h3>
         <TrendLineChart
           data={trendData}
-          darkMode={darkMode}
           dataKeys={[
             { key: 'income', name: 'Income', color: '#10B981' },
             { key: 'expenses', name: 'Expenses', color: '#EF4444' },
@@ -248,19 +240,17 @@ export default function PaymentMethodAnalysis({
       </div>
 
       {/* Detailed Payment Method Breakdown */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">Detailed Payment Method Breakdown</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">Detailed payment method breakdown</h3>
         <div className="space-y-4">
           {paymentMethodData
             .filter(method => method.method !== 'cash') // Exclude legacy cash
             .map((method, index) => (
-            <div key={method.method} className={`border border-line rounded-lg overflow-hidden`}>
+            <div key={method.method} className="border border-line rounded-xl overflow-hidden">
               {/* Method Header */}
               <div
                 onClick={() => toggleMethodExpand(method.method)}
-                className={`flex items-center justify-between p-4 cursor-pointer ${
-                  'hover:bg-surface-2'
-                }`}
+                className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-2"
               >
                 <div className="flex items-center gap-3 flex-1">
                   <div className="flex-1">
@@ -287,11 +277,11 @@ export default function PaymentMethodAnalysis({
 
               {/* Method Transactions */}
               {expandedMethods[method.method] && (
-                <div className={`border-t border-line bg-surface-2 p-4`}>
+                <div className="border-t border-line bg-surface-2 p-4">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className={`border-b border-line`}>
+                        <tr className="border-b border-line">
                           <th className="text-left py-2 px-3">Date</th>
                           <th className="text-left py-2 px-3">Type</th>
                           <th className="text-left py-2 px-3">Description</th>
@@ -305,7 +295,7 @@ export default function PaymentMethodAnalysis({
                           .map((transaction, idx) => (
                             <tr
                               key={transaction.id}
-                              className={`border-b border-line`}
+                              className="border-b border-line"
                             >
                               <td className="py-2 px-3 whitespace-nowrap">
                                 {formatDate(transaction.date)}
@@ -314,7 +304,7 @@ export default function PaymentMethodAnalysis({
                                 <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
                                   transaction.type === 'income' ? 'bg-positive/10 text-positive' :
                                   transaction.type === 'expense' ? 'bg-negative/10 text-negative' :
-                                  'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                                  'bg-accent-soft text-accent'
                                 }`}>
                                   {transaction.type}
                                 </span>
@@ -335,7 +325,7 @@ export default function PaymentMethodAnalysis({
                           ))}
                       </tbody>
                       <tfoot>
-                        <tr className={`border-t-2 border-line font-bold`}>
+                        <tr className="border-t-2 border-line font-bold">
                           <td colSpan="4" className="py-2 px-3">Subtotal</td>
                           <td className="py-2 px-3 text-right">{formatCurrency(method.total)}</td>
                         </tr>
@@ -350,14 +340,14 @@ export default function PaymentMethodAnalysis({
       </div>
 
       {/* Payment Method Comparison Table */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">Payment Method Comparison</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">Payment method comparison</h3>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className={`border-b border-line`}>
+              <tr className="border-b border-line">
                 <th className="text-left py-3 px-4">Rank</th>
-                <th className="text-left py-3 px-4">Payment Method</th>
+                <th className="text-left py-3 px-4">Payment method</th>
                 <th className="text-right py-3 px-4">Transactions</th>
                 <th className="text-right py-3 px-4">Total</th>
                 <th className="text-right py-3 px-4">Average</th>
@@ -368,14 +358,14 @@ export default function PaymentMethodAnalysis({
               {paymentMethodData
                 .filter(method => method.method !== 'cash') // Exclude legacy cash
                 .map((method, index) => (
-                <tr key={method.method} className={`border-b border-line`}>
+                <tr key={method.method} className="border-b border-line">
                   <td className="py-3 px-4 font-semibold">#{index + 1}</td>
                   <td className="py-3 px-4">{method.name}</td>
                   <td className="text-right py-3 px-4">{method.count}</td>
                   <td className="text-right py-3 px-4 font-semibold">{formatCurrency(method.total)}</td>
                   <td className="text-right py-3 px-4">{formatCurrency(method.total / method.count)}</td>
                   <td className="text-right py-3 px-4">
-                    <span className="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded text-sm font-medium">
+                    <span className="inline-block px-2 py-1 bg-accent-soft text-accent rounded text-sm font-medium">
                       {((method.total / totalAmount) * 100).toFixed(1)}%
                     </span>
                   </td>
@@ -383,7 +373,7 @@ export default function PaymentMethodAnalysis({
               ))}
             </tbody>
             <tfoot>
-              <tr className={`border-t-2 border-line font-bold`}>
+              <tr className="border-t-2 border-line font-bold">
                 <td colSpan="2" className="py-3 px-4">Total</td>
                 <td className="text-right py-3 px-4">{paymentMethodData.reduce((sum, m) => sum + m.count, 0)}</td>
                 <td className="text-right py-3 px-4">{formatCurrency(totalAmount)}</td>

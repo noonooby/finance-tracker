@@ -10,14 +10,6 @@ const manager = new BaseContextManager(
 const FIELD_MAPPING = CONTEXT_CONFIGS.giftCardPurchase.formMapping;
 
 /**
- * Get gift card purchase context for a specific card name
- */
-export async function getGiftCardPurchaseContext(cardName) {
-  if (!cardName?.trim()) return null;
-  return await manager.getContext(cardName.trim());
-}
-
-/**
  * Save gift card purchase context
  */
 export async function saveGiftCardPurchaseContext(cardName, formData) {
@@ -40,14 +32,6 @@ export async function getRecentGiftCardNames(limit = 5) {
  */
 export async function getLastUsedGiftCardContext() {
   return await manager.getMostRecentContext();
-}
-
-/**
- * Delete gift card purchase context
- */
-export async function deleteGiftCardPurchaseContext(cardName) {
-  if (!cardName?.trim()) throw new Error('Card name required');
-  return await manager.deleteContext(cardName.trim());
 }
 
 /**

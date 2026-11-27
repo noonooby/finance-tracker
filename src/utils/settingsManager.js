@@ -1,7 +1,7 @@
 import { loadPrefs, savePrefs } from './prefs';
 
 // Default settings structure
-export const DEFAULT_SETTINGS = {
+const DEFAULT_SETTINGS = {
   // Display & Appearance
   theme: 'auto',
   currency: 'CAD',
@@ -120,31 +120,6 @@ export async function setSetting(key, value) {
   const dbColumn = SETTINGS_COLUMN_MAP[key];
   if (!dbColumn) throw new Error(`Unknown setting key: ${key}`);
   await savePrefs({ [dbColumn]: value });
-}
-
-export async function setMultipleSettings(settings) {
-  const patch = {};
-  for (const [jsKey, value] of Object.entries(settings)) if (SETTINGS_COLUMN_MAP[jsKey]) patch[SETTINGS_COLUMN_MAP[jsKey]] = value;
-  await savePrefs(patch);
-}
-
-export async function resetAllSettings() {
-  try {
-    await setMultipleSettings(DEFAULT_SETTINGS);
-  } catch (error) {
-    console.error('Error resetting settings:', error);
-    throw error;
-  }
-}
-
-export async function getCategoryBudget(categoryId) {
-  try {
-    const budgets = await getSetting('categoryBudgets', {});
-    return budgets[categoryId] || 0;
-  } catch (error) {
-    console.error(`Error getting category budget for ${categoryId}:`, error);
-    return 0;
-  }
 }
 
 export async function setCategoryBudget(categoryId, amount) {

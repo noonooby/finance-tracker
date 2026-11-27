@@ -4,7 +4,7 @@ import { deleteAllUserData } from '../../utils/db';
 import { showToast } from '../../utils/toast';
 import SettingsSection from './SettingsSection';
 
-export default function DangerZoneSection({ darkMode, expanded, onToggle, onUpdate, onReloadCategories }) {
+export default function DangerZoneSection({ expanded, onToggle, onUpdate, onReloadCategories }) {
   const [deleting, setDeleting] = useState(false);
 
   const handleDeleteAllData = async () => {
@@ -26,23 +26,22 @@ export default function DangerZoneSection({ darkMode, expanded, onToggle, onUpda
 
   return (
     <SettingsSection
-      title="Danger Zone"
+      title="Danger zone"
       danger
       expanded={expanded}
       onToggle={onToggle}
-      darkMode={darkMode}
-      bodyClassName="p-6 space-y-3 border-t border-line"
+      bodyClassName="p-4 space-y-3 border-t border-line"
     >
-      <p className={`text-sm text-muted`}>
+      <p className="text-sm text-muted">
         Delete everything recorded on this sign-in: accounts, cards, loans, income, transactions, categories, bills, settings and history.
       </p>
       <button
         onClick={handleDeleteAllData}
         disabled={deleting}
-        className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg ${deleting ? 'bg-red-300 cursor-not-allowed' : 'press bg-negative text-white hover:opacity-90 '} text-white`}
+        className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl ${deleting ? 'bg-negative/40 cursor-not-allowed' : 'press bg-negative text-white hover:opacity-90 '} text-white`}
       >
         <AlertCircle size={20} />
-        <span>{deleting ? 'Deleting...' : 'Delete All Data'}</span>
+        <span>{deleting ? 'Deleting...' : 'Delete all data'}</span>
       </button>
     </SettingsSection>
   );

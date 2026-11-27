@@ -15,13 +15,11 @@ import {
  * Uniform collapsible transaction history for cards, loans, and bank accounts
  * 
  * @param {Object} props
- * @param {boolean} props.darkMode - Dark mode flag
  * @param {string} props.entityType - Type of entity: 'card', 'loan', or 'bank_account'
  * @param {string} props.entityId - ID of the entity
  * @param {string} props.entityName - Name of the entity (for settings key)
  */
 export default function RecentTransactions({ 
-  darkMode, 
   entityType, 
   entityId,
   entityName 
@@ -164,33 +162,33 @@ export default function RecentTransactions({
   }
 
   return (
-    <div className={`mb-3 pb-3 border-b ${darkMode ? 'border-line' : 'border-line'}`}>
+    <div className="mb-3 pb-3 border-b border-line">
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={handleToggleCollapse}
-          className={`flex items-center gap-1 text-xs font-medium ${darkMode ? 'text-muted hover:text-fg' : 'text-muted hover:text-fg'}`}
+          className="flex items-center gap-1 text-xs font-medium text-muted hover:text-fg"
         >
           {isCollapsed ? (
             <ChevronRight size={14} />
           ) : (
             <ChevronDown size={14} />
           )}
-          Recent Activity {!loading && transactions.length > 0 && `(${transactions.length})`}
+          Recent activity {!loading && transactions.length > 0 && `(${transactions.length})`}
         </button>
         
         {!isCollapsed && (
           <div className="relative">
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className={`p-1 rounded ${darkMode ? 'hover:bg-surface-2 text-muted' : 'hover:bg-surface-2 text-muted'}`}
+              className="p-1 rounded hover:bg-surface-2 text-muted"
               title="Transaction display settings"
             >
               <Settings size={12} />
             </button>
             
             {showSettings && (
-              <div className={`absolute right-0 top-6 z-10 ${darkMode ? 'bg-surface-2 border-line' : 'bg-surface border-line'} border rounded-lg shadow-lg p-2 min-w-[120px]`}>
-                <div className={`text-xs font-medium mb-1 ${darkMode ? 'text-muted' : 'text-muted'}`}>
+              <div className="absolute right-0 top-6 z-10 bg-surface border-line border rounded-xl shadow-lg p-2 min-w-[120px]">
+                <div className="text-xs font-medium mb-1 text-muted">
                   Show last:
                 </div>
                 <div className="space-y-1">
@@ -200,10 +198,8 @@ export default function RecentTransactions({
                       onClick={() => handleDisplayCountChange(count)}
                       className={`w-full text-left px-2 py-1 rounded text-xs ${
                         displayCount === count
-                          ? 'bg-blue-600 text-white'
-                          : darkMode
-                            ? 'hover:bg-surface-2 text-muted'
-                            : 'hover:bg-surface-2 text-muted'
+                          ? 'bg-accent text-accent-contrast'
+                          : 'hover:bg-surface-2 text-muted'
                       }`}
                     >
                       {count} transactions
@@ -219,15 +215,15 @@ export default function RecentTransactions({
       {!isCollapsed && (
         <div className="space-y-1.5">
           {loading ? (
-            <div className={`text-xs text-center py-2 ${darkMode ? 'text-muted' : 'text-muted'}`}>
+            <div className="text-xs text-center py-2 text-muted">
               Loading...
             </div>
           ) : transactions.length === 0 ? (
-            <div className={`text-xs text-center py-2 ${darkMode ? 'text-muted' : 'text-muted'}`}>
+            <div className="text-xs text-center py-2 text-muted">
               No recent transactions
             </div>
           ) : (<>
-            {ref && <p className={`text-[10px] ${darkMode ? 'text-muted' : 'text-muted'}`}>Tap a line that is on the wrong account to move it.</p>}
+            {ref && <p className="text-[10px] text-muted">Tap a line that is on the wrong account to move it.</p>}
             {transactions.map(txn => {
               // What the line did to this account decides its sign: money in or out of a bank account, more or less owed on a card or loan.
               const did = effectOn(txn, entityType, entityId);
@@ -237,10 +233,10 @@ export default function RecentTransactions({
               const Row = movable ? 'button' : 'div';
               return (
                 <Row key={txn.id} {...(movable ? { type: 'button', onClick: () => setMoving(txn), 'aria-label': `${txn.description || 'Line'}: wrong account?` } : {})}
-                  className={`w-full flex justify-between items-center text-left text-xs ${movable ? 'press rounded-lg -mx-1 px-1 py-0.5' : ''} ${darkMode ? 'text-muted' : 'text-muted'}`}>
+                  className={`w-full flex justify-between items-center text-left text-xs ${movable ? 'press rounded-xl -mx-1 px-1 py-0.5' : ''} text-muted`}>
                   <div className="flex-1 truncate mr-2">
                     <div className="truncate">{txn.description || txn.category_name || txn.income_source || txn.type}</div>
-                    <div className={`text-[10px] ${darkMode ? 'text-muted' : 'text-muted'}`}>{formatDate(txn.date)}</div>
+                    <div className="text-[10px] text-muted">{formatDate(txn.date)}</div>
                   </div>
                   <div className={`font-medium flex-shrink-0 ${good ? 'text-positive' : 'text-negative'}`}>
                     {up ? '+' : '-'}{formatCurrency(Math.abs(did != null ? did : txn.amount))}

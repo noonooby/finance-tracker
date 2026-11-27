@@ -1,5 +1,6 @@
 // State and data access for the credit cards page. Every balance change goes through utils/money.
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { ask } from '../../../utils/confirm';
 import { formatCurrency, generateId } from '../../../utils/helpers';
 import { dbOperation } from '../../../utils/db';
 import { recordExpense, recordGiftCardPurchase, reverseTransaction } from '../../../utils/money';
@@ -29,7 +30,7 @@ import {
 
 const focusBalanceInput = () => {
   setTimeout(() => {
-    const balanceInput = document.querySelector('input[placeholder="Current Balance *"]');
+    const balanceInput = document.querySelector('input[placeholder="Current balance"]');
     if (balanceInput) balanceInput.focus();
   }, 50);
 };
@@ -250,7 +251,7 @@ export function useCreditCardActions({
   const handleProcessDueCardPayments = async () => {
     if (isProcessing) return;
 
-    if (!window.confirm('Process all overdue credit card payments from connected payment sources?')) {
+    if (!(await ask('Record every card payment that is past due, from the account each card is paid from?'))) {
       return;
     }
 
@@ -406,7 +407,7 @@ export function useCreditCardActions({
 
     const cardType = card.is_gift_card ? 'gift card' : 'credit card';
 
-    if (!window.confirm(`Delete this ${cardType}?`)) {
+    if (!(await ask(`Delete this ${cardType}?`))) {
       return;
     }
 

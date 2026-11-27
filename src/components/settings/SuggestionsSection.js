@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import { ask } from '../../utils/confirm';
 import { Database, Trash2 } from 'lucide-react';
 import { fetchAllKnownEntities, deleteKnownEntity } from '../../utils/knownEntities';
 import { showToast } from '../../utils/toast';
 import SettingsSection, { boxClass } from './SettingsSection';
 
-export default function SuggestionsSection({ darkMode, expanded, onToggle }) {
+export default function SuggestionsSection({ expanded, onToggle }) {
   const [knownEntities, setKnownEntities] = useState({});
   const [loading, setLoading] = useState(false);
   const [shown, setShown] = useState(false);
@@ -23,7 +24,7 @@ export default function SuggestionsSection({ darkMode, expanded, onToggle }) {
   };
 
   const handleDelete = async (entityId) => {
-    if (!window.confirm('Delete this suggestion?')) return;
+    if (!(await ask('Delete this suggestion?'))) return;
     try {
       await deleteKnownEntity(entityId);
       await handleLoad();
@@ -36,15 +37,15 @@ export default function SuggestionsSection({ darkMode, expanded, onToggle }) {
   const hasEntities = Object.keys(knownEntities).length > 0;
 
   return (
-    <SettingsSection title="Manage Learned Suggestions" icon={Database} expanded={expanded} onToggle={onToggle} darkMode={darkMode}>
+    <SettingsSection title="Manage learned suggestions" icon={Database} expanded={expanded} onToggle={onToggle}>
       <div className="flex items-center justify-between">
-        <p className={`text-sm text-muted`}>
+        <p className="text-sm text-muted">
           Names the app has learned from your entries.
         </p>
         <button
           onClick={handleLoad}
           disabled={loading}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-accent/30 text-accent hover:bg-accent-soft`}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-accent/30 text-accent hover:bg-accent-soft"
         >
           <Database size={20} />
           <span>{loading ? 'Loading...' : shown ? 'Refresh' : 'View'}</span>
@@ -54,23 +55,23 @@ export default function SuggestionsSection({ darkMode, expanded, onToggle }) {
       {shown && hasEntities && (
         <div className="space-y-4 mt-4">
           {Object.entries(knownEntities).map(([type, entities]) => (
-            <div key={type} className={boxClass(darkMode)}>
+            <div key={type} className={boxClass}>
               <h4 className="font-semibold mb-2 capitalize">{type.replace('_', ' ')}s ({entities.length})</h4>
               <div className="space-y-2">
                 {entities.map(entity => (
                   <div
                     key={entity.id}
-                    className={`flex items-center justify-between p-2 rounded bg-surface-2`}
+                    className="flex items-center justify-between p-2 rounded bg-surface-2"
                   >
                     <div className="flex-1">
                       <span className="font-medium">{entity.name}</span>
-                      <span className={`text-sm ml-2 text-muted`}>
+                      <span className="text-sm ml-2 text-muted">
                         (used {entity.usage_count} {entity.usage_count === 1 ? 'time' : 'times'})
                       </span>
                     </div>
                     <button
                       onClick={() => handleDelete(entity.id)}
-                      className={`p-2 rounded hover:bg-line/60 text-negative`}
+                      className="p-2 rounded hover:bg-line/60 text-negative"
                       title="Delete suggestion"
                       aria-label={`Delete suggestion ${entity.name}`}
                     >
@@ -85,10 +86,10 @@ export default function SuggestionsSection({ darkMode, expanded, onToggle }) {
       )}
 
       {shown && !hasEntities && (
-        <div className={`flex items-center gap-3 p-4 rounded-2xl border border-line bg-surface-2`}>
-          <Database size={20} className={'text-muted'} />
+        <div className="flex items-center gap-3 p-4 rounded-2xl border border-line bg-surface-2">
+          <Database size={20} className="text-muted" />
           <div className="flex-1">
-            <p className={`text-sm text-muted`}>
+            <p className="text-sm text-muted">
               No learned suggestions yet. They are added as you enter transactions.
             </p>
           </div>

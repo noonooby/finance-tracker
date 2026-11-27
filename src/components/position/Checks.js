@@ -7,7 +7,7 @@ import { Issues } from '../shared/Issues';
 const notStale = (i) => i.kind !== 'stale';
 
 // The reconciliation checks: balances you saw that the app's lines don't explain, and the corrections made for them.
-export default function Checks({ darkMode, data, onDone }) {
+export default function Checks({ data, onDone }) {
   const [snaps, setSnaps] = useState([]);
   useEffect(() => {
     server.from('snapshots').select('*').then((r) => setSnaps((r.data || []).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))));

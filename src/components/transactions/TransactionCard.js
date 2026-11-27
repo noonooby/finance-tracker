@@ -8,7 +8,6 @@ import { Trash2, TrendingUp, TrendingDown, DollarSign, Pencil } from 'lucide-rea
  */
 export default function TransactionCard({
   transaction,
-  darkMode,
   onDelete,
   onEdit
 }) {
@@ -40,15 +39,15 @@ export default function TransactionCard({
       case 'cash_in_hand': // old records, before cash became an account
         return 'Cash';
       case 'bank_account':
-        return 'Bank Account';
+        return 'Bank account';
       case 'credit_card':
-        return 'Credit Card';
+        return 'Credit card';
       case 'reserved_fund':
-        return 'Reserved Fund';
+        return 'Reserved fund';
       case 'cash_withdrawal':
-        return 'Cash Withdrawal';
+        return 'Cash withdrawal';
       case 'cash_deposit':
-        return 'Cash Deposit';
+        return 'Cash deposit';
       case 'transfer':
         return 'Transfer';
       case 'cash':

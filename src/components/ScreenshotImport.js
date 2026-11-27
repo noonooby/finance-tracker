@@ -41,7 +41,7 @@ function NewAccount({ suggest, card, onAdd }) {
         {card !== true && <select className={box} aria-label="Kind of account" value={kind} onChange={(e) => setKind(e.target.value)}>
           <option value="checking">Chequing</option><option value="savings">Savings</option>{card !== false && <option value="credit_card">Credit card</option>}
         </select>}
-        <button type="button" disabled={!name.trim()} className="press px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium disabled:opacity-50" onClick={() => { onAdd(name.trim(), kind); setOpen(false); }}>Add it</button>
+        <button type="button" disabled={!name.trim()} className="press px-4 py-2.5 rounded-xl bg-accent text-accent-contrast text-sm font-medium disabled:opacity-50" onClick={() => { onAdd(name.trim(), kind); setOpen(false); }}>Add it</button>
         <button type="button" className="press px-3 py-2.5 text-sm text-muted underline" onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </div></div>
@@ -111,7 +111,7 @@ function effectOn(row, accountRef, isCard) {
   return isCard ? -a : a; // income or refund
 }
 
-export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCards = [], loans = [], categories = [], transactions = [], onUpdate }) {
+export default function ScreenshotImport({ bankAccounts = [], creditCards = [], loans = [], categories = [], transactions = [], onUpdate }) {
   const [image, setImage] = useState(null);
   const [note, setNote] = useState('');
   const [resumed, setResumed] = useState(false);
@@ -805,20 +805,20 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
   return (
     <div className="space-y-4 pb-24">
       <div>
-        <h1 className={`text-2xl font-bold text-fg`}>Scan</h1>
+        <h1 className="text-2xl font-bold text-fg">Scan</h1>
         <p className={`text-sm ${muted}`}>
           Choose screenshots of your bank or card app (as many as you like), a statement, a receipt or a bank file. Reading starts by itself. Check it and tap Save.
         </p>
       </div>
 
-      <div className={`border rounded-lg p-4 space-y-3 ${card}`}>
+      <div className={`border rounded-xl p-4 space-y-3 ${card}`}>
         {!aiReady && (
-          <p role="status" className="text-sm rounded-lg bg-warning/10 text-warning px-3 py-2">
+          <p role="status" className="text-sm rounded-xl bg-warning/10 text-warning px-3 py-2">
             Reading photos needs a Gemini key. The owner of the app adds it once in Settings. Until then you can add transactions from Home.
           </p>
         )}
         <div className="grid grid-cols-2 gap-3">
-          <label className="press cursor-pointer flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-blue-300 dark:border-blue-700 py-5 text-blue-700 dark:text-blue-300 font-medium">
+          <label className="press cursor-pointer flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-accent py-5 text-accent font-medium">
             <Camera size={26} aria-hidden="true" />
             Take a photo
             <input type="file" accept="image/*" capture="environment" onChange={pick} className="sr-only" />
@@ -843,7 +843,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                 <label className="block text-sm">
                   <span className="text-muted">Which account is this file from</span>
                   <select value={csvAccount} onChange={(e) => setCsvAccount(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2 text-fg focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none">
+                    className="mt-1 field">
                     <option value="">Choose an account</option>
                     {bankAccounts.map((a) => <option key={a.id} value={`bank_account:${a.id}`}>{a.name}</option>)}
                     {creditCards.filter((c) => !c.is_gift_card).map((c) => <option key={c.id} value={`credit_card:${c.id}`}>{c.name}</option>)}
@@ -855,7 +855,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                 <span className="text-muted">A word or two is enough, such as the bank or card name. Then tap Read again.</span>
                 <textarea rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)}
                   placeholder="For example: this is my Visa ending 1234, or only the grocery lines"
-                  className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2 text-fg placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none" />
+                  className="mt-1 field" />
               </label>}
             </div>
           </div>
@@ -900,12 +900,12 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
       </div>
 
       {proposal && (
-        <div className={`border rounded-lg p-4 space-y-4 ${card}`}>
+        <div className={`border rounded-xl p-4 space-y-4 ${card}`}>
           <div className="flex items-baseline justify-between gap-3">
             <h2 className="text-lg font-semibold">Found</h2>
             {queue.length > 0 && <span className="text-sm text-muted shrink-0">{queue.length} more waiting</span>}
           </div>
-          {chosen === 0 && <p role="status" className="text-sm rounded-lg bg-accent-soft text-accent px-3 py-2">There is nothing to save from this one. {queue.length > 0 ? 'Tap Skip to the next at the bottom, or add a note and read it again.' : 'Tap Close at the bottom, or add a note and read it again.'}</p>}
+          {chosen === 0 && <p role="status" className="text-sm rounded-xl bg-accent-soft text-accent px-3 py-2">There is nothing to save from this one. {queue.length > 0 ? 'Tap Skip to the next at the bottom, or add a note and read it again.' : 'Tap Close at the bottom, or add a note and read it again.'}</p>}
           {image.set && image.set.length > 0 && <p className="text-sm">{image.set.length + 1} pictures were read together as one.</p>}
           {(asks.length > 0 || otherWaiting.length > 0) && (
             <section id="scan-questions" className="space-y-3" style={{ scrollMarginTop: 80 }}>
@@ -941,7 +941,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                     {need === 'Enter the date' && <input className={`${input} py-2.5 text-base`} type="date" aria-label="Date" value={r.date || ''} onChange={(e) => setRow(r.i, { date: e.target.value })} />}
                     {need === 'Choose what paid it' && <Chips options={[...accountOptions.filter((o) => !isCardRef(o.value)), { value: 'outside', label: 'Not in the app' }]} onPick={(v) => setRow(r.i, { source: v })} />}
                     <div className="flex items-center gap-4">
-                      {!['Enter the amount', 'Enter the date', 'Choose what paid it'].includes(need) && <button type="button" className="press px-3 py-2 rounded-lg border border-line bg-surface text-sm font-medium" onClick={() => showLine(r.i)}>Answer on the line</button>}
+                      {!['Enter the amount', 'Enter the date', 'Choose what paid it'].includes(need) && <button type="button" className="press px-3 py-2 rounded-xl border border-line bg-surface text-sm font-medium" onClick={() => showLine(r.i)}>Answer on the line</button>}
                       <button type="button" className={`press text-sm underline ${muted}`} onClick={() => leaveOut([r])}>Leave it out</button>
                     </div>
                   </div>
@@ -960,7 +960,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                   <p className={`text-sm ${muted}`}>{g.list.slice(0, 3).map((r) => `${r.merchant || 'No name'} ${formatCurrency(Number(r.amount) || 0)}`).join(', ')}{n > 3 ? ` and ${n - 3} more` : ''}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <button type="button" className="press px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium" onClick={() => moveSaved(g)}>Move {n === 1 ? 'it' : 'them'} to {nameOf(g.to)}</button>
+                  <button type="button" className="press px-4 py-2.5 rounded-xl bg-accent text-accent-contrast text-sm font-medium" onClick={() => moveSaved(g)}>Move {n === 1 ? 'it' : 'them'} to {nameOf(g.to)}</button>
                   <button type="button" className={`press text-sm underline ${muted}`} onClick={() => settle(g, `Already saved under ${g.from.name}`)}>Leave {n === 1 ? 'it' : 'them'} under {g.from.name}</button>
                 </div>
               </div>
@@ -1031,7 +1031,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">New accounts to add</h3>
               {drafts.map((d) => (
-                <div key={d.id} className={`rounded-lg border p-3 space-y-2 border-line`}>
+                <div key={d.id} className="rounded-xl border p-3 space-y-2 border-line">
                   <label className="flex items-center gap-2 text-sm font-medium">
                     <input type="checkbox" checked={d.on} onChange={(e) => setDraft(d.id, { on: e.target.checked })} />
                     Add {d.name}{d.last4 ? ` (ending ${d.last4})` : ''}
@@ -1071,7 +1071,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             </section>
           )}
           {proposal.pay_slip && (
-            <section className="rounded-lg border border-line p-3 space-y-2">
+            <section className="rounded-xl border border-line p-3 space-y-2">
               <h3 className="text-base font-semibold">This is a pay slip</h3>
               <p className={`text-sm ${muted}`}>Pay is set up on the Income screen: who pays, how much, how often and which accounts it lands in. It is read there from this same picture.</p>
               <button type="button" className="press px-4 py-2.5 rounded-xl bg-accent text-accent-contrast font-medium" onClick={() => navigate('/income', { state: { paySlip: { url: image.url, type: image.type } } })}>Set up this pay</button>
@@ -1080,7 +1080,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           {changes.length > 0 && (
             <section className="space-y-2">
               <h3 className="text-base font-semibold">Details that changed</h3>
-              <div className="rounded-lg border border-line divide-y divide-line">
+              <div className="rounded-xl border border-line divide-y divide-line">
                 {changes.map((c) => (
                   <label key={c.key} className="flex items-start gap-3 p-3">
                     <input type="checkbox" className="mt-0.5 w-5 h-5 shrink-0" checked={c.on} onChange={(e) => setChanges((cs) => cs.map((x) => (x.key === c.key ? { ...x, on: e.target.checked } : x)))} />
@@ -1100,7 +1100,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               {billDrafts.map((b) => {
                 const setBill = (patch) => setBillDrafts((bs) => bs.map((y) => (y.id === b.id ? { ...y, ...patch } : y)));
                 return (
-                  <div key={b.id} className="rounded-lg border p-3 space-y-2 border-line">
+                  <div key={b.id} className="rounded-xl border p-3 space-y-2 border-line">
                     <label className="flex items-center gap-3 text-base font-medium">
                       <input type="checkbox" className="w-5 h-5" checked={b.on} onChange={(e) => setBill({ on: e.target.checked })} />
                       Track {b.name}
@@ -1131,7 +1131,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <section className="space-y-2">
               <h3 className="text-base font-semibold">What your investments hold</h3>
               {heldDrafts.map((h) => (
-                <div key={h.id} className="rounded-lg border p-3 space-y-1 border-line">
+                <div key={h.id} className="rounded-xl border p-3 space-y-1 border-line">
                   <label className="flex items-center gap-3 text-base font-medium">
                     <input type="checkbox" className="w-5 h-5" checked={h.on} onChange={(e) => setHeldDrafts((xs) => xs.map((y) => (y.id === h.id ? { ...y, on: e.target.checked } : y)))} />
                     Set what {h.name} holds
@@ -1145,7 +1145,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           {taxDraft && (
             <section className="space-y-2">
               <h3 className="text-base font-semibold">Tax year</h3>
-              <div className="rounded-lg border p-3 space-y-1 border-line">
+              <div className="rounded-xl border p-3 space-y-1 border-line">
                 <label className="flex items-center gap-3 text-base font-medium">
                   <input type="checkbox" className="w-5 h-5" checked={taxDraft.on} onChange={(e) => setTaxDraft({ ...taxDraft, on: e.target.checked })} />
                   {taxDraft.existing_id ? `Add to your ${taxDraft.year} tax year` : `Keep your ${taxDraft.year} tax year`}
@@ -1160,7 +1160,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <section className="space-y-2">
               <h3 className="text-base font-semibold">Contribution room</h3>
               {roomDrafts.map((r) => (
-                <label key={r.kind} className="flex items-center gap-3 rounded-lg border p-3 border-line text-base">
+                <label key={r.kind} className="flex items-center gap-3 rounded-xl border p-3 border-line text-base">
                   <input type="checkbox" className="w-5 h-5" checked={r.on} onChange={(e) => setRoomDrafts((xs) => xs.map((y) => (y.kind === r.kind ? { ...y, on: e.target.checked } : y)))} />
                   <span className="min-w-0"><span className="font-medium">{r.kind} room {formatCurrency(r.room)}</span><span className={`block text-sm ${muted}`}>as of {formatDate(r.as_of) || r.as_of}</span></span>
                 </label>
@@ -1171,7 +1171,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           {scoreDraft && (
             <section className="space-y-2">
               <h3 className="text-base font-semibold">Credit score</h3>
-              <div className="rounded-lg border p-3 space-y-2 border-line">
+              <div className="rounded-xl border p-3 space-y-2 border-line">
                 <label className="flex items-center gap-3 text-base font-medium">
                   <input type="checkbox" className="w-5 h-5" checked={scoreDraft.on} onChange={(e) => setScoreDraft({ ...scoreDraft, on: e.target.checked })} />
                   Save this score
@@ -1198,7 +1198,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
               {invDrafts.map((x) => {
                 const setInv = (patch) => setInvDrafts((xs) => xs.map((y) => (y.id === x.id ? { ...y, ...patch } : y)));
                 return (
-                  <div key={x.id} className="rounded-lg border p-3 space-y-2 border-line">
+                  <div key={x.id} className="rounded-xl border p-3 space-y-2 border-line">
                     <label className="flex items-center gap-3 text-base font-medium">
                       <input type="checkbox" className="w-5 h-5" checked={x.on} onChange={(e) => setInv({ on: e.target.checked })} />
                       Add {x.name}
@@ -1236,7 +1236,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
             <section className="space-y-2">
               <h3 className="text-base font-semibold">Loans to add</h3>
               {loanDrafts.map((l) => (
-                <div key={l.id} className="rounded-lg border p-3 space-y-2 border-line">
+                <div key={l.id} className="rounded-xl border p-3 space-y-2 border-line">
                   <label className="flex items-center gap-3 text-base font-medium">
                     <input type="checkbox" className="w-5 h-5" checked={l.on} onChange={(e) => setLoan(l.id, { on: e.target.checked })} />
                     Add {l.name}
@@ -1284,7 +1284,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
           <section className="space-y-1">
             <h3 className="text-sm font-semibold">Lines</h3>
             {rows.length === 0 && <p className={`text-sm ${muted}`}>No transactions found in this screenshot.</p>}
-            <ul className={`divide-y divide-line`}>
+            <ul className="divide-y divide-line">
               {rows.map((r) => {
                 const need = r.on && missing(r);
                 const cat = catsFor(r.kind).find((c) => String(c.id) === String(r.category_id));
@@ -1309,7 +1309,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
                       </div>
                       <div className="text-right">
                         <div className={r.kind === 'purchase' ? 'text-base font-semibold tabular-nums' : 'text-base font-semibold tabular-nums text-positive'}>{formatCurrency(r.amount)}</div>
-                        {editable && <button type="button" className="press text-sm font-medium py-1 text-blue-600 dark:text-blue-400" onClick={() => setOpen(open === r.i ? null : r.i)} aria-expanded={open === r.i}>{open === r.i ? 'Done' : 'Edit'}</button>}
+                        {editable && <button type="button" className="press text-sm font-medium py-1 text-accent" onClick={() => setOpen(open === r.i ? null : r.i)} aria-expanded={open === r.i}>{open === r.i ? 'Done' : 'Edit'}</button>}
                       </div>
                     </div>
                     {editable && open === r.i && (
@@ -1427,7 +1427,7 @@ export default function ScreenshotImport({ darkMode, bankAccounts = [], creditCa
 
       {image && <div className="h-20" aria-hidden="true" />}
       {done && (
-        <div role="status" className={`border rounded-lg p-4 text-sm ${card}`}>
+        <div role="status" className={`border rounded-xl p-4 text-sm ${card}`}>
           {done.created.length > 0 && <div>Accounts added: {done.created.join(', ')}.</div>}
           {done.recorded > 0 || !done.created.length ? `Saved ${done.recorded} ${done.recorded === 1 ? 'line' : 'lines'}.` : ''}{done.changed > 0 ? ` Details updated: ${done.changed}.` : ''}{done.posted > 0 && ` Pending lines marked as posted: ${done.posted}.`}
           {done.repeated > 0 && ` Already saved from an earlier screenshot, skipped: ${done.repeated}.`}

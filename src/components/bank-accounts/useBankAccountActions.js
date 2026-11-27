@@ -1,6 +1,7 @@
 // State and data access for the Bank Accounts page.
 // All money changes go through utils/db and utils/money, as before.
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { ask } from '../../utils/confirm';
 import { formatCurrency, generateId, validateBankAccountData, localDate } from '../../utils/helpers';
 import useAsyncAction from '../../hooks/useAsyncAction';
 import { showToast } from '../../utils/toast';
@@ -155,7 +156,7 @@ export default function useBankAccountActions({
             t.to_account_id === editingItem.id
           );
           if (accountTransactions.length > 0 && Math.abs(balanceChange) > 1) {
-            const proceed = window.confirm(
+            const proceed = await ask(
               `Balance Traceability Warning\n\n` +
               `You're changing the balance by ${formatCurrency(Math.abs(balanceChange))}.\n\n` +
               `This account has ${accountTransactions.length} transaction(s) in history.\n` +
@@ -238,7 +239,7 @@ export default function useBankAccountActions({
       return;
     }
 
-    if (!window.confirm(`Delete bank account "${account.name}"?\n\nThis action cannot be undone. Any reserved funds or income linked to this account will be unlinked.`)) {
+    if (!(await ask(`Delete bank account "${account.name}"?\n\nThis action cannot be undone. Any reserved funds or income linked to this account will be unlinked.`))) {
       return;
     }
 

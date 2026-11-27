@@ -20,7 +20,7 @@ export const emptyTransferData = () => ({
   fromAccount: '',
   toAccount: '',
   amount: '',
-  description: 'Account Transfer',
+  description: 'Account transfer',
   date: localDate()
 });
 
@@ -68,7 +68,7 @@ export const getLinkedEntities = (accountId, loans, creditCards) => {
 export const groupAccountsByInstitution = (bankAccounts, pinnedAccounts) => {
   const groups = {};
   bankAccounts.forEach(account => {
-    const institution = account.institution?.trim() || 'Other Accounts';
+    const institution = account.institution?.trim() || 'Other accounts';
     if (!groups[institution]) groups[institution] = [];
     groups[institution].push(account);
   });
@@ -140,7 +140,7 @@ export const describeAccountEdit = (editingItem, savedAccount) => {
       details += `Institution removed "${oldInstitution}" • `;
     }
   }
-  if (oldPrimary !== newPrimary) details += newPrimary ? 'Set as primary account • ' : 'Removed primary status • ';
+  if (oldPrimary !== newPrimary) details += newPrimary ? 'This is my main account • ' : 'Removed primary status • ';
   if (oldAllowsOverdraft !== newAllowsOverdraft) details += newAllowsOverdraft ? 'Enabled overdraft • ' : 'Disabled overdraft • ';
   if (newAllowsOverdraft && oldOverdraftLimit !== newOverdraftLimit) {
     details += `Overdraft limit ${formatCurrency(oldOverdraftLimit)} → ${formatCurrency(newOverdraftLimit)} • `;
@@ -166,5 +166,5 @@ export const describeAccountDelete = (account) => {
 };
 
 export const describeTransfer = (transferResult, transferData) =>
-  `Transferred ${formatCurrency(transferResult.amount)} from '${transferResult.fromAccount}' to '${transferResult.toAccount}' on ${formatDate(transferData.date)}${transferData.description !== 'Account Transfer' ? ` - Note: ${transferData.description}` : ''}`;
+  `Transferred ${formatCurrency(transferResult.amount)} from '${transferResult.fromAccount}' to '${transferResult.toAccount}' on ${formatDate(transferData.date)}${transferData.description !== 'Account transfer' ? ` - Note: ${transferData.description}` : ''}`;
 

@@ -5,11 +5,11 @@ import ActionButton from '../shared/ActionButton';
 import FrequentMark from './FrequentMark';
 import { inputClass, labelClass, strongLabelClass, panelClass, chipClass } from './styles';
 
-function AccountSelect({ darkMode, label, value, onChange, bankAccounts, lines = [] }) {
+function AccountSelect({ label, value, onChange, bankAccounts, lines = [] }) {
   return (
     <div>
-      <label className={labelClass(darkMode)}>{label}</label>
-      <select value={value} onChange={onChange} className={inputClass(darkMode)}>
+      <label className={labelClass}>{label}</label>
+      <select value={value} onChange={onChange} className={inputClass}>
         <option value="">Select account</option>
         {bankAccounts.map(account => (
           <option key={account.id} value={account.id}>
@@ -27,7 +27,6 @@ function AccountSelect({ darkMode, label, value, onChange, bankAccounts, lines =
 }
 
 export default function TransferForm({
-  darkMode,
   bankAccounts,
   lines = [],
   transferData,
@@ -38,15 +37,15 @@ export default function TransferForm({
   processing
 }) {
   return (
-    <div className={panelClass(darkMode)} role="region" aria-label="Transfer between accounts">
+    <div className={panelClass} role="region" aria-label="Transfer between accounts">
       <h3 className="font-semibold flex items-center gap-2">
         <ArrowRightLeft size={18} />
-        Transfer Between Accounts
+        Move money between accounts
       </h3>
 
       {recentTransfers.length > 0 && (
         <div>
-          <label className={strongLabelClass(darkMode)}>Recent Transfers</label>
+          <label className={strongLabelClass}>Recent transfers</label>
           <div className="flex gap-2 flex-wrap">
             {recentTransfers.map(transfer => (
               <button
@@ -60,7 +59,7 @@ export default function TransferForm({
                     toAccount: transfer.to_account_id || prev.toAccount
                   }));
                 }}
-                className={chipClass(darkMode, transferData.description === transfer.description)}
+                className={chipClass(transferData.description === transfer.description)}
               >
                 {transfer.description}
                 <FrequentMark count={transfer.usage_count} />
@@ -70,18 +69,16 @@ export default function TransferForm({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 items-end">
         <AccountSelect
-          darkMode={darkMode}
-          label="From Account *"
+          label="From account"
           value={transferData.fromAccount}
           onChange={(e) => setTransferData({ ...transferData, fromAccount: e.target.value, toAccount: String(transferData.toAccount) === String(e.target.value) ? '' : transferData.toAccount })}
           bankAccounts={bankAccounts}
           lines={lines}
         />
         <AccountSelect
-          darkMode={darkMode}
-          label="To Account *"
+          label="To account"
           value={transferData.toAccount}
           onChange={(e) => setTransferData({ ...transferData, toAccount: e.target.value })}
           bankAccounts={bankAccounts.filter(account => String(account.id) !== String(transferData.fromAccount))}
@@ -90,35 +87,35 @@ export default function TransferForm({
 
       {String(transferData.fromAccount).startsWith('loan:') && <p className="text-xs text-muted">Money taken from a line of credit: the account goes up and what is owed on the line goes up by the same amount. Interest is charged on what is used.</p>}
       <div>
-        <label className={labelClass(darkMode)}>Amount *</label>
+        <label className={labelClass}>Amount</label>
         <input
           type="number"
           step="0.01"
           placeholder="0.00"
           value={transferData.amount}
           onChange={(e) => setTransferData({ ...transferData, amount: e.target.value })}
-          className={inputClass(darkMode)}
+          className={inputClass}
         />
       </div>
 
       <div>
-        <label className={labelClass(darkMode)}>Transfer Date *</label>
+        <label className={labelClass}>Transfer date</label>
         <input
           type="date"
           value={transferData.date}
           onChange={(e) => setTransferData({ ...transferData, date: e.target.value })}
-          className={inputClass(darkMode)}
+          className={inputClass}
         />
       </div>
 
       <div>
-        <label className={labelClass(darkMode)}>Description (Optional)</label>
+        <label className={labelClass}>Description (optional)</label>
         <input
           type="text"
-          placeholder="e.g., Moving to savings"
+          placeholder="Moving to savings"
           value={transferData.description}
           onChange={(e) => setTransferData({ ...transferData, description: e.target.value })}
-          className={inputClass(darkMode)}
+          className={inputClass}
         />
       </div>
 
@@ -128,7 +125,7 @@ export default function TransferForm({
           processing={processing}
           variant="success"
           processingText="Transferring..."
-          idleText="Transfer Money"
+          idleText="Transfer money"
           fullWidth
         />
         <ActionButton onClick={onCancel} variant="secondary" idleText="Cancel" fullWidth />

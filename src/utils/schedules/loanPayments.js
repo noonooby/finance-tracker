@@ -117,7 +117,7 @@ export async function processOverdueLoanPayments(loans, creditCards = [], bankAc
  * Returns { success, payment, repeated } or { success: false, error }.
  */
 // eslint-disable-next-line no-unused-vars
-export async function createLoanPayment(paymentData, loan, paymentSource, accounts) {
+async function createLoanPayment(paymentData, loan, paymentSource, accounts) {
   try {
     const acc = accounts || (await freshAccounts());
     const current = acc.loans.find((l) => String(l.id) === String(loan.id)) || loan;
@@ -176,24 +176,6 @@ export async function createLoanPayment(paymentData, loan, paymentSource, accoun
   } catch (error) {
     console.error('Error creating loan payment:', error);
     return { success: false, error: error.message };
-  }
-}
-
-/**
- * Get loan payment history
- */
-export async function getLoanPaymentHistory(loanId) {
-  try {
-    const { data, error } = await server
-      .from('loan_payments')
-      .select('*')
-      .eq('loan_id', loanId)
-      .order('payment_date', { ascending: false });
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error('Error fetching loan payment history:', error);
-    return [];
   }
 }
 

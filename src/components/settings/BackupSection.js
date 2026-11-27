@@ -3,9 +3,9 @@ import { Database } from 'lucide-react';
 import BackupManager from '../BackupManager';
 import SettingsSection from './SettingsSection';
 
-export default function BackupSection({ darkMode, expanded, onToggle }) {
+export default function BackupSection({ expanded, onToggle }) {
   return (
-    <SettingsSection title="Backup & Data Management" icon={Database} expanded={expanded} onToggle={onToggle} darkMode={darkMode} bodyClassName="p-6 border-t border-line">
+    <SettingsSection title="Backup & data management" icon={Database} expanded={expanded} onToggle={onToggle} bodyClassName="p-4 border-t border-line">
       <BackupManager />
     </SettingsSection>
   );

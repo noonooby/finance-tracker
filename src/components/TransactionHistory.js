@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { ask } from '../utils/confirm';
 import { Save, FolderOpen, ListX } from 'lucide-react';
 import { Card, EmptyState } from './shared/ui';
 import { localDate } from '../utils/helpers';
@@ -6,7 +7,7 @@ import { dbOperation } from '../utils/db';
 import { logActivity } from '../utils/activityLogger';
 import { reverseTransaction } from '../utils/money';
 import EditTransaction from './transactions/EditTransaction';
-import AddTransaction from './AddTransaction';
+import { useFinanceData } from '../hooks/useFinanceData';
 import {
   getAllSavedFilters,
   saveFilter,
@@ -35,15 +36,12 @@ import { categoryParts, touchesAccount, spendingSign } from '../utils/spending';
  * UI components are extracted for modularity
  */
 export default function TransactionHistory({
-  darkMode,
   categories,
   creditCards,
   loans,
   availableCash,
   onUpdate,
   onUpdateCash,
-  showAddModal,
-  onCloseAddModal,
   bankAccounts
 }) {
   // === STATE MANAGEMENT ===
@@ -219,15 +217,12 @@ export default function TransactionHistory({
     }
   }, []);
 
+  // The list follows the app's data: a line added from anywhere shows here without leaving the page.
+  const { transactions: live } = useFinanceData();
   useEffect(() => {
     loadTransactions();
-  }, [loadTransactions]);
+  }, [loadTransactions, live]);
 
-  // === EVENT HANDLERS (Safe - UI Only) ===
-  const handleModalClose = useCallback(async () => {
-    if (onCloseAddModal) onCloseAddModal();
-    await loadTransactions();
-  }, [onCloseAddModal, loadTransactions]);
 
   const handleClearFilters = () => {
     setFilters({
@@ -307,7 +302,7 @@ export default function TransactionHistory({
   };
 
   const handleDeleteFilter = async (filter) => {
-    if (!window.confirm(`Are you sure you want to delete "${filter.name}"?`)) {
+    if (!(await ask(`Delete "${filter.name}"?`))) {
       return;
     }
 
@@ -347,7 +342,7 @@ export default function TransactionHistory({
    * CRITICAL: Reverts financial effects - DO NOT move to separate file
    */
   const handleDelete = async (transaction) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) return;
+    if (!(await ask('Delete this line?'))) return;
 
     try {
       const previousCash = availableCash;
@@ -429,23 +424,6 @@ export default function TransactionHistory({
         <EditTransaction transaction={editing} transactions={transactions} categories={categories} bankAccounts={bankAccounts} creditCards={creditCards} loans={loans}
           onClose={() => setEditing(null)} onSaved={async () => { await onUpdate(); await loadTransactions(); }} />
       )}
-      {/* Add Transaction Modal */}
-      {showAddModal && (
-        <AddTransaction
-          darkMode={darkMode}
-          onClose={handleModalClose}
-          onUpdate={async () => {
-            await onUpdate();
-            await loadTransactions();
-          }}
-          categories={categories}
-          creditCards={creditCards}
-          loans={loans}
-          availableCash={availableCash}
-          onUpdateCash={onUpdateCash}
-          bankAccounts={bankAccounts}
-        />
-      )}
 
       {/* Header with Actions */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
@@ -453,7 +431,6 @@ export default function TransactionHistory({
         
         <div className="flex flex-wrap gap-2">
           <QuickFiltersDropdown
-            darkMode={darkMode}
             quickFilters={quickFilters}
             onLoadFilter={handleLoadFilter}
           />
@@ -470,7 +447,7 @@ export default function TransactionHistory({
             Saved
             {savedFilters.length > 0 && (
               <span className={`text-xs px-2 py-0.5 rounded-full ${
-                showFiltersPanel ? 'bg-blue-500' : 'bg-accent text-accent-contrast'
+                showFiltersPanel ? 'bg-accent-soft0' : 'bg-accent text-accent-contrast'
               }`}>
                 {savedFilters.length}
               </span>
@@ -490,7 +467,6 @@ export default function TransactionHistory({
       {/* Saved Filters Panel */}
       {showFiltersPanel && savedFilters.length > 0 && (
         <SavedFiltersPanel
-          darkMode={darkMode}
           savedFilters={savedFilters}
           onLoadFilter={handleLoadFilter}
           onTogglePin={handleTogglePin}
@@ -501,7 +477,6 @@ export default function TransactionHistory({
 
       {/* Save Filter Dialog */}
       <SaveFilterDialog
-        darkMode={darkMode}
         show={showSaveDialog}
         filterName={filterName}
         saveAsPin={saveAsPin}
@@ -522,14 +497,12 @@ export default function TransactionHistory({
 
       {/* Summary Cards */}
       <TransactionSummaryCards
-        darkMode={darkMode}
         totals={totals}
         formatCurrency={formatCurrency}
       />
 
       {/* Filter Panel */}
       <FilterPanel
-        darkMode={darkMode}
         filters={filters}
         onFiltersChange={setFilters}
         categories={categories}
@@ -549,7 +522,7 @@ export default function TransactionHistory({
               <h2 className="px-1 text-sm font-semibold text-muted">{dayTitle(day)}</h2>
               <Card padded={false} className="divide-y divide-line overflow-hidden">
                 {list.map((transaction) => (
-                  <TransactionCard key={transaction.id} transaction={transaction} darkMode={darkMode} onDelete={handleDelete} onEdit={setEditing} />
+                  <TransactionCard key={transaction.id} transaction={transaction} onDelete={handleDelete} onEdit={setEditing} />
                 ))}
               </Card>
             </section>

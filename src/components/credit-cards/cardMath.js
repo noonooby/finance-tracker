@@ -195,12 +195,12 @@ export function sortPinnedFirst(cards, pinnedIds) {
 }
 
 export function paymentSourceOptions(bankAccounts) {
-  const sources = [{ value: '', label: 'None (Manual Payment)' }];
+  const sources = [{ value: '', label: 'None, I pay it myself' }];
   if (bankAccounts && bankAccounts.length > 0) {
     bankAccounts.forEach(account => {
       sources.push({
         value: `bank_account:${account.id}`,
-        label: `Account: ${account.name}${account.is_primary ? ' (Primary)' : ''}`
+        label: `Account: ${account.name}${account.is_primary ? ' (main)' : ''}`
       });
     });
   }

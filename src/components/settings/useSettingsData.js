@@ -11,7 +11,7 @@ import {
 } from '../../utils/userPreferencesManager';
 import { showToast } from '../../utils/toast';
 
-export const SECTION_KEYS = [
+const SECTION_KEYS = [
   'appearance', 'notifications', 'categories', 'categoryBudgets',
   'budgetHistory', 'learned', 'suggestions', 'backup', 'danger'
 ];

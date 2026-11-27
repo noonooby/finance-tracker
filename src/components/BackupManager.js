@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { ask } from '../utils/confirm';
 import { Download, Upload, FileSpreadsheet, Database, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { downloadBackup, importFullBackup, getBackupStats } from '../utils/backup/backupManager';
@@ -116,7 +117,7 @@ export default function BackupManager() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const confirmed = window.confirm(
+    const confirmed = await ask(
       'WARNING: This will replace ALL your current data.\n\n' +
       'Current data will be permanently deleted.\n' +
       'Make sure you have a backup before proceeding.\n\n' +
@@ -212,9 +213,9 @@ export default function BackupManager() {
   return (
     <div className="space-y-6">
       {/* Full Backup Section */}
-      <div className="bg-surface rounded-xl border border-line p-6">
+      <div className="card rounded-2xl border border-line bg-surface p-4">
         <div className="flex items-start gap-3 mb-4">
-          <Database className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+          <Database className="w-5 h-5 text-accent mt-0.5" />
           <div className="flex-1">
             <h3 className="font-semibold text-fg">
               Complete backup & restore
@@ -268,7 +269,7 @@ export default function BackupManager() {
           </label>
         </div>
 
-        <div className="mt-3 p-3 bg-warning/10 border border-warning/40 rounded-lg flex items-start gap-2">
+        <div className="mt-3 p-3 bg-warning/10 border border-warning/40 rounded-xl flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
           <p className="text-xs text-warning">
             Importing a backup will <strong>replace all current data</strong>. Make sure to export a backup first.
@@ -277,7 +278,7 @@ export default function BackupManager() {
       </div>
 
       {/* Bulk Upload New Transactions Section */}
-      <div className="bg-surface rounded-xl border border-line p-6">
+      <div className="card rounded-2xl border border-line bg-surface p-4">
         <div className="flex items-start gap-3 mb-4">
           <FileSpreadsheet className="w-5 h-5 text-accent mt-0.5" />
           <div className="flex-1">
@@ -318,20 +319,20 @@ export default function BackupManager() {
             </label>
           </div>
 
-          <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-3">
-            <div className="text-xs text-purple-900 dark:text-purple-100 space-y-1">
+          <div className="bg-accent-soft border border-accent/30 rounded-xl p-3">
+            <div className="text-xs text-accent text-accent space-y-1">
               <div className="font-semibold">How it works:</div>
               <div>1. Download blank template Excel file</div>
               <div>2. Fill in Date, Amount, Type (income or expense) and Description</div>
               <div>3. Upload the file to add all transactions at once</div>
-              <div className="mt-2 text-purple-700 dark:text-purple-300">Leave Category empty to have it filled in from purchases you recorded before.</div>
+              <div className="mt-2 text-accent text-accent">Leave Category empty to have it filled in from purchases you recorded before.</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Bulk Transaction Edit Section */}
-      <div className="bg-surface rounded-xl border border-line p-6">
+      <div className="card rounded-2xl border border-line bg-surface p-4">
         <div className="flex items-start gap-3 mb-4">
           <FileSpreadsheet className="w-5 h-5 text-positive mt-0.5" />
           <div className="flex-1">
@@ -372,8 +373,8 @@ export default function BackupManager() {
             </label>
           </div>
 
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-            <div className="text-xs text-blue-900 dark:text-blue-100 space-y-1">
+          <div className="bg-accent-soft border border-accent rounded-xl p-3">
+            <div className="text-xs text-accent space-y-1">
               <div className="font-semibold">How it works:</div>
               <div>1. Export transactions to Excel file</div>
               <div>2. Edit date, amount, description, category, notes, etc.</div>
@@ -387,7 +388,7 @@ export default function BackupManager() {
       {/* Import Preview Modal */}
       {importPreview && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div role="dialog" aria-modal="true" aria-label="Confirm import" className="bg-surface rounded-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
+          <div role="dialog" aria-modal="true" aria-label="Confirm import" className="bg-surface rounded-3xl max-w-lg w-full p-5 max-h-[80vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4 text-fg">
               Confirm import
             </h3>
@@ -462,7 +463,7 @@ export default function BackupManager() {
       {/* Upload Preview Modal */}
       {uploadPreview && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div role="dialog" aria-modal="true" aria-label="Confirm upload" className="bg-surface rounded-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
+          <div role="dialog" aria-modal="true" aria-label="Confirm upload" className="bg-surface rounded-3xl max-w-lg w-full p-5 max-h-[80vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4 text-fg">
               Confirm upload
             </h3>
@@ -517,7 +518,7 @@ export default function BackupManager() {
 
               {/* Error preview */}
               {uploadPreview.preview.preview?.errors?.length > 0 && (
-                <div className="bg-warning/10 rounded-lg p-3 text-xs">
+                <div className="bg-warning/10 rounded-xl p-3 text-xs">
                   <div className="font-semibold text-warning mb-2">
                     Sample errors:
                   </div>

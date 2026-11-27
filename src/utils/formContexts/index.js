@@ -1,66 +1,14 @@
-export { BaseContextManager } from './BaseContextManager';
-export { CONTEXT_CONFIGS, getContextConfig } from './contextConfig';
-export { contextToFormData, formDataToContext, selectAllText, validateContext } from './shared';
 
-export {
-  getIncomeSourceContext,
-  saveIncomeSourceContext,
-  getRecentIncomeSources,
-  getLastUsedIncomeContext,
-  deleteIncomeSourceContext,
-  applyIncomeContext
-} from './incomeContexts';
+export { getIncomeSourceContext, saveIncomeSourceContext, getRecentIncomeSources, getLastUsedIncomeContext, applyIncomeContext } from './incomeContexts';
 
-export {
-  getExpenseContext,
-  saveExpenseContext,
-  getRecentExpenseDescriptions,
-  getLastUsedExpenseContext,
-  deleteExpenseContext,
-  applyExpenseContext
-} from './expenseContexts';
+export { getExpenseContext, saveExpenseContext, getRecentExpenseDescriptions, applyExpenseContext } from './expenseContexts';
 
-export {
-  getCardPaymentContext,
-  saveCardPaymentContext
-} from './cardPaymentContexts';
 
-export {
-  getLoanPaymentContext,
-  saveLoanPaymentContext
-} from './loanPaymentContexts';
 
-export {
-  getLoanCreationContext,
-  saveLoanCreationContext,
-  getRecentLoanNames,
-  getLastUsedLoanContext,
-  deleteLoanCreationContext,
-  applyLoanCreationContext
-} from './loanCreationContexts';
+export { getLoanCreationContext, saveLoanCreationContext, getRecentLoanNames, getLastUsedLoanContext, applyLoanCreationContext } from './loanCreationContexts';
 
-export {
-  getTransferContext,
-  saveTransferContext,
-  getRecentTransferDescriptions,
-  getLastUsedTransferContext,
-  deleteTransferContext,
-  applyTransferContext
-} from './transferContexts';
+export { saveTransferContext, getRecentTransferDescriptions } from './transferContexts';
 
-export {
-  getGiftCardPurchaseContext,
-  saveGiftCardPurchaseContext,
-  getRecentGiftCardNames,
-  getLastUsedGiftCardContext,
-  deleteGiftCardPurchaseContext,
-  applyGiftCardPurchaseContext
-} from './giftCardPurchaseContexts';
+export { saveGiftCardPurchaseContext, getRecentGiftCardNames, getLastUsedGiftCardContext, applyGiftCardPurchaseContext } from './giftCardPurchaseContexts';
 
-export {
-  saveGiftCardAddBalanceContext,
-  getGiftCardAddBalanceContext,
-  saveGiftCardUseBalanceContext,
-  getGiftCardUseBalanceContext,
-  getRecentGiftCardAmounts
-} from './giftCardOperationsContexts';
+export { saveGiftCardAddBalanceContext, getGiftCardAddBalanceContext, getRecentGiftCardAmounts } from './giftCardOperationsContexts';

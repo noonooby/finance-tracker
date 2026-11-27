@@ -75,7 +75,6 @@ export const DEFAULT_CATEGORIES = [
   { id: 'other_income', name: 'Other Income', color: '#6b7280', icon: 'Banknote', is_income: true }
 ];
 
-
 // ============================================
 // BANK ACCOUNT HELPER FUNCTIONS
 // Phase 2B: Helper functions for bank account operations
@@ -107,85 +106,6 @@ export function calculateTotalBankBalance(bankAccounts) {
   }, 0);
 
   return total;
-}
-
-
-
-/**
- * Get account balance by ID
- * Safe getter that returns 0 if account not found
- *
- * @param {Array} bankAccounts - Array of bank account objects
- * @param {string} accountId - Account ID to find
- * @returns {number} Account balance or 0 if not found
- */
-export function getAccountBalance(bankAccounts, accountId) {
-  if (!bankAccounts || !accountId) return 0;
-
-  const account = bankAccounts.find(acc => acc.id === accountId);
-  return account ? (parseFloat(account.balance) || 0) : 0;
-}
-
-/**
- * Get primary account from bank accounts array
- * Returns the account marked as is_primary: true
- *
- * @param {Array} bankAccounts - Array of bank account objects
- * @returns {Object|null} Primary account or null if none exists
- */
-export function getPrimaryAccountFromArray(bankAccounts) {
-  if (!bankAccounts || !Array.isArray(bankAccounts)) return null;
-
-  return bankAccounts.find(account => account.is_primary === true) || null;
-}
-
-/**
- * Validate if account has sufficient balance for a transaction
- *
- * @param {Array} bankAccounts - Array of bank account objects
- * @param {string} accountId - Account ID to check
- * @param {number} amount - Amount needed
- * @returns {boolean} True if sufficient funds, false otherwise
- */
-export function hasSufficientFunds(bankAccounts, accountId, amount) {
-  const balance = getAccountBalance(bankAccounts, accountId);
-  return balance >= amount;
-}
-
-/**
- * Format account display name with institution (if available)
- * Examples:
- * - "Primary Checking (Chase)"
- * - "Savings Account"
- *
- * @param {Object} account - Bank account object
- * @returns {string} Formatted account name
- */
-export function formatAccountName(account) {
-  if (!account) return 'Unknown Account';
-
-  if (account.institution && account.institution.trim()) {
-    return `${account.name} (${account.institution})`;
-  }
-
-  return account.name;
-}
-
-/**
- * Get human-readable account type display name
- *
- * @param {string} accountType - Account type code ('checking', 'savings', etc.)
- * @returns {string} Display name
- */
-export function getAccountTypeDisplay(accountType) {
-  const types = {
-    'checking': 'Checking',
-    'savings': 'Savings',
-    'investment': 'Investment',
-    'cash': 'Cash'
-  };
-
-  return types[accountType] || 'Other';
 }
 
 /**
@@ -239,26 +159,6 @@ export function validateBankAccountData(accountData) {
 
   return errors;
 }
-
-/**
- * Sort bank accounts for display
- * Primary account first, then by creation date
- *
- * @param {Array} bankAccounts - Array of bank account objects
- * @returns {Array} Sorted array (does not mutate original)
- */
-export const sortBankAccounts = (bankAccounts) => {
-  if (!bankAccounts || !Array.isArray(bankAccounts)) return [];
-
-  return [...bankAccounts].sort((a, b) => {
-    // Primary account always first
-    if (a.is_primary && !b.is_primary) return -1;
-    if (!a.is_primary && b.is_primary) return 1;
-
-    // Then sort by creation date (oldest first)
-    return new Date(a.created_at) - new Date(b.created_at);
-  });
-};
 
 /**
  * Parse smart input that supports math expressions

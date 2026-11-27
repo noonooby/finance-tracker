@@ -21,7 +21,7 @@ const LOOKUPS = [
   ['details', 'Published rates and fees of each account, card and loan', 'Only the product\'s name is sent, once. What comes back is kept here and is not fetched again unless you ask.'],
   ['tax_limits', 'Each new year\'s tax limits', 'Nothing about you is sent. Taken only from the Canada Revenue Agency\'s pages.'],
 ];
-const input = 'mt-1 w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-fg text-sm';
+const input = 'mt-1 field';
 
 // Change where an account is held, the name used to look it up, its published figures, or stop it being looked up.
 function Change({ table, r, held, onDone, onCancel }) {

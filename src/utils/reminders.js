@@ -2,7 +2,7 @@
 // The server decides what to remind and when (server/push.js); this file only connects the device.
 import { api } from './server';
 
-export const isIOS = () => !/Android/.test(navigator.userAgent) && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+const isIOS = () => !/Android/.test(navigator.userAgent) && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 const installed = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
 // -> 'ok' | 'install_first' (iPhone and iPad: only an app added to the Home Screen can get reminders) | 'unsupported'

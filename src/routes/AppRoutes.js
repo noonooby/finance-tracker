@@ -41,10 +41,9 @@ const CreditScore = lazy(() => import('../components/CreditScore'));
  * Loading Fallback Component
  */
 const LoadingFallback = () => {
-  const { darkMode } = useTheme();
   return (
-    <div className={`flex items-center justify-center min-h-screen ${darkMode ? 'bg-surface' : 'bg-surface-2'}`}>
-      <div className={`text-lg ${darkMode ? 'text-muted' : 'text-muted'}`}>
+    <div className="flex items-center justify-center min-h-screen bg-surface-2">
+      <div className="text-lg text-muted">
         Loading...
       </div>
     </div>
@@ -56,13 +55,12 @@ const LoadingFallback = () => {
  */
 const AuthRoute = React.memo(() => {
   const { session } = useAuth();
-  const { darkMode } = useTheme();
 
   if (session) {
     return <Navigate to="/" replace />;
   }
 
-  return <Auth darkMode={darkMode} />;
+  return <Auth />;
 });
 
 /**
@@ -72,13 +70,12 @@ const AuthRoute = React.memo(() => {
 const DashboardRoute = React.memo(() => <Dashboard />);
 
 const CreditCardsRoute = React.memo(() => {
-  const { darkMode, alertSettings } = useTheme();
+  const { alertSettings } = useTheme();
   const financeData = useFinanceData();
   const { focusTarget, clearFocusTarget, navigateToTransactionHistory } = useUI();
   
   return (
     <CreditCards
-      darkMode={darkMode}
       alertSettings={alertSettings}
       {...financeData}
       focusTarget={focusTarget}
@@ -91,13 +88,12 @@ const CreditCardsRoute = React.memo(() => {
 });
 
 const LoansRoute = React.memo(() => {
-  const { darkMode, alertSettings } = useTheme();
+  const { alertSettings } = useTheme();
   const financeData = useFinanceData();
   const { focusTarget, clearFocusTarget, navigateToTransactionHistory } = useUI();
   
   return (
     <Loans
-      darkMode={darkMode}
       alertSettings={alertSettings}
       {...financeData}
       focusTarget={focusTarget}
@@ -112,13 +108,11 @@ const LoansRoute = React.memo(() => {
 
 
 const IncomeRoute = React.memo(() => {
-  const { darkMode } = useTheme();
   const financeData = useFinanceData();
   const { focusTarget, clearFocusTarget, navigateToTransactionHistory } = useUI();
   
   return (
     <Income
-      darkMode={darkMode}
       {...financeData}
       focusTarget={focusTarget}
       onClearFocus={clearFocusTarget}
@@ -130,13 +124,11 @@ const IncomeRoute = React.memo(() => {
 });
 
 const BankAccountsRoute = React.memo(() => {
-  const { darkMode } = useTheme();
   const financeData = useFinanceData();
   const { focusTarget, clearFocusTarget, navigateToTransactionHistory } = useUI();
   
   return (
     <BankAccounts
-      darkMode={darkMode}
       bankAccounts={financeData.bankAccounts}
       loans={financeData.loans}
       creditCards={financeData.creditCards}
@@ -149,16 +141,11 @@ const BankAccountsRoute = React.memo(() => {
 });
 
 const TransactionsRoute = React.memo(() => {
-  const { darkMode } = useTheme();
   const financeData = useFinanceData();
-  const { showAddTransactionModal, closeAddTransaction } = useUI();
   
   return (
     <TransactionHistory
-      darkMode={darkMode}
       {...financeData}
-      showAddModal={showAddTransactionModal}
-      onCloseAddModal={closeAddTransaction}
       onUpdate={financeData.loadAllData}
       onUpdateCash={financeData.handleUpdateCash}
     />
@@ -166,16 +153,13 @@ const TransactionsRoute = React.memo(() => {
 });
 
 const ThemedPage = ({ Page }) => {
-  const { darkMode } = useTheme();
-  return <Page darkMode={darkMode} />;
+  return <Page />;
 };
 
 const ScreenshotRoute = React.memo(() => {
-  const { darkMode } = useTheme();
   const financeData = useFinanceData();
   return (
     <ScreenshotImport
-      darkMode={darkMode}
       bankAccounts={financeData.bankAccounts}
       creditCards={financeData.creditCards}
       loans={financeData.loans}
@@ -187,38 +171,30 @@ const ScreenshotRoute = React.memo(() => {
 });
 
 const ActivityRoute = React.memo(() => {
-  const { darkMode } = useTheme();
   const { loadAllData } = useFinanceData();
   
   return (
     <ActivityFeed
-      darkMode={darkMode}
       onUpdate={loadAllData}
     />
   );
 });
 
 const ReportsRoute = React.memo(() => {
-  const { darkMode } = useTheme();
   const { categories } = useFinanceData();
   
   return (
     <Reports
-      darkMode={darkMode}
       categories={categories}
     />
   );
 });
 
 const SettingsRoute = React.memo(() => {
-  const { darkMode, displayDensity, setDisplayDensity } = useTheme();
   const { loadAllData, loadCategories, categories } = useFinanceData();
   
   return (
     <Settings
-      darkMode={darkMode}
-      displayDensity={displayDensity}
-      onDisplayDensityChange={setDisplayDensity}
       onUpdate={loadAllData}
       onReloadCategories={loadCategories}
       categories={categories}

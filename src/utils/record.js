@@ -1,81 +1,13 @@
-// Unified Transaction Hooks - Routes to specialized business logic based on transaction type
+// Saving a purchase, a card payment or a loan payment, with everything that goes with it: the due date that moves on,
+// the next payment day, a service fee, and the entry in the activity list. Every form that records one of these
+// goes through here.
+import { recordExpense, recordCardPayment, recordLoanPayment, recordThroughFee, paymentSourceOf, cardDueAfterPayment } from './money';
+import { logActivity } from './activityLogger';
+import { showToast } from './toast';
+import { formatCurrency, predictNextDate } from './helpers';
 
-import { useState, useCallback } from 'react';
-import { recordExpense, recordCardPayment, recordLoanPayment, recordThroughFee, paymentSourceOf, cardDueAfterPayment } from '../utils/money';
-import { logActivity } from '../utils/activityLogger';
-import { showToast } from '../utils/toast';
-import { formatCurrency } from '../utils/helpers';
-import {
-  addRecentTransaction,
-  addRecentCategory, 
-  addRecentPaymentMethod
-} from '../utils/userPreferencesManager';
-import {
-  saveExpenseContext,
-  saveCardPaymentContext,
-  saveLoanPaymentContext
-} from '../utils/formContexts';
-
-// Re-export income hooks from the transactions folder
-export { useIncomeOperations, useIncomeContexts, useIncomeValidation, useIncomePredictions } from './transactions/index';
-
-// Transaction operations for AddTransaction modal
-export function useTransactionOperations({
-  creditCards,
-  loans,
-  bankAccounts,
-  availableCash,
-  onUpdateCash,
-  categories,
-  onUpdate
-}) {
-  const [processing, setProcessing] = useState(false);
-
-  const processTransaction = useCallback(async (formData) => {
-    setProcessing(true);
-    try {
-      let result;
-      
-      if (formData.type === 'expense') {
-        result = await processExpense(formData, { creditCards, bankAccounts, categories });
-      } else if (formData.type === 'payment') {
-        if (formData.paymentMethod === 'credit_card') {
-          result = await processCardPayment(formData, { creditCards, bankAccounts, loans });
-        } else if (formData.paymentMethod === 'loan') {
-          result = await processLoanPayment(formData, { loans, bankAccounts, creditCards });
-        }
-      }
-
-      if (result?.success) {
-        // Balances changed on the server; reload them rather than setting figures here.
-        if (onUpdateCash) await onUpdateCash(null, { syncOnly: true });
-        await onUpdate();
-        
-        if (result.transactionId) {
-          addRecentTransaction(result.transactionId).catch(console.warn);
-        }
-        if (formData.categoryId) {
-          addRecentCategory(formData.categoryId).catch(console.warn);
-        }
-        if (result.paymentMethodString) {
-          addRecentPaymentMethod(result.paymentMethodString).catch(console.warn);
-        }
-      }
-
-      return result;
-    } catch (error) {
-      console.error('Transaction processing error:', error);
-      return { success: false, error: error.message };
-    } finally {
-      setProcessing(false);
-    }
-  }, [creditCards, loans, bankAccounts, onUpdateCash, categories, onUpdate]);
-
-  return { processTransaction, processing };
-}
-
-// Expense processing
-async function processExpense(formData, { creditCards, bankAccounts, categories }) {
+// A purchase from a bank account or on a card.
+export async function saveExpense(formData, { creditCards, bankAccounts, categories }) {
   const amount = parseFloat(formData.amount);
   const category = categories?.find(c => String(c.id) === String(formData.categoryId));
   const method = formData.paymentMethod;
@@ -103,7 +35,8 @@ async function processExpense(formData, { creditCards, bankAccounts, categories 
     notes: formData.notes,
     category_id: formData.categoryId || null,
     category_name: category?.name || null,
-    extra: formData.extra
+    extra: formData.extra,
+    key: formData.key
   }, { bankAccounts, creditCards });
   const transactionId = res.transaction?.id;
 
@@ -123,13 +56,6 @@ async function processExpense(formData, { creditCards, bankAccounts, categories 
     }
   );
 
-  if (formData.description) {
-    saveExpenseContext(formData.description, {
-      categoryId: formData.categoryId,
-      paymentMethod: formData.paymentMethod,
-      paymentMethodId: formData.paymentMethodId
-    }).catch(console.warn);
-  }
 
   return {
     success: true,
@@ -142,8 +68,8 @@ async function processExpense(formData, { creditCards, bankAccounts, categories 
 // The balance an account ended on in a saved money step (from what the server reports it moved).
 const balanceAfter = (res, table, id) => (res?.legs || []).find((l) => l.table === table && String(l.id) === String(id))?.after;
 
-// Card payment processing
-async function processCardPayment(formData, { creditCards, bankAccounts, loans }) {
+// A payment on a card: what is owed goes down and the due date moves on once the statement is covered.
+export async function saveCardPayment(formData, { creditCards, bankAccounts, loans }) {
   const card = creditCards?.find(c => String(c.id) === String(formData.paymentMethodId));
   if (!card) throw new Error('Credit card not found');
 
@@ -156,7 +82,8 @@ async function processCardPayment(formData, { creditCards, bankAccounts, loans }
     amount,
     source,
     date: formData.date,
-    description: `Payment for '${card.name}' from ${sourceName}`,
+    key: formData.key,
+    description: formData.description || `Payment for '${card.name}' from ${sourceName}`,
     updates: [{ table: 'credit_cards', id: card.id, values: { last_payment_date: formData.date, last_payment_amount: amount,
       ...(nextDue ? { due_date: nextDue } : {}) } }],
     extra: {
@@ -189,24 +116,18 @@ async function processCardPayment(formData, { creditCards, bankAccounts, loans }
     }
   );
 
-  saveCardPaymentContext(card.id, {
-    paymentSource: sourceType,
-    paymentSourceId: sourceId,
-    amountMode: formData.amountMode
-  }).catch(console.warn);
 
   return { success: true, transactionId, cardName: card.name, amount };
 }
 
 // Loan payment processing
-async function processLoanPayment(formData, { loans, bankAccounts, creditCards }) {
+export async function saveLoanPayment(formData, { loans, bankAccounts, creditCards }) {
   const loan = loans?.find(l => String(l.id) === String(formData.paymentMethodId));
   if (!loan) throw new Error('Loan not found');
 
   const amount = parseFloat(formData.amount);
   const { sourceType, sourceId, source, sourceName } = paymentSourceOf(formData, { bankAccounts, creditCards });
 
-  const { predictNextDate } = await import('../utils/helpers');
   const recurring = loan.frequency && loan.frequency !== 'onetime';
   let nextPaymentDate = loan.next_payment_date;
   if (recurring) {
@@ -226,7 +147,8 @@ async function processLoanPayment(formData, { loans, bankAccounts, creditCards }
     amount,
     source,
     date: formData.date,
-    description: `Payment for '${loan.name}' from ${sourceName}`,
+    key: formData.key,
+    description: formData.description || `Payment for '${loan.name}' from ${sourceName}`,
     updates: [{
       table: 'loans', id: loan.id, values: {
         next_payment_date: nextPaymentDate,
@@ -273,11 +195,6 @@ async function processLoanPayment(formData, { loans, bankAccounts, creditCards }
     }
   );
 
-  saveLoanPaymentContext(loan.id, {
-    paymentSource: sourceType,
-    paymentSourceId: sourceId,
-    amountMode: formData.amountMode
-  }).catch(console.warn);
 
   return { success: true, transactionId, loanName: loan.name, amount };
 }

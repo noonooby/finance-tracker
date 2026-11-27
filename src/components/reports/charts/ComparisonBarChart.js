@@ -1,8 +1,10 @@
 import React from 'react';
+import { useTheme } from '../../../hooks/useTheme';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { formatCurrency, axisMoney } from '../../../utils/reportHelpers';
 
-export default function ComparisonBarChart({ data, darkMode, dataKeys = [] }) {
+export default function ComparisonBarChart({ data, dataKeys = [] }) {
+  const { darkMode } = useTheme();
   if (!data || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-muted">
@@ -14,7 +16,7 @@ export default function ComparisonBarChart({ data, darkMode, dataKeys = [] }) {
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className={`bg-surface border-line p-3 rounded-2xl shadow-lg border`}>
+        <div className="bg-surface border-line p-3 rounded-2xl shadow-lg border">
           <p className="font-medium mb-2">{label}</p>
           {payload.map((entry, index) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>

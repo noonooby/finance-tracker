@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { ask } from '../utils/confirm';
 import { Gauge, Trash2 } from 'lucide-react';
 import { server, api } from '../utils/server';
 import { showToast } from '../utils/toast';
@@ -55,7 +56,7 @@ export default function CreditScore() {
     load();
   };
   const remove = async (s) => {
-    if (!window.confirm(`Remove the ${s.bureau} score of ${s.score} from ${day(s.date)}?`)) return;
+    if (!(await ask(`Remove the ${s.bureau} score of ${s.score} from ${day(s.date)}?`))) return;
     const { error } = await server.from('credit_scores').delete().eq('id', s.id);
     if (error) return showToast.error(error.message);
     load();

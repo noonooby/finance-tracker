@@ -29,7 +29,7 @@ function Kind({ kind, r, stated, onSave }) {
     setBusy(true);
     try { await onSave(kind, { room: Number(form.room), as_of: form.as_of, ...(kind === 'FHSA' && form.used !== '' ? { used: Number(form.used) } : {}) }); setEdit(false); } finally { setBusy(false); }
   };
-  const input = 'mt-1 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-fg';
+  const input = 'mt-1 field';
   return (
     <Card className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">

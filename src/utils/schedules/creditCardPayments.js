@@ -115,7 +115,7 @@ export async function processOverdueCreditCardPayments(creditCards, bankAccounts
  * Returns { success, payment, repeated } or { success: false, error }.
  */
 // eslint-disable-next-line no-unused-vars
-export async function createCreditCardPayment(paymentData, card, paymentSource, accounts) {
+async function createCreditCardPayment(paymentData, card, paymentSource, accounts) {
   try {
     const acc = accounts || (await freshAccounts());
     const current = acc.creditCards.find((c) => String(c.id) === String(card.id)) || card;
@@ -167,24 +167,6 @@ export async function createCreditCardPayment(paymentData, card, paymentSource, 
   } catch (error) {
     console.error('Error creating credit card payment:', error);
     return { success: false, error: error.message };
-  }
-}
-
-/**
- * Get credit card payment history
- */
-export async function getCreditCardPaymentHistory(cardId) {
-  try {
-    const { data, error } = await server
-      .from('credit_card_payments')
-      .select('*')
-      .eq('card_id', cardId)
-      .order('payment_date', { ascending: false });
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error('Error fetching credit card payment history:', error);
-    return [];
   }
 }
 

@@ -17,7 +17,6 @@ import { startOfYear, endOfYear, subYears, format } from 'date-fns';
 import { parseDay, formatDate } from '../../../utils/helpers';
 
 export default function AnnualReview({ 
-  darkMode, 
   transactions, 
   categories,
   onExportExcel,
@@ -144,16 +143,14 @@ export default function AnnualReview({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">Annual Review</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Annual review</h2>
           <div className="flex items-center gap-4 mt-2">
             <select
               value={selectedYear}
               onChange={(e) => handleYearChange(Number(e.target.value))}
-              className={`px-4 py-2 rounded-lg font-medium ${
-                'bg-surface-2 text-fg'
-              }`}
+              className="px-4 py-2 rounded-xl font-medium bg-surface-2 text-fg"
             >
               {availableYears.map(year => (
                 <option key={year} value={year}>{year}</option>
@@ -164,27 +161,27 @@ export default function AnnualReview({
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-4 py-2 rounded-xl font-medium transition-colors ${
               showFilters
                 ? 'bg-accent text-accent-contrast'
                 : 'bg-surface-2 hover:bg-line/60'
             }`}
           >
-            {showFilters ? 'Hide' : 'Show'} Filters
+            {showFilters ? 'Hide filters' : 'Filters'}
           </button>
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:opacity-90 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-xl font-medium hover:opacity-90 transition-colors"
           >
             <FileSpreadsheet size={18} />
-            Export Excel
+            Export to Excel
           </button>
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-xl font-medium hover:opacity-90 transition-colors"
           >
             <Download size={18} />
             Export CSV
@@ -195,7 +192,6 @@ export default function AnnualReview({
       {/* Filter Panel */}
       {showFilters && (
         <FilterPanel
-          darkMode={darkMode}
           filters={filters}
           onFiltersChange={setFilters}
           categories={categories}
@@ -210,7 +206,6 @@ export default function AnnualReview({
           subtitle={`${filteredData.filter(t => t.type === 'income').length} deposits`}
           icon={Calendar}
           color="green"
-          darkMode={darkMode}
         />
         <SummaryCard
           title={`${selectedYear} Expenses`}
@@ -218,7 +213,6 @@ export default function AnnualReview({
           subtitle={`${filteredData.filter(t => t.type === 'expense').length} transactions`}
           icon={Calendar}
           color="red"
-          darkMode={darkMode}
         />
         <SummaryCard
           title={`${selectedYear} Payments`}
@@ -226,7 +220,6 @@ export default function AnnualReview({
           subtitle="Debt payments"
           icon={Calendar}
           color="blue"
-          darkMode={darkMode}
         />
         <SummaryCard
           title={`${selectedYear} Net`}
@@ -234,17 +227,16 @@ export default function AnnualReview({
           subtitle={summary.netCashflow >= 0 ? 'Surplus' : 'Deficit'}
           icon={Calendar}
           color={summary.netCashflow >= 0 ? 'green' : 'orange'}
-          darkMode={darkMode}
         />
       </div>
 
       {/* Year-over-Year Comparison */}
       {yearComparison && (
-        <div className={`bg-surface rounded-2xl p-6`}>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
           <h3 className="text-lg font-semibold mb-4">Year-over-Year Comparison</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center">
-              <p className="text-sm text-muted mb-2">Income Growth</p>
+              <p className="text-sm text-muted mb-2">Income growth</p>
               <p className={`text-3xl font-bold ${
                 yearComparison.growth.income >= 0 ? 'text-positive' : 'text-negative'
               }`}>
@@ -255,7 +247,7 @@ export default function AnnualReview({
               </p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-muted mb-2">Expense Change</p>
+              <p className="text-sm text-muted mb-2">Expense change</p>
               <p className={`text-3xl font-bold ${
                 yearComparison.growth.expenses <= 0 ? 'text-positive' : 'text-negative'
               }`}>
@@ -266,7 +258,7 @@ export default function AnnualReview({
               </p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-muted mb-2">Net Cashflow Change</p>
+              <p className="text-sm text-muted mb-2">Net cashflow change</p>
               <p className={`text-3xl font-bold ${
                 yearComparison.growth.net >= 0 ? 'text-positive' : 'text-negative'
               }`}>
@@ -281,11 +273,10 @@ export default function AnnualReview({
       )}
 
       {/* Monthly Trends */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">Monthly Cashflow Trend</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">Monthly cashflow trend</h3>
         <TrendLineChart
           data={monthlyTrends}
-          darkMode={darkMode}
           dataKeys={[
             { key: 'income', name: 'Income', color: '#10B981' },
             { key: 'expenses', name: 'Expenses', color: '#EF4444' },
@@ -297,10 +288,10 @@ export default function AnnualReview({
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Category Distribution */}
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Spending by Category</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Spending by category</h3>
           {categoryData.length > 0 ? (
-            <CategoryPieChart data={categoryData} darkMode={darkMode} />
+            <CategoryPieChart data={categoryData} />
           ) : (
             <div className="flex items-center justify-center h-64 text-muted">
               No category data to display
@@ -309,15 +300,14 @@ export default function AnnualReview({
         </div>
 
         {/* Monthly Comparison */}
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Monthly Comparison</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Monthly comparison</h3>
           <ComparisonBarChart
             data={monthlyTrends.map(month => ({
               name: month.displayName,
               income: month.income,
               expenses: month.expenses
             }))}
-            darkMode={darkMode}
             dataKeys={[
               { key: 'income', name: 'Income', color: '#10B981' },
               { key: 'expenses', name: 'Expenses', color: '#EF4444' }
@@ -327,12 +317,12 @@ export default function AnnualReview({
       </div>
 
       {/* Monthly Summary Table */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">Monthly Breakdown</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">Monthly breakdown</h3>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className={`border-b border-line`}>
+              <tr className="border-b border-line">
                 <th className="text-left py-3 px-4">Month</th>
                 <th className="text-right py-3 px-4">Income</th>
                 <th className="text-right py-3 px-4">Expenses</th>
@@ -343,7 +333,7 @@ export default function AnnualReview({
             </thead>
             <tbody>
               {monthlyTrends.map((month, index) => (
-                <tr key={index} className={`border-b border-line`}>
+                <tr key={index} className="border-b border-line">
                   <td className="py-3 px-4 font-medium">{month.displayName}</td>
                   <td className="text-right py-3 px-4 text-positive">
                     {formatCurrency(month.income)}
@@ -351,7 +341,7 @@ export default function AnnualReview({
                   <td className="text-right py-3 px-4 text-negative">
                     {formatCurrency(month.expenses)}
                   </td>
-                  <td className="text-right py-3 px-4 text-blue-600 dark:text-blue-400">
+                  <td className="text-right py-3 px-4 text-accent">
                     {formatCurrency(month.payments)}
                   </td>
                   <td className={`text-right py-3 px-4 font-semibold ${
@@ -364,7 +354,7 @@ export default function AnnualReview({
               ))}
             </tbody>
             <tfoot>
-              <tr className={`border-t-2 border-line font-bold`}>
+              <tr className="border-t-2 border-line font-bold">
                 <td className="py-3 px-4">Total</td>
                 <td className="text-right py-3 px-4 text-positive">
                   {formatCurrency(summary.totalIncome)}
@@ -372,7 +362,7 @@ export default function AnnualReview({
                 <td className="text-right py-3 px-4 text-negative">
                   {formatCurrency(summary.totalExpenses)}
                 </td>
-                <td className="text-right py-3 px-4 text-blue-600 dark:text-blue-400">
+                <td className="text-right py-3 px-4 text-accent">
                   {formatCurrency(summary.totalPayments)}
                 </td>
                 <td className={`text-right py-3 px-4 ${
@@ -389,12 +379,12 @@ export default function AnnualReview({
 
       {/* Top Categories Table */}
       {categoryData.length > 0 && (
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Top Spending Categories</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Top spending categories</h3>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className={`border-b border-line`}>
+                <tr className="border-b border-line">
                   <th className="text-left py-3 px-4">Rank</th>
                   <th className="text-left py-3 px-4">Category</th>
                   <th className="text-right py-3 px-4">Total</th>
@@ -405,7 +395,7 @@ export default function AnnualReview({
               </thead>
               <tbody>
                 {categoryData.slice(0, 10).map((cat, index) => (
-                  <tr key={cat.id} className={`border-b border-line`}>
+                  <tr key={cat.id} className="border-b border-line">
                     <td className="py-3 px-4 font-semibold">#{index + 1}</td>
                     <td className="py-3 px-4">
                       <span className="mr-2">{cat.icon}</span>

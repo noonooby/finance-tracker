@@ -44,7 +44,7 @@ export default function CashCalendar() {
       </Card>
 
       <Section title={`Next ${days} days`} action={
-        <select aria-label="How far ahead" value={days} onChange={(e) => setDays(Number(e.target.value))} className="text-xs rounded-lg border border-line bg-surface px-2 py-1 text-fg">
+        <select aria-label="How far ahead" value={days} onChange={(e) => setDays(Number(e.target.value))} className="text-xs rounded-xl border border-line bg-surface px-2 py-1 text-fg">
           <option value={30}>30 days</option><option value={45}>45 days</option><option value={90}>90 days</option>
         </select>}>
         <Card padded={false} className="divide-y divide-line">

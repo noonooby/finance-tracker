@@ -38,33 +38,6 @@ export const fetchCategories = async () => {
   }
 };
 
-// Fetch categories by type (expense or income)
-export const fetchCategoriesByType = async (isIncome = false) => {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) {
-      return DEFAULT_CATEGORIES.filter(cat => cat.is_income === isIncome);
-    }
-
-    const { data, error } = await server
-      .from('categories')
-      .select('*')
-      .or(`user_id.eq.${user.id},is_system.eq.true`)
-      .eq('is_income', isIncome)
-      .order('name', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching categories by type:', error);
-      return DEFAULT_CATEGORIES.filter(cat => cat.is_income === isIncome);
-    }
-
-    return data || [];
-  } catch (error) {
-    console.error('Error in fetchCategoriesByType:', error);
-    return DEFAULT_CATEGORIES.filter(cat => cat.is_income === isIncome);
-  }
-};
-
 // Add new category
 export const addCategory = async (categoryData) => {
   try {
@@ -208,26 +181,3 @@ export const seedDefaultCategories = async () => {
   }
 };
 
-// Get category by ID
-export const getCategoryById = async (categoryId) => {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) return null;
-
-    const { data, error } = await server
-      .from('categories')
-      .select('*')
-      .eq('id', categoryId)
-      .single();
-
-    if (error) {
-      console.error('Error getting category:', error);
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Error in getCategoryById:', error);
-    return null;
-  }
-};

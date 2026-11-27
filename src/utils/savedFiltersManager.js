@@ -31,7 +31,7 @@ export async function getAllSavedFilters(filterType = 'transaction') {
 /**
  * Get a single saved filter by ID
  */
-export async function getSavedFilter(filterId) {
+async function getSavedFilter(filterId) {
   try {
     const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
@@ -48,30 +48,6 @@ export async function getSavedFilter(filterId) {
   } catch (error) {
     console.error('Error getting saved filter:', error);
     return null;
-  }
-}
-
-/**
- * Get pinned filters
- */
-export async function getPinnedFilters(filterType = 'transaction') {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const { data, error } = await server
-      .from('saved_filters')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('filter_type', filterType)
-      .eq('is_pinned', true)
-      .order('use_count', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error('Error getting pinned filters:', error);
-    return [];
   }
 }
 
@@ -121,48 +97,9 @@ export async function saveFilter(filterData) {
 
     if (error) throw error;
 
-
     return data;
   } catch (error) {
     console.error('Error saving filter:', error);
-    throw error;
-  }
-}
-
-/**
- * Update an existing filter
- */
-export async function updateSavedFilter(filterId, updates) {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const updateData = {
-      ...updates,
-      updated_at: new Date().toISOString()
-    };
-
-    // Remove fields that shouldn't be updated directly
-    delete updateData.id;
-    delete updateData.user_id;
-    delete updateData.created_at;
-    delete updateData.use_count;
-    delete updateData.last_used;
-
-    const { data, error } = await server
-      .from('saved_filters')
-      .update(updateData)
-      .eq('id', filterId)
-      .eq('user_id', user.id)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-
-    return data;
-  } catch (error) {
-    console.error('Error updating filter:', error);
     throw error;
   }
 }
@@ -182,7 +119,6 @@ export async function deleteSavedFilter(filterId) {
       .eq('user_id', user.id);
 
     if (error) throw error;
-
 
     return true;
   } catch (error) {
@@ -211,7 +147,6 @@ export async function toggleFilterPin(filterId, isPinned) {
       .single();
 
     if (error) throw error;
-
 
     return data;
   } catch (error) {
@@ -251,7 +186,6 @@ export async function trackFilterUsage(filterId) {
       .single();
 
     if (error) throw error;
-
 
     return data;
   } catch (error) {
@@ -304,68 +238,6 @@ export async function duplicateFilter(filterId) {
     console.error('Error duplicating filter:', error);
     throw error;
   }
-}
-
-/**
- * Get filter statistics
- */
-export async function getFilterStats(filterType = 'transaction') {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const { data, error } = await server
-      .from('saved_filters')
-      .select('is_pinned, use_count, name')
-      .eq('user_id', user.id)
-      .eq('filter_type', filterType);
-
-    if (error) throw error;
-
-    const stats = {
-      total: data.length,
-      pinned: data.filter(f => f.is_pinned).length,
-      totalUses: 0,
-      mostUsed: null
-    };
-
-    // Calculate total uses
-    data.forEach(filter => {
-      stats.totalUses += filter.use_count || 0;
-    });
-
-    // Find most used
-    if (data.length > 0) {
-      stats.mostUsed = data.reduce((prev, current) => 
-        (current.use_count || 0) > (prev.use_count || 0) ? current : prev
-      );
-    }
-
-    return stats;
-  } catch (error) {
-    console.error('Error getting filter stats:', error);
-    return {
-      total: 0,
-      pinned: 0,
-      totalUses: 0,
-      mostUsed: null
-    };
-  }
-}
-
-/**
- * Check if current filters match a saved filter
- */
-export function findMatchingFilter(currentFilters, savedFilters) {
-  if (!savedFilters || savedFilters.length === 0) return null;
-  
-  // Create normalized version of current filters for comparison
-  const normalizedCurrent = JSON.stringify(currentFilters);
-  
-  return savedFilters.find(saved => {
-    const normalizedSaved = JSON.stringify(saved.filters);
-    return normalizedCurrent === normalizedSaved;
-  });
 }
 
 /**

@@ -1,12 +1,11 @@
 import React, { createContext, useState, useCallback, useEffect } from 'react';
 import { dbOperation } from '../utils/db';
 import { getToken } from '../utils/server';
-import { getUserPreferences, setDisplayDensity as saveDisplayDensity } from '../utils/userPreferencesManager';
 
 export const ThemeContext = createContext(null);
 
 // Accent colours, in picker order. Values are the light-mode swatch colours.
-export const THEMES = [
+const THEMES = [
   { id: 'blue', name: 'Blue', color: '#2563eb' },
   { id: 'purple', name: 'Purple', color: '#4f46e5' },
   { id: 'teal', name: 'Teal', color: '#0d9488' },
@@ -90,7 +89,6 @@ export function ThemeProvider({ children }) {
     write('finance_theme', id);
   }, []);
 
-  const [displayDensity, setDisplayDensityState] = useState('comfortable');
   const [alertSettings, setAlertSettings] = useState({ 
     defaultDays: 7, 
     upcomingDays: 30 
@@ -115,17 +113,6 @@ export function ThemeProvider({ children }) {
           upcomingDays: alertValue.upcomingDays ?? 30
         });
         
-        // Load display density from user preferences (safely handle missing column)
-        try {
-          const prefs = await getUserPreferences();
-          const density = prefs.display_density || 'comfortable';
-          setDisplayDensityState(density);
-          applyDensityToDOM(density);
-        } catch (densityError) {
-          // Column might not exist yet - use default
-          setDisplayDensityState('comfortable');
-          applyDensityToDOM('comfortable');
-        }
       } catch (error) {
         console.error('Error loading theme settings:', error);
       }
@@ -145,40 +132,11 @@ export function ThemeProvider({ children }) {
     setAlertSettings(nextSettings);
   }, [alertSettings]);
 
-  // Apply density to DOM
-  const applyDensityToDOM = (density) => {
-    const root = document.documentElement;
-    if (density === 'auto') {
-      root.removeAttribute('data-density');
-    } else {
-      root.setAttribute('data-density', density);
-    }
-  };
-
-  const setDisplayDensity = useCallback(async (density) => {
-    try {
-      await saveDisplayDensity(density);
-      setDisplayDensityState(density);
-      applyDensityToDOM(density);
-    } catch (error) {
-      console.error('Error setting display density:', error);
-      // If column doesn't exist yet, still apply to DOM for immediate UX
-      if (error.message?.includes('display_density') || error.code === 'PGRST204') {
-        setDisplayDensityState(density);
-        applyDensityToDOM(density);
-      } else {
-        throw error;
-      }
-    }
-  }, []);
-
   const value = {
     darkMode,
-    displayDensity,
     alertSettings,
     toggleDarkMode,
     updateAlertSettings,
-    setDisplayDensity,
     setDarkMode,
     colorMode,
     setColorMode,

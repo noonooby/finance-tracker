@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Check, ArrowRight, Camera, PenLine } from 'lucide-react';
+import { X, Check, ArrowRight, Camera, PenLine, ChevronDown } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { api } from '../utils/server';
 import { savePending } from '../utils/pendingScan';
-import { recordExpense, recordIncome, recordTransfer, recordCardPayment, recordLoanPayment } from '../utils/money';
+import { recordIncome, recordTransfer, recordCardPayment, recordLoanPayment } from '../utils/money';
+import { saveExpense, saveCardPayment, saveLoanPayment } from '../utils/record';
+import { addRecentTransaction } from '../utils/userPreferencesManager';
 import { pickCategory, usualSource, mkey } from '../utils/categoryRules';
 import { loanFor } from '../utils/cards';
 import { formatCurrency, generateId, localDate, defaultBankAccount } from '../utils/helpers';
@@ -15,7 +17,7 @@ import { Button } from './shared/ui';
 // account are filled in from what the app knows and what you did before; both can be changed with a tap.
 // A sentence can be typed instead: it goes through the same check-before-saving screen as a picture.
 const KINDS = [['spent', 'Spent'], ['received', 'Received'], ['moved', 'Moved']];
-const field = 'w-full rounded-2xl border border-line bg-surface-2 px-4 py-3 text-fg placeholder:text-muted outline-none focus:border-accent focus:ring-2 focus:ring-accent/30';
+const field = 'field';
 const remember = (k, v) => { try { window.localStorage.setItem(k, v); } catch { /* not kept */ } };
 const recall = (k) => { try { return window.localStorage.getItem(k) || ''; } catch { return ''; } };
 const dayBefore = (d) => { const x = new Date(`${d}T12:00:00`); x.setDate(x.getDate() - 1); return x.toLocaleDateString('en-CA'); };
@@ -57,20 +59,31 @@ function Chips({ options, value, onChange, label }) {
   );
 }
 
-export default function QuickAdd({ onClose, onFullForm }) {
+// Purchases in another currency are saved in dollars; the amount abroad, the currency and the rate stay on the line.
+const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'INR', 'MXN', 'JPY', 'AUD', 'CHF', 'CNY', 'HKD', 'SGD', 'NZD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'KRW', 'THB', 'PHP', 'BRL', 'ZAR', 'TRY', 'IDR', 'MYR'];
+
+// preset (optional): { kind, source, to, amount } when another screen opens the form for one card or loan.
+export default function QuickAdd({ onClose, preset }) {
   const { bankAccounts = [], creditCards = [], loans = [], investments = [], categories = [], categoryRules = [], transactions = [], loadAllData } = useFinanceData();
   const navigate = useNavigate();
   const box = useVisible();
   const today = localDate();
   const [mode, setMode] = useState('form');            // 'form' | 'sentence'
-  const [kind, setKind] = useState('spent');
-  const [amount, setAmount] = useState('');
+  const [kind, setKind] = useState((preset && preset.kind) || 'spent');
+  const [amount, setAmount] = useState(preset && preset.amount > 0 ? (Math.round(preset.amount * 100) / 100).toFixed(2) : '');
   const [what, setWhat] = useState('');
-  const [source, setSource] = useState('');
-  const [sourceSet, setSourceSet] = useState(false);   // you chose it, so typing no longer changes it
+  const [source, setSource] = useState((preset && preset.source) || '');
+  const [sourceSet, setSourceSet] = useState(!!(preset && preset.source));   // you chose it, so typing no longer changes it
   const [category, setCategory] = useState('');
   const [categorySet, setCategorySet] = useState(false);
-  const [to, setTo] = useState('');
+  const [to, setTo] = useState((preset && preset.to) || '');
+  const [more, setMore] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [currency, setCurrency] = useState('CAD');
+  const [fx, setFx] = useState({ rate: null, date: null, error: '', loading: false });
+  const [cad, setCad] = useState('');                  // your own dollar figure, when the card charged a different one
+  const [splitOn, setSplitOn] = useState(false);
+  const [parts, setParts] = useState([]);
   const [date, setDate] = useState(today);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(0);
@@ -133,8 +146,22 @@ export default function QuickAdd({ onClose, onFullForm }) {
   const pays = kind === 'spent' ? loanFor(what, loans) : null;
   const asPayment = () => { setKind('moved'); setTo(`loan:${pays.id}`); if (source.startsWith('credit_card:')) { const main = defaultBankAccount(bankAccounts); setSource(main ? `bank_account:${main.id}` : ''); } };
 
-  const n = Number(amount);
-  const fault = !(n > 0) ? 'Enter the amount' : !source ? (kind === 'received' ? 'Choose where it went' : 'Choose where it came from') : kind === 'moved' && !to ? 'Choose where it went' : kind === 'moved' && source === 'outside' && to === 'outside' ? 'Choose at least one account that is in the app' : kind === 'moved' && source === 'outside' && to.startsWith('loan:') ? 'Choose what paid the loan' : null;
+  // Another currency: the day's published rate turns the amount into dollars, unless you give the dollar figure yourself.
+  const foreignOn = kind === 'spent' && currency !== 'CAD';
+  useEffect(() => {
+    if (!foreignOn) { setFx({ rate: null, date: null, error: '', loading: false }); return undefined; }
+    let live = true;
+    setFx((f) => ({ ...f, loading: true, error: '' }));
+    api(`/api/fx?from=${currency}&date=${date}`, null, 'GET')
+      .then((r) => { if (live) setFx({ rate: r.rate, date: r.date, error: '', loading: false }); })
+      .catch((e) => { if (live) setFx({ rate: null, date: null, error: e.message, loading: false }); });
+    return () => { live = false; };
+  }, [foreignOn, currency, date]);
+  const n = !foreignOn ? Number(amount) : Number(cad) > 0 ? Number(cad) : fx.rate ? Math.round(Number(amount) * fx.rate * 100) / 100 : 0;
+  const cents = (v) => Math.round((Number(v) || 0) * 100);
+  const partsLeft = (cents(n) - parts.reduce((t, x) => t + cents(x.amount), 0)) / 100;
+  const splitFault = kind === 'spent' && splitOn ? (parts.filter((x) => Number(x.amount) > 0).length < 2 ? 'A split needs two parts' : Math.abs(partsLeft) >= 0.005 ? (partsLeft > 0 ? `${formatCurrency(partsLeft)} not assigned yet` : `${formatCurrency(-partsLeft)} too much in the parts`) : null) : null;
+  const fault = !(Number(amount) > 0) ? 'Enter the amount' : foreignOn && !(n > 0) ? (fx.loading ? 'Looking up the rate' : 'Enter the amount in dollars') : splitFault ? splitFault : !source ? (kind === 'received' ? 'Choose where it went' : 'Choose where it came from') : kind === 'moved' && !to ? 'Choose where it went' : kind === 'moved' && source === 'outside' && to === 'outside' ? 'Choose at least one account that is in the app' : kind === 'moved' && source === 'outside' && to.startsWith('loan:') ? 'Choose what paid the loan' : null;
   const nameOf = (v) => [...bankChips, ...cardChips, ...lineChips, ...owed.map((l) => ({ value: `loan:${l.id}`, label: l.name }))].find((o) => o.value === v)?.label || 'an account not in the app';
   const cat = pool.find((c) => String(c.id) === String(category));
 
@@ -143,14 +170,30 @@ export default function QuickAdd({ onClose, onFullForm }) {
     setBusy(true);
     try {
       const common = { amount: n, date, key };
-      if (kind === 'spent') await recordExpense({ ...common, source, description: what.trim() || (cat ? cat.name : 'Purchase'), category_id: cat ? cat.id : null, category_name: cat ? cat.name : null }, accounts);
-      else if (kind === 'received') await recordIncome({ ...common, target: source, description: what.trim() || 'Money in', source_name: what.trim() || 'Money in', extra: cat ? { category_id: cat.id, category_name: cat.name } : {} }, accounts);
-      else if (to.startsWith('credit_card:')) await recordCardPayment({ ...common, cardId: to.split(':')[1], source, description: what.trim() || undefined }, accounts);
-      else if (to.startsWith('loan:')) await recordLoanPayment({ ...common, loanId: to.split(':').slice(1).join(':'), source, description: what.trim() || undefined }, accounts);
-      else await recordTransfer({ ...common, from: source, to, description: what.trim() || undefined }, accounts);
+      const words = what.trim();
+      const [sKind, sId] = [source.split(':')[0], source.split(':').slice(1).join(':')];
+      const inApp = sKind === 'bank_account' || sKind === 'credit_card';
+      if (kind === 'spent') {
+        const extra = {};
+        if (foreignOn) Object.assign(extra, { original_amount: Math.round(Number(amount) * 100) / 100, original_currency: currency, fx_rate: fx.rate && !cad ? fx.rate : Math.round((n / Number(amount)) * 1e6) / 1e6 });
+        let categoryId = cat ? cat.id : '';
+        if (splitOn) {
+          const used = parts.filter((x) => Number(x.amount) > 0);
+          extra.splits = used.map((x) => ({ category_id: x.categoryId || null, category_name: (pool.find((c) => String(c.id) === String(x.categoryId)) || {}).name || null, amount: Math.round(Number(x.amount) * 100) / 100 }));
+          categoryId = [...used].sort((x, y) => Number(y.amount) - Number(x.amount))[0].categoryId || '';
+        }
+        const r = await saveExpense({ ...common, description: words || (cat ? cat.name : 'Purchase'), notes: notes.trim(), categoryId, paymentMethod: sKind, paymentMethodId: sId, extra: Object.keys(extra).length ? extra : undefined }, { bankAccounts, creditCards, categories });
+        if (r.transactionId) addRecentTransaction(r.transactionId).catch(() => {});
+      }
+      else if (kind === 'received') await recordIncome({ ...common, target: source, description: words || 'Money in', source_name: words || 'Money in', notes: notes.trim() || undefined, extra: cat ? { category_id: cat.id, category_name: cat.name } : {} }, accounts);
+      else if (to.startsWith('credit_card:') && inApp) await saveCardPayment({ ...common, description: words || undefined, paymentMethodId: to.split(':')[1], paymentSource: source }, accounts);
+      else if (to.startsWith('credit_card:')) await recordCardPayment({ ...common, cardId: to.split(':')[1], source, description: words || undefined }, accounts);
+      else if (to.startsWith('loan:') && inApp) await saveLoanPayment({ ...common, description: words || undefined, paymentMethodId: to.split(':').slice(1).join(':'), paymentSource: source }, accounts);
+      else if (to.startsWith('loan:')) await recordLoanPayment({ ...common, loanId: to.split(':').slice(1).join(':'), source, description: words || undefined }, accounts);
+      else await recordTransfer({ ...common, from: source, to, description: words || undefined }, accounts);
       remember(`quick_from_${kind}`, source);
       if (loadAllData) await loadAllData();
-      if (again) { setSaved((c) => c + 1); setAmount(''); setWhat(''); setCategory(''); setCategorySet(false); setSourceSet(false); setKey(`quick:${generateId()}`); if (amountBox.current) amountBox.current.focus(); }
+      if (again) { setSaved((c) => c + 1); setAmount(''); setWhat(''); setNotes(''); setCad(''); setSplitOn(false); setParts([]); setCategory(''); setCategorySet(false); setSourceSet(false); setKey(`quick:${generateId()}`); if (amountBox.current) amountBox.current.focus(); }
       else { showToast.success(kind === 'moved' ? `${formatCurrency(n)} moved to ${nameOf(to)}` : `${formatCurrency(n)} saved`); onClose(); }
     } catch (err) {
       showToast.error(err.message || 'That could not be saved.');
@@ -226,7 +269,7 @@ export default function QuickAdd({ onClose, onFullForm }) {
               <label className="block text-center">
                 <span className="sr-only">Amount</span>
                 <span className="inline-flex items-baseline justify-center gap-1 w-full">
-                  <span className={`text-3xl font-semibold ${amount ? 'text-fg' : 'text-muted'}`} aria-hidden="true">$</span>
+                  <span className={`${foreignOn ? 'text-xl' : 'text-3xl'} font-semibold ${amount ? 'text-fg' : 'text-muted'}`} aria-hidden="true">{foreignOn ? currency : '$'}</span>
                   <input ref={amountBox} type="text" inputMode="decimal" autoComplete="off" enterKeyHint="next" placeholder="0.00" value={amount}
                     onChange={(e) => { const v = e.target.value.replace(',', '.').replace(/[^0-9.]/g, ''); if (/^\d{0,9}(\.\d{0,2})?$/.test(v)) setAmount(v); }}
                     className="amount-big bg-transparent font-bold tabular-nums tracking-tight text-fg placeholder:text-muted/50 text-center"
@@ -248,7 +291,7 @@ export default function QuickAdd({ onClose, onFullForm }) {
                       This looks like a payment on {pays.name}. Tap to record it as one, so what you owe goes down.
                     </button>
                   )}
-                  {pool.length > 0 && (
+                  {pool.length > 0 && !(kind === 'spent' && splitOn) && (
                     <label className="flex items-center gap-2 text-sm px-1">
                       <span className="text-muted shrink-0">Category</span>
                       <select value={category} onChange={(e) => { setCategory(e.target.value); setCategorySet(true); }} className="flex-1 min-w-0 bg-transparent font-medium text-fg outline-none text-right" aria-label="Category">
@@ -272,11 +315,60 @@ export default function QuickAdd({ onClose, onFullForm }) {
                   className={`flex-1 min-w-0 rounded-xl px-3 py-2 text-sm border bg-surface-2 outline-none ${date !== today && date !== dayBefore(today) ? 'border-accent/40 text-accent' : 'border-line text-muted'}`} />
               </div>
 
+              {kind !== 'moved' && (
+                <div className={`fold ${more ? 'open' : ''}`}><div>
+                  <div className="space-y-3 pb-1">
+                    <input type="text" value={notes} maxLength={200} onChange={(e) => setNotes(e.target.value)} className={field} placeholder="A note for yourself" aria-label="Notes" tabIndex={more ? 0 : -1} />
+                    {kind === 'spent' && (<>
+                      <label className="flex items-center justify-between gap-3 text-sm px-1">
+                        <span className="text-muted">Charged in</span>
+                        <select value={currency} onChange={(e) => { setCurrency(e.target.value); setCad(''); }} className="bare bg-transparent font-medium text-fg outline-none text-right" aria-label="Currency" tabIndex={more ? 0 : -1}>
+                          {CURRENCIES.map((c) => <option key={c} value={c}>{c === 'CAD' ? 'Dollars (CAD)' : c}</option>)}
+                        </select>
+                      </label>
+                      {foreignOn && (
+                        <div className="rounded-2xl border border-line bg-surface-2 px-4 py-3 space-y-2 text-sm">
+                          <p className="text-muted">{fx.loading ? 'Looking up the rate' : fx.error ? fx.error : fx.rate ? `1 ${currency} = ${fx.rate} CAD, the published rate for ${fx.date}. Your card may have charged a little more.` : ''}</p>
+                          <label className="flex items-center justify-between gap-3"><span>In dollars</span>
+                            <input type="text" inputMode="decimal" value={cad} placeholder={fx.rate && Number(amount) > 0 ? (Math.round(Number(amount) * fx.rate * 100) / 100).toFixed(2) : '0.00'}
+                              onChange={(e) => { const v = e.target.value.replace(',', '.').replace(/[^0-9.]/g, ''); if (/^\d{0,9}(\.\d{0,2})?$/.test(v)) setCad(v); }}
+                              className="w-32 rounded-xl border border-line bg-surface px-3 py-2 text-right tabular-nums outline-none focus:border-accent" aria-label="Amount in dollars" />
+                          </label>
+                        </div>
+                      )}
+                      <label className="flex items-center justify-between gap-3 text-sm px-1">
+                        <span className="text-muted">Split between categories</span>
+                        <input type="checkbox" checked={splitOn} tabIndex={more ? 0 : -1} onChange={(e) => { setSplitOn(e.target.checked); setParts(e.target.checked ? [{ categoryId: category || '', amount: '' }, { categoryId: '', amount: '' }] : []); }} />
+                      </label>
+                      {splitOn && (
+                        <div className="space-y-2">
+                          {parts.map((x, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <select value={x.categoryId} onChange={(e) => setParts(parts.map((y, j) => (j === i ? { ...y, categoryId: e.target.value } : y)))} className="flex-1 min-w-0 rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm" aria-label={`Category of part ${i + 1}`}>
+                                <option value="">No category</option>
+                                {pool.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                              </select>
+                              <input type="text" inputMode="decimal" value={x.amount} placeholder="0.00" aria-label={`Amount of part ${i + 1}`}
+                                onChange={(e) => { const v = e.target.value.replace(',', '.').replace(/[^0-9.]/g, ''); if (/^\d{0,9}(\.\d{0,2})?$/.test(v)) setParts(parts.map((y, j) => (j === i ? { ...y, amount: v } : y))); }}
+                                className="w-28 rounded-xl border border-line bg-surface-2 px-3 py-2 text-right tabular-nums" />
+                            </div>
+                          ))}
+                          <div className="flex items-center justify-between text-xs px-1">
+                            <button type="button" className="font-medium text-accent py-1" onClick={() => setParts([...parts, { categoryId: '', amount: '' }])}>Add a part</button>
+                            <span className={Math.abs(partsLeft) < 0.005 ? 'text-positive' : 'text-muted'}>{Math.abs(partsLeft) < 0.005 ? 'Adds up' : partsLeft > 0 ? `${formatCurrency(partsLeft)} left` : `${formatCurrency(-partsLeft)} over`}</span>
+                          </div>
+                        </div>
+                      )}
+                    </>)}
+                  </div>
+                </div></div>
+              )}
+
               <div className="space-y-2 pt-1">
                 <Button type="submit" size="lg" loading={busy} disabled={!!fault} className="w-full">{fault || (<><Check size={18} aria-hidden="true" /> Save</>)}</Button>
                 <div className="flex items-center justify-between text-sm">
                   <button type="button" disabled={!!fault || busy} onClick={() => save(true)} className="font-medium text-accent disabled:opacity-40 py-1">Save and add another{saved > 0 ? ` (${saved} saved)` : ''}</button>
-                  <button type="button" onClick={() => { onClose(); onFullForm(); }} className="font-medium text-muted py-1">More options</button>
+                  <button type="button" onClick={() => setMore(!more)} aria-expanded={more} className="inline-flex items-center gap-1 font-medium text-muted py-1">{kind === 'spent' ? 'Notes, currency, split' : 'Notes'} <ChevronDown size={15} aria-hidden="true" className={`transition-transform ${more ? 'rotate-180' : ''}`} /></button>
                 </div>
               </div>
             </form>

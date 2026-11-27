@@ -9,7 +9,6 @@ import { localDate } from '../../utils/helpers';
  * Extracted from CreditCards.js for modularity
  */
 export default function GiftCardForm({
-  darkMode,
   formData,
   onFormDataChange,
   bankAccounts,
@@ -52,8 +51,8 @@ export default function GiftCardForm({
       {/* Quick-Select Buttons for Recent Gift Cards */}
       {recentGiftCards.length > 0 && !editingItem && (
         <div>
-          <label className={`block text-sm font-medium mb-2 text-fg`}>
-            Recent Gift Cards
+          <label className="block text-sm font-medium mb-2 text-fg">
+            Recent gift cards
           </label>
           <div className="flex gap-2 flex-wrap">
             {recentGiftCards.map(giftCard => (
@@ -61,7 +60,7 @@ export default function GiftCardForm({
                 key={giftCard.id || giftCard.card_name}
                 type="button"
                 onClick={() => onSelectGiftCard(giftCard)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-colors flex items-center gap-1.5 ${
                   formData.name === giftCard.card_name
                     ? 'press bg-accent text-accent-contrast'
                     : 'bg-positive/10 text-positive hover:bg-positive/10 border border-positive/30'
@@ -77,47 +76,47 @@ export default function GiftCardForm({
 
       {/* Original Gift Card Value */}
       <div>
-        <label className={`block text-sm font-medium mb-1 text-fg`}>
-          Original Gift Card Value *
+        <label className="block text-sm font-medium mb-1 text-fg">
+          Original gift card value
         </label>
         <input
           ref={giftCardNameInputRef}
           type="number"
           step="0.01"
-          placeholder="e.g., 50.00"
+          placeholder="50.00"
           value={formData.purchaseAmount}
           onChange={(e) => handleOriginalValueChange(e.target.value)}
-          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+          className="field"
           required
         />
-        <p className={`text-xs mt-1 text-muted`}>
+        <p className="text-xs mt-1 text-muted">
           What is this gift card worth?
         </p>
       </div>
 
       {/* Purchase Amount Paid */}
       <div>
-        <label className={`block text-sm font-medium mb-1 text-fg`}>
-          Purchase Amount Paid *
+        <label className="block text-sm font-medium mb-1 text-fg">
+          Purchase amount paid
         </label>
         <input
           type="number"
           step="0.01"
-          placeholder="e.g., 45.00"
+          placeholder="45.00"
           value={formData.purchaseAmountPaid}
           onChange={(e) => handlePurchaseAmountPaidChange(e.target.value)}
-          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+          className="field"
           required
         />
-        <p className={`text-xs mt-1 text-muted`}>
+        <p className="text-xs mt-1 text-muted">
           How much did you actually pay? (defaults to original value)
         </p>
       </div>
 
       {/* Payment Source */}
       <div>
-        <label className={`block text-sm font-medium mb-1 text-fg`}>
-          How are you paying for this gift card? *
+        <label className="block text-sm font-medium mb-1 text-fg">
+          How are you paying for this gift card?
         </label>
         <select
           value={formData.giftCardPaymentMethodId 
@@ -136,7 +135,7 @@ export default function GiftCardForm({
               });
             }
           }}
-          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+          className="field"
         >
           <option value="">Choose how you paid</option>
           
@@ -151,7 +150,7 @@ export default function GiftCardForm({
           )}
           
           {creditCards && creditCards.filter(c => !c.is_gift_card).length > 0 && (
-            <optgroup label="Credit Cards">
+            <optgroup label="Credit cards">
               {creditCards.filter(card => !card.is_gift_card).map(card => (
                 <option key={card.id} value={`credit_card:${card.id}`}>
                   {card.name}
@@ -161,7 +160,7 @@ export default function GiftCardForm({
           )}
           
           {creditCards && creditCards.filter(c => c.is_gift_card && c.balance > 0).length > 0 && (
-            <optgroup label="Gift Cards">
+            <optgroup label="Gift cards">
               {creditCards.filter(card => card.is_gift_card && card.balance > 0).map(card => (
                 <option key={card.id} value={`credit_card:${card.id}`}>
                   {card.name} ({formatCurrency(card.balance)} available)
@@ -174,14 +173,14 @@ export default function GiftCardForm({
       
       {/* Purchase Date */}
       <div>
-        <label className={`block text-sm font-medium mb-1 text-fg`}>
-          Purchase Date *
+        <label className="block text-sm font-medium mb-1 text-fg">
+          Purchase date
         </label>
         <input
           type="date"
           value={formData.purchaseDate}
           onChange={(e) => onFormDataChange({ ...formData, purchaseDate: e.target.value })}
-          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+          className="field"
         />
       </div>
       
@@ -198,7 +197,7 @@ export default function GiftCardForm({
             })}
             className="w-4 h-4"
           />
-          <span className={`text-sm text-muted`}>
+          <span className="text-sm text-muted">
             This gift card has an expiry date
           </span>
         </label>
@@ -207,14 +206,14 @@ export default function GiftCardForm({
       {/* Expiry Date Input */}
       {formData.hasExpiry && (
         <div>
-          <label className={`block text-sm font-medium mb-1 text-fg`}>
-            Expiry Date *
+          <label className="block text-sm font-medium mb-1 text-fg">
+            Expiry date
           </label>
           <input
             type="date"
             value={formData.expiryDate}
             onChange={(e) => onFormDataChange({ ...formData, expiryDate: e.target.value })}
-            className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+            className="field"
             min={localDate()}
           />
         </div>

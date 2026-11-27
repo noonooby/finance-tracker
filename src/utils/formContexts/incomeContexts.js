@@ -30,11 +30,6 @@ export async function getLastUsedIncomeContext() {
   return await manager.getMostRecentContext();
 }
 
-export async function deleteIncomeSourceContext(sourceName) {
-  if (!sourceName?.trim()) throw new Error('Source name required');
-  return await manager.deleteContext(sourceName.trim());
-}
-
 export function applyIncomeContext(context) {
   if (!context) return {};
   const data = contextToFormData(context, FIELD_MAPPING);

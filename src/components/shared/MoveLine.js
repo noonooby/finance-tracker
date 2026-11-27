@@ -109,7 +109,7 @@ export default function MoveLine({ line, from, transactions = [], bankAccounts =
             {adding && (
               <form onSubmit={addNew} className="flex gap-2">
                 <input className="flex-1 min-w-0 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-base text-fg" aria-label="Name of the new account" placeholder="Name of the new account" value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={60} />
-                <button type="submit" disabled={busy || !name.trim()} className="press px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium disabled:opacity-50">Add and move</button>
+                <button type="submit" disabled={busy || !name.trim()} className="press px-4 py-2.5 rounded-xl bg-accent text-accent-contrast text-sm font-medium disabled:opacity-50">Add and move</button>
               </form>
             )}
             <p className="text-xs text-muted">Both balances follow. A line dated before the day an account's balance was last seen is kept as history there and does not change it. You can undo this.</p>

@@ -14,7 +14,6 @@ import {
 import { parseDay, formatDate } from '../../../utils/helpers';
 
 export default function CashflowAnalysis({ 
-  darkMode, 
   transactions, 
   categories,
   bankAccounts = [],
@@ -60,7 +59,7 @@ export default function CashflowAnalysis({
 
   const handleExportExcel = () => {
     const reportData = {
-      name: 'Cashflow Analysis',
+      name: 'Cashflow analysis',
       filters,
       summary,
       transactions: filteredData,
@@ -72,7 +71,7 @@ export default function CashflowAnalysis({
 
   const handleExportCSV = () => {
     const reportData = {
-      name: 'Cashflow Analysis',
+      name: 'Cashflow analysis',
       filters,
       summary,
       transactions: filteredData,
@@ -106,34 +105,34 @@ export default function CashflowAnalysis({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">Cashflow Analysis</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Cashflow analysis</h2>
           <p className="text-sm text-muted">
             {formatDate(filters.startDate)} - {formatDate(filters.endDate)}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-4 py-2 rounded-xl font-medium transition-colors ${
               showFilters
                 ? 'bg-accent text-accent-contrast'
                 : 'bg-surface-2 hover:bg-line/60'
             }`}
           >
-            {showFilters ? 'Hide' : 'Show'} Filters
+            {showFilters ? 'Hide filters' : 'Filters'}
           </button>
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:opacity-90 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-xl font-medium hover:opacity-90 transition-colors"
           >
             <FileSpreadsheet size={18} />
-            Export Excel
+            Export to Excel
           </button>
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-xl font-medium hover:opacity-90 transition-colors"
           >
             <Download size={18} />
             Export CSV
@@ -144,7 +143,6 @@ export default function CashflowAnalysis({
       {/* Filter Panel */}
       {showFilters && (
         <FilterPanel
-          darkMode={darkMode}
           filters={filters}
           onFiltersChange={setFilters}
           categories={categories}
@@ -154,101 +152,91 @@ export default function CashflowAnalysis({
       {/* Summary Cards - Row 1: Cashflow */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
-          title="Total Income"
+          title="Total income"
           value={summary.totalIncome}
           subtitle={`${filteredData.filter(t => t.type === 'income').length} transactions`}
           icon={TrendingUp}
           color="green"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Total Expenses"
+          title="Total expenses"
           value={summary.totalExpenses}
           subtitle={`${filteredData.filter(t => t.type === 'expense').length} transactions`}
           icon={TrendingDown}
           color="red"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Total Payments"
+          title="Total payments"
           value={summary.totalPayments}
           subtitle={`Debt & credit card payments`}
           icon={DollarSign}
           color="blue"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Net Cashflow"
+          title="Net cashflow"
           value={summary.netCashflow}
           subtitle="Income less spending and loan payments"
           icon={Activity}
           color={summary.netCashflow >= 0 ? 'green' : 'red'}
-          darkMode={darkMode}
         />
       </div>
 
       {/* Summary Cards - Row 2: Current State */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
-          title="Current Cash Available"
+          title="Current cash available"
           value={totalAvailable}
           subtitle={`Bank: ${formatCurrency(totalAvailable - totalCash)} • Cash: ${formatCurrency(totalCash)}`}
           icon={DollarSign}
           color="purple"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Savings Rate"
+          title="Savings rate"
           value={`${savingsRate}%`}
           subtitle="Of income saved"
           icon={TrendingUp}
           color="green"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Expense Ratio"
+          title="Expense ratio"
           value={`${expenseToIncomeRatio}%`}
           subtitle="Expenses vs income"
           icon={Activity}
           color="orange"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Daily Average"
+          title="Daily average"
           value={summary.transactionCount > 0 ? (summary.totalIncome + summary.totalExpenses) / dailyData.length : 0}
           subtitle="Per day in period"
           icon={Activity}
           color="blue"
-          darkMode={darkMode}
         />
       </div>
 
       {/* Main Cashflow Trend Chart */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">Cashflow Trend</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">Cashflow trend</h3>
         <TrendLineChart
           data={trendData}
-          darkMode={darkMode}
           dataKeys={[
             { key: 'income', name: 'Income', color: '#10B981' },
             { key: 'expenses', name: 'Expenses', color: '#EF4444' },
             { key: 'payments', name: 'Payments', color: '#3B82F6' },
-            { key: 'net', name: 'Net Cashflow', color: '#8B5CF6' }
+            { key: 'net', name: 'Net cashflow', color: '#8B5CF6' }
           ]}
         />
       </div>
 
       {/* Income vs Expenses Comparison */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Income vs Expenses by Period</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Income vs expenses by period</h3>
           <ComparisonBarChart
             data={trendData.slice(-6).map(trend => ({
               name: trend.displayName,
               income: trend.income,
               expenses: trend.expenses
             }))}
-            darkMode={darkMode}
             dataKeys={[
               { key: 'income', name: 'Income', color: '#10B981' },
               { key: 'expenses', name: 'Expenses', color: '#EF4444' }
@@ -256,39 +244,38 @@ export default function CashflowAnalysis({
           />
         </div>
 
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Net Cashflow by Period</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Net cashflow by period</h3>
           <ComparisonBarChart
             data={trendData.slice(-6).map(trend => ({
               name: trend.displayName,
               net: trend.net
             }))}
-            darkMode={darkMode}
             dataKeys={[
-              { key: 'net', name: 'Net Cashflow', color: '#8B5CF6' }
+              { key: 'net', name: 'Net cashflow', color: '#8B5CF6' }
             ]}
           />
         </div>
       </div>
 
       {/* Detailed Period Breakdown */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">Detailed Period Breakdown</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">Detailed period breakdown</h3>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className={`border-b border-line`}>
+              <tr className="border-b border-line">
                 <th className="text-left py-3 px-4">Period</th>
                 <th className="text-right py-3 px-4">Income</th>
                 <th className="text-right py-3 px-4">Expenses</th>
                 <th className="text-right py-3 px-4">Payments</th>
-                <th className="text-right py-3 px-4">Net Flow</th>
+                <th className="text-right py-3 px-4">Net flow</th>
                 <th className="text-right py-3 px-4">Transactions</th>
               </tr>
             </thead>
             <tbody>
               {trendData.map((trend, index) => (
-                <tr key={index} className={`border-b border-line`}>
+                <tr key={index} className="border-b border-line">
                   <td className="py-3 px-4 font-medium">{trend.displayName}</td>
                   <td className="text-right py-3 px-4 text-positive">
                     {formatCurrency(trend.income)}
@@ -296,7 +283,7 @@ export default function CashflowAnalysis({
                   <td className="text-right py-3 px-4 text-negative">
                     {formatCurrency(trend.expenses)}
                   </td>
-                  <td className="text-right py-3 px-4 text-blue-600 dark:text-blue-400">
+                  <td className="text-right py-3 px-4 text-accent">
                     {formatCurrency(trend.payments)}
                   </td>
                   <td className={`text-right py-3 px-4 font-semibold ${
@@ -313,7 +300,7 @@ export default function CashflowAnalysis({
               ))}
             </tbody>
             <tfoot>
-              <tr className={`border-t-2 border-line font-bold`}>
+              <tr className="border-t-2 border-line font-bold">
                 <td className="py-3 px-4">Total</td>
                 <td className="text-right py-3 px-4 text-positive">
                   {formatCurrency(summary.totalIncome)}
@@ -321,7 +308,7 @@ export default function CashflowAnalysis({
                 <td className="text-right py-3 px-4 text-negative">
                   {formatCurrency(summary.totalExpenses)}
                 </td>
-                <td className="text-right py-3 px-4 text-blue-600 dark:text-blue-400">
+                <td className="text-right py-3 px-4 text-accent">
                   {formatCurrency(summary.totalPayments)}
                 </td>
                 <td className={`text-right py-3 px-4 ${
@@ -339,17 +326,17 @@ export default function CashflowAnalysis({
       </div>
 
       {/* All Transactions Table */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">All Transactions</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">All transactions</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className={`border-b border-line`}>
+              <tr className="border-b border-line">
                 <th className="text-left py-3 px-3">Date</th>
                 <th className="text-left py-3 px-3">Type</th>
                 <th className="text-left py-3 px-3">Description</th>
                 <th className="text-left py-3 px-3">Category</th>
-                <th className="text-left py-3 px-3">Payment Method</th>
+                <th className="text-left py-3 px-3">Payment method</th>
                 <th className="text-right py-3 px-3">Amount</th>
               </tr>
             </thead>
@@ -359,7 +346,7 @@ export default function CashflowAnalysis({
                 .map((transaction) => (
                   <tr
                     key={transaction.id}
-                    className={`border-b border-line`}
+                    className="border-b border-line"
                   >
                     <td className="py-2 px-3 whitespace-nowrap">
                       {formatDate(transaction.date)}
@@ -368,7 +355,7 @@ export default function CashflowAnalysis({
                       <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
                         transaction.type === 'income' ? 'bg-positive/10 text-positive' :
                         transaction.type === 'expense' ? 'bg-negative/10 text-negative' :
-                        'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                        'bg-accent-soft text-accent'
                       }`}>
                         {transaction.type}
                       </span>
@@ -386,7 +373,7 @@ export default function CashflowAnalysis({
                     <td className={`py-2 px-3 text-right font-semibold ${
                       transaction.type === 'income' ? 'text-positive' :
                       transaction.type === 'expense' ? 'text-negative' :
-                      'text-blue-600 dark:text-blue-400'
+                      'text-accent'
                     }`}>
                       {formatCurrency(transaction.amount)}
                     </td>

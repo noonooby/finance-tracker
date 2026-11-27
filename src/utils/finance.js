@@ -14,12 +14,12 @@ const parse = (d) => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 // Canadian fixed mortgages compound twice a year; most other loans and lines compound monthly.
-export function defaultCompounding(loan) {
+function defaultCompounding(loan) {
   return loan && (loan.loan_type === 'mortgage' || loan.is_mortgage) ? 'semiannual' : 'monthly';
 }
 
 // The yearly rate actually paid, from the quoted yearly rate (percent) and how often interest is added.
-export function effectiveAnnualRate(ratePercent, compounding = 'monthly') {
+function effectiveAnnualRate(ratePercent, compounding = 'monthly') {
   const r = Number(ratePercent) / 100;
   if (!(r > 0)) return 0;
   const n = { annual: 1, semiannual: 2, quarterly: 4, monthly: 12, daily: 365 }[compounding] || 12;
@@ -35,7 +35,7 @@ export function periodicRate(loan) {
 }
 
 // One payment split into interest and principal, from the balance before it.
-export function splitPayment(balance, payment, rate) {
+function splitPayment(balance, payment, rate) {
   const interest = Math.min(round2(payment), Math.max(0, round2(Number(balance) * rate)));
   return { interest, principal: round2(payment - interest) };
 }
@@ -125,7 +125,7 @@ export function position({ bankAccounts = [], creditCards = [], loans = [], inve
 
 // What a card's next payment takes. A card that pays itself takes what its automatic payment is set to (the whole
 // balance unless set to the minimum or a fixed amount); one you pay yourself is counted at its minimum.
-export function cardPaymentDue(c) {
+function cardPaymentDue(c) {
   const bal = Number(c.balance) || 0;
   if (bal <= 0) return 0;
   const min = Number(c.minimum_payment || c.payment_amount) || 0;

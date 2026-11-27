@@ -1,12 +1,12 @@
 import React from 'react';
 import { formatCurrency } from '../../../utils/reportHelpers';
 
-export default function SummaryCard({ title, value, subtitle, icon: Icon, color = 'blue', darkMode, formatValue = true }) {
+export default function SummaryCard({ title, value, subtitle, icon: Icon, color = 'blue', formatValue = true }) {
   const colorClasses = {
-    blue: 'bg-blue-500',
+    blue: 'bg-accent-contrast/20',
     green: 'bg-positive/100',
     red: 'bg-negative/100',
-    purple: 'bg-purple-500',
+    purple: 'bg-accent',
     orange: 'bg-warning/100',
     gray: 'bg-line'
   };
@@ -27,16 +27,16 @@ export default function SummaryCard({ title, value, subtitle, icon: Icon, color 
   }
 
   return (
-    <div className={`bg-surface rounded-2xl p-6`}>
+    <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
       <div className="flex items-center justify-between mb-2">
         <p className="text-sm font-medium text-muted">{title}</p>
         {Icon && (
-          <div className={`${bgColorClass} p-2 rounded-lg`}>
+          <div className={`${bgColorClass} p-2 rounded-xl`}>
             <Icon size={20} className="text-white" />
           </div>
         )}
       </div>
-      <p className={`text-2xl font-bold text-fg mb-1`}>
+      <p className="text-2xl font-bold text-fg mb-1">
         {displayValue}
       </p>
       {subtitle && (

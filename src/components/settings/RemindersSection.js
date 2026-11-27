@@ -6,7 +6,7 @@ import SettingsSection from './SettingsSection';
 
 // Reminders on this device for payments you make yourself (cards and loans without autopay, and tracked bills):
 // two days before and on the day, between 8:00 and 21:00. Each device is turned on separately.
-export default function RemindersSection({ darkMode, expanded, onToggle }) {
+export default function RemindersSection({ expanded, onToggle }) {
   const support = canRemind();
   const [on, setOn] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -27,13 +27,13 @@ export default function RemindersSection({ darkMode, expanded, onToggle }) {
   };
 
   return (
-    <SettingsSection title="Reminders" icon={Bell} expanded={expanded} onToggle={onToggle} darkMode={darkMode}>
+    <SettingsSection title="Reminders" icon={Bell} expanded={expanded} onToggle={onToggle}>
       <p className="text-sm text-muted">
         A notification two days before and on the day a payment is due, for cards and loans you pay yourself (not autopay) and bills you track.
         Sent between 8:00 and 21:00, once each.
       </p>
       {support === 'install_first' && (
-        <p className="text-sm rounded-lg bg-accent-soft text-accent p-3">
+        <p className="text-sm rounded-xl bg-accent-soft text-accent p-3">
           On iPhone and iPad, reminders work only in the app added to the Home Screen: tap Share, then Add to Home Screen, open the app from there and turn reminders on.
         </p>
       )}

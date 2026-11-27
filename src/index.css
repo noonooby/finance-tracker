@@ -247,3 +247,15 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .hint-btn { min-width: 0; min-height: 0; position: relative; }
 .hint-btn::after { content: ''; position: absolute; inset: -12px; }
 .icon-btn { display: grid; place-items: center; width: 2.375rem; min-width: 0; height: 2.75rem; border-radius: .75rem; }
+/* Scrolling inside panels and dialogs */
+div[class*="overflow-y-auto"] { -webkit-overflow-scrolling: touch; }
+div[class*="overflow-y-auto"]::-webkit-scrollbar { width: 3px; }
+div[class*="overflow-y-auto"]::-webkit-scrollbar-thumb { background: rgb(var(--muted) / .3); border-radius: 2px; }
+
+/* One look for every field in every form */
+.field {
+  width: 100%; border: 1px solid rgb(var(--border)); background: rgb(var(--surface-2)); color: rgb(var(--text));
+  padding: .7rem 1rem; border-radius: 14px; outline: none;
+}
+.field:focus { border-color: rgb(var(--accent)); background: rgb(var(--surface)); box-shadow: 0 0 0 4px rgb(var(--accent) / .15); }
+.field:disabled { opacity: .55; }

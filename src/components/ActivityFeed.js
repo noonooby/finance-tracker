@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ask } from '../utils/confirm';
 import { 
   Undo2, 
   Activity, 
@@ -125,24 +126,24 @@ const buildActivityDetails = (activity, snapshot = {}) => {
   if (Array.isArray(snapshot.affectedFunds) && snapshot.affectedFunds.length > 0) {
     const entries = snapshot.affectedFunds.map((entry) => {
       const fund = entry?.fund || entry;
-      const name = fund?.name || fund?.entity_name || 'Reserved Fund';
+      const name = fund?.name || fund?.entity_name || 'Reserved fund';
       const accountName = fund?.source_account_name;
       const label = accountName ? `${name} → ${accountName}` : name;
       const amountText = formatCurrency(entry?.amountUsed ?? entry?.amount ?? snapshot.paymentAmount);
       return amountText ? `${label} (${amountText})` : label;
     });
     details.push({
-      label: snapshot.affectedFunds.length > 1 ? 'Reserved Funds' : 'Reserved Fund',
+      label: snapshot.affectedFunds.length > 1 ? 'Reserved funds' : 'Reserved fund',
       value: entries.join(', ')
     });
   } else if (snapshot.affectedFund) {
     const fund = snapshot.affectedFund;
-    const name = fund?.name || fund?.entity_name || 'Reserved Fund';
+    const name = fund?.name || fund?.entity_name || 'Reserved fund';
     const amountText = formatCurrency(snapshot.amountUsed ?? snapshot.paymentAmount ?? snapshot.amount);
     const accountName = fund?.source_account_name;
     const labelValue = accountName ? `${name} → ${accountName}` : name;
     details.push({
-      label: 'Reserved Fund',
+      label: 'Reserved fund',
       value: amountText ? `${labelValue} (${amountText})` : labelValue
     });
   }
@@ -190,7 +191,7 @@ const buildActivityDetails = (activity, snapshot = {}) => {
       return amountText ? `${name} (${amountText})` : name;
     });
     details.push({
-      label: snapshot.bankAdjustments.length > 1 ? 'Bank Accounts' : 'Bank Account',
+      label: snapshot.bankAdjustments.length > 1 ? 'Bank accounts' : 'Bank account',
       value: entries.join(', ')
     });
   }
@@ -198,7 +199,7 @@ const buildActivityDetails = (activity, snapshot = {}) => {
   return details;
 };
 
-export default function ActivityFeed({ darkMode, onUpdate }) {
+export default function ActivityFeed({ onUpdate }) {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [undoingId, setUndoingId] = useState(null);
@@ -288,7 +289,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
   };
 
   const handleUndo = async (activity) => {
-    if (!window.confirm('Are you sure you want to undo this action?')) return;
+    if (!(await ask('Undo this?'))) return;
 
     setUndoingId(activity.id);
     try {
@@ -323,10 +324,10 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
   const getActionColor = (actionType) => {
     switch (actionType) {
       case 'add': return 'text-positive';
-      case 'edit': return 'text-blue-600';
-      case 'edit_setting': return 'text-blue-600';
+      case 'edit': return 'text-accent';
+      case 'edit_setting': return 'text-accent';
       case 'delete': return 'text-negative';
-      case 'payment': return 'text-purple-600';
+      case 'payment': return 'text-accent';
       case 'expense': return 'text-warning';
       case 'gift_card_reload': return 'text-positive';
       case 'cash_withdrawal': return 'text-warning';
@@ -429,7 +430,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
 
   if (activities.length === 0) {
     return (
-      <div className={`bg-surface rounded-lg p-8 text-center`}>
+      <div className="card rounded-2xl border border-line bg-surface p-4 py-10 text-center text-muted">
         <Activity size={48} className="mx-auto mb-4 text-muted" />
         <p className="text-muted">No recent activities</p>
         <p className="text-sm text-muted mt-2">Your actions will appear here</p>
@@ -440,9 +441,9 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4 mb-4">
-        <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+        <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Activity size={20} className="sm:w-6 sm:h-6" />
-          Recent Activity
+          Recent activity
         </h2>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <span className="text-sm text-muted">
@@ -450,7 +451,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
           </span>
           <button
             onClick={() => setShowPreferences(!showPreferences)}
-            className={`flex items-center gap-1 sm:gap-2 px-3 py-2 text-sm sm:text-base rounded-lg transition-colors ${
+            className={`flex items-center gap-1 sm:gap-2 px-3 py-2 text-sm sm:text-base rounded-xl transition-colors ${
               showPreferences
                 ? 'bg-surface-2 text-fg'
                 : 'bg-surface-2 text-muted hover:bg-line/60'
@@ -464,17 +465,17 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
 
       {/* Preferences Panel */}
       {showPreferences && (
-        <div className={`bg-surface border-line border rounded-2xl p-4 space-y-4`}>
+        <div className="bg-surface border-line border rounded-2xl p-4 space-y-4">
           <h3 className="text-base sm:text-lg font-semibold flex items-center gap-2">
             <SlidersHorizontal size={16} className="sm:w-[18px] sm:h-[18px]" />
-            Activity Feed Preferences
+            What to show
           </h3>
           
           <div className="space-y-3">
             {/* Activity Type Checkboxes */}
             <div>
-              <label className={`block text-sm font-medium mb-2 text-fg`}>
-                Show Activity Types
+              <label className="block text-sm font-medium mb-2 text-fg">
+                Kinds to show
               </label>
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -521,8 +522,8 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
             
             {/* Activities Per Page */}
             <div>
-              <label className={`block text-sm font-medium mb-2 text-fg`}>
-                Activities Per Page
+              <label className="block text-sm font-medium mb-2 text-fg">
+                Activities per page
               </label>
               <select
                 value={preferences.perPage}
@@ -530,7 +531,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
                   handlePreferenceChange({ perPage: parseInt(e.target.value) });
                   setCurrentPage(1); // Reset to first page
                 }}
-                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+                className="field"
               >
                 <option value={25}>25 activities</option>
                 <option value={50}>50 activities</option>
@@ -542,7 +543,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       )}
 
       {/* Filter UI */}
-      <div className={`bg-surface rounded-2xl p-4 space-y-3`}>
+      <div className="card rounded-2xl border border-line bg-surface p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Entity Filter */}
           <select
@@ -551,21 +552,21 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
               setEntityFilter(e.target.value);
               setCurrentPage(1); // Reset to first page
             }}
-            className={`px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+            className="px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg"
           >
-            <option value="all">All Entity Types</option>
-            <option value="card">Credit Cards</option>
+            <option value="all">All entity types</option>
+            <option value="card">Credit cards</option>
             <option value="loan">Loans</option>
-            <option value="bank_account">Bank Accounts</option>
+            <option value="bank_account">Bank accounts</option>
             <option value="income">Income</option>
-            <option value="category_budget">Category Budgets</option>
+            <option value="category_budget">Category budgets</option>
           </select>
 
           {/* Show All Activities Toggle */}
-          <div className={`flex items-center justify-between px-4 py-2 border rounded-lg border-line`}>
+          <div className="flex items-center justify-between px-4 py-2 border rounded-xl border-line">
             <div className="flex items-center gap-2">
               {showAllActivities ? <Eye size={18} /> : <EyeOff size={18} />}
-              <span className="text-sm font-medium">Show Settings Changes</span>
+              <span className="text-sm font-medium">Show settings changes</span>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
@@ -574,13 +575,13 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
                 onChange={(e) => handleToggleChange(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-line peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface after:border-line after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <div className="w-11 h-6 bg-line peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface after:border-line after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
             </label>
           </div>
         </div>
 
         {!showAllActivities && viewOnlyCount > 0 && (
-          <p className={`text-xs flex items-center gap-1 text-muted`}>
+          <p className="text-xs flex items-center gap-1 text-muted">
             <SettingsIcon size={12} />
             Hiding {viewOnlyCount} settings change{viewOnlyCount !== 1 ? 's' : ''} (toggle above to show)
           </p>
@@ -588,7 +589,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
       </div>
 
       {filteredActivities.length === 0 && (
-        <div className={`bg-surface rounded-lg p-8 text-center`}>
+        <div className="card rounded-2xl border border-line bg-surface p-4 py-10 text-center text-muted">
           <Activity size={48} className="mx-auto mb-4 text-muted" />
           <p className="text-muted">No activities found</p>
           <p className="text-sm text-muted mt-2">Try adjusting your filters</p>
@@ -617,14 +618,14 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
           return (
             <div
               key={activity.id}
-              className={`bg-surface-2 border-line border rounded-2xl p-3 opacity-75`}
+              className="bg-surface-2 border-line border rounded-2xl p-3 opacity-75"
             >
               <div className="flex items-center gap-3">
-                <div className={`p-1.5 rounded bg-surface-2`}>
+                <div className="p-1.5 rounded bg-surface-2">
                   <SettingsIcon size={14} className="text-muted" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm text-muted`}>
+                  <p className="text-sm text-muted">
                     {activity.description}
                   </p>
                   <span className="text-xs text-muted">
@@ -640,11 +641,11 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
         return (
           <div
             key={activity.id}
-            className={`bg-surface border-line border rounded-2xl p-4 hover:shadow-md transition-shadow`}
+            className="bg-surface border-line border rounded-2xl p-4 hover:shadow-md transition-shadow"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3 flex-1">
-                <div className={`p-2 rounded-lg bg-surface-2`}>
+                <div className="p-2 rounded-xl bg-surface-2">
                   {getEntityIcon(activity.entity_type, activity.action_type)}
                 </div>
 
@@ -657,17 +658,17 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
                       {activity.entity_type.replace(/_/g, ' ')}
                     </span>
                     {isSystemActivity(activity) && (
-                      <span className={`text-xs px-2 py-0.5 rounded bg-accent-soft text-accent`}>
+                      <span className="text-xs px-2 py-0.5 rounded bg-accent-soft text-accent">
                         Auto
                       </span>
                     )}
                   </div>
 
-                  <h3 className={`text-sm font-semibold text-fg mb-1`}>
+                  <h3 className="text-sm font-semibold text-fg mb-1">
                     {displayName}
                   </h3>
 
-                  <p className={`text-fg mb-2`}>
+                  <p className="text-fg mb-2">
                     {activity.description}
                   </p>
 
@@ -701,7 +702,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
                   <button
                     onClick={() => handleUndo(activity)}
                     disabled={undoingId === activity.id}
-                    className={`flex items-center gap-1 px-3 py-2 text-sm rounded-lg transition-colors ${
+                    className={`flex items-center gap-1 px-3 py-2 text-sm rounded-xl transition-colors ${
                       undoingId === activity.id
                         ? 'bg-line text-muted cursor-not-allowed'
                         : 'bg-accent-soft hover:bg-accent-soft text-white'
@@ -720,11 +721,11 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
 
       {/* Pagination Controls */}
       {totalPages > 1 && (
-        <div className={`flex items-center justify-between px-4 py-3 bg-surface border-line border rounded-2xl`}>
+        <div className="flex items-center justify-between px-4 py-3 bg-surface border-line border rounded-2xl">
           <button
             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
             disabled={currentPage === 1}
-            className={`px-4 py-2 rounded-lg ${
+            className={`px-4 py-2 rounded-xl ${
               currentPage === 1
                 ? 'bg-line text-muted cursor-not-allowed'
                 : 'bg-surface-2 text-fg hover:bg-line/60'
@@ -740,7 +741,7 @@ export default function ActivityFeed({ darkMode, onUpdate }) {
           <button
             onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
             disabled={currentPage === totalPages}
-            className={`px-4 py-2 rounded-lg ${
+            className={`px-4 py-2 rounded-xl ${
               currentPage === totalPages
                 ? 'bg-line text-muted cursor-not-allowed'
                 : 'bg-surface-2 text-fg hover:bg-line/60'

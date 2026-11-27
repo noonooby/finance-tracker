@@ -30,7 +30,7 @@ export async function getAllReportTemplates() {
 /**
  * Get a single report template by ID
  */
-export async function getReportTemplate(templateId) {
+async function getReportTemplate(templateId) {
   try {
     const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
@@ -47,52 +47,6 @@ export async function getReportTemplate(templateId) {
   } catch (error) {
     console.error('Error getting report template:', error);
     return null;
-  }
-}
-
-/**
- * Get templates by type (monthly, category, payment, etc.)
- */
-export async function getReportTemplatesByType(templateType) {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const { data, error } = await server
-      .from('report_templates')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('template_type', templateType)
-      .order('last_used', { ascending: false, nullsFirst: false });
-
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error('Error getting report templates by type:', error);
-    return [];
-  }
-}
-
-/**
- * Get favorite templates
- */
-export async function getFavoriteReportTemplates() {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const { data, error } = await server
-      .from('report_templates')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_favorite', true)
-      .order('use_count', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error('Error getting favorite report templates:', error);
-    return [];
   }
 }
 
@@ -143,47 +97,9 @@ export async function saveReportTemplate(templateData) {
 
     if (error) throw error;
 
-
     return data;
   } catch (error) {
     console.error('Error saving report template:', error);
-    throw error;
-  }
-}
-
-/**
- * Update an existing report template
- */
-export async function updateReportTemplate(templateId, updates) {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const updateData = {
-      ...updates,
-      updated_at: new Date().toISOString()
-    };
-
-    // Remove fields that shouldn't be updated directly
-    delete updateData.id;
-    delete updateData.user_id;
-    delete updateData.created_at;
-    delete updateData.use_count;
-
-    const { data, error } = await server
-      .from('report_templates')
-      .update(updateData)
-      .eq('id', templateId)
-      .eq('user_id', user.id)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-
-    return data;
-  } catch (error) {
-    console.error('Error updating report template:', error);
     throw error;
   }
 }
@@ -203,7 +119,6 @@ export async function deleteReportTemplate(templateId) {
       .eq('user_id', user.id);
 
     if (error) throw error;
-
 
     return true;
   } catch (error) {
@@ -232,7 +147,6 @@ export async function toggleReportTemplateFavorite(templateId, isFavorite) {
       .single();
 
     if (error) throw error;
-
 
     return data;
   } catch (error) {
@@ -272,7 +186,6 @@ export async function trackReportTemplateUsage(templateId) {
       .single();
 
     if (error) throw error;
-
 
     return data;
   } catch (error) {
@@ -328,51 +241,3 @@ export async function duplicateReportTemplate(templateId) {
   }
 }
 
-/**
- * Get template statistics
- */
-export async function getReportTemplateStats() {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const { data, error } = await server
-      .from('report_templates')
-      .select('template_type, is_favorite, use_count')
-      .eq('user_id', user.id);
-
-    if (error) throw error;
-
-    const stats = {
-      total: data.length,
-      favorites: data.filter(t => t.is_favorite).length,
-      byType: {},
-      mostUsed: null,
-      totalUses: 0
-    };
-
-    // Count by type
-    data.forEach(template => {
-      stats.byType[template.template_type] = (stats.byType[template.template_type] || 0) + 1;
-      stats.totalUses += template.use_count || 0;
-    });
-
-    // Find most used
-    if (data.length > 0) {
-      stats.mostUsed = data.reduce((prev, current) => 
-        (current.use_count || 0) > (prev.use_count || 0) ? current : prev
-      );
-    }
-
-    return stats;
-  } catch (error) {
-    console.error('Error getting template stats:', error);
-    return {
-      total: 0,
-      favorites: 0,
-      byType: {},
-      mostUsed: null,
-      totalUses: 0
-    };
-  }
-}

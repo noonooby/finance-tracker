@@ -22,7 +22,7 @@ const TABLES_TO_BACKUP = [
 /**
  * Export complete database backup
  */
-export async function exportFullBackup() {
+async function exportFullBackup() {
   try {
     const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');

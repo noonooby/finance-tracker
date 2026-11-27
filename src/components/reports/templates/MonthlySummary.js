@@ -17,7 +17,6 @@ import {
 import { parseDay, formatDate } from '../../../utils/helpers';
 
 export default function MonthlySummary({ 
-  darkMode, 
   transactions, 
   categories,
   onExportExcel,
@@ -67,7 +66,7 @@ export default function MonthlySummary({
 
   const handleExportExcel = () => {
     const reportData = {
-      name: 'Monthly Summary',
+      name: 'Monthly summary',
       filters,
       summary,
       transactions: filteredData,
@@ -80,7 +79,7 @@ export default function MonthlySummary({
 
   const handleExportCSV = () => {
     const reportData = {
-      name: 'Monthly Summary',
+      name: 'Monthly summary',
       filters,
       summary,
       transactions: filteredData,
@@ -102,34 +101,34 @@ export default function MonthlySummary({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">Monthly Summary</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Monthly summary</h2>
           <p className="text-sm text-muted">
             {formatDate(filters.startDate)} - {formatDate(filters.endDate)}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-4 py-2 rounded-xl font-medium transition-colors ${
               showFilters
                 ? 'bg-accent text-accent-contrast'
                 : 'bg-surface-2 hover:bg-line/60'
             }`}
           >
-            {showFilters ? 'Hide' : 'Show'} Filters
+            {showFilters ? 'Hide filters' : 'Filters'}
           </button>
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:opacity-90 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-xl font-medium hover:opacity-90 transition-colors"
           >
             <FileSpreadsheet size={18} />
-            Export Excel
+            Export to Excel
           </button>
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-xl font-medium hover:opacity-90 transition-colors"
           >
             <Download size={18} />
             Export CSV
@@ -140,7 +139,6 @@ export default function MonthlySummary({
       {/* Filter Panel */}
       {showFilters && (
         <FilterPanel
-          darkMode={darkMode}
           filters={filters}
           onFiltersChange={setFilters}
           categories={categories}
@@ -150,44 +148,40 @@ export default function MonthlySummary({
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
-          title="Total Income"
+          title="Total income"
           value={summary.totalIncome}
           subtitle={`${filteredData.filter(t => t.type === 'income').length} transactions`}
           icon={TrendingUp}
           color="green"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Total Expenses"
+          title="Total expenses"
           value={summary.totalExpenses}
           subtitle={`${filteredData.filter(t => t.type === 'expense').length} transactions`}
           icon={TrendingDown}
           color="red"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Total Payments"
+          title="Total payments"
           value={summary.totalPayments}
           subtitle={`${filteredData.filter(t => t.type === 'payment' || t.type === 'loan_payment' || t.type === 'credit_card_payment').length} transactions`}
           icon={DollarSign}
           color="blue"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Net Cashflow"
+          title="Net cashflow"
           value={summary.netCashflow}
           subtitle="Income less spending and loan payments"
           icon={Activity}
           color={summary.netCashflow >= 0 ? 'green' : 'orange'}
-          darkMode={darkMode}
         />
       </div>
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Income vs Expenses Bar Chart */}
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Income vs Expenses</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Income vs expenses</h3>
           <ComparisonBarChart
             data={[{
               name: 'Totals',
@@ -195,7 +189,6 @@ export default function MonthlySummary({
               expenses: summary.totalExpenses,
               payments: summary.totalPayments
             }]}
-            darkMode={darkMode}
             dataKeys={[
               { key: 'income', name: 'Income', color: '#10B981' },
               { key: 'expenses', name: 'Expenses', color: '#EF4444' },
@@ -205,10 +198,10 @@ export default function MonthlySummary({
         </div>
 
         {/* Category Breakdown Pie Chart */}
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Spending by Category</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Spending by category</h3>
           {categoryData.length > 0 ? (
-            <CategoryPieChart data={categoryData} darkMode={darkMode} />
+            <CategoryPieChart data={categoryData} />
           ) : (
             <div className="flex items-center justify-center h-64 text-muted">
               No expense categories to display
@@ -218,11 +211,10 @@ export default function MonthlySummary({
       </div>
 
       {/* Trend Line Chart */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">Cashflow Trend</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">Cashflow trend</h3>
         <TrendLineChart
           data={trendData}
-          darkMode={darkMode}
           dataKeys={[
             { key: 'income', name: 'Income', color: '#10B981' },
             { key: 'expenses', name: 'Expenses', color: '#EF4444' },
@@ -233,12 +225,12 @@ export default function MonthlySummary({
 
       {/* Top Categories Table */}
       {categoryData.length > 0 && (
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Top Spending Categories</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Top spending categories</h3>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className={`border-b border-line`}>
+                <tr className="border-b border-line">
                   <th className="text-left py-3 px-4">Category</th>
                   <th className="text-right py-3 px-4">Transactions</th>
                   <th className="text-right py-3 px-4">Total</th>
@@ -247,7 +239,7 @@ export default function MonthlySummary({
               </thead>
               <tbody>
                 {categoryData.slice(0, 10).map((cat, index) => (
-                  <tr key={cat.id} className={`border-b border-line`}>
+                  <tr key={cat.id} className="border-b border-line">
                     <td className="py-3 px-4">
                       {cat.name}
                     </td>
@@ -260,7 +252,7 @@ export default function MonthlySummary({
                 ))}
               </tbody>
               <tfoot>
-                <tr className={`border-t-2 border-line font-bold`}>
+                <tr className="border-t-2 border-line font-bold">
                   <td className="py-3 px-4">Total</td>
                   <td className="text-right py-3 px-4">{categoryData.reduce((sum, cat) => sum + cat.count, 0)}</td>
                   <td className="text-right py-3 px-4">{formatCurrency(summary.totalExpenses)}</td>
@@ -274,13 +266,13 @@ export default function MonthlySummary({
 
       {/* Payment Methods Table */}
       {paymentMethodData.length > 0 && (
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Payment Method Breakdown</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Payment method breakdown</h3>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className={`border-b border-line`}>
-                  <th className="text-left py-3 px-4">Payment Method</th>
+                <tr className="border-b border-line">
+                  <th className="text-left py-3 px-4">Payment method</th>
                   <th className="text-right py-3 px-4">Transactions</th>
                   <th className="text-right py-3 px-4">Total</th>
                   <th className="text-right py-3 px-4">Percentage</th>
@@ -290,7 +282,7 @@ export default function MonthlySummary({
                 {paymentMethodData
                   .filter(method => method.method !== 'cash') // Hide legacy cash
                   .map((method, index) => (
-                  <tr key={index} className={`border-b border-line`}>
+                  <tr key={index} className="border-b border-line">
                     <td className="py-3 px-4">{method.name}</td>
                     <td className="text-right py-3 px-4">{method.count}</td>
                     <td className="text-right py-3 px-4 font-semibold">{formatCurrency(method.total)}</td>
@@ -306,17 +298,17 @@ export default function MonthlySummary({
       )}
 
       {/* All Transactions Table */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">All Transactions ({filteredData.length})</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">All lines ({filteredData.length})</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className={`border-b border-line`}>
+              <tr className="border-b border-line">
                 <th className="text-left py-3 px-3">Date</th>
                 <th className="text-left py-3 px-3">Type</th>
                 <th className="text-left py-3 px-3">Description</th>
                 <th className="text-left py-3 px-3">Category</th>
-                <th className="text-left py-3 px-3">Payment Method</th>
+                <th className="text-left py-3 px-3">Payment method</th>
                 <th className="text-right py-3 px-3">Amount</th>
               </tr>
             </thead>
@@ -326,7 +318,7 @@ export default function MonthlySummary({
                 .map((transaction) => (
                   <tr
                     key={transaction.id}
-                    className={`border-b border-line`}
+                    className="border-b border-line"
                   >
                     <td className="py-2 px-3 whitespace-nowrap">
                       {formatDate(transaction.date)}
@@ -335,7 +327,7 @@ export default function MonthlySummary({
                       <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
                         transaction.type === 'income' ? 'bg-positive/10 text-positive' :
                         transaction.type === 'expense' ? 'bg-negative/10 text-negative' :
-                        'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                        'bg-accent-soft text-accent'
                       }`}>
                         {transaction.type}
                       </span>
@@ -353,7 +345,7 @@ export default function MonthlySummary({
                     <td className={`py-2 px-3 text-right font-semibold ${
                       transaction.type === 'income' ? 'text-positive' :
                       transaction.type === 'expense' ? 'text-negative' :
-                      'text-blue-600 dark:text-blue-400'
+                      'text-accent'
                     }`}>
                       {formatCurrency(transaction.amount)}
                     </td>

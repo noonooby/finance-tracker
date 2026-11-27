@@ -7,7 +7,7 @@ import { Toaster } from 'react-hot-toast';
  * Global toast notification container
  * Should be placed once at the root of your app
  */
-export default function ToastContainer({ darkMode = false }) {
+export default function ToastContainer() {
   return (
     <Toaster
       position="top-center"

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Calendar, Filter, X, Search } from 'lucide-react';
 import { getDateRangePreset } from '../../utils/reportHelpers';
 
-export default function FilterPanel({ darkMode, filters, onFiltersChange, categories, onClose }) {
+export default function FilterPanel({ filters, onFiltersChange, categories, onClose }) {
   const [localFilters, setLocalFilters] = useState(filters);
 
   const handlePresetChange = (preset) => {
@@ -34,11 +34,11 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
   };
 
   return (
-    <div className={`bg-surface text-fg rounded-2xl shadow-lg p-6 space-y-6`}>
+    <div className="card rounded-2xl border border-line bg-surface p-4 space-y-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Filter size={20} className="text-blue-600" />
-          <h3 className="text-lg font-semibold">Report Filters</h3>
+          <Filter size={20} className="text-accent" />
+          <h3 className="text-lg font-semibold">Report filters</h3>
         </div>
         {onClose && (
           <button onClick={onClose} aria-label="Close filters" className="p-1 hover:bg-line/60 rounded">
@@ -51,21 +51,21 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
       <div>
         <label className="block text-sm font-medium mb-2">
           <Calendar size={16} className="inline mr-1" />
-          Date Range
+          Date range
         </label>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-3 items-end">
           {[
             { value: 'last30', label: 'Last 30 Days' },
-            { value: 'thisMonth', label: 'This Month' },
-            { value: 'lastMonth', label: 'Last Month' },
+            { value: 'thisMonth', label: 'This month' },
+            { value: 'lastMonth', label: 'Last month' },
             { value: 'last3Months', label: 'Last 3 Months' },
-            { value: 'thisYear', label: 'This Year' },
-            { value: 'allTime', label: 'All Time' }
+            { value: 'thisYear', label: 'This year' },
+            { value: 'allTime', label: 'All time' }
           ].map(preset => (
             <button
               key={preset.value}
               onClick={() => handlePresetChange(preset.value)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
                 localFilters.preset === preset.value
                   ? 'bg-accent text-accent-contrast'
                   : 'bg-surface-2 hover:bg-line/60'
@@ -78,42 +78,36 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
       </div>
 
       {/* Custom Date Range */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3 items-end">
         <div>
-          <label className="block text-sm font-medium mb-2">Start Date</label>
+          <label className="block text-sm font-medium mb-2">Start date</label>
           <input
             type="date"
             value={localFilters.startDate}
             onChange={(e) => handleFilterChange('startDate', e.target.value)}
-            className={`w-full px-3 py-2 border rounded-lg ${
-              'border-line bg-surface-2'
-            }`}
+            className="field"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-2">End Date</label>
+          <label className="block text-sm font-medium mb-2">End date</label>
           <input
             type="date"
             value={localFilters.endDate}
             onChange={(e) => handleFilterChange('endDate', e.target.value)}
-            className={`w-full px-3 py-2 border rounded-lg ${
-              'border-line bg-surface-2'
-            }`}
+            className="field"
           />
         </div>
       </div>
 
       {/* Transaction Type */}
       <div>
-        <label className="block text-sm font-medium mb-2">Transaction Type</label>
+        <label className="block text-sm font-medium mb-2">Transaction type</label>
         <select
           value={localFilters.type}
           onChange={(e) => handleFilterChange('type', e.target.value)}
-          className={`w-full px-3 py-2 border rounded-lg ${
-            'border-line bg-surface-2'
-          }`}
+          className="field"
         >
-          <option value="all">All Types</option>
+          <option value="all">All types</option>
           <option value="income">Income</option>
           <option value="expense">Expenses</option>
           <option value="payment">Payments</option>
@@ -128,9 +122,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
             multiple
             value={localFilters.categories}
             onChange={(e) => handleFilterChange('categories', Array.from(e.target.selectedOptions, opt => opt.value))}
-            className={`w-full px-3 py-2 border rounded-lg ${
-              'border-line bg-surface-2'
-            } h-32`}
+            className="field h-32"
           >
             {categories.filter(c => !c.is_income).map(cat => (
               <option key={cat.id} value={cat.id}>
@@ -144,17 +136,15 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
 
       {/* Payment Method Filter */}
       <div>
-        <label className="block text-sm font-medium mb-2">Payment Methods</label>
+        <label className="block text-sm font-medium mb-2">Payment methods</label>
         <select
           multiple
           value={localFilters.paymentMethods}
           onChange={(e) => handleFilterChange('paymentMethods', Array.from(e.target.selectedOptions, opt => opt.value))}
-          className={`w-full px-3 py-2 border rounded-lg ${
-            'border-line bg-surface-2'
-          } h-32`}
+          className="field h-32"
         >
-          <option value="bank_account">Bank Account</option>
-          <option value="credit_card">Credit Card</option>
+          <option value="bank_account">Bank account</option>
+          <option value="credit_card">Credit card</option>
           <option value="loan">Loan</option>
           <option value="transfer">Transfer</option>
         </select>
@@ -162,29 +152,25 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
       </div>
 
       {/* Amount Range */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3 items-end">
         <div>
-          <label className="block text-sm font-medium mb-2">Min Amount</label>
+          <label className="block text-sm font-medium mb-2">Min amount</label>
           <input
             type="number"
             value={localFilters.minAmount}
             onChange={(e) => handleFilterChange('minAmount', e.target.value)}
             placeholder="$0.00"
-            className={`w-full px-3 py-2 border rounded-lg ${
-              'border-line bg-surface-2'
-            }`}
+            className="field"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-2">Max Amount</label>
+          <label className="block text-sm font-medium mb-2">Max amount</label>
           <input
             type="number"
             value={localFilters.maxAmount}
             onChange={(e) => handleFilterChange('maxAmount', e.target.value)}
             placeholder="No limit"
-            className={`w-full px-3 py-2 border rounded-lg ${
-              'border-line bg-surface-2'
-            }`}
+            className="field"
           />
         </div>
       </div>
@@ -200,9 +186,7 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
           value={localFilters.search}
           onChange={(e) => handleFilterChange('search', e.target.value)}
           placeholder="Search transactions..."
-          className={`w-full px-3 py-2 border rounded-lg ${
-            'border-line bg-surface-2'
-          }`}
+          className="field"
         />
       </div>
 
@@ -210,11 +194,9 @@ export default function FilterPanel({ darkMode, filters, onFiltersChange, catego
       <div className="flex gap-2 pt-4 border-t">
         <button
           onClick={handleReset}
-          className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
-            'bg-surface-2 hover:bg-line/60'
-          }`}
+          className="flex-1 px-4 py-2 rounded-xl font-medium transition-colors bg-surface-2 hover:bg-line/60"
         >
-          Reset Filters
+          Reset filters
         </button>
       </div>
     </div>

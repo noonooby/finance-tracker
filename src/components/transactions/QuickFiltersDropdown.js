@@ -7,7 +7,6 @@ import { Star, Pin } from 'lucide-react';
  * Pure UI component
  */
 export default function QuickFiltersDropdown({
-  darkMode,
   quickFilters,
   onLoadFilter
 }) {
@@ -16,25 +15,23 @@ export default function QuickFiltersDropdown({
   return (
     <div className="relative group">
       <button
-        className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-          'bg-surface-2 hover:bg-line/60 text-fg'
-        }`}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-2 hover:bg-line/60 text-fg"
       >
         <Star size={18} />
-        Quick Filters
+        Quick filters
       </button>
       
       {/* Dropdown */}
-      <div className={`absolute right-0 top-full mt-2 w-64 bg-surface rounded-2xl shadow-lg border border-line opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50`}>
+      <div className="absolute right-0 top-full mt-2 w-64 bg-surface rounded-2xl shadow-lg border border-line opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
         <div className="p-2">
           {quickFilters.map(filter => (
             <button
               key={filter.id}
               onClick={() => onLoadFilter(filter)}
-              className={`w-full text-left px-3 py-2 rounded hover:bg-surface-2 flex items-center justify-between`}
+              className="w-full text-left px-3 py-2 rounded hover:bg-surface-2 flex items-center justify-between"
             >
               <div className="flex items-center gap-2">
-                {filter.is_pinned && <Pin size={12} className="text-blue-500" />}
+                {filter.is_pinned && <Pin size={12} className="text-accent" />}
                 <span className="text-sm">{filter.name}</span>
               </div>
               <span className="text-xs text-muted">{filter.use_count || 0} uses</span>

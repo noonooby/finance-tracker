@@ -21,7 +21,6 @@ import { localDate } from '../../utils/helpers';
  * Handles Add Balance and Use Balance operations
  */
 export default function GiftCardOperations({
-  darkMode,
   giftCard,
   creditCards,
   bankAccounts,
@@ -255,12 +254,12 @@ export default function GiftCardOperations({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={`Manage balance: ${giftCard.name}`}
-        className={`bg-surface rounded-2xl p-6 max-w-md w-full my-8 max-h-[calc(100vh-4rem)] overflow-y-auto`}
+        className="bg-surface rounded-3xl p-5 max-w-md w-full my-8 max-h-[calc(100vh-4rem)] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -269,14 +268,14 @@ export default function GiftCardOperations({
           <button
             onClick={onClose}
             aria-label="Close"
-            className={`text-2xl leading-none text-muted hover:text-fg`}
+            className="text-2xl leading-none text-muted hover:text-fg"
           >
             <X size={24} />
           </button>
         </div>
 
-        <div className={`p-3 rounded-2xl mb-4 bg-surface-2`}>
-          <div className="text-sm text-muted">Current Balance</div>
+        <div className="p-3 rounded-2xl mb-4 bg-surface-2">
+          <div className="text-sm text-muted">Current balance</div>
           <div className="text-2xl font-bold text-positive">{formatCurrency(giftCard.balance)}</div>
         </div>
 
@@ -285,34 +284,32 @@ export default function GiftCardOperations({
           <button
             type="button"
             onClick={() => setOperationType('add')}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors font-medium ${
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl border-2 transition-colors font-medium ${
               operationType === 'add'
                 ? 'border-accent bg-accent text-accent-contrast'
                 : 'border-line hover:border-accent text-fg'
             }`}
           >
             <Plus size={18} />
-            Add Balance
+            Add balance
           </button>
           <button
             type="button"
             onClick={() => setOperationType('use')}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors font-medium ${
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl border-2 transition-colors font-medium ${
               operationType === 'use'
                 ? 'border-accent bg-accent text-accent-contrast'
                 : 'border-line hover:border-accent text-fg'
             }`}
           >
             <Minus size={18} />
-            Use Balance
+            Use balance
           </button>
         </div>
         
         {/* Context Loaded Indicator */}
         {contextLoaded && (formData.amount || formData.category) && (
-          <div className={`mb-3 p-2 rounded-lg text-xs flex items-center gap-2 ${
-            'bg-accent-soft text-accent border border-accent/30'
-          }`}>
+          <div className="mb-3 p-2 rounded-xl text-xs flex items-center gap-2 bg-accent-soft text-accent border border-accent/30">
             <TrendingUp size={14} />
             <span>Pre-filled with your last used values</span>
           </div>
@@ -321,8 +318,8 @@ export default function GiftCardOperations({
         {/* Recent Expenses Quick Select (Use Balance only) */}
         {operationType === 'use' && recentExpenses.length > 0 && (
           <div className="mb-4">
-            <label className={`block text-sm font-medium mb-2 text-fg`}>
-              Recent Expenses
+            <label className="block text-sm font-medium mb-2 text-fg">
+              Recent expenses
             </label>
             <div className="flex gap-2 flex-wrap">
               {recentExpenses.map(expense => (
@@ -330,7 +327,7 @@ export default function GiftCardOperations({
                   key={expense.description}
                   type="button"
                   onClick={() => handleSelectExpense(expense)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-colors ${
                     formData.notes === expense.description
                       ? 'bg-accent text-accent-contrast'
                       : 'bg-accent-soft text-accent hover:bg-accent-soft border border-accent/30'
@@ -347,19 +344,19 @@ export default function GiftCardOperations({
         {/* Description/Notes (Use Balance only) */}
         {operationType === 'use' && (
           <div className="mb-4">
-            <label className={`block text-sm font-medium mb-1 text-fg`}>
-              {recentExpenses.length > 0 ? 'Or type new expense *' : 'What are you buying? *'}
+            <label className="block text-sm font-medium mb-1 text-fg">
+              {recentExpenses.length > 0 ? 'Or type a new one' : 'What are you buying?'}
             </label>
             <input
               type="text"
-              placeholder="e.g., Coffee, Gas, Lunch"
+              placeholder="Coffee, Gas, Lunch"
               value={formData.notes}
               onChange={(e) => handleExpenseDescriptionChange(e.target.value)}
               onBlur={handleExpenseDescriptionBlur}
-              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+              className="field"
               autoFocus={operationType === 'use' && recentExpenses.length === 0 && contextLoaded}
             />
-            <p className={`text-xs mt-1 text-muted`}>
+            <p className="text-xs mt-1 text-muted">
               This becomes your expense description (like "Coffee" instead of "Purchased with Starbucks")
             </p>
           </div>
@@ -368,14 +365,14 @@ export default function GiftCardOperations({
         <div className="space-y-3">
           {/* Amount */}
           <div>
-            <label className={`block text-sm font-medium mb-1 text-fg`}>
-              Amount *
+            <label className="block text-sm font-medium mb-1 text-fg">
+              Amount
             </label>
             
             {/* Recent Amounts Quick Select */}
             {recentAmounts.length > 0 && (
               <div className="mb-2">
-                <div className={`flex items-center gap-1 mb-1 text-muted`}>
+                <div className="flex items-center gap-1 mb-1 text-muted">
                   <TrendingUp size={14} />
                   <span className="text-xs">Recent amounts:</span>
                 </div>
@@ -407,11 +404,11 @@ export default function GiftCardOperations({
               value={smartInputValue}
               onChange={handleSmartAmountChange}
               onBlur={handleSmartAmountBlur}
-              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+              className="field"
               autoFocus={contextLoaded}
             />
             {smartInputValue && formData.amount && smartInputValue !== formData.amount && (
-              <p className={`text-xs mt-1 text-positive`}>
+              <p className="text-xs mt-1 text-positive">
                 = {formatCurrency(formData.amount)}
               </p>
             )}
@@ -420,17 +417,17 @@ export default function GiftCardOperations({
           {/* Amount Paid (only for Add Balance) */}
           {operationType === 'add' && (
             <div>
-              <label className={`block text-sm font-medium mb-1 text-fg`}>
-                Amount Paid (optional)
+              <label className="block text-sm font-medium mb-1 text-fg">
+                Amount paid (optional)
               </label>
               <input
                 type="text"
                 placeholder="Same as amount added"
                 value={formData.amountPaid}
                 onChange={(e) => setFormData({ ...formData, amountPaid: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+                className="field"
               />
-              <p className={`text-xs mt-1 text-muted`}>
+              <p className="text-xs mt-1 text-muted">
                 For bonus scenarios: e.g., paid $50 but got $55 loaded
               </p>
             </div>
@@ -439,13 +436,13 @@ export default function GiftCardOperations({
           {/* Payment Source (only for Add Balance) */}
           {operationType === 'add' && (
             <div>
-              <label className={`block text-sm font-medium mb-1 text-fg`}>
-                Payment Source *
+              <label className="block text-sm font-medium mb-1 text-fg">
+                Payment source
               </label>
               <select
                 value={getCurrentPaymentSourceValue()}
                 onChange={(e) => handlePaymentSourceChange(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+                className="field"
               >
                 <option value="">Choose how you paid</option>
                 
@@ -460,7 +457,7 @@ export default function GiftCardOperations({
                 )}
                 
                 {creditCards && creditCards.filter(c => !c.is_gift_card).length > 0 && (
-                  <optgroup label="Credit Cards">
+                  <optgroup label="Credit cards">
                     {creditCards.filter(card => !card.is_gift_card).map(card => (
                       <option key={card.id} value={`credit_card:${card.id}`}>
                         {card.name}
@@ -474,20 +471,20 @@ export default function GiftCardOperations({
 
           {/* Category */}
           <div>
-            <label className={`block text-sm font-medium mb-1 text-fg`}>
-              Category *
+            <label className="block text-sm font-medium mb-1 text-fg">
+              Category
             </label>
             <select
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+              className="field"
             >
               <option value="">Select category</option>
               {categories.map(cat => (
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
             </select>
-            <p className={`text-xs mt-1 text-muted`}>
+            <p className="text-xs mt-1 text-muted">
               {operationType === 'add' 
                 ? 'Use "Gift Card Purchase" for reloads, or actual category if you know future use'
                 : 'What are you buying with this gift card?'}
@@ -496,39 +493,39 @@ export default function GiftCardOperations({
 
           {/* Date */}
           <div>
-            <label className={`block text-sm font-medium mb-1 text-fg`}>
-              Date *
+            <label className="block text-sm font-medium mb-1 text-fg">
+              Date
             </label>
             <input
               type="date"
               value={formData.date}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+              className="field"
             />
           </div>
 
           {/* Notes (Add Balance only) */}
           {operationType === 'add' && (
             <div>
-              <label className={`block text-sm font-medium mb-1 text-fg`}>
+              <label className="block text-sm font-medium mb-1 text-fg">
                 Notes (optional)
               </label>
               <input
                 type="text"
-                placeholder="e.g., Birthday gift reload"
+                placeholder="Birthday gift reload"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+                className="field"
               />
             </div>
           )}
 
           {/* Preview */}
-          <div className={`p-3 rounded-lg bg-accent-soft border border-accent/30`}>
-            <div className={`text-xs font-medium mb-1 text-accent`}>
+          <div className="p-3 rounded-xl bg-accent-soft border border-accent/30">
+            <div className="text-xs font-medium mb-1 text-accent">
               Preview:
             </div>
-            <div className={`text-sm text-accent`}>
+            <div className="text-sm text-accent">
               {operationType === 'add' ? (
                 <>Balance will increase: {formatCurrency(giftCard.balance)} → {formatCurrency(giftCard.balance + (parseFloat(formData.amount) || 0))}</>
               ) : (
@@ -550,8 +547,8 @@ export default function GiftCardOperations({
             onClick={handleSubmit}
             processing={processing}
             variant={operationType === 'add' ? 'success' : 'primary'}
-            processingText={operationType === 'add' ? 'Adding Balance...' : 'Recording Usage...'}
-            idleText={operationType === 'add' ? 'Add Balance' : 'Use Balance'}
+            processingText="Saving..."
+            idleText={operationType === 'add' ? 'Add balance' : 'Use balance'}
             fullWidth
           />
         </div>

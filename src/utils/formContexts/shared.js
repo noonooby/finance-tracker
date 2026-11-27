@@ -21,19 +21,6 @@ export function formDataToContext(formData, fieldMapping) {
   return context;
 }
 
-export function selectAllText(inputRef) {
-  if (!inputRef?.current) return;
-  try {
-    setTimeout(() => {
-      if (inputRef.current?.select) {
-        inputRef.current.select();
-      }
-    }, 0);
-  } catch (error) {
-    console.warn('Failed to select text:', error);
-  }
-}
-
 export function validateContext(contextData, contextFields) {
   const errors = [];
   for (const [fieldName, fieldConfig] of Object.entries(contextFields)) {

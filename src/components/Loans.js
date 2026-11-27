@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { ask } from '../utils/confirm';
 import ThroughNote from './shared/ThroughNote';
 import LineNote from './loans/LineNote';
 import { Plus, Edit2, X, TrendingUp, ListFilter, Star } from 'lucide-react';
@@ -22,11 +23,10 @@ import {
   applyLoanCreationContext
 } from '../utils/formContexts';
 import { LoanForm } from './loans/index';
-import AddTransaction from './AddTransaction';
+import { useUI } from '../hooks/useUI';
 import { localDate } from '../utils/helpers';
 
 export default function Loans({
-  darkMode,
   loans,
   categories,
   availableCash,
@@ -42,8 +42,7 @@ export default function Loans({
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [showPayment, setShowPayment] = useState(false);
-  const [paymentLoan, setPaymentLoan] = useState(null);
+  const { openAdd } = useUI();
   const [formData, setFormData] = useState({
     name: '',
     principal: '',
@@ -124,7 +123,7 @@ export default function Loans({
         frequency: contextData.frequency || 'monthly'
       }));
       setTimeout(() => {
-        const principalInput = document.querySelector('input[placeholder="Principal *"]');
+        const principalInput = document.querySelector('input[placeholder="Principal"]');
         if (principalInput) {
           principalInput.select();
           principalInput.focus();
@@ -185,10 +184,7 @@ export default function Loans({
     return 0;
   });
 
-  const handleMakePayment = (loan) => {
-    setPaymentLoan(loan);
-    setShowPayment(true);
-  };
+  const handleMakePayment = (loan) => openAdd({ kind: 'moved', to: `loan:${loan.id}`, amount: Number(loan.payment_amount) || Number(loan.balance) || 0 });
 
   const normalizeId = (value) => {
     if (value === null || value === undefined) return null;
@@ -327,7 +323,7 @@ export default function Loans({
     if (isProcessing) return;
 
 
-    if (!window.confirm('Process all overdue loan payments?')) {
+    if (!(await ask('Record every loan payment that is past due?'))) {
       return;
     }
 
@@ -415,7 +411,7 @@ export default function Loans({
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this loan?')) {
+    if (!(await ask('Delete this loan?'))) {
       return;
     }
     
@@ -450,7 +446,7 @@ export default function Loans({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-4">
-        <h2 className="text-xl md:text-2xl font-bold">Loans</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Loans</h2>
         <div className="flex gap-2">
           <button
             onClick={handleProcessDuePayments}
@@ -476,8 +472,8 @@ export default function Loans({
 
       {/* Processing Results */}
       {processingResults && (
-        <div className={`bg-accent-soft border-accent/30 border rounded-lg p-3 text-sm`}>
-          <div className={'text-accent'}>
+        <div className="bg-accent-soft border-accent/30 border rounded-xl p-3 text-sm">
+          <div className="text-accent">
             Processed: {processingResults.processed.length} • Failed: {processingResults.failed.length} • Skipped: {processingResults.skipped.length}
           </div>
           {processingResults.processed.length > 0 && (
@@ -495,7 +491,6 @@ export default function Loans({
       {/* Add Form - Only for new loans */}
       {showAddForm && !editingItem && (
         <LoanForm
-          darkMode={darkMode}
           formData={formData}
           setFormData={setFormData}
           editingItem={editingItem}
@@ -515,9 +510,9 @@ export default function Loans({
       {/* Loans List */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {loans.length === 0 ? (
-          <div className={`text-center py-12 text-muted`}>
+          <div className="text-center py-12 text-muted">
             <TrendingUp size={48} className="mx-auto mb-3 opacity-30" />
-            <p>No Loans Added Yet</p>
+            <p>No loans added yet</p>
           </div>
         ) : (
           sortedLoans.map(loan => {
@@ -532,16 +527,15 @@ export default function Loans({
               }}
               className={`bg-surface border-line rounded-2xl border p-4 ${
                 isEditing
-                  ? 'ring-2 ring-blue-500 shadow-lg'
+                  ? 'ring-2 ring-accent/30 shadow-lg'
                   : focusTarget?.type === 'loan' && normalizeId(focusTarget.id) === normalizeId(loan.id) 
-                  ? 'ring-2 ring-offset-2 ring-blue-500' 
+                  ? 'ring-2 ring-offset-2 ring-accent/30' 
                   : ''
               } ${editingItem && !isEditing ? 'opacity-60' : ''}`}
             >
               {isEditing ? (
                 /* EDIT MODE - Inline Form */
                 <LoanForm
-                  darkMode={darkMode}
                   formData={formData}
                   setFormData={setFormData}
                   editingItem={editingItem}
@@ -572,9 +566,7 @@ export default function Loans({
                       <Star size={16} className="text-warning fill-current" title="Pinned" />
                     )}
                     {loan.connected_payment_source && loan.connected_payment_source_id && (
-                      <span className={`text-xs px-2 py-0.5 rounded ${
-                        'bg-positive/10 text-positive'
-                      }`}>
+                      <span className="text-xs px-2 py-0.5 rounded bg-positive/10 text-positive">
                         Auto-Pay
                       </span>
                     )}
@@ -588,15 +580,15 @@ export default function Loans({
                     </div>
                   )}
                   {loan.payment_amount > 0 && (
-                    <div className={`text-sm font-medium mt-1 text-accent`}>
+                    <div className="text-sm font-medium mt-1 text-accent">
                       Payment: {formatCurrency(loan.payment_amount)}
                     </div>
                   )}
                   <ThroughNote item={loan} amount={loan.payment_amount} cards={creditCards} />
                   <LineNote loan={loan} />
-                  <PayoffSummary loan={loan} darkMode={darkMode} />
+                  <PayoffSummary loan={loan} />
                   {loan.frequency && (
-                    <div className={`text-xs text-muted mt-1`}>
+                    <div className="text-xs text-muted mt-1">
                       <span>Paid {formatFrequency(loan.frequency)}</span>
                       {loan.recurring_duration_type && (
                         <span className="ml-2">
@@ -651,8 +643,8 @@ export default function Loans({
                 <div className="mb-3 text-sm pb-3 border-b border-line text-muted">Paid off</div>
               )}
               {loan.next_payment_date && Number(loan.balance) > 0 && (
-                <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b border-line`}>
-                  <span className={'text-muted'}>Next payment</span>
+                <div className="flex justify-between items-center mb-3 text-sm pb-3 border-b border-line">
+                  <span className="text-muted">Next payment</span>
                   <div className="text-right">
                     <div className="font-medium">{formatDate(loan.next_payment_date)}</div>
                     {getDaysUntil(loan.next_payment_date) !== null && (
@@ -677,7 +669,6 @@ export default function Loans({
               
               {/* Recent Transactions */}
               <RecentTransactions
-                darkMode={darkMode}
                 entityType="loan"
                 entityId={loan.id}
                 entityName={loan.name}
@@ -698,26 +689,6 @@ export default function Loans({
         )}
       </div>
 
-      {/* Payment Transaction Modal */}
-      {showPayment && paymentLoan && (
-        <AddTransaction
-          darkMode={darkMode}
-          onClose={() => {
-            setShowPayment(false);
-            setPaymentLoan(null);
-          }}
-          onUpdate={onUpdate}
-          categories={categories}
-          creditCards={creditCards}
-          loans={loans}
-          availableCash={availableCash}
-          onUpdateCash={onUpdateCash}
-          bankAccounts={bankAccounts}
-          preselectedLoan={paymentLoan}
-          preselectedType="payment"
-          preselectedAmount={(paymentLoan.payment_amount || paymentLoan.balance).toString()}
-        />
-      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { amortize, periodicRate } from '../../utils/finance';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 
 // What the next payment does and when the loan is paid off, from the balance, rate and payment.
-export default function PayoffSummary({ loan, darkMode }) {
+export default function PayoffSummary({ loan }) {
   const plan = useMemo(() => amortize(loan), [loan]);
   const muted = 'text-muted';
   if (!(Number(loan.balance) > 0) || !(Number(loan.payment_amount) > 0)) return null;
@@ -16,7 +16,7 @@ export default function PayoffSummary({ loan, darkMode }) {
   const next = plan.rows[0];
   return (
     <div className={`text-xs mt-1 space-y-0.5 ${muted}`}>
-      {loan.loan_type === 'mortgage' && <div className="font-medium text-blue-600 dark:text-blue-400">Mortgage</div>}
+      {loan.loan_type === 'mortgage' && <div className="font-medium text-accent">Mortgage</div>}
       <div>Next payment: {formatCurrency(next.interest)} interest, {formatCurrency(next.principal)} off what you owe</div>
       <div>Paid off around {formatDate(plan.payoffDate)}, {plan.rows.length} payments, {formatCurrency(plan.totalInterest)} interest still to pay</div>
     </div>

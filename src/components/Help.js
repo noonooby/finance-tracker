@@ -70,7 +70,7 @@ const SECTIONS = [
   )],
   ['accounts', 'Accounts, cash and transfers', (
     <>
-      <p>The <Link to="/bank-accounts">Accounts</Link> tab lists all your accounts in one list. Cash is one of them: tap <b>Add Account</b> and choose the kind <b>Cash</b>. It works like any other account; you pay with it, receive money into it and see it in your totals.</p>
+      <p>The <Link to="/bank-accounts">Accounts</Link> tab lists all your accounts in one list. Cash is one of them: tap <b>Add account</b> and choose the kind <b>Cash</b>. It works like any other account; you pay with it, receive money into it and see it in your totals.</p>
       <p><b>Transfer</b> moves money between two of your accounts. Taking cash out of the bank is a transfer from the bank account to Cash; putting cash in is a transfer from Cash to the bank account.</p>
       <p>A bank account can allow an overdraft up to a limit you set, with its monthly fee, fee each time it is used and interest rate, so Home can show what it costs. A purchase that would go past the limit is refused and nothing is saved. Cash and gift cards can't go below zero: a purchase with more than the cash you have is refused.</p>
       <p>If a balance is wrong, edit the account and enter the right figure. This works the same for Cash: count it and enter what you have.</p>
@@ -90,7 +90,7 @@ const SECTIONS = [
     <>
       <p>Under More, Loans. Choose the kind: loan, mortgage, line of credit, car lease, buy now pay later (Klarna, Affirm), equal payment plan, or student loan. Enter what you owe, the rate, the regular payment and how often it is due, and any setup fee.</p>
       <ul>
-        <li>Tap <b>Make Payment</b> to record a payment. A payment larger than what is left is refused. With a payment account connected, each payment is made on its due date, once.</li>
+        <li>Tap <b>Make payment</b> to record a payment. A payment larger than what is left is refused. With a payment account connected, each payment is made on its due date, once.</li>
         <li><b>Equal payment plan inside a card.</b> Choose the card the plan lives on. The plan's balance is already part of the card, so it is not counted twice; each instalment moves from the plan to the card's bill on its date.</li>
       </ul>
     </>
@@ -226,7 +226,7 @@ export default function Help() {
   return (
     <div className="space-y-4">
       <div className={card}>
-        <h1 className="text-2xl font-bold">Help</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Help</h1>
         <p className={`text-sm ${muted}`}>How the app works. Tap a topic.</p>
         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-sm">
           {SECTIONS.map(([id, title]) => <a key={id} href={`#${id}`} className="text-accent">{title}</a>)}

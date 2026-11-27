@@ -30,11 +30,6 @@ export async function getLastUsedLoanContext() {
   return await manager.getMostRecentContext();
 }
 
-export async function deleteLoanCreationContext(loanName) {
-  if (!loanName?.trim()) throw new Error('Loan name required');
-  return await manager.deleteContext(loanName.trim());
-}
-
 export function applyLoanCreationContext(context) {
   if (!context) return {};
   return contextToFormData(context, FIELD_MAPPING);

@@ -7,7 +7,6 @@ import { Pin } from 'lucide-react';
  * Pure UI component
  */
 export default function SaveFilterDialog({
-  darkMode,
   show,
   filterName,
   saveAsPin,
@@ -21,26 +20,24 @@ export default function SaveFilterDialog({
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" 
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" 
       onClick={onCancel}
     >
       <div role="dialog" aria-modal="true" aria-label="Save filter preset"
-        className={`bg-surface rounded-2xl p-6 max-w-md w-full`}
+        className="bg-surface rounded-3xl p-5 max-w-md w-full"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-xl font-bold mb-4">Save Filter Preset</h3>
+        <h3 className="text-lg font-semibold mb-4">Save filter preset</h3>
         
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Filter Name *</label>
+            <label className="block text-sm font-medium mb-1">Filter name</label>
             <input
               type="text"
               value={filterName}
               onChange={(e) => onFilterNameChange(e.target.value)}
-              placeholder="e.g., Monthly Dining Expenses"
-              className={`w-full px-3 py-2 border rounded-lg ${
-                'border-line bg-surface-2 text-fg'
-              }`}
+              placeholder="Dining this month"
+              className="field"
             />
           </div>
           
@@ -53,13 +50,13 @@ export default function SaveFilterDialog({
               className="rounded"
             />
             <label htmlFor="saveAsPin" className="text-sm flex items-center gap-1">
-              <Pin size={14} className={saveAsPin ? 'text-blue-500 fill-current' : ''} />
+              <Pin size={14} className={saveAsPin ? 'text-accent fill-current' : ''} />
               Pin to quick filters
             </label>
           </div>
           
           {saveError && (
-            <div className="p-3 bg-negative/10 text-negative rounded-lg text-sm">
+            <div className="p-3 bg-negative/10 text-negative rounded-xl text-sm">
               {saveError}
             </div>
           )}
@@ -68,17 +65,15 @@ export default function SaveFilterDialog({
         <div className="flex gap-3 mt-6">
           <button
             onClick={onCancel}
-            className={`flex-1 px-4 py-2 rounded-lg ${
-              'bg-surface-2 hover:bg-line/60'
-            }`}
+            className="flex-1 px-4 py-2 rounded-xl bg-surface-2 hover:bg-line/60"
           >
             Cancel
           </button>
           <button
             onClick={onSave}
-            className="flex-1 px-4 py-2 press bg-accent text-accent-contrast rounded-lg hover:opacity-90"
+            className="flex-1 px-4 py-2 press bg-accent text-accent-contrast rounded-xl hover:opacity-90"
           >
-            Save Filter
+            Save filter
           </button>
         </div>
       </div>

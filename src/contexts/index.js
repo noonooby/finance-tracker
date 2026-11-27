@@ -1,5 +1,5 @@
 // Context exports for clean imports
-export { AuthContext, AuthProvider } from './AuthContext';
-export { FinanceDataContext, FinanceDataProvider } from './FinanceDataContext';
-export { ThemeContext, ThemeProvider } from './ThemeContext';
-export { UIContext, UIProvider } from './UIContext';
+export { AuthProvider } from './AuthContext';
+export { FinanceDataProvider } from './FinanceDataContext';
+export { ThemeProvider } from './ThemeContext';
+export { UIProvider } from './UIContext';

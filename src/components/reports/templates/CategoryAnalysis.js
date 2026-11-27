@@ -17,7 +17,6 @@ import {
 import { parseDay, formatDate } from '../../../utils/helpers';
 
 export default function CategoryAnalysis({ 
-  darkMode, 
   transactions, 
   categories,
   onExportExcel,
@@ -70,7 +69,7 @@ export default function CategoryAnalysis({
 
   const handleExportExcel = () => {
     const reportData = {
-      name: 'Category Analysis',
+      name: 'Category analysis',
       filters,
       summary,
       transactions: filteredData,
@@ -82,7 +81,7 @@ export default function CategoryAnalysis({
 
   const handleExportCSV = () => {
     const reportData = {
-      name: 'Category Analysis',
+      name: 'Category analysis',
       filters,
       summary,
       transactions: filteredData,
@@ -103,34 +102,34 @@ export default function CategoryAnalysis({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">Category Analysis</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Category analysis</h2>
           <p className="text-sm text-muted">
             {formatDate(filters.startDate)} - {formatDate(filters.endDate)}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-4 py-2 rounded-xl font-medium transition-colors ${
               showFilters
                 ? 'bg-accent text-accent-contrast'
                 : 'bg-surface-2 hover:bg-line/60'
             }`}
           >
-            {showFilters ? 'Hide' : 'Show'} Filters
+            {showFilters ? 'Hide filters' : 'Filters'}
           </button>
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg font-medium hover:opacity-90 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-xl font-medium hover:opacity-90 transition-colors"
           >
             <FileSpreadsheet size={18} />
-            Export Excel
+            Export to Excel
           </button>
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-xl font-medium hover:opacity-90 transition-colors"
           >
             <Download size={18} />
             Export CSV
@@ -141,7 +140,6 @@ export default function CategoryAnalysis({
       {/* Filter Panel */}
       {showFilters && (
         <FilterPanel
-          darkMode={darkMode}
           filters={filters}
           onFiltersChange={setFilters}
           categories={categories}
@@ -151,46 +149,42 @@ export default function CategoryAnalysis({
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
-          title="Total Spending"
+          title="Total spending"
           value={summary.totalExpenses}
           subtitle={`${filteredData.filter(t => t.type === 'expense').length} transactions`}
           icon={TrendingDown}
           color="red"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Categories Used"
+          title="Categories used"
           value={`${categoryData.length} ${categoryData.length === 1 ? 'category' : 'categories'}`}
           subtitle={`Out of ${categories.filter(c => !c.is_income).length} total`}
           icon={TrendingDown}
           color="blue"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Average per Category"
+          title="Average per category"
           value={categoryData.length > 0 ? summary.totalExpenses / categoryData.length : 0}
           subtitle="Per active category"
           icon={TrendingDown}
           color="purple"
-          darkMode={darkMode}
         />
         <SummaryCard
-          title="Largest Category"
+          title="Largest category"
           value={categoryData.length > 0 ? categoryData[0].total : 0}
           subtitle={categoryData.length > 0 ? categoryData[0].name : 'N/A'}
           icon={TrendingDown}
           color="orange"
-          darkMode={darkMode}
         />
       </div>
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Category Pie Chart */}
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h3 className="text-lg font-semibold mb-4">Category Distribution</h3>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-4">Category distribution</h3>
           {categoryData.length > 0 ? (
-            <CategoryPieChart data={categoryData} darkMode={darkMode} />
+            <CategoryPieChart data={categoryData} />
           ) : (
             <div className="flex items-center justify-center h-64 text-muted">
               No category data to display
@@ -199,7 +193,7 @@ export default function CategoryAnalysis({
         </div>
 
         {/* Top 5 Categories Bar Chart */}
-        <div className={`bg-surface rounded-2xl p-6`}>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
           <h3 className="text-lg font-semibold mb-4">Top 5 Categories</h3>
           {categoryData.length > 0 ? (
             <ComparisonBarChart
@@ -207,7 +201,6 @@ export default function CategoryAnalysis({
                 name: cat.name,
                 amount: cat.total
               }))}
-              darkMode={darkMode}
               dataKeys={[
                 { key: 'amount', name: 'Spent', color: '#EF4444' }
               ]}
@@ -221,29 +214,26 @@ export default function CategoryAnalysis({
       </div>
 
       {/* Spending Trend by Category */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">Spending Trend</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">Spending trend</h3>
         <TrendLineChart
           data={trendData}
-          darkMode={darkMode}
           dataKeys={[
-            { key: 'expenses', name: 'Total Expenses', color: '#EF4444' }
+            { key: 'expenses', name: 'Total expenses', color: '#EF4444' }
           ]}
         />
       </div>
 
       {/* Detailed Category Breakdown with Transactions */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">Detailed Category Breakdown</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">Detailed category breakdown</h3>
         <div className="space-y-4">
           {categoryData.map((cat, index) => (
-            <div key={cat.id} className={`border border-line rounded-lg overflow-hidden`}>
+            <div key={cat.id} className="border border-line rounded-xl overflow-hidden">
               {/* Category Header */}
               <div
                 onClick={() => toggleCategoryExpand(cat.id)}
-                className={`flex items-center justify-between p-4 cursor-pointer ${
-                  'hover:bg-surface-2'
-                }`}
+                className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-2"
               >
                 <div className="flex items-center gap-3 flex-1">
                   {(() => {
@@ -275,14 +265,14 @@ export default function CategoryAnalysis({
 
               {/* Category Transactions */}
               {expandedCategories[cat.id] && (
-                <div className={`border-t border-line bg-surface-2 p-4`}>
+                <div className="border-t border-line bg-surface-2 p-4">
                   <div className="overflow-x-auto">
                               <table className="w-full text-sm">
                       <thead>
-                        <tr className={`border-b border-line`}>
+                        <tr className="border-b border-line">
                           <th className="text-left py-2 px-3">Date</th>
                           <th className="text-left py-2 px-3">Description</th>
-                          <th className="text-left py-2 px-3">Payment Method</th>
+                          <th className="text-left py-2 px-3">Payment method</th>
                           <th className="text-right py-2 px-3">Amount</th>
                         </tr>
                       </thead>
@@ -292,7 +282,7 @@ export default function CategoryAnalysis({
                           .map((transaction, idx) => (
                             <tr
                               key={transaction.id}
-                              className={`border-b border-line`}
+                              className="border-b border-line"
                             >
                               <td className="py-2 px-3 whitespace-nowrap">
                                 {formatDate(transaction.date)}
@@ -313,7 +303,7 @@ export default function CategoryAnalysis({
                           ))}
                       </tbody>
                       <tfoot>
-                        <tr className={`border-t-2 border-line font-bold`}>
+                        <tr className="border-t-2 border-line font-bold">
                           <td colSpan="3" className="py-2 px-3">Subtotal</td>
                           <td className="py-2 px-3 text-right">{formatCurrency(cat.total)}</td>
                         </tr>
@@ -328,12 +318,12 @@ export default function CategoryAnalysis({
       </div>
 
       {/* Category Comparison Table */}
-      <div className={`bg-surface rounded-2xl p-6`}>
-        <h3 className="text-lg font-semibold mb-4">Category Comparison</h3>
+      <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+        <h3 className="text-lg font-semibold mb-4">Category comparison</h3>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className={`border-b border-line`}>
+              <tr className="border-b border-line">
                 <th className="text-left py-3 px-4">Rank</th>
                 <th className="text-left py-3 px-4">Category</th>
                 <th className="text-right py-3 px-4">Transactions</th>
@@ -344,7 +334,7 @@ export default function CategoryAnalysis({
             </thead>
             <tbody>
               {categoryData.map((cat, index) => (
-                <tr key={cat.id} className={`border-b border-line`}>
+                <tr key={cat.id} className="border-b border-line">
                   <td className="py-3 px-4 font-semibold">#{index + 1}</td>
                   <td className="py-3 px-4 flex items-center gap-2">
                     {(() => {
@@ -358,7 +348,7 @@ export default function CategoryAnalysis({
                   <td className="text-right py-3 px-4 font-semibold">{formatCurrency(cat.total)}</td>
                   <td className="text-right py-3 px-4">{formatCurrency(cat.total / cat.count)}</td>
                   <td className="text-right py-3 px-4">
-                    <span className="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded text-sm font-medium">
+                    <span className="inline-block px-2 py-1 bg-accent-soft text-accent rounded text-sm font-medium">
                       {((cat.total / summary.totalExpenses) * 100).toFixed(1)}%
                     </span>
                   </td>
@@ -366,7 +356,7 @@ export default function CategoryAnalysis({
               ))}
             </tbody>
             <tfoot>
-              <tr className={`border-t-2 border-line font-bold`}>
+              <tr className="border-t-2 border-line font-bold">
                 <td colSpan="2" className="py-3 px-4">Total</td>
                 <td className="text-right py-3 px-4">{categoryData.reduce((sum, cat) => sum + cat.count, 0)}</td>
                 <td className="text-right py-3 px-4">{formatCurrency(summary.totalExpenses)}</td>

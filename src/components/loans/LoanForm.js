@@ -4,7 +4,6 @@ import ActionButton from '../shared/ActionButton';
 import { localDate } from '../../utils/helpers';
 
 export default function LoanForm({
-  darkMode,
   formData,
   setFormData,
   editingItem,
@@ -24,7 +23,7 @@ export default function LoanForm({
   // Get all available payment sources for auto-payment connection
   const getAvailablePaymentSources = () => {
     const sources = [
-      { value: '', label: 'None (Manual Payment)' }
+      { value: '', label: 'None, I pay it myself' }
     ];
 
     // Add accounts (cash is one of them)
@@ -32,7 +31,7 @@ export default function LoanForm({
       bankAccounts.forEach(account => {
         sources.push({
           value: `bank_account:${account.id}`,
-          label: `Account: ${account.name}${account.is_primary ? ' (Primary)' : ''}`
+          label: `Account: ${account.name}${account.is_primary ? ' (main)' : ''}`
         });
       });
     }
@@ -74,13 +73,13 @@ export default function LoanForm({
   };
 
   return (
-    <div className={`bg-surface border-line rounded-2xl border p-4 space-y-3`}>
+    <div className="bg-surface border-line rounded-2xl border p-4 space-y-3">
       
       {/* Recent Loan Templates */}
       {recentLoanNames.length > 0 && !editingItem && (
         <div>
-          <label className={`block text-sm font-medium mb-2 text-fg`}>
-            Recent Loans
+          <label className="block text-sm font-medium mb-2 text-fg">
+            Recent loans
           </label>
           <div className="flex gap-2 flex-wrap">
             {recentLoanNames.map(loanTemplate => (
@@ -88,7 +87,7 @@ export default function LoanForm({
                 key={loanTemplate.loan_name}
                 type="button"
                 onClick={() => handleSelectLoanName(loanTemplate)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-colors ${
                   formData.name === loanTemplate.loan_name
                     ? 'bg-accent text-accent-contrast'
                     : 'bg-accent-soft text-accent hover:bg-accent-soft border border-accent/30'
@@ -104,8 +103,8 @@ export default function LoanForm({
       
       {/* Loan Name */}
       <div>
-        <label className={`block text-sm font-medium mb-2 text-fg`}>
-          {recentLoanNames.length > 0 ? 'Or Type New Loan Name *' : 'Loan Name *'}
+        <label className="block text-sm font-medium mb-2 text-fg">
+          {recentLoanNames.length > 0 ? 'Or type a new name' : 'Name'}
         </label>
         <input
           ref={loanNameInputRef}
@@ -113,8 +112,8 @@ export default function LoanForm({
           value={formData.name}
           onChange={(e) => handleLoanNameChange(e.target.value)}
           onBlur={handleLoanNameBlur}
-          placeholder="e.g., Car Loan, Student Loan"
-          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+          placeholder="Car loan"
+          className="field"
           required
           autoFocus={!editingItem && recentLoanNames.length === 0}
         />
@@ -123,32 +122,32 @@ export default function LoanForm({
       {/* Principal */}
       <input
         type="number"
-        placeholder="Principal *"
+        placeholder="Principal"
         value={formData.principal}
         onChange={(e) => setFormData({ ...formData, principal: e.target.value })}
-        className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+        className="field"
       />
 
       {/* Current Balance */}
       <input
         type="number"
-        placeholder="Current Balance *"
+        placeholder="Current balance"
         value={formData.balance}
         onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
-        className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+        className="field"
       />
 
       {/* Interest Rate */}
       <input
         type="number"
-        placeholder="Interest Rate %"
+        placeholder="Interest rate %"
         value={formData.interestRate}
         onChange={(e) => setFormData({ ...formData, interestRate: e.target.value })}
-        className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+        className="field"
       />
 
       {/* Paid by card through a service that charges a fee */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-3 items-end">
         <input
           type="text"
           maxLength={40}
@@ -156,7 +155,7 @@ export default function LoanForm({
           aria-label="Service the payment goes through"
           value={formData.paidThrough || ''}
           onChange={(e) => setFormData({ ...formData, paidThrough: e.target.value })}
-          className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+          className="field"
         />
         <input
           type="number"
@@ -168,23 +167,23 @@ export default function LoanForm({
           aria-label="Fee the service charges, in percent"
           value={formData.feePercent || ''}
           onChange={(e) => setFormData({ ...formData, feePercent: e.target.value })}
-          className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+          className="field"
         />
       </div>
 
       {/* Payment Amount */}
       <input
         type="number"
-        placeholder="Payment Amount *"
+        placeholder="Payment amount"
         value={formData.paymentAmount}
         onChange={(e) => setFormData({ ...formData, paymentAmount: e.target.value })}
-        className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+        className="field"
       />
 
-      <div className="grid grid-cols-2 gap-2">
-        <label className={`block text-sm text-muted`}>
+      <div className="grid grid-cols-2 gap-3 items-end">
+        <label className="block text-sm text-muted">
           Kind
-          <select value={formData.loanType || 'loan'} onChange={(e) => setFormData({ ...formData, loanType: e.target.value })} className={`mt-1 w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}>
+          <select value={formData.loanType || 'loan'} onChange={(e) => setFormData({ ...formData, loanType: e.target.value })} className="mt-1 field">
             <option value="loan">Loan</option>
             <option value="mortgage">Mortgage</option>
             <option value="line_of_credit">Line of credit</option>
@@ -194,9 +193,9 @@ export default function LoanForm({
             <option value="student">Student loan</option>
           </select>
         </label>
-        <label className={`block text-sm text-muted`}>
+        <label className="block text-sm text-muted">
           Interest added
-          <select value={formData.compounding || ''} onChange={(e) => setFormData({ ...formData, compounding: e.target.value })} className={`mt-1 w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}>
+          <select value={formData.compounding || ''} onChange={(e) => setFormData({ ...formData, compounding: e.target.value })} className="mt-1 field">
             <option value="">{formData.loanType === 'mortgage' ? 'Twice a year (usual for mortgages)' : 'Monthly (usual)'}</option>
             <option value="monthly">Monthly</option>
             <option value="semiannual">Twice a year</option>
@@ -205,14 +204,14 @@ export default function LoanForm({
           </select>
         </label>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <label className={`block text-sm text-muted`}>
+      <div className="grid grid-cols-2 gap-3 items-end">
+        <label className="block text-sm text-muted">
           Lender or provider
-          <input value={formData.provider || ''} onChange={(e) => setFormData({ ...formData, provider: e.target.value })} placeholder="e.g. Affirm, TD" className={`mt-1 w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`} />
+          <input value={formData.provider || ''} onChange={(e) => setFormData({ ...formData, provider: e.target.value })} placeholder="Affirm, TD" className="mt-1 field" />
         </label>
-        <label className={`block text-sm text-muted`}>
+        <label className="block text-sm text-muted">
           Setup fee
-          <input type="number" step="0.01" inputMode="decimal" value={formData.setupFee || ''} onChange={(e) => setFormData({ ...formData, setupFee: e.target.value })} placeholder="0.00" className={`mt-1 w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`} />
+          <input type="number" step="0.01" inputMode="decimal" value={formData.setupFee || ''} onChange={(e) => setFormData({ ...formData, setupFee: e.target.value })} placeholder="0.00" className="mt-1 field" />
         </label>
       </div>
       {formData.provider && (
@@ -221,26 +220,26 @@ export default function LoanForm({
           setupFee: formData.setupFee || (r.setup_fee != null ? String(r.setup_fee) : '') })} />
       )}
       {(formData.loanType === 'plan' || formData.loanType === 'bnpl') && (
-        <label className={`block text-sm text-muted`}>
+        <label className="block text-sm text-muted">
           Where it lives
-          <select value={formData.onCardId || ''} onChange={(e) => setFormData({ ...formData, onCardId: e.target.value })} className={`mt-1 w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}>
+          <select value={formData.onCardId || ''} onChange={(e) => setFormData({ ...formData, onCardId: e.target.value })} className="mt-1 field">
             <option value="">On its own (paid separately)</option>
             {creditCards.filter((c) => !c.is_gift_card).map((c) => <option key={c.id} value={c.id}>Inside {c.name} (billed on the card)</option>)}
           </select>
-          <span className={`block text-xs mt-1 text-muted`}>A plan inside a card is part of the card's balance. Each installment is billed on the card, so no separate payment is made.</span>
+          <span className="block text-xs mt-1 text-muted">A plan inside a card is part of the card's balance. Each installment is billed on the card, so no separate payment is made.</span>
         </label>
       )}
-      <p className={`text-xs text-muted`}>With a rate set, each payment is split into interest and the part that lowers what you owe.</p>
+      <p className="text-xs text-muted">With a rate set, each payment is split into interest and the part that lowers what you owe.</p>
 
       {/* Payment Frequency */}
       <div>
-        <label className={`block text-sm mb-1 text-muted`}>
-          Payment Frequency *
+        <label className="block text-sm mb-1 text-muted">
+          Payment frequency
         </label>
         <select
           value={formData.frequency}
           onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
-          className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+          className="field"
         >
           <option value="weekly">Weekly</option>
           <option value="biweekly">Every 2 weeks</option>
@@ -251,14 +250,14 @@ export default function LoanForm({
       </div>
 
       {/* NEW: Connected Payment Source */}
-      <div className={`p-3 rounded-lg bg-accent-soft`}>
-        <label className={`block text-sm font-medium mb-2 text-fg`}>
-          Auto-Payment Source (Optional)
+      <div className="p-3 rounded-xl bg-accent-soft">
+        <label className="block text-sm font-medium mb-2 text-fg">
+          Pay it automatically from (optional)
         </label>
         <select
           value={getCurrentPaymentSourceValue()}
           onChange={(e) => handlePaymentSourceChange(e.target.value)}
-          className={`w-full px-3 py-2 border bg-surface border-line text-fg rounded-2xl`}
+          className="field"
         >
           {getAvailablePaymentSources().map(source => (
             <option key={source.value} value={source.value}>
@@ -266,15 +265,15 @@ export default function LoanForm({
             </option>
           ))}
         </select>
-        <p className={`text-xs mt-1 text-muted`}>
+        <p className="text-xs mt-1 text-muted">
           This source will be used when processing overdue payments automatically
         </p>
       </div>
 
       {/* Recurring Duration */}
       <div>
-        <label className={`block text-sm mb-1 text-muted`}>
-          Recurring Duration
+        <label className="block text-sm mb-1 text-muted">
+          Recurring duration
         </label>
         <select
           value={formData.recurringDurationType}
@@ -286,25 +285,25 @@ export default function LoanForm({
               recurringOccurrences: ''
             })
           }
-          className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+          className="field"
         >
-          <option value="indefinite">Indefinite (Until Balance Cleared)</option>
-          <option value="until_date">Until Specific Date</option>
-          <option value="occurrences">For Specific Number of Payments</option>
+          <option value="indefinite">Until it is paid off</option>
+          <option value="until_date">Until specific date</option>
+          <option value="occurrences">For specific number of payments</option>
         </select>
       </div>
 
       {/* End Date (conditional) */}
       {formData.recurringDurationType === 'until_date' && (
         <div>
-          <label className={`block text-sm mb-1 text-muted`}>
-            End Date *
+          <label className="block text-sm mb-1 text-muted">
+            End date
           </label>
           <input
             type="date"
             value={formData.recurringUntilDate}
             onChange={(e) => setFormData({ ...formData, recurringUntilDate: e.target.value })}
-            className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+            className="field"
             min={localDate()}
           />
         </div>
@@ -313,19 +312,19 @@ export default function LoanForm({
       {/* Number of Payments (conditional) */}
       {formData.recurringDurationType === 'occurrences' && (
         <div>
-          <label className={`block text-sm mb-1 text-muted`}>
-            Number of Payments *
+          <label className="block text-sm mb-1 text-muted">
+            Number of payments
           </label>
           <input
             type="number"
             min="1"
-            placeholder="e.g., 24 payments"
+            placeholder="24 payments"
             value={formData.recurringOccurrences}
             onChange={(e) => setFormData({ ...formData, recurringOccurrences: e.target.value })}
-            className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+            className="field"
           />
           {editingItem && editingItem.recurring_occurrences_completed > 0 && (
-            <p className={`text-xs mt-1 text-muted`}>
+            <p className="text-xs mt-1 text-muted">
               Completed: {editingItem.recurring_occurrences_completed} of {editingItem.recurring_occurrences_total || formData.recurringOccurrences || '?'}
             </p>
           )}
@@ -334,14 +333,14 @@ export default function LoanForm({
 
       {/* Next Payment Date */}
       <div>
-        <label className={`block text-sm mb-1 text-muted`}>
-          Next Payment Date *
+        <label className="block text-sm mb-1 text-muted">
+          Next payment date
         </label>
         <input
           type="date"
           value={formData.nextPaymentDate}
           onChange={(e) => setFormData({ ...formData, nextPaymentDate: e.target.value })}
-          className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+          className="field"
         />
       </div>
 
@@ -351,8 +350,8 @@ export default function LoanForm({
           onClick={handleAdd}
           processing={isProcessing}
           variant="primary"
-          processingText={editingItem ? 'Updating Loan...' : 'Adding Loan...'}
-          idleText={editingItem ? 'Update Loan' : 'Add Loan'}
+          processingText="Saving..."
+          idleText={editingItem ? 'Save' : 'Add loan'}
           fullWidth
         />
         <ActionButton

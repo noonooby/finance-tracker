@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { ask } from '../utils/confirm';
 import { Target } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
 import { server } from '../utils/server';
@@ -69,7 +70,7 @@ export default function Goals() {
     load();
   };
   const remove = async (g) => {
-    if (!window.confirm(`Remove the goal ${g.name}? No money is moved.`)) return;
+    if (!(await ask(`Remove the goal ${g.name}? No money is moved.`))) return;
     const { error } = await server.from('goals').delete().eq('id', g.id);
     if (error) return showToast.error(error.message);
     setEditing(null);

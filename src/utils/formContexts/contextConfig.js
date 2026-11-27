@@ -106,6 +106,3 @@ export const CONTEXT_CONFIGS = {
   }
 };
 
-export function getContextConfig(type) {
-  return CONTEXT_CONFIGS[type];
-}

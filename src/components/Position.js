@@ -35,12 +35,12 @@ function Sparkline({ data }) {
   const pts = data.map((d, i) => `${(i / (data.length - 1)) * 300},${60 - ((d.net - min) / span) * 56 - 2}`).join(' ');
   return (
     <svg viewBox="0 0 300 60" className="w-full h-16" role="img" aria-label={`Net worth from ${formatCurrency(xs[0])} to ${formatCurrency(xs[xs.length - 1])}`}>
-      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-600 dark:text-blue-400" />
+      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="2" className="text-accent" />
     </svg>
   );
 }
 
-export default function Position({ darkMode }) {
+export default function Position() {
   const d = useFinanceData();
   const [points, setPoints] = useState([]);
   useEffect(() => {
@@ -63,14 +63,14 @@ export default function Position({ darkMode }) {
       </div>
       <div className="text-right">
         <div className="font-semibold tabular-nums">{formatCurrency(x.value)}</div>
-        <UpdateValue line={x} signed={storedValue(x, d)} accounts={accounts} onDone={d.loadAllData} darkMode={darkMode} />
+        <UpdateValue line={x} signed={storedValue(x, d)} accounts={accounts} onDone={d.loadAllData} />
       </div>
     </li>
   );
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Where you stand</h1>
+      <h1 className="text-2xl font-bold tracking-tight">Where you stand</h1>
       <section className={card}>
         <div className={`text-sm ${muted}`}>Net worth today</div>
         <div className={`text-3xl font-bold tabular-nums ${p.netWorth < 0 ? 'text-negative' : ''}`}>{formatCurrency(p.netWorth)}</div>
@@ -81,7 +81,7 @@ export default function Position({ darkMode }) {
         </div>
       </section>
 
-      <Checks darkMode={darkMode} data={d} onDone={d.loadAllData} />
+      <Checks data={d} onDone={d.loadAllData} />
 
       <section className={card}>
         <h2 className="font-semibold">To the end of the month ({formatDate(m.end)})</h2>
@@ -95,13 +95,13 @@ export default function Position({ darkMode }) {
 
       <section className={card}>
         <h2 className="font-semibold">What you have</h2>
-        <ul className={`divide-y divide-line`}>{p.have.map((x) => <Line key={x.kind + x.id} x={x} />)}</ul>
-        <Link to="/investments" className="text-sm font-medium text-blue-600 dark:text-blue-400">Add an investment or property</Link>
+        <ul className="divide-y divide-line">{p.have.map((x) => <Line key={x.kind + x.id} x={x} />)}</ul>
+        <Link to="/investments" className="text-sm font-medium text-accent">Add an investment or property</Link>
       </section>
 
       <section className={card}>
         <h2 className="font-semibold">What you owe</h2>
-        {p.owe.length ? <ul className={`divide-y divide-line`}>{p.owe.map((x) => <Line key={x.kind + x.id} x={x} />)}</ul> : <p className={`text-sm ${muted}`}>Nothing owed.</p>}
+        {p.owe.length ? <ul className="divide-y divide-line">{p.owe.map((x) => <Line key={x.kind + x.id} x={x} />)}</ul> : <p className={`text-sm ${muted}`}>Nothing owed.</p>}
         {p.mortgage > 0 && <p className={`text-sm mt-2 ${muted}`}>Debt without the mortgage: {formatCurrency(p.debtExcludingMortgage)}</p>}
       </section>
       <p className={`text-xs ${muted}`}>See <Link to="/help#position" className="underline">Help</Link> for how this is worked out.</p>

@@ -2,7 +2,7 @@ import { server, api } from './server';
 import { loadPrefs, savePrefs } from './prefs';
 import { logActivity } from './activityLogger';
 import { localDate } from './helpers';
-import { recordTransfer, recordAdjustment } from './money';
+import { recordTransfer } from './money';
 
 const TABLE_MAP = {
   creditCards: 'credit_cards',
@@ -243,10 +243,6 @@ export const dbOperation = async (storeName, operation, data = null, logOptions 
   }
 };
 
-export const initDB = async () => {
-  return Promise.resolve();
-};
-
 // Deletes everything recorded for this account in one server step. The sign-in stays.
 export const deleteAllUserData = () => api('/api/reset', { confirm: 'DELETE ALL MY DATA' });
 
@@ -270,7 +266,7 @@ export async function getAllBankAccounts() {
   }
 }
 
-export async function getBankAccount(accountId) {
+async function getBankAccount(accountId) {
   try {
     const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
@@ -287,26 +283,6 @@ export async function getBankAccount(accountId) {
   } catch (error) {
     console.error('Error fetching bank account:', error);
     throw error;
-  }
-}
-
-export async function getPrimaryBankAccount() {
-  try {
-    const { data: { user } } = await server.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const { data, error } = await server
-      .from('bank_accounts')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_primary', true)
-      .maybeSingle();
-
-    if (error) throw error;
-    return data || null;
-  } catch (error) {
-    console.error('Error fetching primary bank account:', error);
-    return null;
   }
 }
 
@@ -366,29 +342,7 @@ export async function deleteBankAccount(accountId) {
   }
 }
 
-// The user states what an account really holds: recorded as a 'Balance correction' so it can be undone.
-export async function updateBankAccountBalance(accountId, newBalance) {
-  const account = await getBankAccount(accountId);
-  if (!account) throw new Error('That bank account no longer exists.');
-  const bankAccounts = await getAllBankAccounts();
-  await recordAdjustment({ target: `bank_account:${accountId}`, newBalance, current: account.balance, date: localDate() }, { bankAccounts });
-  return getBankAccount(accountId);
-}
-
-export async function getTotalBankBalance() {
-  try {
-    const accounts = await getAllBankAccounts();
-    const total = accounts.reduce((sum, account) => {
-      return sum + (parseFloat(account.balance) || 0);
-    }, 0);
-    return total;
-  } catch (error) {
-    console.error('Error calculating total bank balance:', error);
-    return 0;
-  }
-}
-
-export async function transferBetweenAccounts(fromAccountId, toAccountId, amount, description = 'Account Transfer', transferDate = null) {
+export async function transferBetweenAccounts(fromAccountId, toAccountId, amount, description = 'Account transfer', transferDate = null) {
   const bankAccounts = await getAllBankAccounts();
   const fromAccount = bankAccounts.find((a) => String(a.id) === String(fromAccountId));
   const toAccount = bankAccounts.find((a) => String(a.id) === String(toAccountId));
@@ -413,7 +367,6 @@ export async function transferBetweenAccounts(fromAccountId, toAccountId, amount
     description
   };
 }
-
 
 export async function getCardTransactions(cardId, limit = 5) {
   try {

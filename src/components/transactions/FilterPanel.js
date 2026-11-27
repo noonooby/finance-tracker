@@ -7,7 +7,6 @@ import { Search, SlidersHorizontal } from 'lucide-react';
  * All logic handled by parent component
  */
 export default function FilterPanel({
-  darkMode,
   filters,
   onFiltersChange,
   categories,
@@ -42,7 +41,7 @@ export default function FilterPanel({
         <select
           value={filters.type}
           onChange={(e) => onFiltersChange({ ...filters, type: e.target.value })}
-          className="min-w-0 w-full px-3 py-2 border border-line bg-surface-2 text-fg text-sm"
+          className="min-w-0 field"
         >
           <option value="all">Any kind</option>
           <option value="expense">Expenses</option>
@@ -54,7 +53,7 @@ export default function FilterPanel({
         <select
           value={filters.category}
           onChange={(e) => onFiltersChange({ ...filters, category: e.target.value })}
-          className="min-w-0 w-full px-3 py-2 border border-line bg-surface-2 text-fg text-sm"
+          className="min-w-0 field"
         >
           <option value="all">Any category</option>
           {categories.map(cat => (
@@ -66,11 +65,11 @@ export default function FilterPanel({
         <select
           value={filters.paymentMethod}
           onChange={(e) => onFiltersChange({ ...filters, paymentMethod: e.target.value })}
-          className="min-w-0 w-full px-3 py-2 border border-line bg-surface-2 text-fg text-sm"
+          className="min-w-0 field"
         >
           <option value="all">Paid any way</option>
           <option value="bank_account">Account (cash included)</option>
-          <option value="credit_card">Credit Card</option>
+          <option value="credit_card">Credit card</option>
           <option value="loan">Loan</option>
           <option value="transfer">Transfer</option>
         </select>
@@ -79,11 +78,11 @@ export default function FilterPanel({
         <select
           value={filters.creditCard}
           onChange={(e) => onFiltersChange({ ...filters, creditCard: e.target.value })}
-          className="min-w-0 w-full px-3 py-2 border border-line bg-surface-2 text-fg text-sm"
+          className="min-w-0 field"
         >
           <option value="all">Any card</option>
           {creditCards && creditCards.filter(c => !c.is_gift_card).length > 0 && (
-            <optgroup label="Credit Cards">
+            <optgroup label="Credit cards">
               {creditCards.filter(c => !c.is_gift_card).map(card => (
                 <option key={card.id} value={card.id}>
                   {card.name}
@@ -92,7 +91,7 @@ export default function FilterPanel({
             </optgroup>
           )}
           {creditCards && creditCards.filter(c => c.is_gift_card).length > 0 && (
-            <optgroup label="Gift Cards">
+            <optgroup label="Gift cards">
               {creditCards.filter(c => c.is_gift_card).map(card => (
                 <option key={card.id} value={card.id}>
                   {card.name}
@@ -106,7 +105,7 @@ export default function FilterPanel({
         <select
           value={filters.loan}
           onChange={(e) => onFiltersChange({ ...filters, loan: e.target.value })}
-          className="min-w-0 w-full px-3 py-2 border border-line bg-surface-2 text-fg text-sm"
+          className="min-w-0 field"
         >
           <option value="all">Any loan</option>
           {loans && loans.map(loan => (
@@ -120,7 +119,7 @@ export default function FilterPanel({
         <select
           value={filters.bankAccount}
           onChange={(e) => onFiltersChange({ ...filters, bankAccount: e.target.value })}
-          className="min-w-0 w-full px-3 py-2 border border-line bg-surface-2 text-fg text-sm"
+          className="min-w-0 field"
         >
           <option value="all">Any account</option>
           {bankAccounts && bankAccounts.map(account => (
@@ -135,7 +134,7 @@ export default function FilterPanel({
           type="date"
           value={filters.dateFrom}
           onChange={(e) => onFiltersChange({ ...filters, dateFrom: e.target.value })}
-          className="min-w-0 w-full px-3 py-2 border border-line bg-surface-2 text-fg text-sm"
+          className="min-w-0 field"
           aria-label="From day"
         />
 
@@ -144,7 +143,7 @@ export default function FilterPanel({
           type="date"
           value={filters.dateTo}
           onChange={(e) => onFiltersChange({ ...filters, dateTo: e.target.value })}
-          className="min-w-0 w-full px-3 py-2 border border-line bg-surface-2 text-fg text-sm"
+          className="min-w-0 field"
           aria-label="To day"
         />
       </div>

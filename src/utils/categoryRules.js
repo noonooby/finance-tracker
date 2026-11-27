@@ -9,7 +9,7 @@ export const mkey = (m) => String(m || '').toLowerCase().replace(/^(sq|sp|tst|kl
 
 // The rule for a description: the same merchant key, else the longest rule key that starts the description's key
 // (so "Tim Hortons #123" finds the rule learned from "Tim Hortons"). -> rule or null
-export function findRule(rules, description) {
+function findRule(rules, description) {
   const k = mkey(description);
   if (k.length < 3 || !rules || !rules.length) return null;
   const exact = rules.find((r) => r.key === k);

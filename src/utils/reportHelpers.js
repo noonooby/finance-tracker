@@ -345,33 +345,3 @@ export const axisMoney = (value) => {
   return `${sign}$${k < 10 && Math.round(k * 10) % 10 ? k.toFixed(1) : Math.round(k)}k`;
 };
 
-/**
- * Calculate top spending categories (limit to top N)
- */
-export const getTopCategories = (transactions, categories, limit = 10) => {
-  const grouped = groupByCategory(transactions, categories);
-  return grouped.slice(0, limit);
-};
-
-/**
- * Get chart colors for categories
- */
-export const getCategoryColors = (categories) => {
-  const defaultColors = [
-    '#3B82F6', // Blue
-    '#10B981', // Green
-    '#F59E0B', // Amber
-    '#EF4444', // Red
-    '#8B5CF6', // Purple
-    '#EC4899', // Pink
-    '#14B8A6', // Teal
-    '#F97316', // Orange
-    '#06B6D4', // Cyan
-    '#84CC16', // Lime
-  ];
-
-  return categories.map((cat, index) => ({
-    id: cat.id,
-    color: cat.color || defaultColors[index % defaultColors.length]
-  }));
-};

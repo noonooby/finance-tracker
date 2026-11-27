@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { ask } from '../../utils/confirm';
 import { useFinanceData } from '../../hooks/useFinanceData';
 import { spentByCategory, monthRange, monthOf, prevMonth } from '../../utils/spending';
 import { Target, X, Lightbulb } from 'lucide-react';
@@ -8,7 +9,6 @@ import { showToast } from '../../utils/toast';
 import SettingsSection, { inputClass, boxClass } from './SettingsSection';
 
 export default function CategoryBudgetsSection({
-  darkMode,
   expanded,
   onToggle,
   expenseCategories,
@@ -40,20 +40,20 @@ export default function CategoryBudgetsSection({
   };
 
   const handleRemove = async (categoryId) => {
-    if (!window.confirm('Remove budget for this category?')) return;
+    if (!(await ask('Remove budget for this category?'))) return;
     setSaving(true);
     await removeCategoryBudget(categoryId);
     setSaving(false);
   };
 
   return (
-    <SettingsSection title="Category budgets" icon={Target} expanded={expanded} onToggle={onToggle} darkMode={darkMode}>
-      <p className={`text-sm text-muted`}>
+    <SettingsSection title="Category budgets" icon={Target} expanded={expanded} onToggle={onToggle}>
+      <p className="text-sm text-muted">
         Set a monthly spending limit for each expense category.
       </p>
 
       {expenseCategories.length === 0 ? (
-        <div className={`text-center py-8 text-muted`}>
+        <div className="text-center py-8 text-muted">
           <Target size={48} className="mx-auto mb-3 opacity-30" />
           <p>Loading categories...</p>
           <p className="text-sm mt-1">If no categories appear, add them in the Categories section above</p>
@@ -66,16 +66,16 @@ export default function CategoryBudgetsSection({
             const IconComponent = Icons[category.icon || 'Package'] || Icons.Package;
 
             return (
-              <div key={category.id} className={boxClass(darkMode)}>
+              <div key={category.id} className={boxClass}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <IconComponent size={20} className="text-muted" />
                     <div>
-                      <div className={`font-medium text-fg`}>
+                      <div className="font-medium text-fg">
                         {category.name}
                       </div>
                       {hasBudget && (
-                        <div className={`text-xs text-muted`}>
+                        <div className="text-xs text-muted">
                           Monthly Budget: {formatCurrency(currentBudget)}
                         </div>
                       )}
@@ -84,7 +84,7 @@ export default function CategoryBudgetsSection({
                   {hasBudget && (
                     <button
                       onClick={() => handleRemove(category.id)}
-                      className={`p-2 rounded hover:bg-line/60 text-negative`}
+                      className="p-2 rounded hover:bg-line/60 text-negative"
                       title="Remove budget"
                       aria-label={`Remove ${category.name} budget`}
                       disabled={saving}
@@ -108,12 +108,12 @@ export default function CategoryBudgetsSection({
                       aria-label={`${category.name} monthly budget`}
                       value={inputs[category.id] || ''}
                       onChange={(e) => setInputs(prev => ({ ...prev, [category.id]: e.target.value }))}
-                      className={inputClass(darkMode, 'flex-1')}
+                      className={inputClass('flex-1')}
                     />
                     <button
                       onClick={() => handleSet(category.id)}
                       disabled={saving || !inputs[category.id]}
-                      className="px-4 py-2 bg-accent text-accent-contrast rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 bg-accent text-accent-contrast rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Set
                     </button>
@@ -125,8 +125,8 @@ export default function CategoryBudgetsSection({
         </div>
       )}
 
-      <div className={`bg-accent-soft border-accent/30 border rounded-lg p-3 mt-4`}>
-        <p className={`text-xs flex items-center gap-2 text-accent`}>
+      <div className="bg-accent-soft border-accent/30 border rounded-xl p-3 mt-4">
+        <p className="text-xs flex items-center gap-2 text-accent">
           <Lightbulb size={14} className="flex-shrink-0" />
           <span>Spending against each budget is tracked monthly. See trends in Budget History.</span>
         </p>

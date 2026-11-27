@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ask } from '../utils/confirm';
 import { Plus, Edit2, Trash2, Check, X, Save, Star } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { fetchCategories, addCategory, updateCategory, deleteCategory, seedDefaultCategories } from '../utils/categories';
@@ -13,7 +14,7 @@ import { showToast } from '../utils/toast';
  * CategoryManager Component
  * Full CRUD interface for managing expense and income categories
  */
-export default function CategoryManager({ darkMode = false, onUpdate }) {
+export default function CategoryManager({ onUpdate }) {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('expense'); // 'expense' | 'income'
@@ -66,7 +67,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
   };
 
   const handleSeedDefaults = async () => {
-    if (!window.confirm('This will add default categories to your account. Continue?')) {
+    if (!(await ask('Add the usual categories?'))) {
       return;
     }
     
@@ -171,7 +172,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
   };
 
   const handleDelete = async (categoryId, categoryName) => {
-    if (!window.confirm(`Are you sure you want to delete "${categoryName}"? This action cannot be undone.`)) {
+    if (!(await ask(`Delete "${categoryName}"?`))) {
       return;
     }
 
@@ -213,7 +214,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
-        <div className={'text-muted'}>
+        <div className="text-muted">
           Loading categories...
         </div>
       </div>
@@ -224,15 +225,13 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Manage Categories</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Manage categories</h2>
         <button
           onClick={handleSeedDefaults}
           disabled={saving}
-          className={`px-4 py-2 text-sm rounded-lg ${
-            'bg-surface-2 text-fg hover:bg-line/60'
-          } disabled:opacity-50`}
+          className="px-4 py-2 text-sm rounded-xl bg-surface-2 text-fg hover:bg-line/60 disabled:opacity-50"
         >
-          Seed Defaults
+          Seed defaults
         </button>
       </div>
 
@@ -242,7 +241,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
           onClick={() => setActiveTab('expense')}
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
             activeTab === 'expense'
-              ? 'border-blue-500 text-blue-600'
+              ? 'border-accent text-accent'
               : 'border-transparent text-muted hover:text-fg'
           }`}
         >
@@ -252,7 +251,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
           onClick={() => setActiveTab('income')}
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
             activeTab === 'income'
-              ? 'border-blue-500 text-blue-600'
+              ? 'border-accent text-accent'
               : 'border-transparent text-muted hover:text-fg'
           }`}
         >
@@ -264,7 +263,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       {!showAddForm && !editingId && (
         <button
           onClick={() => setShowAddForm(true)}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-accent text-accent-contrast rounded-lg hover:bg-blue-700 transition-colors"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-accent text-accent-contrast rounded-xl hover:opacity-90 transition-colors"
         >
           <Plus size={20} />
           Add {activeTab === 'income' ? 'Income' : 'Expense'} Category
@@ -273,9 +272,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
 
       {/* Add Category Form */}
       {showAddForm && (
-        <div className={`p-4 rounded-lg border ${
-          'bg-surface-2 border-line'
-        }`}>
+        <div className="p-4 rounded-xl border bg-surface-2 border-line">
           <h3 className="font-semibold mb-3">
             New {activeTab === 'income' ? 'Income' : 'Expense'} Category
           </h3>
@@ -283,41 +280,32 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
           <div className="space-y-3">
             {/* Name Input */}
             <div>
-              <label className={`block text-sm font-medium mb-1 ${
-                'text-fg'
-              }`}>
-                Category Name *
+              <label className="block text-sm font-medium mb-1 text-fg">
+                Category name
               </label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Groceries"
-                className={`w-full px-3 py-2 border rounded-lg ${
-                  'bg-surface border-line text-fg'
-                }`}
+                placeholder="Groceries"
+                className="field"
               />
             </div>
 
             {/* Icon Picker */}
             <div>
-              <label className={`block text-sm font-medium mb-1 ${
-                'text-fg'
-              }`}>
+              <label className="block text-sm font-medium mb-1 text-fg">
                 Icon
               </label>
               <IconPicker
                 selectedIcon={formData.icon}
                 onSelect={(icon) => setFormData({ ...formData, icon })}
-                darkMode={darkMode}
               />
             </div>
 
             {/* Color Picker */}
             <div>
-              <label className={`block text-sm font-medium mb-1 ${
-                'text-fg'
-              }`}>
+              <label className="block text-sm font-medium mb-1 text-fg">
                 Color
               </label>
               <div className="grid grid-cols-4 gap-2">
@@ -326,9 +314,9 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                     key={color.value}
                     type="button"
                     onClick={() => setFormData({ ...formData, color: color.value })}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all ${
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all ${
                       formData.color === color.value
-                        ? 'border-blue-500 ring-2 ring-blue-200'
+                        ? 'border-accent ring-2 ring-accent/30'
                         : 'border-line hover:border-accent'
                     }`}
                   >
@@ -347,10 +335,10 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
               <button
                 onClick={handleAdd}
                 disabled={saving || !formData.name.trim()}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-accent text-accent-contrast rounded-xl hover:opacity-90 disabled:opacity-50"
               >
                 <Save size={16} />
-                {saving ? 'Saving...' : 'Save Category'}
+                {saving ? 'Saving...' : 'Save'}
               </button>
               <button
                 onClick={() => {
@@ -362,9 +350,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                     is_income: false
                   });
                 }}
-                className={`px-4 py-2 rounded-lg ${
-                  'bg-surface-2 text-fg hover:bg-line/60'
-                }`}
+                className="px-4 py-2 rounded-xl bg-surface-2 text-fg hover:bg-line/60"
               >
                 Cancel
               </button>
@@ -376,9 +362,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
       {/* Categories List */}
       <div className="space-y-2">
         {filteredCategories.length === 0 ? (
-          <div className={`text-center py-12 ${
-            'text-muted'
-          }`}>
+          <div className="text-center py-12 text-muted">
             <p>No {activeTab} categories yet.</p>
             <p className="text-sm mt-2">Add your first category above.</p>
           </div>
@@ -389,9 +373,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
             return (
               <div
                 key={category.id}
-                className={`p-4 rounded-lg border ${
-                  'bg-surface border-line'
-                }`}
+                className="p-4 rounded-xl border bg-surface border-line"
               >
                 {editingId === category.id ? (
                   /* Edit Mode */
@@ -401,16 +383,13 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                         type="text"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className={`w-full px-3 py-2 border rounded-lg ${
-                          'bg-surface border-line text-fg'
-                        }`}
+                        className="field"
                       />
                     </div>
 
                     <IconPicker
                       selectedIcon={formData.icon}
                       onSelect={(icon) => setFormData({ ...formData, icon })}
-                      darkMode={darkMode}
                     />
 
                     <div className="grid grid-cols-4 gap-2">
@@ -419,9 +398,9 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                           key={color.value}
                           type="button"
                           onClick={() => setFormData({ ...formData, color: color.value })}
-                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 ${
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 ${
                             formData.color === color.value
-                              ? 'border-blue-500'
+                              ? 'border-accent'
                               : 'border-line'
                           }`}
                         >
@@ -438,16 +417,14 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                       <button
                         onClick={() => handleSaveEdit(category.id)}
                         disabled={saving}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-lg hover:opacity-90 disabled:opacity-50"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 press bg-accent text-accent-contrast rounded-xl hover:opacity-90 disabled:opacity-50"
                       >
                         <Check size={16} />
                         Save
                       </button>
                       <button aria-label="Cancel edit"
                         onClick={handleCancelEdit}
-                        className={`px-4 py-2 rounded-lg ${
-                          'bg-surface-2 text-fg'
-                        }`}
+                        className="px-4 py-2 rounded-xl bg-surface-2 text-fg"
                       >
                         <X size={16} />
                       </button>
@@ -470,10 +447,8 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                           )}
                         </div>
                         {category.is_system && (
-                          <span className={`text-xs ${
-                            'text-muted'
-                          }`}>
-                            System Category
+                          <span className="text-xs text-muted">
+                            System category
                           </span>
                         )}
                       </div>
@@ -487,7 +462,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleToggleFavorite(category.id)}
-                        className={`p-2 rounded-lg transition-colors ${
+                        className={`p-2 rounded-xl transition-colors ${
                           isFavorite
                             ? 'text-warning hover:bg-surface-2'
                             : 'text-muted hover:bg-surface-2'
@@ -498,9 +473,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                       </button>
                       <button
                         onClick={() => handleEdit(category)}
-                        className={`p-2 rounded-lg transition-colors ${
-                          'hover:bg-accent-soft text-accent'
-                        }`}
+                        className="p-2 rounded-xl transition-colors hover:bg-accent-soft text-accent"
                         title="Edit category"
                       >
                         <Edit2 size={18} />
@@ -509,9 +482,7 @@ export default function CategoryManager({ darkMode = false, onUpdate }) {
                         <button
                           onClick={() => handleDelete(category.id, category.name)}
                           disabled={saving}
-                          className={`p-2 rounded-lg transition-colors ${
-                            'hover:bg-negative/10 text-negative'
-                          } disabled:opacity-50`}
+                          className="p-2 rounded-xl transition-colors hover:bg-negative/10 text-negative disabled:opacity-50"
                           title="Delete category"
                         >
                           <Trash2 size={18} />

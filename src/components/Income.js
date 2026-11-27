@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { ask } from '../utils/confirm';
 import { useLocation } from 'react-router-dom';
 import { Plus, X, ListFilter, Zap, Calendar, Pause, Play, Trash2, Camera, Pencil } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysUntil, predictNextDate } from '../utils/helpers';
@@ -18,7 +19,6 @@ import {
 import { localDate } from '../utils/helpers';
 
 export default function Income({
-  darkMode,
   income,
   availableCash,
   onUpdate,
@@ -78,7 +78,7 @@ export default function Income({
     if (contextData) {
       setFormData(prev => ({ ...prev, ...contextData }));
       setTimeout(() => {
-        const amountInput = document.querySelector('input[placeholder="Amount Received *"]');
+        const amountInput = document.querySelector('input[placeholder="Amount received"]');
         if (amountInput) amountInput.focus();
       }, 50);
     }
@@ -188,7 +188,7 @@ export default function Income({
   };
 
   const handleDelete = async (id, isSchedule = false) => {
-    if (!window.confirm(`Delete this ${isSchedule ? 'income schedule' : 'income entry'}?`)) {
+    if (!(await ask(`Delete this ${isSchedule ? 'income schedule' : 'income entry'}?`))) {
       return;
     }
     
@@ -291,12 +291,12 @@ export default function Income({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-4">
-        <h2 className="text-xl md:text-2xl font-bold">Income</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Income</h2>
         <div className="flex gap-2">
           <button
             onClick={handleCheckDueIncome}
             disabled={checkingDueIncome}
-            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg font-medium ${
+            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-xl font-medium ${
               checkingDueIncome
                 ? 'bg-surface-2 text-muted border border-line cursor-not-allowed'
                 : 'press bg-surface-2 text-fg border border-line hover:bg-line/60'
@@ -304,7 +304,7 @@ export default function Income({
             title="Check for income due today and deposit automatically"
           >
             <Zap size={20} />
-            {checkingDueIncome ? 'Checking...' : 'Check Due Income'}
+            {checkingDueIncome ? 'Checking...' : 'Check for pay that is due'}
           </button>
           <button
             onClick={() => {
@@ -316,18 +316,18 @@ export default function Income({
                 setShowAddForm(true);
               }
             }}
-            className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg"
+            className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 text-sm sm:text-base rounded-xl"
           >
             <Plus size={20} />
-            {showAddForm ? 'Cancel' : 'Add Income'}
+            {showAddForm ? 'Cancel' : 'Add income'}
           </button>
         </div>
       </div>
 
       {/* Add/Edit Form */}
       {showAddForm && (
-        <div className={`bg-surface border-line rounded-2xl border p-4 space-y-3`}>
-          <h3 className="font-semibold text-lg">{editingItem ? 'Edit Income' : 'Add Income'}</h3>
+        <div className="bg-surface border-line rounded-2xl border p-4 space-y-3">
+          <h3 className="font-semibold text-lg">{editingItem ? 'Edit income' : 'Add income'}</h3>
 
           {!editingItem && (
             <div className="space-y-1">
@@ -342,8 +342,8 @@ export default function Income({
           
           {recentSources.length > 0 && !editingItem && (
             <div>
-              <label className={`block text-sm font-medium mb-2 text-fg`}>
-                Recent Sources
+              <label className="block text-sm font-medium mb-2 text-fg">
+                Recent sources
               </label>
               <div className="flex gap-2 flex-wrap">
                 {recentSources.map(source => (
@@ -351,7 +351,7 @@ export default function Income({
                     key={source.source_name}
                     type="button"
                     onClick={() => handleSelectSourceClick(source)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-colors ${
                       formData.source === source.source_name
                         ? 'bg-accent text-accent-contrast'
                         : 'bg-accent-soft text-accent hover:bg-accent-soft border border-accent/30'
@@ -366,8 +366,8 @@ export default function Income({
           )}
           
           <div>
-            <label className={`block text-sm font-medium mb-2 text-fg`}>
-              {recentSources.length > 0 ? 'Or type new source *' : 'Source *'}
+            <label className="block text-sm font-medium mb-2 text-fg">
+              {recentSources.length > 0 ? 'Or type a new one' : 'Source'}
             </label>
             <input
               ref={sourceInputRef}
@@ -375,8 +375,8 @@ export default function Income({
               value={formData.source}
               onChange={(e) => handleSourceChange(e.target.value)}
               onBlur={handleSourceBlurEvent}
-              placeholder="e.g., Salary, Bonus, Freelance"
-              className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+              placeholder="Salary, Bonus, Freelance"
+              className="field"
               required
               autoFocus={!editingItem && recentSources.length === 0}
             />
@@ -385,28 +385,28 @@ export default function Income({
           <input
             type="number"
             step="0.01"
-            placeholder="Amount Received *"
+            placeholder="Amount received"
             value={formData.amount}
             onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-            className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+            className="field"
           />
           
           <div>
-            <label className={`block text-sm mb-1 text-muted`}>Date Received *</label>
+            <label className="block text-sm mb-1 text-muted">Date received</label>
             <input
               type="date"
               value={formData.date}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+              className="field"
             />
           </div>
           
           <div>
-            <label className={`block text-sm mb-1 text-muted`}>Frequency</label>
+            <label className="block text-sm mb-1 text-muted">Frequency</label>
             <select
               value={formData.frequency}
               onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
-              className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+              className="field"
             >
               <option value="onetime">One-time</option>
               <option value="weekly">Weekly</option>
@@ -416,20 +416,20 @@ export default function Income({
           </div>
           
           <div>
-            <label className={`block text-sm font-medium mb-2 text-fg`}>
-              Where is this money going? *
+            <label className="block text-sm font-medium mb-2 text-fg">
+              Where is this money going?
             </label>
             {bankAccounts && bankAccounts.length > 0 ? (
               <>
               <select
                 value={formData.depositAccountId}
                 onChange={(e) => setFormData({ ...formData, depositTarget: 'bank', depositAccountId: e.target.value })}
-                className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+                className="field"
               >
                 <option value="">Choose an account</option>
                 {bankAccounts.map(account => (
                   <option key={account.id} value={account.id}>
-                    {account.name} {account.is_primary ? '(Primary)' : ''} - {formatCurrency(account.balance)}
+                    {account.name} {account.is_primary ? '(main)' : ''} - {formatCurrency(account.balance)}
                   </option>
                 ))}
               </select>
@@ -465,8 +465,8 @@ export default function Income({
           {formData.frequency !== 'onetime' && (
             <>
               <div>
-                <label className={`block text-sm mb-1 text-muted`}>
-                  Recurring Duration
+                <label className="block text-sm mb-1 text-muted">
+                  Recurring duration
                 </label>
                 <select
                   value={formData.recurringDurationType}
@@ -478,7 +478,7 @@ export default function Income({
                       recurringOccurrences: ''
                     })
                   }
-                  className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+                  className="field"
                 >
                   <option value="indefinite">Indefinite (continues forever)</option>
                   <option value="until_date">Until specific date</option>
@@ -488,14 +488,14 @@ export default function Income({
 
               {formData.recurringDurationType === 'until_date' && (
                 <div>
-                  <label className={`block text-sm mb-1 text-muted`}>
-                    End Date *
+                  <label className="block text-sm mb-1 text-muted">
+                    End date
                   </label>
                   <input
                     type="date"
                     value={formData.recurringUntilDate}
                     onChange={(e) => setFormData({ ...formData, recurringUntilDate: e.target.value })}
-                    className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+                    className="field"
                     min={localDate()}
                   />
                 </div>
@@ -503,22 +503,22 @@ export default function Income({
 
               {formData.recurringDurationType === 'occurrences' && (
                 <div>
-                  <label className={`block text-sm mb-1 text-muted`}>
-                    Number of Times *
+                  <label className="block text-sm mb-1 text-muted">
+                    Number of times
                   </label>
                   <input
                     type="number"
                     min="1"
-                    placeholder="e.g., 12 for 12 months"
+                    placeholder="12 for 12 months"
                     value={formData.recurringOccurrences}
                     onChange={(e) => setFormData({ ...formData, recurringOccurrences: e.target.value })}
-                    className={`w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`}
+                    className="field"
                   />
                 </div>
               )}
               
               {/* Auto-Deposit Toggle */}
-              <div className={`border border-line rounded-lg p-3`}>
+              <div className="border border-line rounded-xl p-3">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
@@ -527,10 +527,10 @@ export default function Income({
                     className="w-4 h-4"
                   />
                   <div className="flex-1">
-                    <div className={`text-sm font-medium text-fg`}>
+                    <div className="text-sm font-medium text-fg">
                       Enable Auto-Deposit
                     </div>
-                    <div className={`text-xs text-muted mt-1`}>
+                    <div className="text-xs text-muted mt-1">
                       Automatically deposit this income when it becomes due
                     </div>
                   </div>
@@ -544,8 +544,8 @@ export default function Income({
               onClick={handleAdd}
               processing={isActionProcessing(editingItem ? `edit-income-${editingItem.id}` : 'add-income')}
               variant="primary"
-              processingText={editingItem ? 'Updating...' : formData.frequency !== 'onetime' ? 'Creating Schedule...' : 'Logging Income...'}
-              idleText={editingItem ? 'Update Income' : formData.frequency !== 'onetime' ? 'Create Schedule' : 'Log Income'}
+              processingText={'Saving...'}
+              idleText={editingItem ? 'Save' : formData.frequency !== 'onetime' ? 'Save schedule' : 'Save'}
               fullWidth
             />
             <ActionButton
@@ -560,7 +560,7 @@ export default function Income({
 
       {/* Income Schedules Section */}
       {schedules.length > 0 && (
-        <div className={`bg-surface border-line rounded-2xl border p-4`}>
+        <div className="bg-surface border-line rounded-2xl border p-4">
           <div className="flex justify-between items-center mb-3">
             <h3 className="font-semibold text-lg flex items-center gap-2">
               <Calendar size={20} />
@@ -568,7 +568,7 @@ export default function Income({
             </h3>
             <button
               onClick={() => setShowSchedules(!showSchedules)}
-              className={`text-sm text-accent`}
+              className="text-sm text-accent"
             >
               {showSchedules ? 'Hide' : 'Show'}
             </button>
@@ -582,7 +582,7 @@ export default function Income({
                 const isOverdue = daysUntil < 0;
                 const isDueToday = daysUntil === 0;
                 const depositAccountName = schedule.deposit_account_id
-                  ? bankAccounts.find(a => a.id === schedule.deposit_account_id)?.name || 'Unknown Account'
+                  ? bankAccounts.find(a => a.id === schedule.deposit_account_id)?.name || 'Unknown account'
                   : 'No account';
                 
                 return (
@@ -597,17 +597,17 @@ export default function Income({
                         <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="font-bold">{schedule.source}</h4>
                           {!schedule.is_active && (
-                            <span className={`text-xs px-2 py-0.5 rounded bg-line text-fg`}>
+                            <span className="text-xs px-2 py-0.5 rounded bg-line text-fg">
                               Paused
                             </span>
                           )}
                           {schedule.auto_deposit && schedule.is_active && (
-                            <span className={`text-xs px-2 py-0.5 rounded bg-positive/10 text-positive`}>
+                            <span className="text-xs px-2 py-0.5 rounded bg-positive/10 text-positive">
                               Auto-Deposit
                             </span>
                           )}
                         </div>
-                        <div className={`text-sm text-muted mt-1`}>
+                        <div className="text-sm text-muted mt-1">
                           <div>
                             {formatCurrency(schedule.amount)} • {formatFrequency(schedule.frequency)}
                           </div>
@@ -640,14 +640,14 @@ export default function Income({
                         </button>
                         <button
                           onClick={() => handleToggleSchedule(schedule.id, !schedule.is_active)}
-                          className={`p-2 hover:bg-line/60 rounded`}
+                          className="p-2 hover:bg-line/60 rounded"
                           title={schedule.is_active ? 'Pause schedule' : 'Resume schedule'}
                         >
                           {schedule.is_active ? <Pause size={16} /> : <Play size={16} />}
                         </button>
                         <button
                           onClick={() => handleDelete(schedule.id, true)}
-                          className={`p-2 text-negative hover:bg-negative/10 rounded`}
+                          className="p-2 text-negative hover:bg-negative/10 rounded"
                           title="Delete schedule"
                         >
                           <Trash2 size={16} />
@@ -669,17 +669,17 @@ export default function Income({
       {/* Manual Income Section */}
       {manualIncome.length > 0 && (
         <div>
-          <h3 className="font-semibold mb-2">Manual Income</h3>
+          <h3 className="font-semibold mb-2">Manual income</h3>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {manualIncome.map(inc => (
               <div
                 key={inc.id}
-                className={`bg-surface border-line rounded-2xl border p-4`}
+                className="bg-surface border-line rounded-2xl border p-4"
               >
                 <div className="flex justify-between items-center">
                   <div className="flex-1">
                     <h3 className="font-bold">{inc.source}</h3>
-                    <div className={`text-sm text-muted`}>
+                    <div className="text-sm text-muted">
                       {formatDate(inc.date)}
                     </div>
                   </div>
@@ -688,13 +688,13 @@ export default function Income({
                     <div className="flex gap-1">
                       <button
                         onClick={() => onNavigateToTransactions && onNavigateToTransactions({ incomeSource: inc.id })}
-                        className={`p-2 text-accent hover:bg-accent-soft rounded`}
+                        className="p-2 text-accent hover:bg-accent-soft rounded"
                       >
                         <ListFilter size={16} />
                       </button>
                       <button
                         onClick={() => handleDelete(inc.id, false)}
-                        className={`p-2 text-negative hover:bg-negative/10 rounded`}
+                        className="p-2 text-negative hover:bg-negative/10 rounded"
                       >
                         <X size={16} />
                       </button>

@@ -52,7 +52,7 @@ export default function YearSummary() {
           <Card className="space-y-3">
             <label className="block text-sm">
               <span className="text-muted">Year</span>
-              <select value={year} onChange={(e) => setPicked(e.target.value)} className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-fg">
+              <select value={year} onChange={(e) => setPicked(e.target.value)} className="mt-1 field">
                 {years.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
             </label>

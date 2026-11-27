@@ -14,12 +14,9 @@ import DangerZoneSection from './settings/DangerZoneSection';
 import GeminiKeyCard from './settings/GeminiKeyCard';
 
 export default function Settings({
-  darkMode,
   onUpdate,
   onReloadCategories,
   categories: categoriesProp = [],
-  displayDensity,
-  onDisplayDensityChange
 }) {
   const data = useSettingsData(categoriesProp);
   // Learning categories is on unless you turn it off (setting learn_categories).
@@ -41,7 +38,6 @@ export default function Settings({
   }, []);
 
   const sectionProps = (key) => ({
-    darkMode,
     expanded: expandedSections[key],
     onToggle: () => toggleSection(key)
   });
@@ -49,27 +45,23 @@ export default function Settings({
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
-        <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+        <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <SettingsIcon size={20} className="sm:w-6 sm:h-6" />
           Settings
         </h2>
 
         <button
           onClick={toggleAllSections}
-          className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg border transition-colors ${
-            'border-line text-fg hover:bg-surface-2'
-          }`}
+          className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-xl border transition-colors border-line text-fg hover:bg-surface-2"
         >
           {anyExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           {anyExpanded ? 'Close all' : 'Open all'}
         </button>
       </div>
 
-      <GeminiKeyCard darkMode={darkMode} />
+      <GeminiKeyCard />
       <DisplaySection
         {...sectionProps('appearance')}
-        displayDensity={displayDensity}
-        onDisplayDensityChange={onDisplayDensityChange}
       />
       <RemindersSection {...sectionProps('notifications')} />
       <CategoriesSection

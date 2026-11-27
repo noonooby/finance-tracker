@@ -4,7 +4,7 @@ import * as Icons from 'lucide-react';
 import { formatCurrency, formatDate, getAccountTypeIcon } from '../../utils/helpers';
 import { formatFrequency } from '../../utils/sentenceCase';
 import { effectOn } from '../../utils/lines';
-import { Badge, Hint } from '../shared/ui';
+import { Hint } from '../shared/ui';
 import MoveLine, { canMove, sidesOf } from '../shared/MoveLine';
 import { accountTerms, keptIn } from '../../utils/accounts';
 import { server } from '../../utils/server';
@@ -36,15 +36,14 @@ export default function AccountCard({ account, open, onToggle, isPinned, linkedL
         <span className="grid place-items-center w-10 h-10 shrink-0 rounded-xl bg-accent-soft text-accent"><Icon size={18} aria-hidden="true" /></span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5 min-w-0">
-            <span className="font-semibold truncate">{account.name}</span>
-            {account.is_primary && <Badge tone="accent">Main</Badge>}
+            <span className="font-semibold leading-snug break-words min-w-0">{account.name}</span>
             {isPinned && !account.is_primary && <Icons.Star size={13} className="shrink-0 text-warning fill-current" aria-label="Pinned" />}
           </span>
-          <span className="block text-xs text-muted truncate">
-            {KIND[account.account_type] || 'Account'}{account.last4 ? ` · ending ${String(account.last4).slice(-4)}` : ''}{seen ? ` · seen ${formatDate(seen)}` : ''}
+          <span className="block text-xs text-muted">
+            {account.is_primary ? 'Main · ' : ''}{KIND[account.account_type] || 'Account'}{account.last4 ? ` · ending ${String(account.last4).slice(-4)}` : ''}{seen ? ` · seen ${formatDate(seen)}` : ''}
           </span>
         </span>
-        <span className={`shrink-0 text-lg font-bold tabular-nums ${balance < 0 ? 'text-negative' : ''}`}>{formatCurrency(balance)}</span>
+        <span className={`shrink-0 text-base font-bold tabular-nums ${balance < 0 ? 'text-negative' : ''}`}>{formatCurrency(balance)}</span>
         <Icons.ChevronDown size={16} aria-hidden="true" className={`shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -88,7 +87,7 @@ export default function AccountCard({ account, open, onToggle, isPinned, linkedL
                 const Row = movable ? 'button' : 'div';
                 return (
                   <Row key={t.id} {...(movable ? { type: 'button', onClick: () => setMoving(t), 'aria-label': `${t.description || 'Line'}: move it to another account` } : {})}
-                    className={`w-full flex items-center justify-between gap-3 text-left text-sm ${movable ? 'press rounded-lg -mx-2 px-2 py-1.5 hover:bg-surface-2' : 'py-1.5'}`}>
+                    className={`w-full flex items-center justify-between gap-3 text-left text-sm ${movable ? 'press rounded-xl -mx-2 px-2 py-1.5 hover:bg-surface-2' : 'py-1.5'}`}>
                     <span className="min-w-0">
                       <span className="block truncate">{t.description || t.category_name || t.income_source || 'No description'}</span>
                       <span className="block text-xs text-muted">{formatDate(t.date)}{t.type === 'adjustment' ? ' · balance corrected' : ''}{t.pending ? ' · pending' : ''}</span>

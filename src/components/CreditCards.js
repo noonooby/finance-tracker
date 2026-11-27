@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import Rewards from './credit-cards/Rewards';
+import { useUI } from '../hooks/useUI';
 import { Plus, CreditCard as CreditCardIcon } from 'lucide-react';
-import AddTransaction from './AddTransaction';
 import { GiftCardOperations } from './credit-cards';
 import CardItem from './credit-cards/CardItem';
 import CreditCardForm from './credit-cards/CreditCardForm';
@@ -9,7 +9,6 @@ import { useCreditCardActions } from './credit-cards/hooks/useCreditCardActions'
 import { normalizeId, sortPinnedFirst } from './credit-cards/cardMath';
 
 export default function CreditCards({
-  darkMode,
   creditCards,
   loans = [],
   categories,
@@ -22,10 +21,7 @@ export default function CreditCards({
   bankAccounts,
   onNavigateToTransactions
 }) {
-  const [showAddExpense, setShowAddExpense] = useState(false);
-  const [selectedCard, setSelectedCard] = useState(null);
-  const [showPayment, setShowPayment] = useState(false);
-  const [paymentCard, setPaymentCard] = useState(null);
+  const { openAdd } = useUI();
   const cardRefs = useRef({});
   const cardNameInputRef = useRef(null);
 
@@ -55,7 +51,6 @@ export default function CreditCards({
   }, [focusTarget, onClearFocus]);
 
   const formProps = {
-    darkMode,
     formData,
     setFormData: a.setFormData,
     editingItem,
@@ -70,48 +65,10 @@ export default function CreditCards({
 
   return (
     <div className="space-y-4">
-      {showPayment && paymentCard && (
-        <AddTransaction
-          darkMode={darkMode}
-          onClose={() => {
-            setShowPayment(false);
-            setPaymentCard(null);
-          }}
-          onUpdate={onUpdate}
-          categories={categories}
-          creditCards={creditCards}
-          loans={loans}
-          availableCash={availableCash}
-          onUpdateCash={onUpdateCash}
-          bankAccounts={bankAccounts}
-          preselectedCard={paymentCard}
-          preselectedType="payment"
-          preselectedAmount={paymentCard.balance.toString()}
-        />
-      )}
 
-      {showAddExpense && (
-        <AddTransaction
-          darkMode={darkMode}
-          onClose={() => {
-            setShowAddExpense(false);
-            setSelectedCard(null);
-          }}
-          onUpdate={onUpdate}
-          categories={categories}
-          creditCards={creditCards}
-          loans={[]}
-          availableCash={availableCash}
-          onUpdateCash={onUpdateCash}
-          bankAccounts={bankAccounts}
-          preselectedCard={selectedCard}
-          preselectedType="expense"
-        />
-      )}
 
       {a.activeGiftCardOp && (
         <GiftCardOperations
-          darkMode={darkMode}
           giftCard={a.activeGiftCardOp}
           creditCards={creditCards}
           bankAccounts={bankAccounts}
@@ -125,12 +82,12 @@ export default function CreditCards({
 
       <Rewards creditCards={creditCards} />
       <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-4">
-        <h2 className="text-xl md:text-2xl font-bold">Credit Cards</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Credit cards</h2>
         <div className="flex gap-2">
           <button
             onClick={a.handleProcessDueCardPayments}
             disabled={a.isProcessing}
-            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base ${
+            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl font-medium text-sm sm:text-base ${
               a.isProcessing
                 ? 'bg-surface-2 text-muted border border-line cursor-not-allowed'
                 : 'press bg-surface-2 text-fg border border-line hover:bg-line/60'
@@ -147,7 +104,7 @@ export default function CreditCards({
                 a.setShowAddForm(true);
               }
             }}
-            className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base"
+            className="flex items-center gap-1 sm:gap-2 bg-accent text-accent-contrast px-3 sm:px-4 py-2 rounded-xl text-sm sm:text-base"
           >
             <Plus size={20} />
             {a.showAddForm ? 'Cancel' : 'Add a card'}
@@ -156,15 +113,15 @@ export default function CreditCards({
       </div>
 
       {a.processingResults && (
-        <div className={`bg-accent-soft border-accent/30 border rounded-lg p-3 text-sm`}>
-          <div className={'text-accent'}>
+        <div className="bg-accent-soft border-accent/30 border rounded-xl p-3 text-sm">
+          <div className="text-accent">
             Processed: {a.processingResults.processed.length} • Failed: {a.processingResults.failed.length} • Skipped: {a.processingResults.skipped.length}
           </div>
         </div>
       )}
 
       {a.showAddForm && !editingItem && (
-        <div className={`bg-surface border-line rounded-2xl border p-4 space-y-3`}>
+        <div className="bg-surface border-line rounded-2xl border p-4 space-y-3">
           <CreditCardForm
             {...formProps}
             mode="add"
@@ -179,7 +136,7 @@ export default function CreditCards({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
         {creditCards.length === 0 ? (
-          <div className={`text-center py-12 text-muted`}>
+          <div className="text-center py-12 text-muted">
             <CreditCardIcon size={48} className="mx-auto mb-3 opacity-30" />
             <p>No credit cards added yet</p>
           </div>
@@ -196,9 +153,9 @@ export default function CreditCards({
                 }}
                 className={`bg-surface border-line rounded-2xl border p-4 ${
                   isEditing
-                    ? 'ring-2 ring-blue-500 shadow-lg'
+                    ? 'ring-2 ring-accent/30 shadow-lg'
                     : focusTarget?.type === 'card' && normalizeId(focusTarget.id) === normalizeId(card.id)
-                    ? 'ring-2 ring-offset-2 ring-blue-500'
+                    ? 'ring-2 ring-offset-2 ring-accent/30'
                     : ''
                 } ${editingItem && !isEditing ? 'opacity-60' : ''}`}
               >
@@ -218,21 +175,14 @@ export default function CreditCards({
                 ) : (
                   <CardItem
                     card={card}
-                    darkMode={darkMode}
                     isPinned={a.pinnedCards.includes(card.id)}
                     onTogglePin={() => a.handleTogglePin(card.id)}
                     onViewTransactions={() => onNavigateToTransactions && onNavigateToTransactions({ creditCard: card.id })}
                     onEdit={() => a.handleEdit(card)}
                     onDelete={() => a.handleDelete(card.id)}
                     onManageGiftCard={() => a.setActiveGiftCardOp(card)}
-                    onAddExpense={() => {
-                      setSelectedCard(card);
-                      setShowAddExpense(true);
-                    }}
-                    onMakePayment={() => {
-                      setPaymentCard(card);
-                      setShowPayment(true);
-                    }}
+                    onAddExpense={() => openAdd({ kind: 'spent', source: `credit_card:${card.id}` })}
+                    onMakePayment={() => openAdd({ kind: 'moved', to: `credit_card:${card.id}`, amount: Number(card.balance) || 0 })}
                   />
                 )}
               </div>

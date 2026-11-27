@@ -2,7 +2,7 @@ import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { formatCurrency } from '../../../utils/reportHelpers';
 
-export default function CategoryPieChart({ data, darkMode }) {
+export default function CategoryPieChart({ data }) {
   if (!data || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-muted">
@@ -23,7 +23,7 @@ export default function CategoryPieChart({ data, darkMode }) {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className={`bg-surface border-line p-3 rounded-2xl shadow-lg border`}>
+        <div className="bg-surface border-line p-3 rounded-2xl shadow-lg border">
           <p className="font-medium">{data.name}</p>
           <p className="text-sm text-positive font-semibold">{formatCurrency(data.value)}</p>
           <p className="text-xs text-muted">{((data.value / chartData.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%</p>

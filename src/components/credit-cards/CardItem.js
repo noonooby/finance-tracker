@@ -12,7 +12,6 @@ import { Issues } from '../shared/Issues';
  */
 export default function CardItem({
   card,
-  darkMode,
   isPinned,
   onTogglePin,
   onViewTransactions,
@@ -38,17 +37,13 @@ export default function CardItem({
               <Star size={16} className="text-warning fill-current" aria-label="Pinned" />
             )}
             {card.is_gift_card && (
-              <span className={`text-xs px-2 py-0.5 rounded font-medium flex items-center gap-1 ${
-                'bg-positive/10 text-positive border border-positive/30'
-              }`}>
+              <span className="text-xs px-2 py-0.5 rounded font-medium flex items-center gap-1 bg-positive/10 text-positive border border-positive/30">
                 <Gift size={12} />
-                Gift Card
+                Gift card
               </span>
             )}
             {!card.is_gift_card && card.connected_payment_source && card.connected_payment_source_id && (
-              <span className={`text-xs px-2 py-0.5 rounded ${
-                'bg-positive/10 text-positive'
-              }`}>
+              <span className="text-xs px-2 py-0.5 rounded bg-positive/10 text-positive">
                 Auto-Pay
               </span>
             )}
@@ -150,8 +145,8 @@ export default function CardItem({
       </div>
 
       {!card.is_gift_card && card.due_date && (
-        <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b border-line`}>
-          <span className={'text-muted'}>Due</span>
+        <div className="flex justify-between items-center mb-3 text-sm pb-3 border-b border-line">
+          <span className="text-muted">Due</span>
           <div className="text-right">
             <div className="font-medium">{formatDate(card.due_date)}</div>
             {!(Number(card.balance) > 0) ? (
@@ -166,8 +161,8 @@ export default function CardItem({
       )}
 
       {!card.is_gift_card && card.last_payment_date && card.last_payment_amount && card.last_payment_amount > 0 && (
-        <div className={`flex justify-between items-center mb-3 text-sm pb-3 border-b border-line`}>
-          <span className={'text-muted'}>Last Paid:</span>
+        <div className="flex justify-between items-center mb-3 text-sm pb-3 border-b border-line">
+          <span className="text-muted">Last paid</span>
           <div className="text-right">
             <div className="font-medium">{formatCurrency(card.last_payment_amount)}</div>
             <div className={`text-xs ${muted}`}>
@@ -178,7 +173,6 @@ export default function CardItem({
       )}
 
       <RecentTransactions
-        darkMode={darkMode}
         entityType="card"
         entityId={card.id}
         entityName={card.name}
@@ -189,7 +183,7 @@ export default function CardItem({
           onClick={onManageGiftCard}
           className="press bg-accent text-accent-contrast py-2 rounded-xl font-medium hover:opacity-90 w-full"
         >
-          Manage Balance
+          Manage balance
         </button>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

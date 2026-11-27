@@ -4,7 +4,7 @@ import { showToast } from '../../utils/toast';
 
 // Shown only while no Gemini key is set and only to the owner. Once saved it disappears for good;
 // the key stays on the server and is never sent back to the browser.
-export default function GeminiKeyCard({ darkMode }) {
+export default function GeminiKeyCard() {
   const [state, setState] = useState(null);
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
@@ -23,14 +23,14 @@ export default function GeminiKeyCard({ darkMode }) {
   };
 
   return (
-    <form onSubmit={save} className={`rounded-2xl border p-4 space-y-2 bg-surface border-accent/30`}>
+    <form onSubmit={save} className="rounded-2xl border p-4 space-y-2 bg-surface border-accent/30">
       <h2 className="font-semibold">Gemini key for reading screenshots</h2>
-      <p className={`text-sm text-muted`}>
+      <p className="text-sm text-muted">
         Paste your key from Google AI Studio once. It is checked with Google, then kept on the server only. After that this box goes away and the key can't be seen or changed from the app.
       </p>
       <input type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => setKey(e.target.value)} aria-label="Gemini key" placeholder="Gemini key"
-        className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`} />
-      <button type="submit" disabled={busy || !key.trim()} className="w-full bg-accent text-accent-contrast rounded-lg py-2 font-medium disabled:opacity-50">{busy ? 'Checking...' : 'Check and save'}</button>
+        className="field" />
+      <button type="submit" disabled={busy || !key.trim()} className="w-full bg-accent text-accent-contrast rounded-xl py-2 font-medium disabled:opacity-50">{busy ? 'Checking...' : 'Check and save'}</button>
     </form>
   );
 }

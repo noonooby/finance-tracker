@@ -3,10 +3,10 @@ import { TrendingUp } from 'lucide-react';
 import BudgetHistory from '../BudgetHistory';
 import SettingsSection from './SettingsSection';
 
-export default function BudgetHistorySection({ darkMode, expanded, onToggle, categories, categoryBudgets }) {
+export default function BudgetHistorySection({ expanded, onToggle, categories, categoryBudgets }) {
   return (
-    <SettingsSection title="Budget History" icon={TrendingUp} expanded={expanded} onToggle={onToggle} darkMode={darkMode} bodyClassName="p-6 border-t border-line">
-      <BudgetHistory darkMode={darkMode} categories={categories} categoryBudgets={categoryBudgets} />
+    <SettingsSection title="Budget history" icon={TrendingUp} expanded={expanded} onToggle={onToggle} bodyClassName="p-4 border-t border-line">
+      <BudgetHistory categories={categories} categoryBudgets={categoryBudgets} />
     </SettingsSection>
   );
 }

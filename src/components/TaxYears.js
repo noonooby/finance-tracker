@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ask } from '../utils/confirm';
 import { useNavigate } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
@@ -11,7 +12,7 @@ import { Card, Section, Button, EmptyState, Line } from './shared/ui';
 
 // Your tax years: what each return or notice of assessment said, and what follows from them. Each figure that is
 // assumed says where it came from and can be set by you. Sums on the published rules, not advice.
-const input = 'mt-1 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-fg';
+const input = 'mt-1 field';
 
 function YearForm({ start, taken, onSave, onCancel }) {
   const [f, setF] = useState(() => ({ year: start.year || '', ...Object.fromEntries(TAX_FIELDS.map(([k]) => [k, start[k] == null ? '' : String(start[k])])) }));
@@ -71,7 +72,7 @@ export default function TaxYears() {
     setEditing(null); await load();
   };
   const remove = async (y) => {
-    if (!window.confirm(`Remove the ${y.year} tax year from the app?`)) return;
+    if (!(await ask(`Remove the ${y.year} tax year from the app?`))) return;
     const { error } = await server.from('tax_years').delete().eq('id', y.id);
     if (error) return showToast.error(error.message);
     await load();

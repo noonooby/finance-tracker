@@ -9,7 +9,7 @@ import MoveLine, { canMove } from '../shared/MoveLine';
 // Changing a saved line. The description, category and notes change in place. For a plain purchase the amount, date
 // and account can change too: the server takes the old line back and records the new one in one step, so the balances
 // always match. Other kinds of line (payments, transfers, split or foreign purchases) keep their money as it was.
-export const plainPurchase = (t, creditCards = []) => !!t && t.type === 'expense' && t.status !== 'undone' && t.status !== 'deleted'
+const plainPurchase = (t, creditCards = []) => !!t && t.type === 'expense' && t.status !== 'undone' && t.status !== 'deleted'
   && !t.loan_id && !t.gift_card_id && !t.original_currency && !(Array.isArray(t.splits) && t.splits.length)
   && (t.payment_method === 'bank_account' || t.payment_method === 'credit_card') && t.payment_method_id != null
   && !(t.payment_method === 'credit_card' && (creditCards.find((c) => String(c.id) === String(t.payment_method_id)) || {}).is_gift_card);

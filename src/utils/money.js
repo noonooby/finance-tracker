@@ -16,7 +16,7 @@ export { reverseTransaction };
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
-export function toAmount(value) {
+function toAmount(value) {
   const n = round2(value);
   if (!Number.isFinite(n) || n <= 0) throw new Error('Enter an amount above zero.');
   return n;
@@ -67,7 +67,7 @@ export function payFrom(source, amount, { bankAccounts = [], creditCards = [] } 
 }
 
 // The leg that puts `amount` into a place money can land (income, refund, transfer in).
-export function payInto(target, amount, { creditCards = [] } = {}) {
+function payInto(target, amount, { creditCards = [] } = {}) {
   const { type, id } = parseSource(target);
   if (type === 'investment') return { table: 'investments', id, delta: amount };
   if (type === 'bank_account') return { table: 'bank_accounts', id, delta: amount };
@@ -81,7 +81,7 @@ export function payInto(target, amount, { creditCards = [] } = {}) {
 
 // The other side of a payment or transfer when it is an account the app does not hold: only the side the app
 // holds changes, and the line still says where the money came from or went.
-export const OUTSIDE = 'outside';
+const OUTSIDE = 'outside';
 const sourceName = (source, { bankAccounts = [], creditCards = [], investments = [], loans = [] }) => {
   const { type, id } = parseSource(source);
   if (type === OUTSIDE) return 'An account not in the app';

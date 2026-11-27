@@ -14,10 +14,10 @@ import { Card, Section, Button, EmptyState, Hint, Num } from './shared/ui';
 import { Issues } from './shared/Issues';
 import { isLine, lineTerms, keptTotal } from '../utils/accounts';
 
-const NO_BANK = 'Other Accounts';
-const LINKS = [['/cards', 'Cards'], ['/investments', 'Investments'], ['/loans', 'Loans'], ['/holdings', 'Everything you hold'], ['/position', 'Where you stand'], ['/transactions', 'Transactions']];
+const NO_BANK = 'Other accounts';
+const LINKS = [['/cards', 'Cards'], ['/investments', 'Investments'], ['/loans', 'Loans'], ['/holdings', 'Everything you hold'], ['/position', 'Where you stand'], ['/transactions', 'Activity']];
 
-export default function BankAccounts({ darkMode, bankAccounts, loans, creditCards, onUpdate, focusTarget, onClearFocus, onNavigateToTransactions }) {
+export default function BankAccounts({ bankAccounts, loans, creditCards, onUpdate, focusTarget, onClearFocus, onNavigateToTransactions }) {
   const a = useBankAccountActions({ bankAccounts, loans, onUpdate });
   const { investments = [] } = useFinanceData();
   const creditLines = useMemo(() => (loans || []).filter((l) => !l.on_card_id && isLine(l)).map((l) => ({ id: l.id, name: l.name, ...lineTerms(l, investments) })), [loans, investments]);
@@ -78,13 +78,13 @@ export default function BankAccounts({ darkMode, bankAccounts, loans, creditCard
 
       {a.showTransferForm && (
         <div className="page-enter">
-          <TransferForm darkMode={darkMode} bankAccounts={bankAccounts} lines={creditLines} transferData={a.transferData} setTransferData={a.setTransferData} recentTransfers={a.recentTransfers}
+          <TransferForm bankAccounts={bankAccounts} lines={creditLines} transferData={a.transferData} setTransferData={a.setTransferData} recentTransfers={a.recentTransfers}
             onTransfer={a.handleTransfer} onCancel={a.resetTransferForm} processing={a.isActionProcessing('transfer-accounts')} />
         </div>
       )}
       {a.showAddForm && !a.editingItem && (
         <Card className="page-enter">
-          <AccountForm mode="add" darkMode={darkMode} formData={a.formData} setFormData={a.setFormData} recentAccountNames={a.recentAccountNames} onSelectAccountName={a.handleSelectAccountName}
+          <AccountForm mode="add" formData={a.formData} setFormData={a.setFormData} recentAccountNames={a.recentAccountNames} onSelectAccountName={a.handleSelectAccountName}
             accountNameInputRef={a.accountNameInputRef} onSave={a.handleAdd} onCancel={a.resetForm} processing={a.isActionProcessing('add-account')} />
         </Card>
       )}
@@ -123,7 +123,7 @@ export default function BankAccounts({ darkMode, bankAccounts, loans, creditCard
                     <Card padded={false} className={`${editing ? 'ring-2 ring-accent' : ''} ${a.editingItem && !editing ? 'opacity-60' : ''}`}>
                       {editing ? (
                         <div className="p-4">
-                          <AccountForm mode="edit" darkMode={darkMode} formData={a.formData} setFormData={a.setFormData} onSave={a.handleAdd}
+                          <AccountForm mode="edit" formData={a.formData} setFormData={a.setFormData} onSave={a.handleAdd}
                             onCancel={() => { a.setEditingItem(null); a.resetForm(); }} processing={a.isActionProcessing(`edit-account-${account.id}`)} />
                         </div>
                       ) : (

@@ -8,7 +8,7 @@ import SettingsSection, { inputClass } from './SettingsSection';
 
 // What the app has learned: one category per merchant. Each rule can be changed, fixed so learning leaves it alone,
 // or deleted. Learning itself can be turned off. Suggestions only fill an empty category; you always decide.
-export default function LearnedCategoriesSection({ darkMode, expanded, onToggle, categories = [], learnOn, onLearnChange }) {
+export default function LearnedCategoriesSection({ expanded, onToggle, categories = [], learnOn, onLearnChange }) {
   const { categoryRules = [], setCategoryRules } = useFinanceData();
   const [filter, setFilter] = useState('');
   const [newMerchant, setNewMerchant] = useState('');
@@ -46,7 +46,7 @@ export default function LearnedCategoriesSection({ darkMode, expanded, onToggle,
 
   const fixed = categoryRules.filter((r) => r.source === 'set').length;
   return (
-    <SettingsSection title="Learned categories" icon={Sparkles} expanded={expanded} onToggle={onToggle} darkMode={darkMode}>
+    <SettingsSection title="Learned categories" icon={Sparkles} expanded={expanded} onToggle={onToggle}>
       <label className="flex items-start gap-3">
         <input type="checkbox" className="mt-1" checked={learnOn} onChange={(e) => onLearnChange(e.target.checked)} />
         <span>
@@ -58,15 +58,15 @@ export default function LearnedCategoriesSection({ darkMode, expanded, onToggle,
       <div className="text-sm text-muted">{categoryRules.length} merchants learned{fixed ? `, ${fixed} fixed by you` : ''}. A fixed rule is never changed by learning.</div>
 
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">
-        <input className={inputClass(darkMode)} placeholder="Merchant, for example Loblaws" value={newMerchant} onChange={(e) => setNewMerchant(e.target.value)} />
-        <select className={inputClass(darkMode)} value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
+        <input className={inputClass} placeholder="Merchant, for example Loblaws" value={newMerchant} onChange={(e) => setNewMerchant(e.target.value)} />
+        <select className={inputClass} value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
           <option value="">Category</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}{c.is_income ? ' (income)' : ''}</option>)}
         </select>
         <button type="button" onClick={add} className="press btn-primary">Add rule</button>
       </div>
 
-      {categoryRules.length > 6 && <input className={inputClass(darkMode)} placeholder="Find a merchant or category" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+      {categoryRules.length > 6 && <input className={inputClass} placeholder="Find a merchant or category" value={filter} onChange={(e) => setFilter(e.target.value)} />}
 
       {rules.length === 0 ? (
         <p className="text-sm text-muted">Nothing learned yet. Save a purchase with a category and it appears here.</p>
@@ -78,17 +78,17 @@ export default function LearnedCategoriesSection({ darkMode, expanded, onToggle,
                 <div className="font-medium truncate">{r.merchant}</div>
                 <div className="text-xs text-muted">{r.source === 'set' ? 'Fixed by you' : `Learned${r.uses > 1 ? `, used ${r.uses} times` : ''}`}</div>
               </div>
-              <select aria-label={`Category for ${r.merchant}`} className={inputClass(darkMode, 'w-40')} value={r.category_id}
+              <select aria-label={`Category for ${r.merchant}`} className={inputClass('w-40')} value={r.category_id}
                 onChange={(e) => save(r, { category_id: e.target.value, source: 'set' })}>
                 {!categories.some((c) => String(c.id) === String(r.category_id)) && <option value={r.category_id}>{nameOf(r.category_id)}</option>}
                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <button type="button" className="press p-2 rounded-lg text-muted hover:text-fg" onClick={() => save(r, { source: r.source === 'set' ? 'learned' : 'set' })}
+              <button type="button" className="press p-2 rounded-xl text-muted hover:text-fg" onClick={() => save(r, { source: r.source === 'set' ? 'learned' : 'set' })}
                 aria-label={r.source === 'set' ? `Let the app update ${r.merchant}` : `Fix ${r.merchant} so learning leaves it alone`}
                 title={r.source === 'set' ? 'Fixed: learning leaves it alone' : 'Learning may update it'}>
                 {r.source === 'set' ? <Lock size={16} /> : <Unlock size={16} />}
               </button>
-              <button type="button" className="press p-2 rounded-lg text-negative" onClick={() => remove(r)} aria-label={`Forget ${r.merchant}`}>
+              <button type="button" className="press p-2 rounded-xl text-negative" onClick={() => remove(r)} aria-label={`Forget ${r.merchant}`}>
                 <Trash2 size={16} />
               </button>
             </li>

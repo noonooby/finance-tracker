@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { ask } from '../utils/confirm';
 import { 
-  BarChart3, 
+  
   FileText, 
   Save, 
   Star, 
@@ -31,7 +32,7 @@ import {
 } from '../utils/reportTemplatesManager';
 import { showToast } from '../utils/toast';
 
-export default function Reports({ darkMode, categories }) {
+export default function Reports({ categories }) {
   const [transactions, setTransactions] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -136,7 +137,7 @@ export default function Reports({ darkMode, categories }) {
   };
 
   const handleDeleteTemplate = async (template) => {
-    if (!window.confirm(`Are you sure you want to delete "${template.name}"?`)) {
+    if (!(await ask(`Delete "${template.name}"?`))) {
       return;
     }
 
@@ -192,12 +193,12 @@ export default function Reports({ darkMode, categories }) {
 
   const getTemplateLabel = (type) => {
     switch (type) {
-      case 'monthly': return 'Monthly Summary';
-      case 'category': return 'Category Analysis';
-      case 'payment': return 'Payment Methods';
-      case 'cashflow': return 'Cashflow Analysis';
-      case 'annual': return 'Annual Review';
-      default: return 'Custom Report';
+      case 'monthly': return 'Monthly summary';
+      case 'category': return 'Category analysis';
+      case 'payment': return 'Payment methods';
+      case 'cashflow': return 'Cashflow analysis';
+      case 'annual': return 'Annual review';
+      default: return 'Custom report';
     }
   };
 
@@ -225,11 +226,10 @@ export default function Reports({ darkMode, categories }) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
         <div className="flex items-center gap-2 sm:gap-3">
-          <BarChart3 size={24} className="sm:w-8 sm:h-8 text-blue-600" />
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold">Reports</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
             <p className="text-sm text-muted">
-              Analyze your financial data with customizable reports
+              Where your money went, by month, category and account.
             </p>
           </div>
         </div>
@@ -237,17 +237,17 @@ export default function Reports({ darkMode, categories }) {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setShowTemplatesPanel(!showTemplatesPanel)}
-            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg font-medium transition-colors ${
+            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-xl font-medium transition-colors ${
               showTemplatesPanel
                 ? 'bg-accent text-accent-contrast'
                 : 'bg-surface-2 hover:bg-line/60 text-fg'
             }`}
           >
             <FolderOpen size={18} />
-            Saved Templates
+            Saved templates
             {savedTemplates.length > 0 && (
               <span className={`text-xs px-2 py-0.5 rounded-full ${
-                showTemplatesPanel ? 'bg-blue-500' : 'bg-accent text-accent-contrast'
+                showTemplatesPanel ? 'bg-accent-contrast/20' : 'bg-accent text-accent-contrast'
               }`}>
                 {savedTemplates.length}
               </span>
@@ -256,20 +256,18 @@ export default function Reports({ darkMode, categories }) {
           
           <button
             onClick={() => setShowSaveDialog(true)}
-            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg font-medium transition-colors ${
-              'bg-positive hover:bg-positive text-white'
-            }`}
+            className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-xl font-medium transition-colors bg-surface-2 hover:bg-line/60 text-fg"
           >
             <Save size={18} />
-            Save Template
+            Save template
           </button>
         </div>
       </div>
 
-      {/* Saved Templates Panel */}
+      {/* Saved templates Panel */}
       {showTemplatesPanel && savedTemplates.length > 0 && (
-        <div className={`bg-surface rounded-2xl p-6`}>
-          <h2 className="text-lg font-semibold mb-4">Your Saved Templates</h2>
+        <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+          <h2 className="text-lg font-semibold mb-4">Your saved templates</h2>
           
           {/* Favorites Section */}
           {favoriteTemplates.length > 0 && (
@@ -282,9 +280,7 @@ export default function Reports({ darkMode, categories }) {
                 {favoriteTemplates.map(template => (
                   <div
                     key={template.id}
-                    className={`p-3 rounded-lg border-2 ${
-                      'border-warning/30 bg-warning/10'
-                    }`}
+                    className="p-3 rounded-xl border-2 border-warning/30 bg-warning/10"
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
@@ -319,22 +315,20 @@ export default function Reports({ darkMode, categories }) {
                     <div className="flex gap-1">
                       <button
                         onClick={() => handleLoadTemplate(template)}
-                        className="flex-1 px-2 py-1 bg-accent text-accent-contrast rounded text-xs hover:bg-blue-700"
+                        className="flex-1 px-2 py-1 bg-accent text-accent-contrast rounded text-xs hover:opacity-90"
                       >
                         Load
                       </button>
                       <button
                         onClick={() => handleToggleFavorite(template)}
-                        className="px-2 py-1 bg-yellow-600 text-white rounded text-xs hover:bg-yellow-700"
+                        className="px-2 py-1 bg-warning text-white rounded text-xs hover:opacity-90"
                         title="Remove from favorites"
                       >
                         <Star size={12} className="fill-current" />
                       </button>
                       <button
                         onClick={() => handleDuplicateTemplate(template)}
-                        className={`px-2 py-1 rounded text-xs ${
-                          'bg-surface-2 hover:bg-line/60'
-                        }`}
+                        className="px-2 py-1 rounded text-xs bg-surface-2 hover:bg-line/60"
                         title="Duplicate"
                       >
                         <Copy size={12} />
@@ -368,9 +362,7 @@ export default function Reports({ darkMode, categories }) {
                   {templates.map(template => (
                     <div
                       key={template.id}
-                      className={`p-3 rounded-lg border ${
-                        'border-line hover:border-accent'
-                      }`}
+                      className="p-3 rounded-xl border border-line hover:border-accent"
                     >
                       <div className="flex items-start justify-between mb-2">
                         <h4 className="font-semibold text-sm">{template.name}</h4>
@@ -397,7 +389,7 @@ export default function Reports({ darkMode, categories }) {
                       <div className="flex gap-1">
                         <button
                           onClick={() => handleLoadTemplate(template)}
-                          className="flex-1 px-2 py-1 bg-accent text-accent-contrast rounded text-xs hover:bg-blue-700"
+                          className="flex-1 px-2 py-1 bg-accent text-accent-contrast rounded text-xs hover:opacity-90"
                         >
                           Load
                         </button>
@@ -414,9 +406,7 @@ export default function Reports({ darkMode, categories }) {
                         </button>
                         <button
                           onClick={() => handleDuplicateTemplate(template)}
-                          className={`px-2 py-1 rounded text-xs ${
-                            'bg-surface-2 hover:bg-line/60'
-                          }`}
+                          className="px-2 py-1 rounded text-xs bg-surface-2 hover:bg-line/60"
                           title="Duplicate"
                         >
                           <Copy size={12} />
@@ -440,13 +430,13 @@ export default function Reports({ darkMode, categories }) {
 
       {/* Save Template Dialog */}
       {showSaveDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div role="dialog" aria-modal="true" aria-label="Save report template" className={`bg-surface rounded-2xl p-6 max-w-md w-full`}>
-            <h3 className="text-xl font-bold mb-4">Save Report Template</h3>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div role="dialog" aria-modal="true" aria-label="Save report template" className="bg-surface rounded-3xl p-5 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4">Save report template</h3>
             
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Template Name *</label>
+                <label className="block text-sm font-medium mb-1">Template name</label>
                 <input
                   type="text"
                   value={templateName}
@@ -454,23 +444,19 @@ export default function Reports({ darkMode, categories }) {
                     setTemplateName(e.target.value);
                     setSaveError('');
                   }}
-                  placeholder="e.g., Monthly Expenses Q4 2024"
-                  className={`w-full px-3 py-2 border rounded-lg ${
-                    'border-line bg-surface-2 text-fg'
-                  }`}
+                  placeholder="Monthly spending"
+                  className="field"
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-medium mb-1">Description (Optional)</label>
+                <label className="block text-sm font-medium mb-1">Description (optional)</label>
                 <textarea
                   value={templateDescription}
                   onChange={(e) => setTemplateDescription(e.target.value)}
                   placeholder="Add a description for this template..."
                   rows={3}
-                  className={`w-full px-3 py-2 border rounded-lg ${
-                    'border-line bg-surface-2 text-fg'
-                  }`}
+                  className="field"
                 />
               </div>
               
@@ -488,9 +474,7 @@ export default function Reports({ darkMode, categories }) {
                 </label>
               </div>
               
-              <div className={`p-3 rounded-lg ${
-                'bg-surface-2'
-              }`}>
+              <div className="p-3 rounded-xl bg-surface-2">
                 <div className="text-sm">
                   <div className="flex items-center gap-2 mb-1">
                   {(() => {
@@ -506,7 +490,7 @@ export default function Reports({ darkMode, categories }) {
               </div>
               
               {saveError && (
-                <div className="p-3 bg-negative/10 text-negative rounded-lg text-sm">
+                <div className="p-3 bg-negative/10 text-negative rounded-xl text-sm">
                   {saveError}
                 </div>
               )}
@@ -521,17 +505,15 @@ export default function Reports({ darkMode, categories }) {
                   setSaveAsFavorite(false);
                   setSaveError('');
                 }}
-                className={`flex-1 px-4 py-2 rounded-lg ${
-                  'bg-surface-2 hover:bg-line/60'
-                }`}
+                className="flex-1 px-4 py-2 rounded-xl bg-surface-2 hover:bg-line/60"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveTemplate}
-                className="flex-1 px-4 py-2 press bg-accent text-accent-contrast rounded-lg hover:opacity-90"
+                className="flex-1 px-4 py-2 press bg-accent text-accent-contrast rounded-xl hover:opacity-90"
               >
-                Save Template
+                Save template
               </button>
             </div>
           </div>
@@ -541,20 +523,20 @@ export default function Reports({ darkMode, categories }) {
       {activeView === 'quick' && (
         <div className="space-y-6">
           {/* Template Selector */}
-          <div className={`bg-surface rounded-2xl p-6`}>
-            <h2 className="text-lg font-semibold mb-4">Select Report Template</h2>
+          <div className="card rounded-2xl border border-line bg-surface p-4 sm:p-6">
+            <h2 className="text-lg font-semibold mb-4">Select report template</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <button
                 onClick={() => setActiveTemplate('monthly')}
-                className={`p-4 rounded-lg border-2 transition-colors text-left ${
+                className={`p-4 rounded-xl border-2 transition-colors text-left ${
                   activeTemplate === 'monthly'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    ? 'border-accent bg-accent-soft'
                     : 'border-line hover:border-accent'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-2">
                   <Calendar size={20} />
-                  <h3 className="font-semibold">Monthly Summary</h3>
+                  <h3 className="font-semibold">Monthly summary</h3>
                 </div>
                 <p className="text-sm text-muted">
                   Complete overview of income, expenses, and trends
@@ -563,15 +545,15 @@ export default function Reports({ darkMode, categories }) {
 
               <button
                 onClick={() => setActiveTemplate('category')}
-                className={`p-4 rounded-lg border-2 transition-colors text-left ${
+                className={`p-4 rounded-xl border-2 transition-colors text-left ${
                   activeTemplate === 'category'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    ? 'border-accent bg-accent-soft'
                     : 'border-line hover:border-accent'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-2">
                   <Tag size={20} />
-                  <h3 className="font-semibold">Category Analysis</h3>
+                  <h3 className="font-semibold">Category analysis</h3>
                 </div>
                 <p className="text-sm text-muted">
                   Deep dive into spending by category
@@ -580,15 +562,15 @@ export default function Reports({ darkMode, categories }) {
 
               <button
                 onClick={() => setActiveTemplate('payment')}
-                className={`p-4 rounded-lg border-2 transition-colors text-left ${
+                className={`p-4 rounded-xl border-2 transition-colors text-left ${
                   activeTemplate === 'payment'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    ? 'border-accent bg-accent-soft'
                     : 'border-line hover:border-accent'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-2">
                   <CreditCardIcon size={20} />
-                  <h3 className="font-semibold">Payment Methods</h3>
+                  <h3 className="font-semibold">Payment methods</h3>
                 </div>
                 <p className="text-sm text-muted">
                   Track usage across payment methods
@@ -597,15 +579,15 @@ export default function Reports({ darkMode, categories }) {
 
               <button
                 onClick={() => setActiveTemplate('cashflow')}
-                className={`p-4 rounded-lg border-2 transition-colors text-left ${
+                className={`p-4 rounded-xl border-2 transition-colors text-left ${
                   activeTemplate === 'cashflow'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    ? 'border-accent bg-accent-soft'
                     : 'border-line hover:border-accent'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-2">
                   <DollarSign size={20} />
-                  <h3 className="font-semibold">Cashflow Analysis</h3>
+                  <h3 className="font-semibold">Cashflow analysis</h3>
                 </div>
                 <p className="text-sm text-muted">
                   Monitor money movement and balances
@@ -614,15 +596,15 @@ export default function Reports({ darkMode, categories }) {
 
               <button
                 onClick={() => setActiveTemplate('annual')}
-                className={`p-4 rounded-lg border-2 transition-colors text-left ${
+                className={`p-4 rounded-xl border-2 transition-colors text-left ${
                   activeTemplate === 'annual'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    ? 'border-accent bg-accent-soft'
                     : 'border-line hover:border-accent'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp size={20} />
-                  <h3 className="font-semibold">Annual Review</h3>
+                  <h3 className="font-semibold">Annual review</h3>
                 </div>
                 <p className="text-sm text-muted">
                   Year-over-year comparison and insights
@@ -634,7 +616,6 @@ export default function Reports({ darkMode, categories }) {
           {/* Active Report */}
           {activeTemplate === 'monthly' && (
             <MonthlySummary
-              darkMode={darkMode}
               transactions={transactions}
               categories={categories}
               onExportExcel={handleExportExcel}
@@ -644,7 +625,6 @@ export default function Reports({ darkMode, categories }) {
 
           {activeTemplate === 'category' && (
             <CategoryAnalysis
-              darkMode={darkMode}
               transactions={transactions}
               categories={categories}
               onExportExcel={handleExportExcel}
@@ -654,7 +634,6 @@ export default function Reports({ darkMode, categories }) {
 
           {activeTemplate === 'payment' && (
             <PaymentMethodAnalysis
-              darkMode={darkMode}
               transactions={transactions}
               categories={categories}
               onExportExcel={handleExportExcel}
@@ -664,7 +643,6 @@ export default function Reports({ darkMode, categories }) {
 
           {activeTemplate === 'cashflow' && (
             <CashflowAnalysis
-              darkMode={darkMode}
               transactions={transactions}
               categories={categories}
               bankAccounts={bankAccounts}
@@ -675,7 +653,6 @@ export default function Reports({ darkMode, categories }) {
 
           {activeTemplate === 'annual' && (
             <AnnualReview
-              darkMode={darkMode}
               transactions={transactions}
               categories={categories}
               onExportExcel={handleExportExcel}

@@ -11,7 +11,7 @@ import * as Icons from 'lucide-react';
 const COMMON_ICONS = [
   // Finance & Money
   { name: 'DollarSign', label: 'Dollar' },
-  { name: 'CreditCard', label: 'Credit Card' },
+  { name: 'CreditCard', label: 'Credit card' },
   { name: 'Wallet', label: 'Wallet' },
   { name: 'Banknote', label: 'Cash' },
   { name: 'Coins', label: 'Coins' },
@@ -21,7 +21,7 @@ const COMMON_ICONS = [
   
   // Shopping & Retail
   { name: 'ShoppingCart', label: 'Shopping' },
-  { name: 'ShoppingBag', label: 'Shopping Bag' },
+  { name: 'ShoppingBag', label: 'Shopping bag' },
   { name: 'Store', label: 'Store' },
   { name: 'Receipt', label: 'Receipt' },
   { name: 'Tag', label: 'Tag' },
@@ -119,7 +119,7 @@ const COMMON_ICONS = [
   { name: 'Trophy', label: 'Trophy' }
 ];
 
-export default function IconPicker({ selectedIcon, onSelect, darkMode = false }) {
+export default function IconPicker({ selectedIcon, onSelect }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [showPicker, setShowPicker] = useState(false);
 
@@ -147,14 +147,10 @@ export default function IconPicker({ selectedIcon, onSelect, darkMode = false })
       <button
         type="button"
         onClick={() => setShowPicker(!showPicker)}
-        className={`w-full px-3 py-2 border rounded-lg text-left flex items-center gap-2 ${
-          darkMode
-            ? 'bg-surface-2 border-line text-white'
-            : 'bg-surface border-line text-fg'
-        }`}
+        className="w-full px-3 py-2 border rounded-xl text-left flex items-center gap-2 bg-surface border-line text-fg"
       >
         <SelectedIconComponent size={20} className="text-muted" />
-        <span className={darkMode ? 'text-muted' : 'text-muted'}>
+        <span className="text-muted">
           {selectedIcon ? COMMON_ICONS.find(i => i.name === selectedIcon)?.label || 'Change icon' : 'Select icon'}
         </span>
       </button>
@@ -169,29 +165,21 @@ export default function IconPicker({ selectedIcon, onSelect, darkMode = false })
           />
           
           <div
-            className={`absolute z-50 mt-2 w-full rounded-lg shadow-xl border p-3 ${
-              darkMode ? 'bg-surface border-line' : 'bg-surface border-line'
-            }`}
+            className="absolute z-50 mt-2 w-full rounded-xl shadow-xl border p-3 bg-surface border-line"
           >
             {/* Search */}
             <div className="mb-3">
               <div className="relative">
                 <Search
                   size={16}
-                  className={`absolute left-3 top-1/2 -translate-y-1/2 ${
-                    darkMode ? 'text-muted' : 'text-muted'
-                  }`}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted"
                 />
                 <input
                   type="text"
                   placeholder="Search icons..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className={`w-full pl-9 pr-3 py-2 text-sm border rounded-lg ${
-                    darkMode
-                      ? 'bg-surface-2 border-line text-white placeholder:text-muted'
-                      : 'bg-surface border-line text-fg placeholder:text-muted'
-                  }`}
+                  className="w-full pl-9 pr-3 py-2 text-sm border rounded-xl bg-surface border-line text-fg placeholder:text-muted"
                   autoFocus
                 />
               </div>
@@ -208,25 +196,21 @@ export default function IconPicker({ selectedIcon, onSelect, darkMode = false })
                     key={icon.name}
                     type="button"
                     onClick={() => handleIconSelect(icon.name)}
-                    className={`p-3 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors flex items-center justify-center ${
+                    className={`p-3 rounded-xl hover:opacity-90 transition-colors flex items-center justify-center ${
                       selectedIcon === icon.name
-                        ? darkMode
-                          ? 'bg-blue-900 ring-2 ring-blue-500'
-                          : 'bg-blue-100 ring-2 ring-blue-500'
-                        : darkMode
-                        ? 'hover:bg-surface-2'
+                        ? 'bg-accent-soft ring-2 ring-accent/30'
                         : 'hover:bg-surface-2'
                     }`}
                     title={icon.label}
                   >
-                    <IconComponent size={20} className={darkMode ? 'text-muted' : 'text-muted'} />
+                    <IconComponent size={20} className="text-muted" />
                   </button>
                 );
               })}
             </div>
             
             {filteredIcons.length === 0 && (
-              <div className={`text-center py-8 ${darkMode ? 'text-muted' : 'text-muted'}`}>
+              <div className="text-center py-8 text-muted">
                 <p className="text-sm">No icons found</p>
                 <p className="text-xs mt-1">Try a different search term</p>
               </div>

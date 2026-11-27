@@ -99,7 +99,7 @@ export default function Dashboard() {
               <li key={n} className="flex items-start gap-3">
                 <span className="shrink-0 w-7 h-7 rounded-full bg-accent-soft text-accent text-sm font-semibold grid place-items-center">{n}</span>
                 <span className="flex-1"><span className="block font-medium">{title}</span><span className="block text-xs text-muted">{hint}</span></span>
-                <button type="button" onClick={() => navigate(to)} className="press shrink-0 text-xs font-medium text-accent px-2 py-1 rounded-lg bg-accent-soft">{label}</button>
+                <button type="button" onClick={() => navigate(to)} className="press shrink-0 text-xs font-medium text-accent px-2 py-1 rounded-xl bg-accent-soft">{label}</button>
               </li>
             ))}
           </ol>
@@ -114,7 +114,7 @@ export default function Dashboard() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-sm text-muted">Net worth today</div>
-            <div className={`text-4xl font-bold tabular-nums tracking-tight mt-0.5 ${p.netWorth < 0 ? 'text-negative' : ''}`}>{d.dataLoading ? <span className="skeleton inline-block w-40 h-8 rounded-lg" /> : <Num value={p.netWorth} />}</div>
+            <div className={`text-4xl font-bold tabular-nums tracking-tight mt-0.5 ${p.netWorth < 0 ? 'text-negative' : ''}`}>{d.dataLoading ? <span className="skeleton inline-block w-40 h-8 rounded-xl" /> : <Num value={p.netWorth} />}</div>
             <div className="text-xs text-muted mt-1">Have {formatCurrency(p.totalHave)} · Owe {formatCurrency(p.totalOwe)}{p.mortgage ? ` (mortgage ${formatCurrency(p.mortgage)})` : ''}</div>
           </div>
           <ChevronRight size={18} className="text-muted mt-1" aria-hidden="true" />
@@ -151,7 +151,7 @@ export default function Dashboard() {
                     <span className="block text-xs text-muted">{n.text}</span>
                   </span>
                 </Row>
-                {n.canSee && <button type="button" onClick={() => markSeen(n.id)} className="press shrink-0 text-xs font-medium text-accent px-2 py-1 rounded-lg bg-accent-soft">Seen</button>}
+                {n.canSee && <button type="button" onClick={() => markSeen(n.id)} className="press shrink-0 text-xs font-medium text-accent px-2 py-1 rounded-xl bg-accent-soft">Seen</button>}
               </div>
             ))}
           </Card>

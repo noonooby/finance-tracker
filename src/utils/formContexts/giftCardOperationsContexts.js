@@ -103,36 +103,6 @@ export async function getGiftCardAddBalanceContext(giftCardName) {
 }
 
 /**
- * Save gift card use balance context
- */
-export async function saveGiftCardUseBalanceContext(formData, giftCard) {
-  try {
-    const context = useBalanceManager.extractContext(formData, giftCard);
-    const description = `${giftCard.name} purchase`;
-    await useBalanceManager.saveContext(description, context);
-  } catch (error) {
-    console.error('Failed to save gift card use balance context:', error);
-  }
-}
-
-/**
- * Get gift card use balance context (last used for this card)
- */
-export async function getGiftCardUseBalanceContext(giftCardName) {
-  try {
-    const description = `${giftCardName} purchase`;
-    const context = await useBalanceManager.getContext(description);
-    if (context) {
-      return useBalanceManager.applyContext(context);
-    }
-    return null;
-  } catch (error) {
-    console.error('Failed to get gift card use balance context:', error);
-    return null;
-  }
-}
-
-/**
  * Get recent amounts used for this gift card (for quick suggestions)
  */
 export async function getRecentGiftCardAmounts(giftCardName, limit = 5) {

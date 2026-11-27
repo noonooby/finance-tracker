@@ -12,7 +12,6 @@ import { paymentSourceOptions, paymentSourceValue } from './cardMath';
  */
 export default function CreditCardForm({
   mode,
-  darkMode,
   card,
   formData,
   setFormData,
@@ -32,10 +31,10 @@ export default function CreditCardForm({
 }) {
   const spendCategories = (useFinanceData().categories || []).filter((c) => !c.is_income);
   const isEdit = mode === 'edit';
-  const inputClass = `w-full px-3 py-2 border border-line bg-surface-2 text-fg rounded-xl`;
+  const inputClass = `field`;
   const smallLabel = `block text-sm mb-1 text-muted`;
   const mainLabel = `block text-sm font-medium mb-2 text-fg`;
-  const typeButton = (active, activeClass) => `flex-1 px-3 py-2 rounded-lg border-2 transition-colors font-medium flex items-center justify-center gap-2 ${
+  const typeButton = (active, activeClass) => `flex-1 px-3 py-2 rounded-xl border-2 transition-colors font-medium flex items-center justify-center gap-2 ${
     active
       ? activeClass
       : 'border-line hover:border-accent text-fg'
@@ -44,19 +43,19 @@ export default function CreditCardForm({
   return (
     <>
       {isEdit && (
-        <h3 className="font-semibold text-lg mb-3">Edit {card.is_gift_card ? 'Gift Card' : 'Credit Card'}</h3>
+        <h3 className="font-semibold text-lg mb-3">Edit {card.is_gift_card ? 'Gift card' : 'Credit card'}</h3>
       )}
 
       {!isEdit && recentCardNames.length > 0 && !editingItem && (
         <div>
-          <label className={mainLabel}>Recent Cards</label>
+          <label className={mainLabel}>Recent cards</label>
           <div className="flex gap-2 flex-wrap">
             {recentCardNames.map(cardEntity => (
               <button
                 key={cardEntity.id}
                 type="button"
                 onClick={() => onSelectCardName(cardEntity)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-colors ${
                   formData.name === cardEntity.name
                     ? 'bg-accent text-accent-contrast'
                     : 'bg-accent-soft text-accent hover:bg-accent-soft border border-accent/30'
@@ -71,31 +70,31 @@ export default function CreditCardForm({
       )}
 
       <div>
-        <label className={`block text-sm font-medium mb-2 text-fg`}>
-          {isEdit ? 'Card Name *' : recentCardNames.length > 0 ? 'Or type new card name *' : 'Card Name *'}
+        <label className="block text-sm font-medium mb-2 text-fg">
+          {isEdit ? 'Name' : recentCardNames.length > 0 ? 'Or type a new name' : 'Name'}
         </label>
         <input
           ref={isEdit ? undefined : cardNameInputRef}
           type="text"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder="e.g., Rogers Mastercard"
-          className={`w-full px-3 py-2 border rounded-xl border-line bg-surface-2 text-fg`}
+          placeholder="Rogers Mastercard"
+          className="field"
           required={!isEdit}
           autoFocus={isEdit || (!editingItem && recentCardNames.length === 0)}
         />
       </div>
 
       <div>
-        <label className={smallLabel}>Card Type</label>
+        <label className={smallLabel}>Card type</label>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => setFormData({ ...formData, isGiftCard: false })}
-            className={typeButton(!formData.isGiftCard, 'border-blue-600 bg-accent text-accent-contrast')}
+            className={typeButton(!formData.isGiftCard, 'border-accent bg-accent text-accent-contrast')}
           >
             <CreditCardIcon size={18} />
-            Credit Card
+            Credit card
           </button>
           <button
             type="button"
@@ -103,7 +102,7 @@ export default function CreditCardForm({
             className={typeButton(formData.isGiftCard, 'border-positive/40 press bg-accent text-accent-contrast')}
           >
             <Gift size={18} />
-            Gift Card
+            Gift card
           </button>
         </div>
       </div>
@@ -111,7 +110,7 @@ export default function CreditCardForm({
       <input
         type="number"
         step="0.01"
-        placeholder="Current Balance *"
+        placeholder="Current balance"
         value={formData.balance}
         onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
         className={inputClass}
@@ -122,13 +121,13 @@ export default function CreditCardForm({
           <input
             type="number"
             step="0.01"
-            placeholder="Credit Limit (optional)"
+            placeholder="Credit limit (optional)"
             value={formData.creditLimit}
             onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
             className={inputClass}
           />
           <div>
-            <label className={smallLabel}>Payment Due Date *</label>
+            <label className={smallLabel}>Payment due date</label>
             <input
               type="date"
               value={formData.dueDate}
@@ -138,11 +137,11 @@ export default function CreditCardForm({
           </div>
           <div>
             <label className={smallLabel}>
-              {isEdit ? 'Statement Day (optional)' : 'Statement Day (optional, e.g., 15 for 15th of month)'}
+              {isEdit ? 'Statement day (optional)' : 'Statement day of the month (optional)'}
             </label>
             <input
               type="number"
-              placeholder="e.g., 15"
+              placeholder="15"
               value={formData.statementDay}
               onChange={(e) => setFormData({ ...formData, statementDay: e.target.value })}
               className={inputClass}
@@ -151,13 +150,13 @@ export default function CreditCardForm({
           <input
             type="number"
             step="0.01"
-            placeholder="Interest Rate % (optional)"
+            placeholder="Interest rate % (optional)"
             value={formData.interestRate}
             onChange={(e) => setFormData({ ...formData, interestRate: e.target.value })}
             className={inputClass}
           />
           <div>
-            <label className={smallLabel}>{isEdit ? 'Alert Days' : 'Alert Me (days before due)'}</label>
+            <label className={smallLabel}>{isEdit ? 'Remind me, days before' : 'Remind me, days before'}</label>
             <input
               type="number"
               value={formData.alertDays}
@@ -166,12 +165,12 @@ export default function CreditCardForm({
             />
           </div>
 
-          <div className={`p-3 rounded-lg bg-accent-soft`}>
-            <label className={mainLabel}>Auto-Payment Source (Optional)</label>
+          <div className="p-3 rounded-xl bg-accent-soft">
+            <label className={mainLabel}>Pay it automatically from (optional)</label>
             <select
               value={paymentSourceValue(formData)}
               onChange={(e) => onPaymentSourceChange(e.target.value)}
-              className={`w-full px-3 py-2 border bg-surface border-line text-fg rounded-2xl`}
+              className="field"
             >
               {paymentSourceOptions(bankAccounts).map(source => (
                 <option key={source.value} value={source.value}>
@@ -179,11 +178,11 @@ export default function CreditCardForm({
                 </option>
               ))}
             </select>
-            <p className={`text-xs mt-1 text-muted`}>
+            <p className="text-xs mt-1 text-muted">
               With an account chosen, the card is paid from it on the due date. Leave it on none if you pay it yourself.
             </p>
             {formData.connectedPaymentSource && (
-              <div className="grid grid-cols-2 gap-2 mt-2">
+              <div className="grid grid-cols-2 gap-3 items-end mt-2">
                 <label className={smallLabel}>Autopay pays
                   <select value={formData.autopayMode || 'statement'} onChange={(e) => setFormData({ ...formData, autopayMode: e.target.value })} className={inputClass}>
                     <option value="statement">The full balance</option>
@@ -207,7 +206,7 @@ export default function CreditCardForm({
             ratesSource: r.source_url || '', ratesChecked: r.checked })} />
           {formData.ratesChecked && <p className="text-xs text-muted">Rates from the issuer's public page, checked {formData.ratesChecked}.</p>}
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3 items-end">
             <label className={smallLabel}>Minimum payment
               <input type="number" step="0.01" inputMode="decimal" placeholder="From the statement" value={formData.minimumPayment} onChange={(e) => setFormData({ ...formData, minimumPayment: e.target.value })} className={inputClass} />
             </label>
@@ -246,7 +245,7 @@ export default function CreditCardForm({
               <input type="number" step="0.01" inputMode="decimal" placeholder="Optional" value={formData.cashRate} onChange={(e) => setFormData({ ...formData, cashRate: e.target.value })} className={inputClass} />
             </label>
             <label className={smallLabel}>Promo rate %
-              <input type="number" step="0.01" inputMode="decimal" placeholder="e.g. 0" value={formData.promoRate} onChange={(e) => setFormData({ ...formData, promoRate: e.target.value })} className={inputClass} />
+              <input type="number" step="0.01" inputMode="decimal" placeholder="0" value={formData.promoRate} onChange={(e) => setFormData({ ...formData, promoRate: e.target.value })} className={inputClass} />
             </label>
             {formData.promoRate !== '' && (
               <label className={smallLabel}>Promo ends
@@ -257,7 +256,6 @@ export default function CreditCardForm({
         </>
       ) : (
         <GiftCardForm
-          darkMode={darkMode}
           formData={formData}
           onFormDataChange={setFormData}
           bankAccounts={bankAccounts}
@@ -274,8 +272,8 @@ export default function CreditCardForm({
           onClick={onSubmit}
           processing={submitting}
           variant="primary"
-          processingText={isEdit ? 'Updating...' : editingItem ? 'Updating Card...' : 'Adding Card...'}
-          idleText={isEdit || editingItem ? 'Update Card' : 'Add Card'}
+          processingText={'Saving...'}
+          idleText={isEdit || editingItem ? 'Save' : 'Add card'}
           fullWidth
         />
         <ActionButton

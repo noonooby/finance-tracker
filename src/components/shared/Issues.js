@@ -45,7 +45,7 @@ const stored = (line, d) => {
   return row ? Number(row.balance) || 0 : null;
 };
 
-export function useIssues() {
+function useIssues() {
   const d = useFinanceData();
   const navigate = useNavigate();
   const s = useSyncExternalStore(subscribe, () => state);
@@ -154,7 +154,7 @@ const Tick = () => (
 );
 
 // One mismatch. `done` shows it ticked off while it folds away.
-export function IssueBlock({ issue, run, done, compact }) {
+function IssueBlock({ issue, run, done, compact }) {
   const [ask, setAsk] = useState(null);         // the fix waiting for a figure or a ticker
   const [value, setValue] = useState('');
   const [choices, setChoices] = useState([]);
@@ -192,7 +192,7 @@ export function IssueBlock({ issue, run, done, compact }) {
                   {ask && (
                     <form className="pt-2.5 space-y-2" onSubmit={(e) => { e.preventDefault(); go(ask, value); }}>
                       <label className="block text-xs text-muted">{ask.ask}
-                        <input className="mt-1 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-fg" autoFocus value={value} onChange={(e) => setValue(e.target.value)}
+                        <input className="mt-1 field" autoFocus value={value} onChange={(e) => setValue(e.target.value)}
                           {...(ask.input === 'date' ? { type: 'date' } : ask.input === 'text' ? { type: 'text', maxLength: 60, autoCapitalize: 'words', autoCorrect: 'off', enterKeyHint: 'done', placeholder: ask.suggest ? 'Type the name, or tap one below' : undefined } : ask.do === 'amount' || ask.do === 'field' ? { type: 'number', step: '0.01', inputMode: 'decimal' } : { autoCapitalize: 'characters' })} />
                       </label>
                       {ask.suggest && ask.suggest.length > 0 && (

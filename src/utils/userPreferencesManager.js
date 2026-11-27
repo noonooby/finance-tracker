@@ -42,7 +42,6 @@ export async function getUserPreferences() {
  */
 function getDefaultPreferences() {
   return {
-    display_density: 'comfortable', // 'comfortable' | 'cozy' | 'compact'
     
     // Settings page UI state
     collapsed_settings_sections: [],
@@ -102,7 +101,7 @@ async function createDefaultPreferences() {
 /**
  * Update user preferences
  */
-export async function updateUserPreferences(updates) {
+async function updateUserPreferences(updates) {
   try {
     const { data: { user } } = await server.auth.getUser();
     if (!user) throw new Error('Not authenticated');
@@ -194,26 +193,6 @@ export async function toggleSettingsSection(sectionId) {
 }
 
 /**
- * Set display density mode
- * @param {'comfortable' | 'cozy' | 'compact' | 'auto'} density
- */
-export async function setDisplayDensity(density) {
-  try {
-    return await updateUserPreferences({
-      display_density: density
-    });
-  } catch (error) {
-    // If column doesn't exist, log warning but don't fail
-    if (error.message?.includes('display_density') || error.code === 'PGRST204') {
-      console.warn('Display density column not yet migrated. Run migration to persist this setting.');
-      // Return mock success for UX continuity
-      return { display_density: density };
-    }
-    throw error;
-  }
-}
-
-/**
  * Add item to recent transactions (max 10)
  */
 export async function addRecentTransaction(transactionId) {
@@ -232,50 +211,6 @@ export async function addRecentTransaction(transactionId) {
     });
   } catch (error) {
     console.error('Error adding recent transaction:', error);
-  }
-}
-
-/**
- * Add category to recent categories (max 10)
- */
-export async function addRecentCategory(categoryId) {
-  try {
-    const prefs = await getUserPreferences();
-    const recent = prefs.recent_categories || [];
-    
-    const newRecent = [
-      categoryId,
-      ...recent.filter(id => id !== categoryId)
-    ].slice(0, 10);
-    
-    return await updateUserPreferences({
-      recent_categories: newRecent
-    });
-  } catch (error) {
-    console.error('Error adding recent category:', error);
-  }
-}
-
-/**
- * Add payment method to recent payment methods (max 10)
- * Payment method is stored as "type:id" (e.g., "credit_card:123", "bank_account:456"; cash is a bank account)
- */
-export async function addRecentPaymentMethod(paymentMethodString) {
-  try {
-    const prefs = await getUserPreferences();
-    const recent = prefs.recent_payment_methods || [];
-    
-    // Remove if already exists, add to front
-    const newRecent = [
-      paymentMethodString,
-      ...recent.filter(pm => pm !== paymentMethodString)
-    ].slice(0, 10);
-    
-    return await updateUserPreferences({
-      recent_payment_methods: newRecent
-    });
-  } catch (error) {
-    console.error('Error adding recent payment method:', error);
   }
 }
 

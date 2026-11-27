@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
+import ConfirmHost from '../components/shared/ConfirmHost';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Moon, Sun, HelpCircle } from 'lucide-react';
 import { useFinanceData } from '../hooks/useFinanceData';
@@ -20,7 +21,7 @@ export function MainLayout() {
     return () => window.removeEventListener('online', back);
   }, [offlineAt, loadAllData]);
   const { darkMode, toggleDarkMode } = useTheme();
-  const { openAddTransaction } = useUI();
+  const { adding, openAdd, closeAdd } = useUI();
   const location = useLocation();
   const navigate = useNavigate();
   const iconBtn = 'grid place-items-center w-11 h-11 rounded-full text-muted hover:bg-surface-2 hover:text-fg';
@@ -41,7 +42,6 @@ export function MainLayout() {
     document.addEventListener('focusin', onFocus);
     return () => document.removeEventListener('focusin', onFocus);
   }, []);
-  const [quick, setQuick] = useState(false);
   useEffect(() => { if (scroller.current) scroller.current.scrollTop = 0; }, [location.pathname]);
 
   return (
@@ -50,7 +50,7 @@ export function MainLayout() {
         style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))' }}>
         <div className="flex justify-between items-center max-w-3xl mx-auto">
           <button type="button" onClick={() => navigate('/')} className="press flex items-center gap-2 text-left rounded-xl" aria-label="Go to Home">
-            <span aria-hidden="true" className="grid place-items-center w-7 h-7 rounded-lg bg-accent text-accent-contrast transition-colors">
+            <span aria-hidden="true" className="grid place-items-center w-7 h-7 rounded-xl bg-accent text-accent-contrast transition-colors">
               <svg viewBox="0 0 512 512" width="18" height="18"><path d="M128 340l84-84 64 56 112-128" fill="none" stroke="currentColor" strokeWidth="44" strokeLinecap="round" strokeLinejoin="round"/><circle cx="388" cy="184" r="30" fill="currentColor"/></svg>
             </span>
             <span className="text-lg font-semibold tracking-tight">Finance</span>
@@ -89,9 +89,10 @@ export function MainLayout() {
       </main>
 
 
-      {quick && <QuickAdd onClose={() => setQuick(false)} onFullForm={openAddTransaction} />}
+      <ConfirmHost />
+      {adding && <QuickAdd key={JSON.stringify(adding.preset)} onClose={closeAdd} preset={adding.preset} />}
 
-      <BottomNavigation onAdd={() => setQuick((q) => !q)} adding={quick} />
+      <BottomNavigation onAdd={() => (adding ? closeAdd() : openAdd())} adding={!!adding} />
     </div>
   );
 }

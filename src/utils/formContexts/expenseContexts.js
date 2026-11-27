@@ -26,15 +26,6 @@ export async function getRecentExpenseDescriptions(limit = 5) {
   return await manager.getRecentTriggers(limit);
 }
 
-export async function getLastUsedExpenseContext() {
-  return await manager.getMostRecentContext();
-}
-
-export async function deleteExpenseContext(description) {
-  if (!description?.trim()) throw new Error('Description required');
-  return await manager.deleteContext(description.trim());
-}
-
 export function applyExpenseContext(context) {
   if (!context) return {};
   const data = contextToFormData(context, FIELD_MAPPING);
