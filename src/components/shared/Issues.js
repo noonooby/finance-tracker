@@ -140,7 +140,7 @@ export function Sums({ rows, onPick, active, busy }) {
               <span className="block truncate">{r.label}</span>
               {(r.from || r.note) && <span className="block text-[11px] text-muted truncate">{[r.from, r.note].filter(Boolean).join(' · ')}</span>}
             </span>
-            <span className={`tabular-nums shrink-0 ${r.tone === 'warning' ? 'text-warning' : ''} ${r.value == null ? 'text-muted text-xs' : ''}`}>{r.value == null ? 'not known' : formatCurrency(r.value)}</span>
+            <span className={`tabular-nums shrink-0 ${r.tone === 'warning' ? 'text-warning' : ''} ${r.value == null ? 'text-muted text-xs' : ''}`}>{r.value == null ? (r.unknown || 'not known') : formatCurrency(r.value)}</span>
             {r.fix ? <span className="shrink-0 text-xs font-medium text-accent w-[3.1rem] text-right">{r.value == null ? 'Add' : 'Change'}</span> : <span className="shrink-0 w-[3.1rem]" aria-hidden="true" />}
           </Tag>
         );

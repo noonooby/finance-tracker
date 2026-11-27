@@ -2239,8 +2239,9 @@ test('history from a ledger: balances are the stated ones, pairs become one line
 
   // The ledger corrects one line's category: only that line is written again, as a refund against rent this time.
   const fix = { rules: { refunds: ['Housing: Rent'] }, accounts: file.accounts, lines: [{ ...file.lines[4], description: 'ROOMMATE RENT SHARE', category: 'Housing: Rent' }] };
+  fix.accounts = file.accounts.map((a) => (a.key === 'loc' ? { ...a, credit_limit: 13000 } : a.key === 'visa-2' ? { ...a, credit_limit: 9999, limit_at_least: 700 } : a));
   const fixed = importHistory(uid, fix, { replace: true });
-  assert.deepEqual([fixed.replaced, fixed.lines, fixed.accounts], [1, 0, 0]);
+  assert.deepEqual([fixed.replaced, fixed.lines, fixed.accounts, fixed.filled], [1, 0, 0, 2]);
   const { token } = await api('/api/dev-login', { email: 'ledger@test.local' });
   const mine = async (table) => (await (await realFetch(`${base}/api/db`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ table, action: 'select' }) })).json()).data;
   const [banks, cards, loans, tx] = [await mine('bank_accounts'), await mine('credit_cards'), await mine('loans'), await mine('transactions')];
@@ -2252,6 +2253,11 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   assert.equal(byKey(banks, 'old-sav').archived, true);
   assert.equal(byKey(loans, 'home-loan').loan_type, 'mortgage');
   assert.equal(byKey(loans, 'loc').balance, 1000);
+  // What the ledger learned later is filled in; a limit the card already has is kept.
+  assert.equal(byKey(loans, 'loc').credit_limit, 13000);
+  assert.equal(byKey(loans, 'loc').loan_type, 'line_of_credit');
+  assert.equal(byKey(cards, 'visa-2').credit_limit, 5000);
+  assert.equal(byKey(cards, 'visa-2').limit_at_least, 700);
   const kind = (id) => tx.find((t) => t.external_id === id);
   assert.equal(kind('1').type, 'expense');
   assert.equal(kind('1').category_name, 'Dining');

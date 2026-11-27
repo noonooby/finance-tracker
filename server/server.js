@@ -607,7 +607,7 @@ function importHistory(uid, file, opts = {}) {
   return tx(() => {
     const has = (tbl, id) => !!db.prepare('SELECT 1 FROM rows WHERE tbl = ? AND id = ?').get(tbl, String(id));
     const put = db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)');
-    const out = { accounts: 0, assets: 0, bills: 0, pay: 0, replaced: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
+    const out = { accounts: 0, filled: 0, assets: 0, bills: 0, pay: 0, replaced: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
     // A category the person already has (the same name and kind) is the one used.
     const mineNow = new Map(selectRows(uid, { table: 'categories' }).map((c) => [`${c.is_income ? 1 : 0}|${String(c.name || '').trim().toLowerCase()}`, c]));
     const use = new Map();
@@ -617,7 +617,15 @@ function importHistory(uid, file, opts = {}) {
       if (!has('categories', c.id)) { put.run('categories', c.id, uid, JSON.stringify({ ...c, user_id: uid, created_at: now() })); out.categories++; }
     }
     for (const r of p.rows) { const to = use.get(r.category_id); if (to) { r.category_id = to.id; r.category_name = to.name; } }
-    for (const a of p.accounts) if (!has(a.table, a.id)) { insertRow(uid, a.table, { ...a.values, created_at: now() }); out.accounts++; }
+    for (const a of p.accounts) {
+      if (!has(a.table, a.id)) { insertRow(uid, a.table, { ...a.values, created_at: now() }); out.accounts++; continue; }
+      // An account already here: what the file knows and the account does not is filled in. Nothing the account has is changed.
+      const was = selectRows(uid, { table: a.table, filters: [['id', 'eq', a.id]], limit: 1 })[0];
+      const add = {};
+      for (const k of ['credit_limit', 'limit_at_least']) if (Number(a.values[k]) > 0 && !(Number(was[k]) > 0)) add[k] = a.values[k];
+      if (a.values.loan_type === 'line_of_credit' && was.loan_type === 'loan') add.loan_type = 'line_of_credit';
+      if (Object.keys(add).length) { updateRows(uid, a.table, [['id', 'eq', a.id]], add); out.filled++; }
+    }
     for (const a of p.assets) if (!has('assets', a.id)) { insertRow(uid, 'assets', { ...a, created_at: now() }); out.assets++; }
     for (const b of p.bills) if (!has('bills', b.id)) { insertRow(uid, 'bills', { ...b, created_at: now() }); out.bills++; }
     for (const s of p.pay) if (!has('income_schedules', s.id)) { insertRow(uid, 'income_schedules', { ...s, created_at: now(), updated_at: now() }); out.pay++; }
@@ -670,7 +678,7 @@ function exportFor(req, since) {
   const uid = u.id, accounts = [], byId = new Map();
   for (const table of Object.keys(MONEY_FIELDS)) for (const r of selectRows(uid, { table })) {
     const owes = table === 'credit_cards' || table === 'loans';
-    const acct = { id: r.id, key: r.external_key || null, table, name: r.name, institution: r.institution || null, last4: r.last4 || null, balance: Number(r.balance) || 0, owed: owes,
+    const acct = { id: r.id, key: r.external_key || null, table, name: r.name, institution: r.institution || null, last4: r.last4 || null, balance: Number(r.balance) || 0, owed: owes, credit_limit: Number(r.credit_limit) > 0 ? Number(r.credit_limit) : null, limit_at_least: Number(r.limit_at_least) > 0 ? Number(r.limit_at_least) : null,
       balance_as_of: r.balance_as_of || null, archived: !!r.archived, updated_at: r.updated_at || r.created_at || null };
     accounts.push(acct); byId.set(`${table}:${r.id}`, acct);
   }

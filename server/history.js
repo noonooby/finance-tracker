@@ -64,7 +64,10 @@ function plan(file, uid) {
     if (table === 'bank_accounts') v.account_type = kind === 'savings' ? 'savings' : kind === 'cash' ? 'cash' : 'checking';
     if (table === 'credit_cards') Object.assign(v, { credit_limit: Number(a.credit_limit) || 0, due_date: isDay(a.next_due) ? a.next_due : null });
     if (table === 'loans') Object.assign(v, { principal: balance, interest_rate: Number(a.rate) || 0, payment_amount: Number(a.payment_amount) || 0, frequency: a.frequency || 'monthly',
-      next_payment_date: isDay(a.next_due) ? a.next_due : null, loan_type: kind === 'bnpl' ? 'plan' : /mortgage/i.test(a.name) ? 'mortgage' : 'loan' });
+      next_payment_date: isDay(a.next_due) ? a.next_due : null,
+      loan_type: kind === 'bnpl' ? 'plan' : /mortgage/i.test(a.name) ? 'mortgage' : /\bloc\b|line of credit/i.test(a.name) ? 'line_of_credit' : 'loan',
+      ...(Number(a.credit_limit) > 0 ? { credit_limit: Number(a.credit_limit) } : {}) });
+    if (Number(a.limit_at_least) > 0) v.limit_at_least = Number(a.limit_at_least);
     if (table === 'investments') v.kind = investmentKind(a.name);
     const acct = { key: a.key, table, owes, id: v.id, name: v.name, day: a.balance_date, values: v };
     accounts.push(acct); byKey.set(a.key, acct);

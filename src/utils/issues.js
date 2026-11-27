@@ -110,12 +110,16 @@ export function issues({ checks = [], transactions = [], stale = [], snapshots =
 
   // 6. What is not known yet about an account, one entry per account. Each missing thing can be typed in place or
   //    filled by a picture that shows it. Only things that change what the app works out are asked for.
+  // The most ever owed on an account whose limit no statement shows: the limit is at least that.
+  const cad = (n) => `$${Number(n).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const least = (x) => (Number(x.limit_at_least) > 0 ? Number(x.limit_at_least) : null);
   const ask = (table, row, what, rows, uses) => {
     const missing = rows.filter((r) => r.missing);
     if (!missing.length) return;
-    add({ id: `need:${table}:${row.id}`, sig: missing.map((r) => r.field).join(','), kind: 'need', ref: String(row.id), title: `${row.name}: ${list(missing.map((r) => r.short))} ${missing.length === 1 ? 'is' : 'are'} not known`,
+    add({ id: `need:${table}:${row.id}`, sig: missing.map((r) => r.field).join(','), kind: 'need', ref: String(row.id), title: missing.length === 1 && missing[0].atLeast ? `${row.name}: ${missing[0].short} is not confirmed (at least ${cad(missing[0].atLeast)})`
+        : `${row.name}: ${list(missing.map((r) => r.short))} ${missing.length === 1 ? 'is' : 'are'} not known`,
       text: `The app cannot work out ${list(missing.map((r) => r.use))} without ${missing.length === 1 ? 'it' : 'them'}. Type ${missing.length === 1 ? 'it' : 'each one'} in, or add a picture that shows ${missing.length === 1 ? 'it' : 'them'}.`,
-      sums: missing.map((r) => ({ label: r.label, value: null, fix: { do: 'field', label: `Add ${r.short}`, ask: r.ask, input: r.input, table, id: row.id, field: r.field, ...(r.suggest ? { suggest: r.suggest } : {}) } })),
+      sums: missing.map((r) => ({ label: r.label, value: null, ...(r.atLeast ? { unknown: `at least ${cad(r.atLeast)}` } : {}), fix: { do: 'field', label: `Add ${r.short}`, ask: r.ask, input: r.input, table, id: row.id, field: r.field, ...(r.suggest ? { suggest: r.suggest } : {}) } })),
       fixes: [{ do: 'go', label: `Add a picture of ${what}`, to: '/screenshot' }, leave('Not needed')] });
   };
   const blank = (v) => v == null || v === '' || !(Number(v) > 0);
@@ -131,7 +135,7 @@ export function issues({ checks = [], transactions = [], stale = [], snapshots =
   for (const c of creditCards) {
     if (c.is_gift_card) continue;
     ask('credit_cards', c, 'the card', [
-      { field: 'credit_limit', missing: blank(c.credit_limit), label: 'Credit limit', short: 'the limit', use: 'how much of the limit is used', ask: `Credit limit of ${c.name}`, input: 'number' },
+      { field: 'credit_limit', missing: blank(c.credit_limit), atLeast: least(c), label: 'Credit limit', short: 'the limit', use: 'how much of the limit is used', ask: `Credit limit of ${c.name}`, input: 'number' },
       { field: 'due_date', missing: Number(c.balance) > 0 && !day10(c.due_date), label: 'Next payment due', short: 'the due date', use: 'when the payment is due', ask: `Day the next payment on ${c.name} is due`, input: 'date' },
     ]);
   }
@@ -141,7 +145,7 @@ export function issues({ checks = [], transactions = [], stale = [], snapshots =
     const line = !l.on_card_id && lineTerms(l, investments);
     if (line) {
       ask('loans', l, 'the line of credit', [
-        { field: 'credit_limit', missing: line.limit == null, label: 'Limit', short: 'the limit', use: 'how much is left to take', ask: `Limit of ${l.name}`, input: 'number' },
+        { field: 'credit_limit', missing: line.limit == null, atLeast: least(l), label: 'Limit', short: 'the limit', use: 'how much is left to take', ask: `Limit of ${l.name}`, input: 'number' },
         { field: 'interest_rate', missing: line.rate == null, label: 'Interest % a year', short: 'the rate', use: 'what it costs each month', ask: `Yearly rate on ${l.name}, in percent`, input: 'number' },
       ]);
       continue;
