@@ -607,7 +607,7 @@ function importHistory(uid, file, opts = {}) {
   return tx(() => {
     const has = (tbl, id) => !!db.prepare('SELECT 1 FROM rows WHERE tbl = ? AND id = ?').get(tbl, String(id));
     const put = db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)');
-    const out = { accounts: 0, filled: 0, assets: 0, bills: 0, bills_changed: 0, pay: 0, replaced: 0, skipped: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
+    const out = { accounts: 0, filled: 0, assets: 0, bills: 0, bills_changed: 0, pay: 0, replaced: 0, skipped: 0, kept_yours: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
     // A category the person already has (the same name and kind) is the one used.
     const mineNow = new Map(selectRows(uid, { table: 'categories' }).map((c) => [`${c.is_income ? 1 : 0}|${String(c.name || '').trim().toLowerCase()}`, c]));
     const use = new Map();
@@ -624,6 +624,7 @@ function importHistory(uid, file, opts = {}) {
       const add = {};
       for (const k of ['credit_limit', 'limit_at_least']) if (Number(a.values[k]) > 0 && !(Number(was[k]) > 0)) add[k] = a.values[k];
       if (a.values.loan_type === 'line_of_credit' && was.loan_type === 'loan') add.loan_type = 'line_of_credit';
+      if (a.values.notes && a.values.notes !== was.notes && was.source === 'import') add.notes = a.values.notes;
       if (Object.keys(add).length) { updateRows(uid, a.table, [['id', 'eq', a.id]], add); out.filled++; }
     }
     for (const a of p.assets) if (!has('assets', a.id)) { insertRow(uid, 'assets', { ...a, created_at: now() }); out.assets++; }
@@ -639,18 +640,34 @@ function importHistory(uid, file, opts = {}) {
     }
     for (const id of p.ended) { const was = asBrought(id); if (was && was.status === 'active') { keepBill({ ...was, status: 'ignored', remind: false }); out.bills_changed++; } }
     for (const s of p.pay) if (!has('income_schedules', s.id)) { insertRow(uid, 'income_schedules', { ...s, created_at: now(), updated_at: now() }); out.pay++; }
+    // Which line each of the ledger's rows ended up in, for lines made from more than one row.
+    let sideMap = null;
+    const sides = () => { if (!sideMap) { sideMap = new Map(); for (const t of selectRows(uid, { table: 'transactions' })) for (const x of Array.isArray(t.external_ids) ? t.external_ids : []) sideMap.set(String(x), t.id); } return sideMap; };
+    // What the ledger now says about one of a line's rows: its category label there and its own words. Amounts, accounts and kind stay.
+    const relabel = (was, r) => {
+      const n = { ...was, side_labels: { ...(was.side_labels || {}), [String(r.external_id)]: r.ledger_category || null } };
+      if (String(was.external_id) === String(r.external_id)) n.ledger_category = r.ledger_category || null;
+      const said = [r.description, r.notes].filter((s) => s && !['An account not in the app'].includes(s));
+      n.texts = [...new Set([...(Array.isArray(was.texts) ? was.texts : [was.notes || was.description]), ...said].filter(Boolean))].slice(0, 8);
+      db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), 'transactions', String(was.id), uid);
+    };
     const rules = new Map();
     for (const r of p.rows) {
       if (has('transactions', r.id)) {
         if (!opts.replace) { out.already++; continue; }
         const was = selectRows(uid, { table: 'transactions', filters: [['id', 'eq', r.id]], limit: 1 })[0];
         // Only a line as it was brought in is rewritten: one the person has changed or undone since is left as they made it.
-        if (!was || was.source !== 'import' || was.updated_at || was.status !== 'active') { out.already++; continue; }
+        if (!was || was.source !== 'import' || was.updated_at || was.status !== 'active') { out.kept_yours++; continue; }
+        // A line made from two or more of the ledger's rows keeps its shape: the correction only changes what is kept about that row.
+        if (Array.isArray(was.external_ids) && was.external_ids.length > 1 && !(Array.isArray(r.external_ids) && r.external_ids.length > 1)) { relabel(was, r); out.replaced++; continue; }
         db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify({ ...r, user_id: uid, created_at: was.created_at }), 'transactions', r.id, uid);
         out.replaced++;
       } else if (opts.replace) {
-        // A correction is for a line that is here. One that is not (one side of a movement between two accounts, say) is left out.
-        out.skipped++;
+        // A correction is for a line that is here: it never adds one. The other side of a movement between two accounts is
+        // found on the line it belongs to.
+        const home = sides().get(String(r.external_id));
+        const was = home && selectRows(uid, { table: 'transactions', filters: [['id', 'eq', home]], limit: 1 })[0];
+        if (was && was.source === 'import' && !was.updated_at && was.status === 'active') { relabel(was, r); out.replaced++; } else if (was) out.kept_yours++; else out.skipped++;
         continue;
       } else {
         put.run('transactions', r.id, uid, JSON.stringify({ ...r, user_id: uid }));
@@ -714,7 +731,7 @@ function exportFor(req, since) {
       const acct = byId.get(`${l.table}:${l.id}`);
       return acct ? { account_id: acct.id, account_key: acct.key, account: acct.name, amount: fromCents((acct.owed ? -1 : 1) * cents(l.amount)) } : null;
     }).filter((m) => m && m.amount);
-    lines.push({ id: t.id, external_id: t.external_id || null, type: t.type, date: String(t.date || '').slice(0, 10), amount: Number(t.amount) || 0, currency: t.currency || 'CAD', description: t.description || '',
+    lines.push({ id: t.id, external_id: t.external_id || null, external_ids: Array.isArray(t.external_ids) ? t.external_ids : t.external_id ? [t.external_id] : [], side_labels: t.side_labels || null, notes: t.notes || null, type: t.type, date: String(t.date || '').slice(0, 10), amount: Number(t.amount) || 0, currency: t.currency || 'CAD', description: t.description || '',
       category: t.category_name || null, ledger_category: t.ledger_category || null, moves, pending: t.pending === true, undone: t.status === 'undone' || t.status === 'deleted',
       source: t.source === 'import' ? 'import' : t.from_screenshot ? 'picture' : 'typed', created_at: t.created_at || null, updated_at: t.updated_at || null });
   }

@@ -143,6 +143,7 @@ export default function Everything() {
                       <div>{info.edited ? 'Figures set by you' : 'Published figures'}, checked {info.checked}.{info.source_url && <> <a href={info.source_url} target="_blank" rel="noopener noreferrer" className="text-accent underline">Source</a>.</>}{(info.filled || []).length > 0 && ' Used where you had entered none.'}</div>
                     </div>
                   )}
+                  {r.notes && <div className="text-xs text-muted">{r.notes}</div>}
                   {r.info_off && <div className="text-xs text-muted">Not looked up.</div>}
                   {can && (open === key
                     ? <Change table={table} r={r} held={where} onCancel={() => setOpen(null)} onDone={async () => { await d.loadAllData(); setOpen(null); }} />

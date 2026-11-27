@@ -148,7 +148,8 @@ function plan(file, uid) {
     if (DEBT.test(cat) && l.c < 0) return row(l, [l.id], { type: 'loan_payment', amount, description: words(l), ...from(side(a)), loan_id: null, category_name: cat.replace(DEBT, '').trim(), history_only: hist });
     const c = catOf.get(cat) || null;
     const type = l.c < 0 ? 'expense' : c && c.is_income ? 'income' : 'refund';
-    return row(l, [l.id], { type, amount, description: words(l), ...from(side(a)), category_id: c ? c.id : null, category_name: c ? c.name : null, history_only: hist });
+    return row(l, [l.id], { type, amount, description: words(l), ...from(side(a)), category_id: c ? c.id : null, category_name: c ? c.name : null, history_only: hist,
+      ...(l.counterparty ? { notes: String(l.counterparty).slice(0, 80) } : {}) });
   };
 
   const groups = new Map();

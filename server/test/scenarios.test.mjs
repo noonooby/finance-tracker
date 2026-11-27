@@ -2238,15 +2238,15 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   assert.deepEqual([again.accounts, again.lines, again.already, again.bills, again.pay, again.categories, again.rules], [0, 0, 7, 0, 0, 0, 0]);
 
   // The ledger corrects one line's category: only that line is written again, as a refund against rent this time.
-  const fix = { rules: { refunds: ['Housing: Rent'] }, accounts: file.accounts, lines: [{ ...file.lines[4], description: 'ROOMMATE RENT SHARE', category: 'Housing: Rent' }] };
+  const fix = { rules: { refunds: ['Housing: Rent'] }, accounts: file.accounts, lines: [{ ...file.lines[4], description: 'ROOMMATE RENT SHARE', category: 'Housing: Rent', counterparty: 'Sam (roommate)' }] };
   fix.accounts = file.accounts.map((a) => (a.key === 'loc' ? { ...a, credit_limit: 13000 } : a.key === 'visa-2' ? { ...a, credit_limit: 9999, limit_at_least: 700 } : a));
   // One side of the card payment sent alone is not a line here: a correction never adds one. The bill follows the file, then ends.
   fix.lines.push({ ...file.lines[3], category: 'Transfer: Between own accounts' });
   fix.schedules = [{ ...file.schedules[1], amount: 90, note: 'Now on the Visa.' }];
   const fixed = importHistory(uid, fix, { replace: true });
-  assert.deepEqual([fixed.skipped, fixed.bills_changed], [1, 1]);
+  assert.deepEqual([fixed.skipped, fixed.replaced, fixed.bills_changed], [0, 2, 1]);
   assert.equal(importHistory(uid, { accounts: file.accounts, lines: [], rules: { ended_bills: ['hydro'] } }).bills_changed, 1);
-  assert.deepEqual([fixed.replaced, fixed.lines, fixed.accounts, fixed.filled], [1, 0, 0, 2]);
+  assert.deepEqual([fixed.replaced, fixed.lines, fixed.accounts, fixed.filled], [2, 0, 0, 2]);
   const { token } = await api('/api/dev-login', { email: 'ledger@test.local' });
   const mine = async (table) => (await (await realFetch(`${base}/api/db`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ table, action: 'select' }) })).json()).data;
   const [banks, cards, loans, tx] = [await mine('bank_accounts'), await mine('credit_cards'), await mine('loans'), await mine('transactions')];
@@ -2272,11 +2272,15 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   assert.equal((await mine('categories')).filter((c) => c.name === 'Dining').length, 1);
   assert.equal(kind('2').type, 'refund');
   assert.equal(kind('3').type, 'payment');
+  // The correction named only the card's side of the payment: the line is still one payment, with the new label kept for that side.
+  assert.equal(kind('3').side_labels['4'], 'Transfer: Between own accounts');
+  assert.equal(kind('3').amount, 100);
   assert.equal(kind('3').card_id, byKey(cards, 'visa-2').id);
   assert.deepEqual(kind('3').external_ids, ['3', '4']);
   assert.equal(kind('5').type, 'refund');
   assert.equal(kind('5').category_name, 'Housing');
   assert.equal(kind('5').description, 'ROOMMATE RENT SHARE');
+  assert.equal(kind('5').notes, 'Sam (roommate)');
   assert.equal(kind('6').type, 'transfer');
   assert.equal(kind('7').type, 'loan_payment');
   assert.equal(kind('7').loan_id, byKey(loans, 'home-loan').id);
