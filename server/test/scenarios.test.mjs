@@ -2344,8 +2344,9 @@ test('a ledger correction that pairs rows anew: two lines become one payment, a 
   assert.deepEqual([part.regrouped, part.kept_shape, (await mine()).length], [0, 1, 5]);
   // A correction holding only money in for a spending category does not turn it into income.
   importHistory(uid, { accounts: acc, lines: [...first, L('g1', 'r-chq', -9, 'Groceries'), L('g2', 'r-chq', 5, 'Groceries')] });
-  importHistory(uid, { accounts: acc, lines: [{ ...L('g2', 'r-chq', 5, 'Groceries'), description: 'STORE CREDIT' }] }, { replace: true });
+  importHistory(uid, { accounts: acc, lines: [{ ...L('g2', 'r-chq', 5, 'Groceries'), description: 'STORE CREDIT', note: 'Instalment 2 of 4' }] }, { replace: true });
   assert.equal((await mine()).find((t) => t.external_id === 'g2').type, 'refund');
+  assert.equal((await mine()).find((t) => t.external_id === 'g2').notes, 'Instalment 2 of 4');
   // The same correction again changes nothing.
   assert.equal(importHistory(uid, { accounts: acc, lines: fix }, { replace: true }).regrouped, 0);
 });

@@ -111,7 +111,7 @@ export default function TransactionCard({
         {transaction.notes && <div className="text-xs text-muted truncate">{transaction.notes}</div>}
       </div>
       <div className={`shrink-0 text-[0.9375rem] font-semibold tabular-nums ${isUndone ? 'line-through text-muted' : isIn ? 'text-positive' : 'text-fg'}`}>
-        {isIn ? '+' : isOut ? '-' : transaction.type === 'adjustment' ? (transaction.direction === 'down' ? '-' : transaction.direction === 'up' ? '+' : '') : ''}{formatCurrency(transaction.amount)}
+        {isIn ? '+' : isOut ? '-' : transaction.type === 'adjustment' ? (transaction.direction === 'down' ? '-' : transaction.direction === 'up' ? '+' : '') : ''}{/^[A-Z]{3}$/.test(transaction.currency || '') && transaction.currency !== 'CAD' ? new Intl.NumberFormat('en-CA', { style: 'currency', currency: transaction.currency }).format(transaction.amount || 0) : formatCurrency(transaction.amount)}
       </div>
       <div className="shrink-0 flex items-center -mr-2">
         {onEdit && !isUndone && transaction.status !== 'deleted' && (

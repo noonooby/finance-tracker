@@ -119,6 +119,7 @@ function plan(file, uid, known) {
   }
 
   const rows = [], counts = {};
+  const noteOf = new Map((file.lines || []).filter((l) => l && l.note).map((l) => [String(l.id), String(l.note).trim().slice(0, 140)]));
   const side = (a) => ({ method: METHOD[a.table], id: a.id, name: a.name });
   // What a line did to the balance as the app keeps it: a card or loan holds what is owed, so money in lowers it.
   const moved = (a, c) => ({ table: a.table, id: a.id, amount: (a.owes ? -c : c) / 100 });
@@ -126,6 +127,9 @@ function plan(file, uid, known) {
     const v = { id: `h_${first.id}_${u8}`, status: 'active', undone_at: null, date: first.date, source: 'import', external_id: first.id,
       ...(ids.length > 1 ? { external_ids: ids } : {}), ledger_category: first.category || null, in_snapshot: true, created_at: `${first.date}T12:00:00.000Z`,
       ...(first.currency && first.currency !== 'CAD' ? { currency: String(first.currency).slice(0, 3) } : {}), ...(first.texts ? { texts: first.texts } : {}), ...values };
+    // What the file notes about any of the line's rows (which instalment it was, say) is kept under the line.
+    const said = [...new Set(ids.map((x) => noteOf.get(String(x))).filter(Boolean))];
+    if (said.length) v.notes = [v.notes, ...said].filter(Boolean).join(' · ').slice(0, 300);
     counts[v.type] = (counts[v.type] || 0) + 1;
     rows.push(v);
   };

@@ -647,6 +647,30 @@ function importHistory(uid, file, opts = {}) {
       if (JSON.stringify(next) !== JSON.stringify(was)) { keepBill(next); out.bills_changed++; }
     }
     for (const id of p.ended) { const was = asBrought(id); if (was && was.status === 'active') { keepBill({ ...was, status: 'ignored', remind: false }); out.bills_changed++; } }
+    // A bill brought in without a merchant is tied to one when its purchases are here: the merchant whose name holds the bill's,
+    // or, failing that, the only merchant charged the bill's amount three times or more in the last 200 days.
+    {
+      const { mkey } = require('./reader');
+      const all = selectRows(uid, { table: 'transactions' }).filter((t) => t.type === 'expense' && t.status === 'active');
+      const newest = all.reduce((d, t) => (t.date > d ? t.date : d), '');
+      const since = newest ? new Date(Date.parse(newest) - 200 * 864e5).toISOString().slice(0, 10) : '';
+      const recent = all.filter((t) => t.date >= since);
+      for (const b of selectRows(uid, { table: 'bills' })) {
+        if (b.status !== 'active' || b.source !== 'import' || !String(b.key || '').startsWith('import:')) continue;
+        const want = mkey(String(b.name).split('(')[0]).slice(0, 12), byName = new Map(), byAmount = new Map();
+        for (const t of recent) {
+          const k = mkey(t.description);
+          if (k.length < 4) continue;
+          if (want.length >= 6 && k.includes(want)) byName.set(k, (byName.get(k) || 0) + 1);
+          if (Math.abs(cents(t.amount) - cents(b.amount)) <= Math.max(1, cents(b.amount) * 0.01)) byAmount.set(k, (byAmount.get(k) || 0) + 1);
+        }
+        const steady = [...byAmount].filter(([, n]) => n >= 3);
+        const pick = [...byName].sort((x, y) => y[1] - x[1])[0] || (steady.length === 1 ? steady[0] : null);
+        if (!pick || selectRows(uid, { table: 'bills', filters: [['key', 'eq', pick[0]], ['status', 'eq', 'active']] }).length) continue;
+        db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify({ ...b, key: pick[0] }), 'bills', String(b.id), uid);
+        out.bills_tied = (out.bills_tied || 0) + 1;
+      }
+    }
     for (const s of p.pay) if (!has('income_schedules', s.id)) { insertRow(uid, 'income_schedules', { ...s, created_at: now(), updated_at: now() }); out.pay++; }
     // Which line each of the ledger's rows ended up in, for lines made from more than one row.
     let sideMap = null;
