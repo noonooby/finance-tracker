@@ -607,7 +607,7 @@ function importHistory(uid, file, opts = {}) {
   return tx(() => {
     const has = (tbl, id) => !!db.prepare('SELECT 1 FROM rows WHERE tbl = ? AND id = ?').get(tbl, String(id));
     const put = db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)');
-    const out = { accounts: 0, filled: 0, assets: 0, bills: 0, pay: 0, replaced: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
+    const out = { accounts: 0, filled: 0, assets: 0, bills: 0, bills_changed: 0, pay: 0, replaced: 0, skipped: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
     // A category the person already has (the same name and kind) is the one used.
     const mineNow = new Map(selectRows(uid, { table: 'categories' }).map((c) => [`${c.is_income ? 1 : 0}|${String(c.name || '').trim().toLowerCase()}`, c]));
     const use = new Map();
@@ -627,7 +627,17 @@ function importHistory(uid, file, opts = {}) {
       if (Object.keys(add).length) { updateRows(uid, a.table, [['id', 'eq', a.id]], add); out.filled++; }
     }
     for (const a of p.assets) if (!has('assets', a.id)) { insertRow(uid, 'assets', { ...a, created_at: now() }); out.assets++; }
-    for (const b of p.bills) if (!has('bills', b.id)) { insertRow(uid, 'bills', { ...b, created_at: now() }); out.bills++; }
+    // A bill brought in earlier and not changed by the person since follows the file: its amount, day and note, or its end.
+    const asBrought = (id) => { const b = selectRows(uid, { table: 'bills', filters: [['id', 'eq', id]], limit: 1 })[0]; return b && b.source === 'import' && (!b.updated_at || b.updated_at === b.created_at) ? b : null; };
+    const keepBill = (b) => db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(b), 'bills', String(b.id), uid);
+    for (const b of p.bills) {
+      if (!has('bills', b.id)) { insertRow(uid, 'bills', { ...b, created_at: now() }); out.bills++; continue; }
+      const was = opts.replace && asBrought(b.id);
+      if (!was || was.status !== 'active') continue;
+      const next = { ...was, name: b.name, amount: b.amount, frequency: b.frequency, next_date: b.next_date, remind: b.remind, notes: b.notes };
+      if (JSON.stringify(next) !== JSON.stringify(was)) { keepBill(next); out.bills_changed++; }
+    }
+    for (const id of p.ended) { const was = asBrought(id); if (was && was.status === 'active') { keepBill({ ...was, status: 'ignored', remind: false }); out.bills_changed++; } }
     for (const s of p.pay) if (!has('income_schedules', s.id)) { insertRow(uid, 'income_schedules', { ...s, created_at: now(), updated_at: now() }); out.pay++; }
     const rules = new Map();
     for (const r of p.rows) {
@@ -638,10 +648,14 @@ function importHistory(uid, file, opts = {}) {
         if (!was || was.source !== 'import' || was.updated_at || was.status !== 'active') { out.already++; continue; }
         db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify({ ...r, user_id: uid, created_at: was.created_at }), 'transactions', r.id, uid);
         out.replaced++;
+      } else if (opts.replace) {
+        // A correction is for a line that is here. One that is not (one side of a movement between two accounts, say) is left out.
+        out.skipped++;
         continue;
+      } else {
+        put.run('transactions', r.id, uid, JSON.stringify({ ...r, user_id: uid }));
+        out.lines++;
       }
-      put.run('transactions', r.id, uid, JSON.stringify({ ...r, user_id: uid }));
-      out.lines++;
       // What each merchant's category is: the newest line from it decides, as when lines are saved one at a time.
       if (!r.category_id || !['expense', 'income', 'refund'].includes(r.type)) continue;
       const key = require('./reader').mkey(r.description);
@@ -652,7 +666,15 @@ function importHistory(uid, file, opts = {}) {
     }
     for (const r of rules.values()) {
       const id = `rule:${uid}:${r.key}`;
-      if (has('category_rules', id)) continue;
+      if (has('category_rules', id)) {
+        // A corrected line corrects what was learned from it, unless the person set that merchant's category themselves.
+        const ex = opts.replace && selectRows(uid, { table: 'category_rules', filters: [['id', 'eq', id]], limit: 1 })[0];
+        if (ex && ex.source !== 'set' && String(ex.category_id) !== String(r.category_id)) {
+          db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify({ ...ex, category_id: r.category_id, category_name: r.category_name, updated_at: now() }), 'category_rules', id, uid);
+          out.rules++;
+        }
+        continue;
+      }
       put.run('category_rules', id, uid, JSON.stringify({ id, user_id: uid, ...r, created_at: now(), updated_at: now() }));
       out.rules++;
     }

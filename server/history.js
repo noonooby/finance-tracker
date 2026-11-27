@@ -222,10 +222,13 @@ function plan(file, uid) {
     const best = [...seenKeys].sort((x, y) => y[1] - x[1])[0];
     const key = best && !bills.some((b) => b.key === best[0]) ? best[0] : `import:${slug(s.id)}`;
     bills.push({ id: `h_${slug(s.id)}_${u8}`, key, name: String(s.name).slice(0, 60), amount, frequency: FREQ[s.every], next_date: s.next, status: 'active', remind: s.remind === true,
-      source: 'import', ...(s.pay_from ? { notes: `Paid from ${String(s.pay_from).slice(0, 80)}${s.autopay ? ', by itself' : ''}.` } : {}) });
+      source: 'import', notes: [s.pay_from ? `Paid from ${String(s.pay_from).slice(0, 80)}${s.autopay ? ', by itself' : ''}.` : '', String(s.note || '').slice(0, 220)].filter(Boolean).join(' ') || null });
   }
 
-  return { accounts, categories, rows, counts, problems, bills, pay, assets: (file.assets || []).filter((x) => x && x.name && Number(x.value) > 0)
+  // Bills the file says have ended.
+  const ended = ((file.rules && file.rules.ended_bills) || []).map((id) => `h_${slug(id)}_${u8}`);
+
+  return { accounts, categories, rows, counts, problems, bills, pay, ended, assets: (file.assets || []).filter((x) => x && x.name && Number(x.value) > 0)
     .map((x) => ({ id: `h_${slug(x.name)}_${u8}`, name: String(x.name).slice(0, 80), kind: /home|condo|house|\bpl\b/i.test(x.name) ? 'Home' : 'Other', balance: cents(x.value) / 100,
       notes: x.basis ? String(x.basis).slice(0, 200) : undefined, source: 'import' })) };
 }

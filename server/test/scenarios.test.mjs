@@ -2240,11 +2240,18 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   // The ledger corrects one line's category: only that line is written again, as a refund against rent this time.
   const fix = { rules: { refunds: ['Housing: Rent'] }, accounts: file.accounts, lines: [{ ...file.lines[4], description: 'ROOMMATE RENT SHARE', category: 'Housing: Rent' }] };
   fix.accounts = file.accounts.map((a) => (a.key === 'loc' ? { ...a, credit_limit: 13000 } : a.key === 'visa-2' ? { ...a, credit_limit: 9999, limit_at_least: 700 } : a));
+  // One side of the card payment sent alone is not a line here: a correction never adds one. The bill follows the file, then ends.
+  fix.lines.push({ ...file.lines[3], category: 'Transfer: Between own accounts' });
+  fix.schedules = [{ ...file.schedules[1], amount: 90, note: 'Now on the Visa.' }];
   const fixed = importHistory(uid, fix, { replace: true });
+  assert.deepEqual([fixed.skipped, fixed.bills_changed], [1, 1]);
+  assert.equal(importHistory(uid, { accounts: file.accounts, lines: [], rules: { ended_bills: ['hydro'] } }).bills_changed, 1);
   assert.deepEqual([fixed.replaced, fixed.lines, fixed.accounts, fixed.filled], [1, 0, 0, 2]);
   const { token } = await api('/api/dev-login', { email: 'ledger@test.local' });
   const mine = async (table) => (await (await realFetch(`${base}/api/db`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ table, action: 'select' }) })).json()).data;
   const [banks, cards, loans, tx] = [await mine('bank_accounts'), await mine('credit_cards'), await mine('loans'), await mine('transactions')];
+  const hydro = (await mine('bills'))[0];
+  assert.deepEqual([hydro.amount, hydro.status, tx.length], [90, 'ignored', 7]);
   const byKey = (rows, k) => rows.find((r) => r.external_key === k);
   // No line moved a balance: each account has the balance the file states, on the day it states.
   assert.equal(byKey(banks, 'chq-1').balance, 500);
