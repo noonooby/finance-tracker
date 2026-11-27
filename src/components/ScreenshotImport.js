@@ -1290,16 +1290,20 @@ export default function ScreenshotImport({ bankAccounts = [], creditCards = [], 
                 const need = r.on && missing(r);
                 const cat = catsFor(r.kind).find((c) => String(c.id) === String(r.category_id));
                 const editable = r.action !== 'mark_posted' && r.action !== 'skip';
+                // A line read as already saved or left out can still be saved as a line of its own, and then edited.
+                const asNew = () => { setRow(r.i, { action: r.target || r.from || r.card || r.source ? 'record' : 'choose_account', on: true, why: null, was: r.why || STATUS_TEXT[r.action],
+                  key: r.key ? `${r.key}:own:${Date.now().toString(36)}` : r.key, key_rest: r.key_rest ? `${r.key_rest}|own:${Date.now().toString(36)}` : r.key_rest }); setOpen(r.i); };
                 return (
                   <li key={r.i} id={`scan-line-${r.i}`} style={{ scrollMarginTop: 80 }} className="py-3 space-y-2">
                     <div className="flex items-start gap-3">
-                      <input type="checkbox" className="mt-1 w-5 h-5 shrink-0" checked={r.on} disabled={r.action === 'skip'} aria-label={`Save ${r.merchant}`}
-                        onChange={(e) => setRow(r.i, { on: e.target.checked })} />
+                      <input type="checkbox" className="mt-1 w-5 h-5 shrink-0" checked={r.on} aria-label={`Save ${r.merchant}`}
+                        onChange={(e) => (r.action === 'skip' && e.target.checked ? asNew() : setRow(r.i, { on: e.target.checked }))} />
                       <div className="flex-1 min-w-0">
                         <div className="text-base font-medium break-words">{r.merchant}</div>
                         <div className={`text-sm ${muted}`}>
                           {formatDate(r.date) || r.date}{r.pending ? ', pending' : ''} · {KIND_TEXT[r.kind] || r.kind} · {lineSummary(r)}{cat ? ` · ${cat.name}` : ''}
                         </div>
+                        {r.was && <div className={`text-xs ${muted}`}>Was: {r.was}. Saved as a line of its own.</div>}
                         {r.action !== 'record' && r.action !== 'choose_account' && <div className={`text-xs ${muted}`}>{r.why || STATUS_TEXT[r.action]}</div>}
                         {need && (homelessRow(r) ? <div className={`text-xs ${muted}`}>No account yet: kept for later</div> : <div className="text-sm text-warning">{need}</div>)}
                         {r.doubt && <div className="text-xs text-warning">The balance shown beside this line does not fit its amount. Check it against the picture.</div>}
@@ -1311,6 +1315,7 @@ export default function ScreenshotImport({ bankAccounts = [], creditCards = [], 
                       <div className="text-right">
                         <div className={r.kind === 'purchase' ? 'text-base font-semibold tabular-nums' : 'text-base font-semibold tabular-nums text-positive'}>{formatCurrency(r.amount)}</div>
                         {editable && <button type="button" className="press text-sm font-medium py-1 text-accent" onClick={() => setOpen(open === r.i ? null : r.i)} aria-expanded={open === r.i}>{open === r.i ? 'Done' : 'Edit'}</button>}
+                        {!editable && <button type="button" className="press text-sm font-medium py-1 text-accent" onClick={asNew}>Record anyway</button>}
                       </div>
                     </div>
                     {editable && open === r.i && (
