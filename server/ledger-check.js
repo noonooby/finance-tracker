@@ -15,7 +15,7 @@ function check(ledger, live) {
   for (const [key, a] of known) {
     const h = here.get(key);
     if (!h) { say(`account missing: ${key}`); continue; }
-    if (Math.abs(cents(h.balance)) !== Math.abs(cents(a.balance)) && !out.touched) (out.balances = out.balances || []).push(`${key}: file ${a.balance}, app ${h.balance}`);
+    if (Math.abs(cents(h.balance)) !== Math.abs(cents(a.balance))) (out.balances = out.balances || []).push(`${key}: file ${a.balance}, app ${h.balance}`);
     if (!!h.archived !== !!a.closed) say(`account open or closed differs: ${key}`);
     if (a.credit_limit && h.credit_limit && cents(a.credit_limit) !== cents(h.credit_limit)) say(`limit differs: ${key}: file ${a.credit_limit}, app ${h.credit_limit}`);
   }
@@ -41,6 +41,8 @@ function check(ledger, live) {
   let missing = 0;
   for (const r of ledger.lines) {
     const n = seen.get(String(r.id)) || 0;
+    // A row of nothing moves no money and is not kept as a line.
+    if (!cents(r.amount) && !n) { out.empty_rows = (out.empty_rows || 0) + 1; continue; }
     if (withIds && n !== 1 && !changedRows.has(String(r.id))) { missing++; if (missing <= 10) say(`row ${r.id} (${r.date}, ${r.account}, ${r.amount}) is on ${n} lines`); }
     if (changedRows.has(String(r.id)) || (withIds && !n)) continue;
     want.set(String(r.account), (want.get(String(r.account)) || 0) + cents(r.amount));
