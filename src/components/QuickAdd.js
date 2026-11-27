@@ -355,7 +355,7 @@ export default function QuickAdd({ onClose, preset }) {
                           ))}
                           <div className="flex items-center justify-between text-xs px-1">
                             <button type="button" className="font-medium text-accent py-1" onClick={() => setParts([...parts, { categoryId: '', amount: '' }])}>Add a part</button>
-                            <span className={Math.abs(partsLeft) < 0.005 ? 'text-positive' : 'text-muted'}>{Math.abs(partsLeft) < 0.005 ? 'Adds up' : partsLeft > 0 ? `${formatCurrency(partsLeft)} left` : `${formatCurrency(-partsLeft)} over`}</span>
+                            <span className={Math.abs(partsLeft) < 0.005 ? 'text-positive' : 'text-muted'}>{Math.abs(partsLeft) < 0.005 ? 'Adds up' : partsLeft > 0 ? `${formatCurrency(partsLeft)} left of ${formatCurrency(n)}` : `${formatCurrency(-partsLeft)} over`}</span>
                           </div>
                         </div>
                       )}

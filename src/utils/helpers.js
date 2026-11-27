@@ -72,7 +72,7 @@ export const DEFAULT_CATEGORIES = [
   { id: 'salary', name: 'Salary', color: '#10b981', icon: 'DollarSign', is_income: true },
   { id: 'freelance', name: 'Freelance', color: '#8b5cf6', icon: 'Briefcase', is_income: true },
   { id: 'investment', name: 'Investment', color: '#f59e0b', icon: 'TrendingUp', is_income: true },
-  { id: 'other_income', name: 'Other Income', color: '#6b7280', icon: 'Banknote', is_income: true }
+  { id: 'other_income', name: 'Other income', color: '#6b7280', icon: 'Banknote', is_income: true }
 ];
 
 // ============================================

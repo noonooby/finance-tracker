@@ -89,7 +89,7 @@ export async function saveCardPayment(formData, { creditCards, bankAccounts, loa
     extra: {
       type: 'payment',
       category_id: formData.category || 'credit_card_payment',
-      category_name: 'Credit Card Payment',
+      category_name: 'Credit card payment',
       payment_method_name: sourceName
     }
   }, { bankAccounts, creditCards, loans });
@@ -128,7 +128,9 @@ export async function saveLoanPayment(formData, { loans, bankAccounts, creditCar
   const amount = parseFloat(formData.amount);
   const { sourceType, sourceId, source, sourceName } = paymentSourceOf(formData, { bankAccounts, creditCards });
 
-  const recurring = loan.frequency && loan.frequency !== 'onetime';
+  // A smaller extra payment is not the regular one: it leaves the next due day and the count where they are.
+  const regular = !(Number(loan.payment_amount) > 0) || amount >= Number(loan.payment_amount) - 0.005;
+  const recurring = regular && loan.frequency && loan.frequency !== 'onetime';
   let nextPaymentDate = loan.next_payment_date;
   if (recurring) {
     // The day of the month comes from the loan's start, so a short month does not shift later payments.
@@ -162,7 +164,7 @@ export async function saveLoanPayment(formData, { loans, bankAccounts, creditCar
     extra: {
       type: 'payment',
       category_id: formData.category || 'loan_payment',
-      category_name: 'Loan Payment',
+      category_name: 'Loan payment',
       payment_method_name: sourceName
     }
   }, { bankAccounts, creditCards, loans });

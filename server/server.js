@@ -468,7 +468,7 @@ function applyLegs(uid, legs, line, opts = {}) {
     // the balance in the app was behind, and the next balance read from a picture puts it right.
     const happened = !!(line && line.from_screenshot) && l.table !== 'loans';
     if (floor != null && after < cents(floor) && !happened) {
-      const name = r.name || 'This account', m = (c) => `$${(Math.abs(c) / 100).toFixed(2)}`;
+      const name = r.name || 'This account', m = (c) => `$${(Math.abs(c) / 100).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       if (l.table === 'loans') fail(409, `You owe ${m(before)} on ${name}. ${m(delta)} is more than that.`);
       if (cents(floor) >= 0 && before >= 0) fail(409, `${name} has ${m(before)}. ${m(delta)} is ${m(after - cents(floor))} more than it can pay.`);
       fail(409, `${name} would be ${m(after)} below zero. Its overdraft limit is ${m(cents(floor))}.`);

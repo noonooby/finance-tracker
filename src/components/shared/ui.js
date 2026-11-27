@@ -105,7 +105,9 @@ export function Num({ value, format = formatCurrency }) {
       if (k < 1) raf = requestAnimationFrame(step); else { from.current = target; setShown(target); }
     };
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    // Frames stop while the page is in the background; the figure still has to end on the real value.
+    const end = setTimeout(() => { cancelAnimationFrame(raf); from.current = target; setShown(target); }, 900);
+    return () => { cancelAnimationFrame(raf); clearTimeout(end); };
   }, [target]);
   return <span className="tabular-nums">{format(shown)}</span>;
 }

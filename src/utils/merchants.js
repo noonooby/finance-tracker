@@ -23,7 +23,7 @@ const KNOWN = {
   investment: `dividend*, interest paid, interest earned, interest credit, deposit interest, savings interest, gic interest, distribution*, capital gain*`,
 };
 const NAMES = { groceries: 'Groceries', dining: 'Dining', transportation: 'Transportation', utilities: 'Utilities', entertainment: 'Entertainment', healthcare: 'Healthcare',
-  shopping: 'Shopping', housing: 'Housing', insurance: 'Insurance', loan_payments: 'Loan payments', salary: 'Salary', other_income: 'Other Income', investment: 'Investment' };
+  shopping: 'Shopping', housing: 'Housing', insurance: 'Insurance', loan_payments: 'Loan payments', salary: 'Salary', other_income: 'Other income', investment: 'Investment' };
 const INCOME = new Set(['salary', 'other_income', 'investment']);
 
 // "McDonald's #14146 ETOBICOKE ON" -> "mcdonalds 14146 etobicoke on"

@@ -612,25 +612,27 @@ export default function Loans({
                         ? 'text-warning hover:bg-surface-2'
                         : 'text-muted hover:bg-surface-2'
                     }`}
-                    title={pinnedLoans.includes(loan.id) ? 'Unpin loan' : 'Pin loan'}
+                    aria-label={`${pinnedLoans.includes(loan.id) ? 'Unpin' : 'Pin'} ${loan.name}`}
                   >
                     <Star size={18} className={`${pinnedLoans.includes(loan.id) ? 'fill-current' : ''}`} />
                   </button>
                   <button
                     onClick={() => onNavigateToTransactions && onNavigateToTransactions({ loan: loan.id })}
                     className="icon-btn text-muted hover:bg-surface-2"
-                    title="View transactions"
+                    aria-label={`Activity for ${loan.name}`}
                   >
                     <ListFilter size={18} />
                   </button>
                   <button 
-                    onClick={() => handleEdit(loan)} 
+                    onClick={() => handleEdit(loan)}
+                    aria-label={`Edit ${loan.name}`}
                     className="icon-btn text-muted hover:bg-surface-2"
                   >
                     <Edit2 size={18} />
                   </button>
                   <button 
-                    onClick={() => handleDelete(loan.id)} 
+                    onClick={() => handleDelete(loan.id)}
+                    aria-label={`Delete ${loan.name}`}
                     className="icon-btn text-muted hover:bg-negative/10 hover:text-negative"
                   >
                     <X size={18} />
