@@ -603,7 +603,15 @@ function mergeTwinCategories(uid) {
 // replace: a line already there is written again from the file (a category corrected in the ledger); its id and the day it was
 // first saved stay, and nothing else is touched.
 function importHistory(uid, file, opts = {}) {
-  const p = require('./history').plan(file, uid);
+  // What each of the ledger's categories is here already: income when most of its lines are.
+  const seenKind = new Map();
+  for (const t of selectRows(uid, { table: 'transactions' })) {
+    if (t.source !== 'import' || !t.ledger_category || !['income', 'expense', 'refund'].includes(t.type) || (Array.isArray(t.external_ids) && t.external_ids.length > 1)) continue;
+    const k = seenKind.get(t.ledger_category) || { inc: 0, not: 0 };
+    if (t.type === 'income') k.inc++; else k.not++;
+    seenKind.set(t.ledger_category, k);
+  }
+  const p = require('./history').plan(file, uid, new Map([...seenKind].map(([name, k]) => [name, k.inc > k.not])));
   return tx(() => {
     const has = (tbl, id) => !!db.prepare('SELECT 1 FROM rows WHERE tbl = ? AND id = ?').get(tbl, String(id));
     const put = db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)');
@@ -680,6 +688,8 @@ function importHistory(uid, file, opts = {}) {
         for (const n of now_) fresh.add(n.id);
       }
     }
+    let heldRows = null;
+    const held = () => { if (!heldRows) { heldRows = new Set(); for (const t of selectRows(uid, { table: 'transactions' })) if (t.source === 'import') for (const x of Array.isArray(t.external_ids) && t.external_ids.length ? t.external_ids : [t.external_id]) heldRows.add(String(x)); } return heldRows; };
     const rules = new Map();
     for (const r of p.rows) {
       if (fresh.has(r.id)) {
@@ -702,6 +712,8 @@ function importHistory(uid, file, opts = {}) {
         if (was && was.source === 'import' && !was.updated_at && was.status === 'active') { relabel(was, r); out.replaced++; } else if (was) out.kept_yours++; else out.skipped++;
         continue;
       } else {
+        // A row that is already here as part of another line (paired since) is not brought in a second time.
+        if ((Array.isArray(r.external_ids) ? r.external_ids : [r.external_id]).some((x) => held().has(String(x)))) { out.already++; continue; }
         put.run('transactions', r.id, uid, JSON.stringify({ ...r, user_id: uid }));
         out.lines++;
       }

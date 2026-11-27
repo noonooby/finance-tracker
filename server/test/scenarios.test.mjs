@@ -2342,6 +2342,10 @@ test('a ledger correction that pairs rows anew: two lines become one payment, a 
   // A pairing that names only part of a line leaves the line as it is.
   const part = importHistory(uid, { accounts: acc, lines: [L('a', 'r-chq', -100, 'Transfer: unmatched')] }, { replace: true });
   assert.deepEqual([part.regrouped, part.kept_shape, (await mine()).length], [0, 1, 5]);
+  // A correction holding only money in for a spending category does not turn it into income.
+  importHistory(uid, { accounts: acc, lines: [...first, L('g1', 'r-chq', -9, 'Groceries'), L('g2', 'r-chq', 5, 'Groceries')] });
+  importHistory(uid, { accounts: acc, lines: [{ ...L('g2', 'r-chq', 5, 'Groceries'), description: 'STORE CREDIT' }] }, { replace: true });
+  assert.equal((await mine()).find((t) => t.external_id === 'g2').type, 'refund');
   // The same correction again changes nothing.
   assert.equal(importHistory(uid, { accounts: acc, lines: fix }, { replace: true }).regrouped, 0);
 });

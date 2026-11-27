@@ -47,6 +47,29 @@ function check(ledger, live) {
     if (changedRows.has(String(r.id)) || (withIds && !n)) continue;
     want.set(String(r.account), (want.get(String(r.account)) || 0) + cents(r.amount));
   }
+  // Each line carries the category the file gives its first row; a row inside a larger line may carry its own.
+  const rowOf = new Map(ledger.lines.map((r) => [String(r.id), r]));
+  let labels = 0;
+  for (const l of live.lines) {
+    if (l.source !== 'import' || l.updated_at || l.undone) continue;
+    const ids = (l.external_ids && l.external_ids.length ? l.external_ids : [l.external_id]).map(String);
+    ids.forEach((x, i) => {
+      const r = rowOf.get(x);
+      if (!r) { labels++; if (labels <= 10) say(`line ${l.id} stands for row ${x}, which the file does not have`); return; }
+      const has = i === 0 ? l.ledger_category : l.side_labels && x in l.side_labels ? l.side_labels[x] : undefined;
+      if (has !== undefined && (has || null) !== (r.category || null)) { labels++; if (labels <= 10) say(`row ${x} (${r.date}, ${r.amount}): the file says "${r.category}", the app has "${has}"`); }
+      if (i === 0 && r.date !== l.date) { labels++; if (labels <= 10) say(`row ${x}: the file's day is ${r.date}, the app has ${l.date}`); }
+    });
+    // Rows on one line belong together in the file too.
+    const groups = new Set(ids.map((x) => (rowOf.get(x) || {}).transfer_id || `alone ${x}`));
+    if (ids.length > 1 && groups.size > 1) { labels++; if (labels <= 10) say(`line ${l.id} joins rows the file does not pair: ${ids.join(', ')}`); }
+  }
+  // Money in under one category is all income or all money back, never a mix.
+  const kinds = new Map();
+  for (const l of live.lines) if (l.source === 'import' && !l.updated_at && !l.undone && (l.type === 'income' || l.type === 'refund')) { const k = kinds.get(l.ledger_category) || new Set(); k.add(l.type); kinds.set(l.ledger_category, k); }
+  for (const [name, k] of kinds) if (k.size > 1) say(`"${name}": some money in is counted as income and some as money back`);
+  if (labels > 10) say(`${labels} lines in all differ from the file in category, day or pairing`);
+  out.label_differences = labels;
   if (missing > 10) say(`${missing} rows in all are not on exactly one line`);
   if (!withIds) out.note = 'This export does not say which rows a line stands for: only account sums were checked.';
   for (const key of new Set([...want.keys(), ...moved.keys()])) {

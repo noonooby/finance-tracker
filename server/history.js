@@ -41,7 +41,9 @@ const isDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !
 const investmentKind = (name) => (/\btfsa\b/i.test(name) ? 'TFSA' : /\bfhsa\b/i.test(name) ? 'FHSA' : /\b(rrsp|lira)\b/i.test(name) ? 'RRSP'
   : /crypto/i.test(name) ? 'Crypto' : /pension/i.test(name) ? 'Pension' : /non-registered|margin|brokerage/i.test(name) ? 'Brokerage' : 'Other');
 
-function plan(file, uid) {
+// known: what each of the ledger's categories already is here (true when it is income), so a file holding only part of the
+// history cannot turn a spending category into income because the few rows it holds are money in.
+function plan(file, uid, known) {
   const u8 = String(uid).slice(0, 8), problems = [], accounts = [], byKey = new Map();
   if (!file || !Array.isArray(file.accounts) || !Array.isArray(file.lines)) throw new Error('The file needs accounts and lines.');
 
@@ -107,7 +109,7 @@ function plan(file, uid) {
   let n = 0;
   for (const [name, t] of [...tally].sort((x, y) => (x[0] < y[0] ? -1 : 1))) {
     const same = SAME_AS[name.toLowerCase()];
-    const is_income = givesBack(name) ? false : t.in > t.out;
+    const is_income = givesBack(name) ? false : known && known.has(name) ? known.get(name) : t.in > t.out;
     if (same) { const d = categories.find((c) => c.id === `${same}_${u8}`); catOf.set(name, { id: d.id, name: d.name, is_income: d.is_income }); continue; }
     const shown = name.replace(/^income:\s*/i, '').slice(0, 60);
     const twin = categories.find((c) => c.is_income === is_income && c.name.toLowerCase() === shown.toLowerCase());
