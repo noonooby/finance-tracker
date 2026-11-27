@@ -142,7 +142,7 @@ export default function Bills() {
       <Section title="Tracked" action={active.length ? <span className="text-xs text-muted">about {formatCurrency(monthly)} a month · {formatCurrency(yearly)} a year</span> : null}>
         <Card padded={false} className="divide-y divide-line">
           {active.length === 0 && editing !== 'new' && (
-            <EmptyState icon={Repeat} title="No bills tracked yet" text="Track one found above, or add one yourself." />
+            <EmptyState icon={Repeat} title="No bills tracked yet" text={found.length ? 'Track one found above, or add one yourself.' : 'Add one here. A charge that repeats in your activity is also offered on this page.'} />
           )}
           {active.map((b) => {
             const paid = billPaid(b, transactions, b.due);

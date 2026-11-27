@@ -94,7 +94,7 @@ export default function CreditScore() {
             <div className="space-y-1">
               <label className="press inline-flex items-center gap-2 text-sm font-medium text-accent cursor-pointer">
                 <input type="file" accept="image/*,application/pdf" className="sr-only" onChange={fromPicture} disabled={reading} />
-                {reading ? 'Reading the picture' : 'Fill in from a screenshot'}
+                {reading ? 'Reading the picture' : 'Fill in from a picture'}
               </label>
               {readNote && <p className="text-xs text-muted">{readNote}</p>}
             </div>

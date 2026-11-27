@@ -10,7 +10,7 @@
 //   gift card     balance = value left on the card         (purchase with it: negative)
 //   loan          balance = amount owed                    (payment: negative)
 import { moveMoney, reverseTransaction, api } from './server';
-import { periodicRate } from './finance';
+import { periodicRate, periodDays } from './finance';
 
 export { reverseTransaction };
 
@@ -202,7 +202,7 @@ export async function recordLoanPayment({ loanId, amount, source, date, descript
   rows.push({ table: 'transactions', values: txRow({ type: 'loan_payment', amount: a, date, description: description || `Payment to ${loan.name}`, loan_id: loan.id, ...extra }, source, accounts) });
   // With an interest rate on the loan, the server takes the period's interest off first and only the rest lowers the balance.
   const rate = periodicRate(loan);
-  const loanLeg = { table: 'loans', id: loan.id, delta: -a, floor: 0, ...(rate > 0 ? { periodic_rate: rate } : {}) };
+  const loanLeg = { table: 'loans', id: loan.id, delta: -a, floor: 0, ...(rate > 0 ? { periodic_rate: rate, period_days: periodDays(loan) } : {}) };
   return send(key, [payFrom(source, a, accounts), loanLeg], rows, withUpdates(updates));
 }
 

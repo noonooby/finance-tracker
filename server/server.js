@@ -449,12 +449,22 @@ function applyLegs(uid, legs, line, opts = {}) {
       continue;
     }
     const before = cents(r[field]);
-    let delta = d, interest = 0;
+    let delta = d, interest = 0, paidTo = null;
     // A payment on a loan with interest: the interest for the period comes off first, worked out here from the balance
     // as it stands inside this step (never from a figure the browser had). Only the rest lowers what is owed.
     if (l.periodic_rate != null && l.table === 'loans' && d < 0) {
-      const rate = Number(l.periodic_rate);
+      let rate = Number(l.periodic_rate);
       if (!(rate >= 0 && rate < 1)) fail(400, 'Interest rate is not valid');
+      // Interest builds by the day and is taken once. A payment made before a full period has passed since the last one
+      // (an extra payment the same week) pays only for the days in between; the rest of it lowers what is owed.
+      const per = Number(l.period_days), day = line && isDay(String(line.date).slice(0, 10)) ? String(line.date).slice(0, 10) : null;
+      if (day) {
+        if (per > 0 && isDay(r.interest_paid_to)) {
+          const gap = Math.round((Date.parse(day) - Date.parse(r.interest_paid_to)) / 86400000);
+          if (gap >= 0 && gap < per) rate = rate * gap / per;
+        }
+        if (!isDay(r.interest_paid_to) || day > r.interest_paid_to) paidTo = { before: r.interest_paid_to ?? null, set: day };
+      }
       const pay = -d;
       interest = Math.min(pay, Math.max(0, Math.round(before * rate)));
       delta = -(pay - interest);
@@ -473,11 +483,11 @@ function applyLegs(uid, legs, line, opts = {}) {
       if (cents(floor) >= 0 && before >= 0) fail(409, `${name} has ${m(before)}. ${m(delta)} is ${m(after - cents(floor))} more than it can pay.`);
       fail(409, `${name} would be ${m(after)} below zero. Its overdraft limit is ${m(cents(floor))}.`);
     }
-    const n = { ...r, [field]: fromCents(after), updated_at: now() };
+    const n = { ...r, [field]: fromCents(after), ...(paidTo ? { interest_paid_to: paidTo.set } : {}), updated_at: now() };
     db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), l.table, String(r.id), uid);
     stamp(uid, l.table, n, field, l.as_of);
     done.push({ table: l.table, id: r.id, field, delta: fromCents(delta), before: fromCents(before), after: fromCents(after),
-      ...(interest ? { interest: fromCents(interest), principal: fromCents(-delta) } : {}) });
+      ...(l.periodic_rate != null && l.table === 'loans' && d < 0 ? { interest: fromCents(interest), principal: fromCents(-delta) } : {}), ...(paidTo ? { paid_to: paidTo } : {}) });
   }
   return done;
 }
@@ -514,7 +524,8 @@ function money(uid, b) {
     });
     // Plain fields changed in the same step (a loan's next payment date, a card's last payment): what each was before is
     // kept on the transaction, so undoing the transaction puts those back too.
-    const undo = [];
+    // The day a loan's interest is paid up to goes back with the payment that moved it.
+    const undo = legs.filter((x) => x.paid_to).map((x) => ({ table: x.table, id: x.id, before: { interest_paid_to: x.paid_to.before }, set: { interest_paid_to: x.paid_to.set } }));
     for (const u of b.updates || []) {
       // In a money step a balance moves only by the step's own amounts, never by a field written alongside.
       if (u.values && (MONEY_FIELDS[u.table] || []).some((f) => f in u.values)) fail(400, 'A balance cannot be set inside a payment. Record the amount instead.');
@@ -636,19 +647,55 @@ function balanceAt(uid, table, id, day) {
 function snapshot(uid, b) {
   return tx(() => {
     const day = isDay(b.date) ? b.date : today();
-    const value = cents(b.value);
+    let value = cents(b.value);
     if (!Number.isFinite(value)) fail(400, 'Enter a number');
+    const seen = value;
     const { r, field } = legTarget(uid, { table: b.table, id: b.id });
     const current = cents(r[field]);
     const newer = isDay(r.snapshot_date) && r.snapshot_date > day;
     // An older balance (a past statement) is compared with the app's history for that day, never applied to today.
-    const atDay = balanceAt(uid, b.table, r.id, day);
-    const gap = value - atDay;
+    let atDay = balanceAt(uid, b.table, r.id, day);
+    let gap = value - atDay, pendingOut = 0, counted = 0;
+    // Before a difference is called a gap, the two things that explain one without anything being wrong are tried:
+    //  - A bank or a card leaves lines that are still pending out of the balance it shows.
+    //  - A line dated on the day of the balance the app already had was kept as history, as if that balance included
+    //    it. A newer balance that differs by exactly that line says it came after: it is counted now.
+    // When some of those lines add up to the difference to the cent, nothing is corrected. The checkpoint is kept as
+    // what the account shows once the pending lines post, so the lines between two checkpoints still add up.
+    if (!newer && gap && (b.table === 'bank_accounts' || b.table === 'credit_cards')) {
+      const dayOf = (t) => String(t.date || '').slice(0, 10);
+      const mine = (xs) => (xs || []).filter((l) => l.table === b.table && String(l.id) === String(r.id));
+      const rows = selectRows(uid, { table: 'transactions' }).filter((t) => t.status !== 'undone' && t.status !== 'deleted' && t.type !== 'adjustment' && isDay(dayOf(t)) && dayOf(t) <= day);
+      const held = isDay(r.snapshot_date) ? rows.filter((t) => t.pending !== true && dayOf(t) === r.snapshot_date)
+        .map((t) => ({ t, v: mine(t.history_only).reduce((s, h) => s + cents(h.amount), 0), held: true })).filter((x) => x.v) : [];
+      const pend = rows.filter((t) => t.pending === true).map((t) => ({ t, v: -mine(t._legs).reduce((s, l) => s + cents(l.delta), 0) })).filter((x) => x.v);
+      const items = [...held, ...pend], n = items.length;
+      let pick = null;
+      if (n && n <= 16) {
+        const sum = (m) => items.reduce((s, x, i) => s + ((m >> i) & 1 ? x.v : 0), 0);
+        const full = (1 << n) - 1, allHeld = (1 << held.length) - 1;
+        for (const m of [full, allHeld, full ^ allHeld]) if (pick == null && m && sum(m) === gap) pick = m;
+        for (let m = 1; pick == null && m <= full; m++) if (sum(m) === gap) pick = m;
+      }
+      if (pick != null) {
+        items.forEach((x, i) => {
+          if (!((pick >> i) & 1)) return;
+          if (!x.held) { pendingOut += Math.abs(x.v); return; }
+          const legs = applyLegs(uid, mine(x.t.history_only).map((h) => ({ table: b.table, id: r.id, delta: h.amount })), { ...x.t, in_snapshot: false });
+          const left = (x.t.history_only || []).filter((h) => !(h.table === b.table && String(h.id) === String(r.id)));
+          const n2 = { ...x.t, in_snapshot: false, _legs: [...(x.t._legs || []), ...legs.map(({ table, id, key, field, delta }) => ({ table, id, key, field, delta }))], history_only: left, updated_at: now() };
+          if (!left.length) delete n2.history_only;
+          db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n2), 'transactions', String(x.t.id), uid);
+          counted += 1;
+        });
+        atDay = balanceAt(uid, b.table, r.id, day); value = atDay; gap = 0;
+      }
+    }
     let adjustment = null, status = gap ? 'open' : 'ok';
     if (!newer && b.apply && gap) {
       const legs = applyLegs(uid, [{ table: b.table, id: r.id, delta: fromCents(gap), as_of: day }]);
       const t = insertRow(uid, 'transactions', { type: 'adjustment', amount: Math.abs(fromCents(gap)), direction: gap > 0 ? 'up' : 'down', date: day,
-        description: `Balance from ${b.source || 'a snapshot'}`, status: 'active', payment_method: ({ bank_accounts: 'bank_account', credit_cards: 'credit_card', loans: 'loan', investments: 'investment', assets: 'asset' }[b.table]),
+        description: `Balance from ${b.source === 'screenshot' ? 'a picture' : b.source || 'a snapshot'}`, status: 'active', payment_method: ({ bank_accounts: 'bank_account', credit_cards: 'credit_card', loans: 'loan', investments: 'investment', assets: 'asset' }[b.table]),
         payment_method_id: r.id, payment_method_name: r.name || '' });
       t._legs = legs.map(({ table, id, field, delta }) => ({ table, id, field, delta }));
       db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ?').run(JSON.stringify(t), 'transactions', String(t.id));
@@ -664,6 +711,7 @@ function snapshot(uid, b) {
       value: fromCents(value), app_value: fromCents(atDay), gap: fromCents(gap), status: newer ? (gap ? 'open_history' : 'ok_history') : status, source: String(b.source || '').slice(0, 60),
       // The kept picture the figure was read from, so a later question about it can show that picture.
       picture: b.picture ? String(b.picture).slice(0, 40) : null,
+      ...(pendingOut ? { seen: fromCents(seen), pending_out: fromCents(pendingOut) } : {}), ...(counted ? { counted } : {}),
       adjustment_id: adjustment ? adjustment.id : null, created_at: now() });
     return { snapshot: snap, adjustment };
   });

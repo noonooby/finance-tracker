@@ -63,7 +63,7 @@ function Kind({ kind, r, stated, onSave }) {
         </>
       ) : !edit && (
         <div className="space-y-1">
-          <p className="text-sm">Needed: your room on a day.</p>
+          <p className="text-sm">Enter your room and the day it was true.</p>
           <p className="text-xs text-muted">{WHERE[kind]} Add a picture of it, or enter the figure.</p>
         </div>
       )}

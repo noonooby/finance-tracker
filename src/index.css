@@ -259,3 +259,9 @@ div[class*="overflow-y-auto"]::-webkit-scrollbar-thumb { background: rgb(var(--m
 }
 .field:focus { border-color: rgb(var(--accent)); background: rgb(var(--surface)); box-shadow: 0 0 0 4px rgb(var(--accent) / .15); }
 .field:disabled { opacity: .55; }
+/* A phone draws a date field as a small pill of its own width, beside its label and empty when it has no day.
+   Every full-width date field is a block as wide and as tall as the other fields, with its text on the left. */
+input[type="date"].field, input[type="date"].w-full {
+  -webkit-appearance: none; appearance: none; display: block; width: 100%; min-height: 2.75rem; text-align: left;
+}
+input[type="date"].field::-webkit-date-and-time-value, input[type="date"].w-full::-webkit-date-and-time-value { text-align: left; }

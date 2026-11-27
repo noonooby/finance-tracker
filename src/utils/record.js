@@ -83,7 +83,7 @@ export async function saveCardPayment(formData, { creditCards, bankAccounts, loa
     source,
     date: formData.date,
     key: formData.key,
-    description: formData.description || `Payment for '${card.name}' from ${sourceName}`,
+    description: formData.description || `${card.name} payment`,
     updates: [{ table: 'credit_cards', id: card.id, values: { last_payment_date: formData.date, last_payment_amount: amount,
       ...(nextDue ? { due_date: nextDue } : {}) } }],
     extra: {
@@ -150,7 +150,7 @@ export async function saveLoanPayment(formData, { loans, bankAccounts, creditCar
     source,
     date: formData.date,
     key: formData.key,
-    description: formData.description || `Payment for '${loan.name}' from ${sourceName}`,
+    description: formData.description || `${loan.name} payment`,
     updates: [{
       table: 'loans', id: loan.id, values: {
         next_payment_date: nextPaymentDate,

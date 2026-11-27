@@ -34,6 +34,9 @@ export function periodicRate(loan) {
   return Math.pow(1 + ear, 1 / n) - 1;
 }
 
+// How many days one payment period lasts.
+export const periodDays = (loan) => Math.round(365 / (PAYMENTS_PER_YEAR[(loan && loan.frequency) || 'monthly'] || 12));
+
 // One payment split into interest and principal, from the balance before it.
 function splitPayment(balance, payment, rate) {
   const interest = Math.min(round2(payment), Math.max(0, round2(Number(balance) * rate)));
@@ -80,7 +83,7 @@ export function freshness(asOf, today = new Date()) {
   if (!d) return { days: null, stale: true, label: 'No date' };
   const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const days = Math.round((t - d) / dayMs);
-  const label = days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : days < 60 ? `${days} days ago` : `on ${iso(d)}`;
+  const label = days <= 0 ? 'today' : days === 1 ? 'yesterday' : days < 60 ? `${days} days ago` : d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
   return { days, stale: days > STALE_DAYS, label };
 }
 

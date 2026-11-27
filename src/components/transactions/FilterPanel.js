@@ -130,22 +130,24 @@ export default function FilterPanel({
         </select>
 
         {/* Date From */}
-        <input
-          type="date"
-          value={filters.dateFrom}
-          onChange={(e) => onFiltersChange({ ...filters, dateFrom: e.target.value })}
-          className="min-w-0 field"
-          aria-label="From day"
-        />
+        <label className="min-w-0 block text-xs text-muted">From
+          <input
+            type="date"
+            value={filters.dateFrom}
+            onChange={(e) => onFiltersChange({ ...filters, dateFrom: e.target.value })}
+            className="mt-1 min-w-0 field"
+          />
+        </label>
 
         {/* Date To */}
-        <input
-          type="date"
-          value={filters.dateTo}
-          onChange={(e) => onFiltersChange({ ...filters, dateTo: e.target.value })}
-          className="min-w-0 field"
-          aria-label="To day"
-        />
+        <label className="min-w-0 block text-xs text-muted">To
+          <input
+            type="date"
+            value={filters.dateTo}
+            onChange={(e) => onFiltersChange({ ...filters, dateTo: e.target.value })}
+            className="mt-1 min-w-0 field"
+          />
+        </label>
       </div>
         {on > 0 && <button type="button" onClick={onClearFilters} className="text-sm font-medium text-accent px-1">Clear filters</button>}
       </div>

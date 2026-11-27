@@ -703,7 +703,8 @@ export default function ScreenshotImport({ bankAccounts = [], creditCards = [], 
       try {
         const out = await recordSnapshot({ target: sn.target, value: sn.value, date: sn.date || day, source: sn.source || 'screenshot', apply: sn.apply, picture: proposal.source_id });
         const gap = Number(out.snapshot.gap) || 0;
-        if (out.snapshot.status === 'corrected') { result.corrected += 1; result.gaps.push(`${sn.name}: the lines did not explain ${formatCurrency(Math.abs(gap))}; corrected to ${formatCurrency(sn.value)} (undo from Activity)`); }
+        if (Number(out.snapshot.pending_out) > 0) result.gaps.push(`${sn.name}: matches. The ${formatCurrency(sn.value)} shown leaves out ${formatCurrency(out.snapshot.pending_out)} still pending, so the app has ${formatCurrency(out.snapshot.value)}.`);
+        else if (out.snapshot.status === 'corrected') { result.corrected += 1; result.gaps.push(`${sn.name}: the lines did not explain ${formatCurrency(Math.abs(gap))}; corrected to ${formatCurrency(sn.value)} (undo from Activity)`); }
         else if (out.snapshot.status === 'open') result.gaps.push(`${sn.name}: off by ${formatCurrency(Math.abs(gap))}; left open on Where you stand`);
         else if (out.snapshot.status === 'open_history') result.gaps.push(`${sn.name}: the app's history gives ${formatCurrency(out.snapshot.app_value)} for that day, ${formatCurrency(Math.abs(gap))} off. Today's balance is unchanged; see Checks on Where you stand.`);
         else if (out.snapshot.status === 'ok_history') result.gaps.push(`${sn.name}: matches the app's history`);
@@ -1378,7 +1379,7 @@ export default function ScreenshotImport({ bankAccounts = [], creditCards = [], 
 
           {fixes.length > 0 && (
             <section className="space-y-1">
-              <h3 className="font-semibold text-sm">Balances on the screenshot</h3>
+              <h3 className="font-semibold text-sm">Balances read from it</h3>
               {fixes.map((f, i) => (
                 <div key={i} className="text-sm">
                   <div>{f.account.name}: {formatCurrency(f.shown)} today{f.differs ? ` (the app has ${formatCurrency(f.current)} before these lines)` : ', matches the app'}</div>

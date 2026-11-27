@@ -243,6 +243,34 @@ test('screenshot without a Gemini key says so plainly', async () => {
 });
 
 
+test('loan interest is taken once: an extra payment soon after pays only for the days in between, and undo puts the day back', async () => {
+  const loan = await add('loans', { name: 'Once', loan_type: 'mortgage', balance: 400000, interest_rate: 4.1, frequency: 'monthly', payment_amount: 2100 });
+  const bank = await add('bank_accounts', { name: 'Once bank', balance: 10000 });
+  const src = `bank_account:${bank.id}`;
+  const first = await M.recordLoanPayment({ loanId: loan.id, amount: 2100, source: src, date: '2026-11-26' }, await accounts());
+  assert.ok(first.transaction.interest_amount > 1300);
+  const owed = (await get('loans', loan.id)).balance;
+  // The same day: no days have passed, so all of it lowers what is owed.
+  const extra = await M.recordLoanPayment({ loanId: loan.id, amount: 50, source: src, date: '2026-11-26' }, await accounts());
+  assert.equal(extra.transaction.interest_amount, 0);
+  assert.equal(extra.transaction.principal_amount, 50);
+  assert.equal((await get('loans', loan.id)).balance, Math.round((owed - 50) * 100) / 100);
+  // Half a period later: about half a period's interest.
+  const half = await M.recordLoanPayment({ loanId: loan.id, amount: 2100, source: src, date: '2026-12-11' }, await accounts());
+  assert.ok(half.transaction.interest_amount > 600 && half.transaction.interest_amount < 720, 'half: ' + half.transaction.interest_amount);
+  assert.equal((await get('loans', loan.id)).interest_paid_to, '2026-12-11');
+  // Undoing it puts the day back, so recording it again costs the same.
+  await M.reverseTransaction(half.transaction.id);
+  assert.equal((await get('loans', loan.id)).interest_paid_to, '2026-11-26');
+  const again = await M.recordLoanPayment({ loanId: loan.id, amount: 2100, source: src, date: '2026-12-11' }, await accounts());
+  assert.equal(again.transaction.interest_amount, half.transaction.interest_amount);
+  // A full period on: the whole period's interest.
+  const full = await M.recordLoanPayment({ loanId: loan.id, amount: 2100, source: src, date: '2027-01-11' }, await accounts());
+  assert.ok(full.transaction.interest_amount > 1300);
+  await db.from('loans').delete().eq('id', loan.id);
+  await db.from('bank_accounts').delete().eq('id', bank.id);
+});
+
 test('mortgage: semi-annual compounding, each payment splits into interest and principal, undo puts back only what moved', async () => {
   // 400,000 at 5% compounded twice a year, paid monthly: monthly rate (1.025)^(1/6)-1 = 0.4123915%
   const mtg = await add('loans', { name: 'Mortgage', loan_type: 'mortgage', balance: 400000, interest_rate: 5, frequency: 'monthly', payment_amount: 2326.38, next_payment_date: '2026-12-01' });
@@ -380,6 +408,52 @@ test('screenshot draft: new card, salary, card payment, transfer, already record
   assert.deepEqual([bank.lines[1].kind, bank.lines[1].other.id, bank.lines[1].action], ['transfer', 'sav', 'already']);
   assert.equal(bank.lines[2].kind, 'purchase');
   assert.equal(bank.lines[2].category_guess, null);
+});
+
+test('a balance that leaves out pending lines matches: nothing is corrected and the checkpoints still add up', async () => {
+  const T = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+  const acct = await add('bank_accounts', { name: 'Pending chequing', balance: 230.5 });
+  const src = `bank_account:${acct.id}`;
+  await M.recordSnapshot({ target: src, value: 230.5, date: T, source: 'screenshot' });
+  const all = async () => ({ bankAccounts: (await db.from('bank_accounts').select('*')).data, creditCards: (await db.from('credit_cards').select('*')).data });
+  await M.recordExpense({ amount: 32.1, source: src, date: T, description: 'Loblaws', extra: { pending: false } }, await all());
+  await M.recordExpense({ amount: 18.15, source: src, date: T, description: 'Shell', extra: { pending: false } }, await all());
+  const tim = await M.recordExpense({ amount: 4.75, source: src, date: T, description: 'Tim Hortons', extra: { pending: true } }, await all());
+  assert.equal((await get('bank_accounts', acct.id)).balance, 175.5);
+  // The bank shows 180.25: the pending 4.75 is not in it yet.
+  const s = await M.recordSnapshot({ target: src, value: 180.25, date: T, source: 'screenshot' });
+  assert.equal(s.snapshot.status, 'ok');
+  assert.equal(s.snapshot.pending_out, 4.75);
+  assert.equal(s.snapshot.seen, 180.25);
+  assert.equal(s.adjustment, null);
+  assert.equal((await get('bank_accounts', acct.id)).balance, 175.5);
+  // Once it posts the bank shows 175.50: still no gap.
+  await db.from('transactions').update({ pending: false }).eq('id', tim.transaction.id);
+  const s2 = await M.recordSnapshot({ target: src, value: 175.5, date: T, source: 'screenshot' });
+  assert.equal(s2.snapshot.status, 'ok');
+  assert.equal(s2.snapshot.pending_out, undefined);
+  // A second picture the same day with a new line: the line is kept as history at first (the balance already seen
+  // that day might include it), then the newer balance shows it came after, so it is counted. Nothing is corrected.
+  const metro = await M.recordExpense({ amount: 10, source: src, date: T, description: 'Metro', extra: { pending: false, in_snapshot: true } }, await all());
+  const uber = await M.recordExpense({ amount: 6, source: src, date: T, description: 'Uber', extra: { pending: true, in_snapshot: true } }, await all());
+  assert.equal((await get('bank_accounts', acct.id)).balance, 175.5);
+  const s4 = await M.recordSnapshot({ target: src, value: 165.5, date: T, source: 'screenshot' });
+  assert.equal(s4.snapshot.status, 'ok');
+  assert.equal(s4.snapshot.counted, 1);
+  assert.equal(s4.adjustment, null);
+  assert.equal((await get('bank_accounts', acct.id)).balance, 165.5);
+  // Undoing the counted line puts its money back.
+  await M.reverseTransaction(metro.transaction.id);
+  assert.equal((await get('bank_accounts', acct.id)).balance, 175.5);
+  // The pending one posts: the next balance counts it.
+  await db.from('transactions').update({ pending: false }).eq('id', uber.transaction.id);
+  const s5 = await M.recordSnapshot({ target: src, value: 169.5, date: T, source: 'screenshot' });
+  assert.equal(s5.snapshot.status, 'ok');
+  assert.equal((await get('bank_accounts', acct.id)).balance, 169.5);
+  // A difference that nothing explains is still corrected.
+  const s3 = await M.recordSnapshot({ target: src, value: 160, date: T, source: 'screenshot' });
+  assert.equal(s3.snapshot.status, 'corrected');
+  await db.from('bank_accounts').delete().eq('id', acct.id);
 });
 
 test('snapshots: the balance you saw is fixed; older lines are history; gaps are shown, not hidden', async () => {

@@ -17,9 +17,8 @@ export default function TransactionCard({
   const formatLabel = (value) => {
     if (!value) return '';
     const cleaned = value.replace(/_/g, ' ');
-    return cleaned
-      .toLowerCase()
-      .replace(/\b\w/g, (char) => char.toUpperCase());
+    const lower = cleaned.toLowerCase();
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
   };
 
   const formatCurrency = (amount) => {
@@ -98,8 +97,9 @@ export default function TransactionCard({
   const isIn = transaction.type === 'income' || transaction.type === 'refund';
   const isOut = transaction.type === 'expense';
   const method = formatPaymentMethod(transaction);
-  const kind = isOut || transaction.type === 'income' ? null : formatLabel(transaction.type || '');
-  const cat = Array.isArray(transaction.splits) && transaction.splits.length ? `Split: ${transaction.splits.map((p) => p.category_name || 'No category').join(', ')}` : transaction.category_name;
+  const paying = ['payment', 'loan_payment', 'credit_card_payment'].includes(transaction.type);
+  const kind = isOut || transaction.type === 'income' ? null : paying ? (transaction.loan_id ? 'Loan payment' : transaction.card_id ? 'Card payment' : 'Payment') : formatLabel(transaction.type || '');
+  const cat = Array.isArray(transaction.splits) && transaction.splits.length ? `Split: ${transaction.splits.map((p) => p.category_name || 'No category').join(', ')}` : paying && ['loan_payment', 'credit_card_payment'].includes(transaction.category_id) ? null : transaction.category_name;
   const sub = [kind, method, cat, transaction.original_currency ? `${transaction.original_currency} ${Number(transaction.original_amount).toFixed(2)}` : null].filter(Boolean).join(' · ');
 
   return (
@@ -111,7 +111,7 @@ export default function TransactionCard({
         {transaction.notes && <div className="text-xs text-muted truncate">{transaction.notes}</div>}
       </div>
       <div className={`shrink-0 text-[0.9375rem] font-semibold tabular-nums ${isUndone ? 'line-through text-muted' : isIn ? 'text-positive' : 'text-fg'}`}>
-        {isIn ? '+' : isOut ? '-' : ''}{formatCurrency(transaction.amount)}
+        {isIn ? '+' : isOut ? '-' : transaction.type === 'adjustment' ? (transaction.direction === 'down' ? '-' : transaction.direction === 'up' ? '+' : '') : ''}{formatCurrency(transaction.amount)}
       </div>
       <div className="shrink-0 flex items-center -mr-2">
         {onEdit && !isUndone && transaction.status !== 'deleted' && (
