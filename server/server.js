@@ -600,12 +600,14 @@ function mergeTwinCategories(uid) {
 // Accounts with the balance each has on a stated day, and every line up to that day (see history.js for the rules).
 // Nothing here moves a balance: each account is saved with its stated balance, and its lines are kept as history.
 // Running it again with the same file adds nothing: every account, category and line has an id made from the file's own.
-function importHistory(uid, file) {
+// replace: a line already there is written again from the file (a category corrected in the ledger); its id and the day it was
+// first saved stay, and nothing else is touched.
+function importHistory(uid, file, opts = {}) {
   const p = require('./history').plan(file, uid);
   return tx(() => {
     const has = (tbl, id) => !!db.prepare('SELECT 1 FROM rows WHERE tbl = ? AND id = ?').get(tbl, String(id));
     const put = db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)');
-    const out = { accounts: 0, assets: 0, bills: 0, pay: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
+    const out = { accounts: 0, assets: 0, bills: 0, pay: 0, replaced: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
     // A category the person already has (the same name and kind) is the one used.
     const mineNow = new Map(selectRows(uid, { table: 'categories' }).map((c) => [`${c.is_income ? 1 : 0}|${String(c.name || '').trim().toLowerCase()}`, c]));
     const use = new Map();
@@ -621,7 +623,15 @@ function importHistory(uid, file) {
     for (const s of p.pay) if (!has('income_schedules', s.id)) { insertRow(uid, 'income_schedules', { ...s, created_at: now(), updated_at: now() }); out.pay++; }
     const rules = new Map();
     for (const r of p.rows) {
-      if (has('transactions', r.id)) { out.already++; continue; }
+      if (has('transactions', r.id)) {
+        if (!opts.replace) { out.already++; continue; }
+        const was = selectRows(uid, { table: 'transactions', filters: [['id', 'eq', r.id]], limit: 1 })[0];
+        // Only a line as it was brought in is rewritten: one the person has changed or undone since is left as they made it.
+        if (!was || was.source !== 'import' || was.updated_at || was.status !== 'active') { out.already++; continue; }
+        db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify({ ...r, user_id: uid, created_at: was.created_at }), 'transactions', r.id, uid);
+        out.replaced++;
+        continue;
+      }
       put.run('transactions', r.id, uid, JSON.stringify({ ...r, user_id: uid }));
       out.lines++;
       // What each merchant's category is: the newest line from it decides, as when lines are saved one at a time.
@@ -674,7 +684,7 @@ function exportFor(req, since) {
       const acct = byId.get(`${l.table}:${l.id}`);
       return acct ? { account_id: acct.id, account_key: acct.key, account: acct.name, amount: fromCents((acct.owed ? -1 : 1) * cents(l.amount)) } : null;
     }).filter((m) => m && m.amount);
-    lines.push({ id: t.id, external_id: t.external_id || null, type: t.type, date: String(t.date || '').slice(0, 10), amount: Number(t.amount) || 0, description: t.description || '',
+    lines.push({ id: t.id, external_id: t.external_id || null, type: t.type, date: String(t.date || '').slice(0, 10), amount: Number(t.amount) || 0, currency: t.currency || 'CAD', description: t.description || '',
       category: t.category_name || null, ledger_category: t.ledger_category || null, moves, pending: t.pending === true, undone: t.status === 'undone' || t.status === 'deleted',
       source: t.source === 'import' ? 'import' : t.from_screenshot ? 'picture' : 'typed', created_at: t.created_at || null, updated_at: t.updated_at || null });
   }

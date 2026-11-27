@@ -2237,6 +2237,10 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   const again = importHistory(uid, file);
   assert.deepEqual([again.accounts, again.lines, again.already, again.bills, again.pay, again.categories, again.rules], [0, 0, 7, 0, 0, 0, 0]);
 
+  // The ledger corrects one line's category: only that line is written again, as a refund against rent this time.
+  const fix = { rules: { refunds: ['Housing: Rent'] }, accounts: file.accounts, lines: [{ ...file.lines[4], description: 'ROOMMATE RENT SHARE', category: 'Housing: Rent' }] };
+  const fixed = importHistory(uid, fix, { replace: true });
+  assert.deepEqual([fixed.replaced, fixed.lines, fixed.accounts], [1, 0, 0]);
   const { token } = await api('/api/dev-login', { email: 'ledger@test.local' });
   const mine = async (table) => (await (await realFetch(`${base}/api/db`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ table, action: 'select' }) })).json()).data;
   const [banks, cards, loans, tx] = [await mine('bank_accounts'), await mine('credit_cards'), await mine('loans'), await mine('transactions')];
@@ -2257,7 +2261,9 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   assert.equal(kind('3').type, 'payment');
   assert.equal(kind('3').card_id, byKey(cards, 'visa-2').id);
   assert.deepEqual(kind('3').external_ids, ['3', '4']);
-  assert.equal(kind('5').type, 'income');
+  assert.equal(kind('5').type, 'refund');
+  assert.equal(kind('5').category_name, 'Housing');
+  assert.equal(kind('5').description, 'ROOMMATE RENT SHARE');
   assert.equal(kind('6').type, 'transfer');
   assert.equal(kind('7').type, 'loan_payment');
   assert.equal(kind('7').loan_id, byKey(loans, 'home-loan').id);
@@ -2266,7 +2272,7 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   assert.equal(tx.every((t) => !t._legs && t.history_only.length >= 1), true);
   // Spending and income for the month follow the rules: the coffee less the refund; the pay only.
   const spent = Object.values(S.spentByCategory(tx, '2026-11-01', '2026-11-30')).reduce((a, b) => a + b, 0);
-  assert.equal(Math.round(spent * 100) / 100, -15.5);
+  assert.equal(Math.round(spent * 100) / 100, -2015.5);
   // What is due on the card is its statement, not everything charged since.
   const due = F.upcoming({ creditCards: cards, loans: [], bankAccounts: banks, bills: [] }, new Date(2026, 10, 28));
   assert.equal(due.find((x) => x.kind === 'card').amount, 80);

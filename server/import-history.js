@@ -1,5 +1,6 @@
 // Bring a ledger's history into one person's account, from the command line on the machine that holds the database:
-//   node --experimental-sqlite server/import-history.js <file.json> <email> [--dry] [--reset]
+//   node --experimental-sqlite server/import-history.js <file.json> <email> [--dry] [--reset] [--replace]
+// --replace writes again the lines of the file that are already there and unchanged since (a category corrected in the ledger).
 // --dry works everything out and saves nothing. --reset first removes everything recorded for that person (the sign-in stays).
 const fs = require('fs');
 const [file, email, ...flags] = process.argv.slice(2);
@@ -18,5 +19,5 @@ if (flags.includes('--reset')) {
   const gone = tx(() => ({ rows: Number(db.prepare('DELETE FROM rows WHERE user_id = ?').run(uid).changes), keys: Number(db.prepare('DELETE FROM money_keys WHERE user_id = ?').run(uid).changes) }));
   console.log(JSON.stringify({ reset: gone }));
 }
-const out = importHistory(uid, data);
+const out = importHistory(uid, data, { replace: flags.includes('--replace') });
 console.log(JSON.stringify({ ...out, problems: out.problems.length }));
