@@ -1,7 +1,12 @@
 #!/bin/bash
 # Bring the app in line with the ledger file: find what differs, apply it, read back and check. Usage: sync.sh <label>
 cd "$(dirname "$0")" || exit 1
-X="/Users/Rithul/Library/Application Support/Claude/scratch-workspaces/10a89fe9-b0d1-4508-8b27-0abe5105a146/5c7c02e4-467d-43e2-b577-52e66f7bb3b4/scratch-2026-11-27-43f1be/finance/export"
+# The ledger's export folder: on the NAS when it is mounted, else where it was first made. LEDGER_DIR overrides both.
+NAS="/Volumes/home/91 Projects/personal-finance/finance/export"
+OLD="/Users/Rithul/Library/Application Support/Claude/scratch-workspaces/10a89fe9-b0d1-4508-8b27-0abe5105a146/5c7c02e4-467d-43e2-b577-52e66f7bb3b4/scratch-2026-11-27-43f1be/finance/export"
+X="${LEDGER_DIR:-$([ -f "$NAS/expense_history.json" ] && echo "$NAS" || echo "$OLD")}"
+[ -f "$X/expense_history.json" ] || { echo "The ledger file is not at $X"; exit 1; }
+echo "ledger: $X"
 get() { curl -s --compressed -H "x-export-key: $(cat ~/.config/finance-export.key)" https://finance.nobodystack.com/api/export -o live.json; }
 get
 N=$(python3 -I mk_sync.py "$X" "$1.json" | awk '{print $4}')
