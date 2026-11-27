@@ -2310,3 +2310,36 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   assert.equal(later.lines.length, 0);
   fs.rmSync(path.join(dir, 'export.key')); fs.rmSync(path.join(dir, 'export.user'));
 });
+
+test('a ledger correction that pairs rows anew: two lines become one payment, a pair is split and paired again, nothing is doubled', async () => {
+  const { importHistory, userFor } = require(path.join(root, 'server', 'server.js'));
+  const uid = userFor('regroup@test.local');
+  const acc = [
+    { key: 'r-chq', institution: 'Bank', name: 'Regroup chequing', kind: 'chequing', currency: 'CAD', balance: 900, balance_date: '2026-11-27', closed: false },
+    { key: 'r-visa', institution: 'Bank', name: 'Regroup Visa', kind: 'credit_card', currency: 'CAD', balance: 50, balance_date: '2026-11-27', closed: false },
+  ];
+  const L = (id, account, amount, category, transfer_id = null) => ({ id, date: '2026-10-05', account, description: `ROW ${id}`, amount, currency: 'CAD', category, transfer_id });
+  const first = [L('a', 'r-chq', -100, 'Transfer: unmatched'), L('b', 'r-visa', 100, 'Refunds & credits'),
+    L('x', 'r-chq', -40, 'Transfer: Credit card payment', 'T9'), L('y', 'r-visa', 40, 'Transfer: Credit card payment', 'T9'), L('z', 'r-chq', 40, 'Transfer: unmatched'),
+    L('w', 'r-chq', -7, 'Groceries')];
+  assert.equal(importHistory(uid, { accounts: acc, lines: first }).lines, 5);
+  const { token } = await api('/api/dev-login', { email: 'regroup@test.local' });
+  const mine = async () => (await (await realFetch(`${base}/api/db`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ table: 'transactions', action: 'select' }) })).json()).data;
+  assert.equal((await mine()).filter((t) => t.type === 'refund').length, 1);
+  const fix = [L('a', 'r-chq', -100, 'Transfer: Credit card payment', 'S1'), L('b', 'r-visa', 100, 'Transfer: Credit card payment', 'S1'),
+    L('x', 'r-chq', -40, 'Transfer: Cancelled payment', 'R1'), L('z', 'r-chq', 40, 'Transfer: Cancelled payment', 'R1'), L('y', 'r-visa', 40, 'Transfer: Credit card payment')];
+  const out = importHistory(uid, { accounts: acc, lines: fix }, { replace: true });
+  assert.deepEqual([out.regrouped, out.kept_shape, out.lines], [3, 0, 0]);
+  const tx = await mine();
+  // Every row is on exactly one line, and the credit on the card is a payment now, not money back.
+  assert.deepEqual(tx.flatMap((t) => t.external_ids || [t.external_id]).sort(), ['a', 'b', 'w', 'x', 'y', 'z']);
+  // A payment and its reversal on one account stay two lines that cancel out.
+  assert.equal(tx.length, 5);
+  assert.equal(tx.filter((t) => t.type === 'refund').length, 0);
+  assert.equal(tx.find((t) => (t.external_ids || []).includes('b')).type, 'payment');
+  // A pairing that names only part of a line leaves the line as it is.
+  const part = importHistory(uid, { accounts: acc, lines: [L('a', 'r-chq', -100, 'Transfer: unmatched')] }, { replace: true });
+  assert.deepEqual([part.regrouped, part.kept_shape, (await mine()).length], [0, 1, 5]);
+  // The same correction again changes nothing.
+  assert.equal(importHistory(uid, { accounts: acc, lines: fix }, { replace: true }).regrouped, 0);
+});

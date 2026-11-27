@@ -607,7 +607,7 @@ function importHistory(uid, file, opts = {}) {
   return tx(() => {
     const has = (tbl, id) => !!db.prepare('SELECT 1 FROM rows WHERE tbl = ? AND id = ?').get(tbl, String(id));
     const put = db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)');
-    const out = { accounts: 0, filled: 0, assets: 0, bills: 0, bills_changed: 0, pay: 0, replaced: 0, skipped: 0, kept_yours: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
+    const out = { accounts: 0, filled: 0, assets: 0, bills: 0, bills_changed: 0, pay: 0, replaced: 0, regrouped: 0, kept_shape: 0, skipped: 0, kept_yours: 0, categories: 0, lines: 0, already: 0, rules: 0, kinds: p.counts, problems: p.problems };
     // A category the person already has (the same name and kind) is the one used.
     const mineNow = new Map(selectRows(uid, { table: 'categories' }).map((c) => [`${c.is_income ? 1 : 0}|${String(c.name || '').trim().toLowerCase()}`, c]));
     const use = new Map();
@@ -651,9 +651,41 @@ function importHistory(uid, file, opts = {}) {
       n.texts = [...new Set([...(Array.isArray(was.texts) ? was.texts : [was.notes || was.description]), ...said].filter(Boolean))].slice(0, 8);
       db.prepare('UPDATE rows SET data = ? WHERE tbl = ? AND id = ? AND user_id = ?').run(JSON.stringify(n), 'transactions', String(was.id), uid);
     };
+    // A correction can change which rows belong together: two lines become one payment, or a pair is split and paired anew.
+    // When every row of the lines involved is in the file and none of those lines was changed here, they are taken out and
+    // the rows are kept again the way the file now pairs them. Otherwise the lines keep their shape.
+    const fresh = new Set();
+    if (opts.replace) {
+      const idsOf = (t) => (Array.isArray(t.external_ids) && t.external_ids.length ? t.external_ids : [t.external_id]).map(String);
+      const same = (a, b) => [...a].sort().join() === [...b].sort().join();
+      const lineOf = new Map(), planned = new Map(), done = new Set();
+      for (const t of selectRows(uid, { table: 'transactions' })) if (t.source === 'import') for (const x of idsOf(t)) lineOf.set(x, t);
+      for (const r of p.rows) for (const x of idsOf(r)) planned.set(x, r);
+      for (const r of p.rows) {
+        if (done.has(r.id)) continue;
+        const now_ = new Set([r]), old = new Set(), seen = new Set(), queue = [...idsOf(r)];
+        let whole = true;
+        while (queue.length) {
+          const x = queue.pop();
+          if (seen.has(x)) continue;
+          seen.add(x);
+          const t = lineOf.get(x), n = planned.get(x);
+          if (t && !old.has(t)) { old.add(t); queue.push(...idsOf(t)); }
+          if (!n) whole = false; else if (!now_.has(n)) { now_.add(n); queue.push(...idsOf(n)); }
+        }
+        for (const n of now_) done.add(n.id);
+        if (old.size === now_.size && [...now_].every((n) => { const t = lineOf.get(idsOf(n)[0]); return t && t.id === n.id && same(idsOf(t), idsOf(n)); })) continue;
+        if (!whole || !old.size || [...old].some((t) => t.updated_at || t.status !== 'active')) { out.kept_shape += now_.size; continue; }
+        for (const t of old) db.prepare('DELETE FROM rows WHERE tbl = ? AND id = ? AND user_id = ?').run('transactions', String(t.id), uid);
+        for (const n of now_) fresh.add(n.id);
+      }
+    }
     const rules = new Map();
     for (const r of p.rows) {
-      if (has('transactions', r.id)) {
+      if (fresh.has(r.id)) {
+        put.run('transactions', r.id, uid, JSON.stringify({ ...r, user_id: uid }));
+        out.regrouped++;
+      } else if (has('transactions', r.id)) {
         if (!opts.replace) { out.already++; continue; }
         const was = selectRows(uid, { table: 'transactions', filters: [['id', 'eq', r.id]], limit: 1 })[0];
         // Only a line as it was brought in is rewritten: one the person has changed or undone since is left as they made it.
