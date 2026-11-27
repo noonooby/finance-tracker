@@ -99,7 +99,8 @@ export const dayOfMonth = (date) => { const d = parse(date); return d ? d.getDat
 // every 2 months, quarterly and yearly count months; anything else is monthly.
 export function nextDue(date, frequency, anchorDay) {
   const d = parse(date);
-  if (!d) return null;
+  // A bill due one time has no day after it.
+  if (!d || frequency === 'once') return null;
   const day = anchorDay || d.getDate();
   const y = d.getFullYear(), m = d.getMonth();
   const inMonth = (mo, want) => new Date(y, mo, Math.min(want, new Date(y, mo + 1, 0).getDate()));
@@ -124,6 +125,7 @@ export function dueDatesBetween(nextDate, frequency, anchorDay, from, to) {
 // The first due day on or after today, stepping from a known date.
 export function rollForward(date, frequency, today = new Date()) {
   let d = String(date || '').slice(0, 10);
+  if (frequency === 'once') return d;
   const t = iso(today), anchor = dayOfMonth(d);
   for (let i = 0; d && d < t && i < 600; i++) d = nextBillDate(d, frequency, anchor);
   return d;

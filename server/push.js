@@ -71,7 +71,7 @@ const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0
 const parse = (s) => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
 // anchorDay: the day of the month the bill belongs to, so one on the 31st returns to the 31st after a shorter month.
 function nextBill(date, frequency, anchorDay) {
-  const d = parse(date); if (!d) return null;
+  const d = parse(date); if (!d || frequency === 'once') return null;
   const months = { monthly: 1, bimonthly: 2, quarterly: 3, yearly: 12 }[frequency];
   if (months) { const day = anchorDay || d.getDate(); const n = new Date(d.getFullYear(), d.getMonth() + months, 1); n.setDate(Math.min(day, new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate())); return iso(n); }
   // Twice a month: two days 15 apart (as src/utils/spending.js nextDue).

@@ -283,6 +283,8 @@ export function billDates(bills, transactions, today, end) {
     if (b.status !== 'active' || !b.next_date) continue;
     // the last due day before today counts when it is not recorded yet (it may be a day or two late)
     let d = String(b.next_date).slice(0, 10), prev = null;
+    // Due one time: it is shown on its day, and stays shown after it until its payment is recorded.
+    if (b.frequency === 'once') { const paid = billPaid(b, transactions, d); if (d <= end && (d >= t || !paid)) out.push({ bill: b, date: d, paid: d < t ? null : paid }); continue; }
     const anchor = dayOfMonth(d);
     for (let i = 0; d < t && i < 600; i++) { prev = d; d = nextBillDate(d, b.frequency, anchor); }
     if (prev && (today - parse(prev)) / dayMs <= 3 && !billPaid(b, transactions, prev)) out.push({ bill: b, date: prev, paid: null });

@@ -2224,6 +2224,7 @@ test('history from a ledger: balances are the stated ones, pairs become one line
     schedules: [
       { id: 'visa-2222', kind: 'card', name: 'Visa', amount: 80, amount_kind: 'statement', minimum: 10, next: '2026-12-10', every: 'monthly', autopay: false, conf: 'confirmed' },
       { id: 'hydro', kind: 'bill', name: 'Hydro', payee: 'Hydro', amount: 85, next: '2026-12-01', every: 'monthly', remind: true },
+      { id: 'tax-once', kind: 'tax', name: 'Tax owing', payee: 'CRA', amount: 410, next: '2026-12-31', every: 'once', remind: true },
       { id: 'pay', kind: 'income', name: 'Acme pay', payee: 'Acme', amount: 2000, next: '2026-12-08', every: 'biweekly', bank: 'Ledger chequing 1111' },
     ],
   };
@@ -2232,7 +2233,7 @@ test('history from a ledger: balances are the stated ones, pairs become one line
     .run('categories', 'dining-old', uid, JSON.stringify({ id: 'dining-old', user_id: uid, name: 'Dining', is_income: false, created_at: '2026-01-01T00:00:00.000Z' }));
   const out = importHistory(uid, file);
   assert.equal(out.merged, 0);
-  assert.deepEqual([out.accounts, out.assets, out.lines, out.bills, out.pay], [5, 1, 7, 1, 1]);
+  assert.deepEqual([out.accounts, out.assets, out.lines, out.bills, out.pay], [5, 1, 7, 2, 1]);
   assert.equal(out.problems.length, 1);
   const again = importHistory(uid, file);
   assert.deepEqual([again.accounts, again.lines, again.already, again.bills, again.pay, again.categories, again.rules], [0, 0, 7, 0, 0, 0, 0]);
@@ -2250,7 +2251,8 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   const { token } = await api('/api/dev-login', { email: 'ledger@test.local' });
   const mine = async (table) => (await (await realFetch(`${base}/api/db`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ table, action: 'select' }) })).json()).data;
   const [banks, cards, loans, tx] = [await mine('bank_accounts'), await mine('credit_cards'), await mine('loans'), await mine('transactions')];
-  const hydro = (await mine('bills'))[0];
+  const hydro = (await mine('bills')).find((b) => b.name === 'Hydro');
+  assert.equal((await mine('bills')).find((b) => b.name === 'Tax owing').frequency, 'once');
   assert.deepEqual([hydro.amount, hydro.status, tx.length], [90, 'ignored', 7]);
   const byKey = (rows, k) => rows.find((r) => r.external_key === k);
   // No line moved a balance: each account has the balance the file states, on the day it states.

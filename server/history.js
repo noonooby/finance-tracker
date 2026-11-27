@@ -189,7 +189,7 @@ function plan(file, uid) {
   const bills = [], pay = [];
   const newest = rows.reduce((d, r) => (r.date > d ? r.date : d), '');
   const since = newest ? new Date(Date.parse(newest) - 200 * 864e5).toISOString().slice(0, 10) : '';
-  const FREQ = { weekly: 'weekly', biweekly: 'biweekly', monthly: 'monthly', quarterly: 'quarterly', yearly: 'yearly', annual: 'yearly' };
+  const FREQ = { weekly: 'weekly', biweekly: 'biweekly', monthly: 'monthly', quarterly: 'quarterly', yearly: 'yearly', annual: 'yearly', once: 'once' };
   const tail = (s) => (String(s || '').match(/(\d{4})\D*$/) || [])[1] || null;
   const named = (name) => accounts.find((a) => a.name.toLowerCase() === String(name || '').trim().toLowerCase());
   for (const s of file.schedules || []) {
@@ -204,7 +204,7 @@ function plan(file, uid) {
       continue;
     }
     if (s.kind === 'income') {
-      if (!(amount > 0) || !FREQ[s.every]) continue;
+      if (!(amount > 0) || !FREQ[s.every] || s.every === 'once') continue;
       const parts = Object.entries(s.splits || (s.bank ? { [s.bank]: amount } : {})).map(([name, a]) => ({ a: named(name), amount: cents(a) / 100 })).filter((x) => x.a && x.a.table === 'bank_accounts' && x.amount > 0)
         .sort((x, y) => y.amount - x.amount).slice(0, 3);
       if (!parts.length) { problems.push(`Schedule ${s.id}: the account the pay lands in is not in the file`); continue; }

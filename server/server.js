@@ -169,7 +169,7 @@ function checkSplits(t) {
 }
 // A tracked bill: a name its payments can be matched by, an amount above zero, a known rhythm, a real date,
 // and only one tracked bill per merchant (two would both remind and both count in the month end).
-const BILL_FREQ = new Set(['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']);
+const BILL_FREQ = new Set(['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly', 'once']);
 function checkBill(uid, b) {
   if (b.status !== 'active') return;
   if (!String(b.name || '').trim() || String(b.key || '').length < 3) fail(400, 'Give the bill a name with at least 3 letters.');

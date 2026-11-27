@@ -13,7 +13,7 @@ import { Card, Section, Button, Field, Badge, EmptyState } from './shared/ui';
 // Bills that repeat. The app finds them in your purchases (the same merchant at a steady interval and amount) and
 // offers each once; you track it or turn it down. Tracked bills show in the next 30 days on Home, count in the month end,
 // and get reminders. Everything about a bill can be changed, and a bill is never paid by the app: you record the payment.
-const FREQ = { weekly: 'Every week', biweekly: 'Every 2 weeks', monthly: 'Every month', quarterly: 'Every 3 months', yearly: 'Every year' };
+const FREQ = { weekly: 'Every week', biweekly: 'Every 2 weeks', monthly: 'Every month', quarterly: 'Every 3 months', yearly: 'Every year', once: 'One time' };
 const PER_MONTH = { weekly: 52 / 12, biweekly: 26 / 12, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12 };
 const day = (d) => { const x = parseDay(d); return x ? x.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''; };
 const today = () => new Date().toLocaleDateString('en-CA');
@@ -53,7 +53,7 @@ export default function Bills() {
   const ignored = bills.filter((b) => b.status === 'ignored');
   const changed = useMemo(() => priceChanges(bills, transactions), [bills, transactions]);
   const yearly = active.reduce((s, b) => s + yearlyCost(b), 0);
-  const monthly = active.reduce((s, b) => s + (Number(b.amount) || 0) * (PER_MONTH[b.frequency] || 1), 0);
+  const monthly = active.reduce((s, b) => s + (Number(b.amount) || 0) * (b.frequency === 'once' ? 0 : PER_MONTH[b.frequency] || 1), 0);
 
   const insert = async (row) => {
     const { data, error } = await server.from('bills').insert(row).select().single();
