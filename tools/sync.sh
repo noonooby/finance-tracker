@@ -7,6 +7,10 @@ OLD="/Users/Rithul/Library/Application Support/Claude/scratch-workspaces/10a89fe
 X="${LEDGER_DIR:-$([ -f "$NAS/expense_history.json" ] && echo "$NAS" || echo "$OLD")}"
 [ -f "$X/expense_history.json" ] || { echo "The ledger file is not at $X"; exit 1; }
 echo "ledger: $X"
+# The ledger can be rebuilt at any moment: work from one copy taken now, so the compare and the check read the same file.
+SNAP="$(mktemp -d)"; trap 'rm -rf "$SNAP"' EXIT
+cp "$X"/expense_history.json "$SNAP"/ && cp "$X"/changes_*_bnpl.json "$SNAP"/ 2>/dev/null
+X="$SNAP"
 get() { curl -s --compressed -H "x-export-key: $(cat ~/.config/finance-export.key)" https://finance.nobodystack.com/api/export -o live.json; }
 get
 N=$(python3 -I mk_sync.py "$X" "$1.json" | awk '{print $4}')
