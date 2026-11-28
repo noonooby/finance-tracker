@@ -657,6 +657,13 @@ function importHistory(uid, file, opts = {}) {
       const was = selectRows(uid, { table: a.table, filters: [['id', 'eq', a.id]], limit: 1 })[0];
       const add = {};
       for (const k of ['credit_limit', 'limit_at_least']) if (Number(a.values[k]) > 0 && !(Number(was[k]) > 0)) add[k] = a.values[k];
+      // A limit that came from the file follows the file when the file reads a better one; a limit set here by hand stays.
+      const fromFile = was.source === 'import' && (was.file_limit == null || Number(was.file_limit) === Number(was.credit_limit));
+      if (Number(a.values.credit_limit) > 0 && Number(was.credit_limit) > 0 && Number(a.values.credit_limit) !== Number(was.credit_limit) && fromFile) add.credit_limit = a.values.credit_limit;
+      if (Number(a.values.credit_limit) > 0 && fromFile && Number(was.file_limit) !== Number(a.values.credit_limit)) add.file_limit = a.values.credit_limit;
+      // Once the file has the real limit, the 'at least' figure it stood in for is dropped.
+      if (Number(a.values.credit_limit) > 0 && !(Number(a.values.limit_at_least) > 0) && Number(was.limit_at_least) > 0 && fromFile) add.limit_at_least = null;
+      if (a.table === 'credit_cards' && a.values.due_date && (!was.due_date || a.values.due_date > was.due_date)) add.due_date = a.values.due_date;
       if (a.values.loan_type === 'line_of_credit' && was.loan_type === 'loan') add.loan_type = 'line_of_credit';
       if (Number(a.values.interest_rate) > 0 && !(Number(was.interest_rate) > 0)) add.interest_rate = a.values.interest_rate;
       // A statement the file has read (its amount, due day and minimum) replaces an older or unread one on the card.

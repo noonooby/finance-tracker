@@ -2246,7 +2246,7 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   fix.schedules = [{ ...file.schedules[1], amount: 90, note: 'Now on the Visa.' }];
   const fixed = importHistory(uid, fix, { replace: true });
   assert.deepEqual([fixed.skipped, fixed.replaced, fixed.bills_changed], [0, 2, 1]);
-  assert.equal(importHistory(uid, { accounts: file.accounts, lines: [], rules: { ended_bills: ['hydro'] } }).bills_changed, 1);
+  assert.equal(importHistory(uid, { accounts: fix.accounts, lines: [], rules: { ended_bills: ['hydro'] } }).bills_changed, 1);
   assert.deepEqual([fixed.replaced, fixed.lines, fixed.accounts, fixed.filled], [2, 0, 0, 2]);
   const { token } = await api('/api/dev-login', { email: 'ledger@test.local' });
   const mine = async (table) => (await (await realFetch(`${base}/api/db`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ table, action: 'select' }) })).json()).data;
@@ -2262,10 +2262,10 @@ test('history from a ledger: balances are the stated ones, pairs become one line
   assert.equal(byKey(banks, 'old-sav').archived, true);
   assert.equal(byKey(loans, 'home-loan').loan_type, 'mortgage');
   assert.equal(byKey(loans, 'loc').balance, 1000);
-  // What the ledger learned later is filled in; a limit the card already has is kept.
+  // What the ledger learned later is filled in, and a limit that came from the file follows the file.
   assert.equal(byKey(loans, 'loc').credit_limit, 13000);
   assert.equal(byKey(loans, 'loc').loan_type, 'line_of_credit');
-  assert.equal(byKey(cards, 'visa-2').credit_limit, 5000);
+  assert.equal(byKey(cards, 'visa-2').credit_limit, 9999);
   assert.equal(byKey(cards, 'visa-2').limit_at_least, 700);
   const kind = (id) => tx.find((t) => t.external_id === id);
   assert.equal(kind('1').type, 'expense');
