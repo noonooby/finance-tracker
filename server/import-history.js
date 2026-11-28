@@ -6,10 +6,12 @@ const fs = require('fs');
 const [file, email, ...flags] = process.argv.slice(2);
 if (!file || !email) { console.error('Usage: import-history.js <file.json> <email> [--dry] [--reset]'); process.exit(2); }
 // With - in place of the file, nothing is brought in: categories that are doubled are made one.
-const { db, importHistory, mergeTwinCategories, userFor, tx } = require('./server');
+const { db, importHistory, rekeyHistory, mergeTwinCategories, userFor, tx } = require('./server');
 const uid = userFor(email);
 if (file === '-') { console.log(JSON.stringify({ merged: tx(() => mergeTwinCategories(uid)) })); process.exit(0); }
 const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+// --rekey: the file is { "rekey": { old row number: new row number } }; lines keep everything but the numbers.
+if (flags.includes('--rekey')) { console.log(JSON.stringify({ rekey: rekeyHistory(uid, data.rekey || {}) })); process.exit(0); }
 if (flags.includes('--dry')) {
   const p = require('./history').plan(data, uid);
   console.log(JSON.stringify({ dry: true, accounts: p.accounts.length, categories: p.categories.length, lines: p.rows.length, kinds: p.counts, problems: p.problems.length }));

@@ -576,6 +576,32 @@ const reverse = (uid, id, b) => tx(() => reverseInner(uid, id, b));
 
 // Two categories with one name and one kind are one category (names are unique; see checkCategory). The older one is kept:
 // every line, split part and merchant rule of the other is moved to it, then the other is removed. -> how many were merged
+// The ledger numbers its rows again when older history is added to it. Each line brought in keeps standing for the same
+// rows under their new numbers: its own id, the rows it stands for and the labels kept per row all follow the map.
+// Nothing else about a line changes. Every line is written under its new id only after all the old ids are gone,
+// so a number that used to mean another row cannot collide.
+function rekeyHistory(uid, map) {
+  return tx(() => {
+    const to = (x) => (Object.prototype.hasOwnProperty.call(map, String(x)) ? String(map[String(x)]) : null);
+    const mine = selectRows(uid, { table: 'transactions' }).filter((t) => t.source === 'import' && t.external_id != null);
+    const next = [];
+    for (const t of mine) {
+      const ids = (Array.isArray(t.external_ids) && t.external_ids.length ? t.external_ids : [t.external_id]).map(String);
+      if (ids.some((x) => to(x) == null)) throw new Error(`No new number for row ${ids.find((x) => to(x) == null)}`);
+      const tail = String(t.id).replace(/^h_.*_([^_]+)$/, '$1');
+      const n = { ...t, id: `h_${to(t.external_id)}_${tail}`, external_id: to(t.external_id) };
+      if (Array.isArray(t.external_ids) && t.external_ids.length) n.external_ids = ids.map(to);
+      if (t.side_labels) n.side_labels = Object.fromEntries(Object.entries(t.side_labels).map(([k, v]) => [to(k) || k, v]));
+      next.push([t.id, n]);
+    }
+    if (new Set(next.map(([, n]) => n.id)).size !== next.length) throw new Error('Two lines would get the same id');
+    const moved = next.filter(([old, n]) => String(old) !== n.id || JSON.stringify(n) !== JSON.stringify(mine.find((t) => t.id === old)));
+    for (const [old] of moved) db.prepare('DELETE FROM rows WHERE tbl = ? AND id = ? AND user_id = ?').run('transactions', String(old), uid);
+    for (const [, n] of moved) db.prepare('INSERT INTO rows (tbl, id, user_id, data) VALUES (?,?,?,?)').run('transactions', n.id, uid, JSON.stringify(n));
+    return { lines: mine.length, renumbered: moved.length };
+  });
+}
+
 function mergeTwinCategories(uid) {
   const cats = selectRows(uid, { table: 'categories' }).sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
   const keep = new Map(), into = new Map();
@@ -1462,4 +1488,4 @@ if (require.main === module) {
   setTimeout(runReminders, 60e3);
   setInterval(runReminders, 15 * 60e3).unref();
 }
-module.exports = { server, db, importHistory, mergeTwinCategories, userFor, tx, money, reverse, runQuery, runReminders, setHoldings, reprice, fillProducts, runUpkeep, _wakeLookups: () => { lookupsRestUntil = 0; searchRefused = false; } };
+module.exports = { server, db, importHistory, rekeyHistory, mergeTwinCategories, userFor, tx, money, reverse, runQuery, runReminders, setHoldings, reprice, fillProducts, runUpkeep, _wakeLookups: () => { lookupsRestUntil = 0; searchRefused = false; } };

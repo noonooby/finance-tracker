@@ -2347,6 +2347,17 @@ test('a ledger correction that pairs rows anew: two lines become one payment, a 
   importHistory(uid, { accounts: acc, lines: [{ ...L('g2', 'r-chq', 5, 'Groceries'), description: 'STORE CREDIT', note: 'Instalment 2 of 4' }] }, { replace: true });
   assert.equal((await mine()).find((t) => t.external_id === 'g2').type, 'refund');
   assert.equal((await mine()).find((t) => t.external_id === 'g2').notes, 'Instalment 2 of 4');
+  // The ledger numbers its rows again: every line stands for the same rows under the new numbers, and none is lost or doubled.
+  const { rekeyHistory } = require(path.join(root, 'server', 'server.js'));
+  const before = (await mine()).map((t) => [t.amount, t.type, (t.external_ids || [t.external_id]).length]).sort().join();
+  const swap = { a: 'b', b: 'a2', x: 'x', y: 'y', z: 'z', w: 'w9', g1: 'g1', g2: 'g2' };
+  const done = rekeyHistory(uid, swap);
+  const after = await mine();
+  assert.equal(after.map((t) => [t.amount, t.type, (t.external_ids || [t.external_id]).length]).sort().join(), before);
+  assert.deepEqual(after.find((t) => t.type === 'payment' && t.amount === 100).external_ids.slice().sort(), ['a2', 'b']);
+  assert.ok(after.find((t) => t.id.startsWith('h_w9_')) && done.renumbered >= 2);
+  assert.throws(() => rekeyHistory(uid, { b: 'q' }));
+  rekeyHistory(uid, Object.fromEntries(Object.entries(swap).map(([k, v]) => [v, k])));
   // The same correction again changes nothing.
   assert.equal(importHistory(uid, { accounts: acc, lines: fix }, { replace: true }).regrouped, 0);
 });
