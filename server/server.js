@@ -658,6 +658,11 @@ function importHistory(uid, file, opts = {}) {
       const add = {};
       for (const k of ['credit_limit', 'limit_at_least']) if (Number(a.values[k]) > 0 && !(Number(was[k]) > 0)) add[k] = a.values[k];
       if (a.values.loan_type === 'line_of_credit' && was.loan_type === 'loan') add.loan_type = 'line_of_credit';
+      if (Number(a.values.interest_rate) > 0 && !(Number(was.interest_rate) > 0)) add.interest_rate = a.values.interest_rate;
+      // A statement the file has read (its amount, due day and minimum) replaces an older or unread one on the card.
+      if (a.table === 'credit_cards' && a.values.statement_due && a.values.statement_balance != null && (!was.statement_due || a.values.statement_due > was.statement_due || was.statement_balance == null)) {
+        for (const k of ['due_date', 'statement_due', 'statement_balance', 'minimum_payment', 'autopay']) if (a.values[k] != null && a.values[k] !== was[k]) add[k] = a.values[k];
+      }
       if (a.values.notes && a.values.notes !== was.notes && was.source === 'import') add.notes = a.values.notes;
       if (Object.keys(add).length) { updateRows(uid, a.table, [['id', 'eq', a.id]], add); out.filled++; }
     }
