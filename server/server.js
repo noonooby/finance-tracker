@@ -681,7 +681,8 @@ function importHistory(uid, file, opts = {}) {
       if (!has('bills', b.id)) { insertRow(uid, 'bills', { ...b, created_at: now() }); out.bills++; continue; }
       const was = opts.replace && asBrought(b.id);
       if (!was || was.status !== 'active') continue;
-      const next = { ...was, name: b.name, amount: b.amount, frequency: b.frequency, next_date: b.next_date, remind: b.remind, notes: b.notes };
+      const next = { ...was, name: b.name, amount: b.amount, frequency: b.frequency, next_date: b.next_date, remind: b.remind, notes: b.notes,
+        ...(b.payment_method ? { payment_method: b.payment_method, payment_method_id: b.payment_method_id, payment_method_name: b.payment_method_name } : {}) };
       if (JSON.stringify(next) !== JSON.stringify(was)) { keepBill(next); out.bills_changed++; }
     }
     for (const id of p.ended) { const was = asBrought(id); if (was && was.status === 'active') { keepBill({ ...was, status: 'ignored', remind: false }); out.bills_changed++; } }

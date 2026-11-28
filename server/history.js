@@ -202,7 +202,9 @@ function plan(file, uid, known) {
     if (!s || !s.id || !isDay(s.next)) continue;
     const amount = cents(s.amount) / 100;
     if (s.kind === 'card') {
-      const card = accounts.find((a) => a.table === 'credit_cards' && tail(s.id) && (a.values.last4 === tail(s.id) || tail(a.key) === tail(s.id)));
+      // The account the file names for the schedule, else the card whose last digits end the schedule's id.
+      const card = accounts.find((a) => a.table === 'credit_cards' && s.account && a.key === String(s.account))
+        || accounts.find((a) => a.table === 'credit_cards' && tail(s.id) && (a.values.last4 === tail(s.id) || tail(a.key) === tail(s.id)));
       if (!card) { problems.push(`Schedule ${s.id}: no card matches it`); continue; }
       const known = s.amount_kind === 'statement' && s.amount != null && s.conf !== 'estimate';
       Object.assign(card.values, { due_date: s.next, ...(Number(s.minimum) > 0 ? { minimum_payment: Number(s.minimum) } : {}), ...(s.autopay != null ? { autopay: !!s.autopay } : {}),
@@ -228,8 +230,12 @@ function plan(file, uid, known) {
     if (want.length >= 4) for (const r of rows) if (r.type === 'expense' && r.date >= since) { const k = mkey(r.description); if (k.startsWith(want)) seenKeys.set(k, (seenKeys.get(k) || 0) + 1); }
     const best = [...seenKeys].sort((x, y) => y[1] - x[1])[0];
     const key = best && !bills.some((b) => b.key === best[0]) ? best[0] : `import:${slug(s.id)}`;
+    // A bill charged to a card is paid when the card is paid: it is tied to that card, so it is not counted as money leaving the bank again.
+    const paidBy = String(s.pay_from || '').toLowerCase();
+    const onCard = s.via_card ? accounts.filter((a) => a.table === 'credit_cards' && paidBy.startsWith(a.name.toLowerCase())).sort((x, y) => y.name.length - x.name.length)[0] : null;
     bills.push({ id: `h_${slug(s.id)}_${u8}`, key, name: String(s.name).slice(0, 60), amount, frequency: FREQ[s.every], next_date: s.next, status: 'active', remind: s.remind === true,
-      source: 'import', notes: [s.pay_from ? `Paid from ${String(s.pay_from).slice(0, 80)}${s.autopay ? ', by itself' : ''}.` : '', String(s.note || '').slice(0, 220)].filter(Boolean).join(' ') || null });
+      ...(onCard ? { payment_method: 'credit_card', payment_method_id: onCard.id, payment_method_name: onCard.name } : {}),
+      source: 'import', notes: [s.pay_from ? `Paid from ${String(s.pay_from).slice(0, 80)}${s.autopay ? ', by itself' : ''}.` : '', isDay(s.until) ? `Ends ${s.until}.` : '', String(s.note || '').slice(0, 220)].filter(Boolean).join(' ') || null });
   }
 
   // Bills the file says have ended.
