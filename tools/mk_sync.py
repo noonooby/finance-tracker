@@ -34,6 +34,8 @@ for l in live['lines']:
     if l['source'] == 'import' and not l['updated_at'] and l['type'] in ('income', 'refund') and len(kinds[l['ledger_category']]) > 1: want.update(str(x) for x in l['external_ids'])
 for k, v in grp.items():
     if len({tuple(line_ids.get(x, [x])) for x in v}) > 1 and len({by[x]['account'] for x in v}) > 1: want.update(v)
+# a row of the file that is on no line yet comes along with whatever it pairs with
+want.update(str(l['id']) for l in d['lines'] if str(l['id']) not in line_ids and round(l['amount'] * 100))
 todo = list(want)
 while todo:
     x = todo.pop()
