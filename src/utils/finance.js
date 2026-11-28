@@ -164,7 +164,7 @@ export function monthEnd({ liquid, incomeSchedules = [], loans = [], creditCards
     return sum;
   }, 0)
     + creditCards.filter((c) => !c.is_gift_card && Number(c.balance) > 0 && due(String(c.due_date || '').slice(0, 10))).reduce((s, c) => s + cardPaymentDue(c), 0)
-    + billDates(bills, transactions, today, end).filter((x) => !x.paid && x.bill.payment_method !== 'credit_card').reduce((s, x) => s + (Number(x.bill.amount) || 0), 0);
+    + billDates(bills, transactions, today, end).filter((x) => !x.paid && !['credit_card', 'loan'].includes(x.bill.payment_method)).reduce((s, x) => s + (Number(x.bill.amount) || 0), 0);
   return { end, now: round2(liquid), coming: round2(coming), going: round2(going), atEnd: round2(liquid + coming - going) };
 }
 
@@ -269,9 +269,9 @@ export function upcoming({ creditCards = [], loans = [], bankAccounts = [], bill
   }
   for (const { bill: b, date, paid } of billDates(bills, transactions, today, end)) {
     // A bill charged to a card is paid when the card is paid, so it is not another payment you make.
-    const onCard = b.payment_method === 'credit_card';
-    out.push({ date, name: b.name, amount: round2(Number(b.amount) || 0), kind: 'bill', cash: !paid && !onCard, auto: !!paid || onCard, paid: !!paid, from: b.payment_method_name || null,
-      note: paid ? 'recorded' : onCard ? `charged to the card, repeats ${b.frequency}` : `repeats ${b.frequency}` });
+    const onCard = b.payment_method === 'credit_card', onLoan = b.payment_method === 'loan';
+    out.push({ date, name: b.name, amount: round2(Number(b.amount) || 0), kind: 'bill', cash: !paid && !onCard && !onLoan, auto: !!paid || onCard || onLoan, paid: !!paid, from: b.payment_method_name || null,
+      note: paid ? 'recorded' : onCard ? `charged to the card, repeats ${b.frequency}` : onLoan ? `added to what is owed, repeats ${b.frequency}` : `repeats ${b.frequency}` });
   }
   return out.sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }

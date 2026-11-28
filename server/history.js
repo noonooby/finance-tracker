@@ -232,9 +232,16 @@ function plan(file, uid, known) {
     const key = best && !bills.some((b) => b.key === best[0]) ? best[0] : `import:${slug(s.id)}`;
     // A bill charged to a card is paid when the card is paid: it is tied to that card, so it is not counted as money leaving the bank again.
     const paidBy = String(s.pay_from || '').toLowerCase();
-    const onCard = s.via_card ? accounts.filter((a) => a.table === 'credit_cards' && paidBy.startsWith(a.name.toLowerCase())).sort((x, y) => y.name.length - x.name.length)[0] : null;
+    // The account the file names as paying it comes first. One that only adds to what is owed (interest on a line of credit) is tied to that loan.
+    const named_ = s.pay_account ? accounts.find((a) => a.key === String(s.pay_account)) : null;
+    const onLoan = named_ && named_.table === 'loans' ? named_ : null;
+    const onBank = named_ && named_.table === 'bank_accounts' ? named_ : null;
+    const onCard = named_ ? (named_.table === 'credit_cards' ? named_ : null)
+      : s.via_card ? accounts.filter((a) => a.table === 'credit_cards' && paidBy.startsWith(a.name.toLowerCase())).sort((x, y) => y.name.length - x.name.length)[0] : null;
     bills.push({ id: `h_${slug(s.id)}_${u8}`, key, name: String(s.name).slice(0, 60), amount, frequency: FREQ[s.every], next_date: s.next, status: 'active', remind: s.remind === true,
       ...(onCard ? { payment_method: 'credit_card', payment_method_id: onCard.id, payment_method_name: onCard.name } : {}),
+      ...(onLoan ? { payment_method: 'loan', payment_method_id: onLoan.id, payment_method_name: onLoan.name } : {}),
+      ...(onBank ? { payment_method: 'bank_account', payment_method_id: onBank.id, payment_method_name: onBank.name } : {}),
       source: 'import', notes: [s.pay_from ? `Paid from ${String(s.pay_from).slice(0, 80)}${s.autopay ? ', by itself' : ''}.` : '', isDay(s.until) ? `Ends ${s.until}.` : '', String(s.note || '').slice(0, 220)].filter(Boolean).join(' ') || null });
   }
 
